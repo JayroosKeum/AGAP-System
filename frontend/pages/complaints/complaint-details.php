@@ -17,12 +17,29 @@ if ($roleId === 4) {
     header('Location: ../gps/proof-service.php');
     exit;
 }
-if (!in_array($roleId, [1, 2, 3], true)) {
+require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/../../../backend/middleware/rbac.php';
+$rbacDb = (new Database())->connect();
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO'], $rbacDb)) {
     http_response_code(403);
     exit('Access denied for this role.');
 }
 
+$roleName = agapGetRoleName($rbacDb);
+$isLuponReadOnly = ($roleName === 'Lupon Member' || $roleId === 3);
 $canAuthorizePastDate = $roleId === 1;
+$lisoCategories = [];
+try {
+    $catQ = $rbacDb->query("
+        SELECT category_id, category_name
+        FROM complaint_categories
+        WHERE COALESCE(is_active, 1) = 1
+        ORDER BY CASE WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 ELSE 0 END ASC, category_name ASC
+    ");
+    $lisoCategories = $catQ ? $catQ->fetchAll(PDO::FETCH_ASSOC) : [];
+} catch (Throwable $ce) {
+    $lisoCategories = [];
+}
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
     header('Location: complaint-list.php');
@@ -153,10 +170,19 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <span id="statusTrackerButtonLabel">Status: In Progress</span>
                     <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
                 </button>
-                <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                    <span>Edit Case</span>
-                </a>
+                <?php if (!$isLuponReadOnly): ?>
+                    <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        <span>Edit Case</span>
+                    </a>
+                <?php else: ?>
+                    <span class="btn-case-status" style="background:#eef6f2; border-color:#cde2d6; color:#102b2d; cursor:default;" title="View Details, Minutes &amp; KP Forms Only">
+                        Read-Only Lupon View
+                    </span>
+                <?php endif; ?>
+                <script>
+                    window.__agapLuponReadOnly = <?php echo $isLuponReadOnly ? 'true' : 'false'; ?>;
+                </script>
             </div>
         </div>
 
@@ -204,6 +230,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 <span>Overview &amp; Workflow</span>
             </button>
+            <a href="../paanyaya/stage.php?complaint_id=<?php echo $complaintId; ?>" class="case-tab-item" id="navTabPaanyayaLink" style="text-decoration:none;">
+                <span>🤝 Paanyaya</span>
+            </a>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-mediation' ? 'active' : ''; ?>" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 <span>Mediation</span>
@@ -299,6 +328,133 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </div>
             </div>">
 
+            <!-- LISO Preliminary Screening & Mandatory Paanyaya Gate Card -->
+            <div id="lisoVerificationBanner" style="display: none; margin-bottom: 18px; background: #ffffff; border: 1.5px solid #cbd5e1; border-left: 5px solid #2563eb; border-radius: 10px; padding: 16px 20px; box-shadow: 0 2px 6px rgba(15,23,42,0.04);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px;">
+                            <strong id="lisoBannerTitle" style="font-size: 0.98rem; color: #0f172a;">LISO Preliminary Screening &amp; Verification</strong>
+                            <span id="lisoSourceBadge" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #dbeafe; color: #1e40af;">Walk-in</span>
+                            <span id="lisoRefBadge" style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #f1f5f9; color: #334155;">REF</span>
+                        </div>
+                        <p id="lisoBannerSubtitle" style="margin: 0; font-size: 0.84rem; color: #475569; line-height: 1.45;">
+                            Verify complaint completeness, jurisdiction indicators, and duplicates before proceeding to mandatory Paanyaya.
+                        </p>
+                        <div id="lisoWalkinLinkInfo" style="display: none; margin-top: 6px; font-size: 0.8rem; color: #166534; background: #f0fdf4; border: 1px solid #bbf7d0; padding: 4px 10px; border-radius: 6px;"></div>
+                    </div>
+                    <div id="lisoActionButtonsWrap" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="submitLisoReviewDecision('Under Review')" style="font-size: 0.8rem; padding: 6px 12px;">Mark Under Review</button>
+                        <button type="button" class="btn-secondary" onclick="submitLisoReviewDecision('Needs Information')" style="font-size: 0.8rem; padding: 6px 12px; border-color: #f59e0b; color: #b45309;">Needs Info</button>
+                        <button type="button" class="btn-create" onclick="submitLisoReviewDecision('Accepted')" style="font-size: 0.8rem; padding: 6px 14px; background: #16a34a; border-color: #16a34a;">✓ Verify &amp; Endorse to Paanyaya</button>
+                        <button type="button" class="btn-secondary" onclick="submitLisoReviewDecision('Rejected')" style="font-size: 0.8rem; padding: 6px 12px; border-color: #ef4444; color: #b91c1c;">Reject</button>
+                    </div>
+                </div>
+                <!-- Integrated LISO Advisory AI Classification & Original Input Side-by-Side Panel -->
+                <div id="lisoAiScreeningSection" style="display: none; margin-top: 14px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 14px;">
+                        <!-- Left: Resident's Original Input -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
+                            <div style="font-size: 0.78rem; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 6px;">
+                                Resident's Original Input
+                            </div>
+                            <div id="lisoOrigCategoryPreview" style="font-size: 0.8rem; color: #1e293b; font-weight: 600; margin-bottom: 6px;"></div>
+                            <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-top: 6px;">Submitted Narrative:</div>
+                            <div id="lisoOrigNarrativePreview" style="font-size: 0.81rem; color: #334155; max-height: 115px; overflow-y: auto; white-space: pre-wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; margin-top: 3px;"></div>
+                            <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-top: 8px;">Requested Relief / Settlement:</div>
+                            <div id="lisoOrigResolutionPreview" style="font-size: 0.8rem; color: #475569; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 8px; margin-top: 3px;"></div>
+                        </div>
+
+                        <!-- Right: Advisory Check + Staff Verification -->
+                        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 14px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px;">
+                                <strong style="font-size: 0.84rem; color: #0f172a;">Advisory Category Check &amp; Verification</strong>
+                                <span style="font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;">Advisory Only &bull; RA 7160 Authority Remains with Barangay</span>
+                            </div>
+
+                            <label style="display: flex; align-items: flex-start; gap: 6px; font-size: 0.77rem; color: #475569; margin-bottom: 8px; cursor: pointer;">
+                                <input type="checkbox" id="lisoAiExternalConsent" style="margin-top: 2px;">
+                                <span>Data Privacy Act Consent: Send anonymized narrative &amp; relief text only (no names/contacts) to Google Gemini for advisory suggestions.</span>
+                            </label>
+
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
+                                <button type="button" id="btnLisoRunAiCheck" class="btn-outline-sm" style="font-size: 0.78rem; padding: 5px 11px;">Run Gemini Advisory Check</button>
+                                <button type="button" id="btnLisoRunLocalCheck" class="btn-secondary btn-sm" style="font-size: 0.78rem; padding: 5px 11px;">Local Rule Check (Offline)</button>
+                                <span id="lisoAiStatusText" style="font-size: 0.76rem; color: #64748b;"></span>
+                            </div>
+
+                            <div id="lisoAiResultCard" style="display: none; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+                                    <span style="font-size: 0.78rem; font-weight: 700; color: #0f172a;">Proposed Categories (For Official Review Only)</span>
+                                    <span id="lisoAiSourceBadge" style="font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #e2e8f0; color: #334155;"></span>
+                                </div>
+                                <div id="lisoAiAltChips" style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px;"></div>
+                                <div id="lisoAiReasonText" style="font-size: 0.78rem; color: #334155; margin-bottom: 4px;"></div>
+                                <div id="lisoAiSecondaryText" style="display: none; font-size: 0.76rem; color: #475569; margin-bottom: 4px;"></div>
+                                <div id="lisoAiJurisdictionAlert" style="display: none; margin-top: 6px; padding: 7px 10px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px; font-size: 0.77rem; color: #92400e;"></div>
+                            </div>
+
+                            <input type="hidden" id="lisoAiUsed" value="0">
+                            <input type="hidden" id="lisoAiSuggestedCatId" value="">
+                            <input type="hidden" id="lisoAiSuggestedTitle" value="">
+
+                            <div style="display: grid; grid-template-columns: 1fr 125px; gap: 8px; margin-bottom: 8px;">
+                                <div>
+                                    <label for="lisoCategorySelect" style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 3px;">Confirmed Complaint Category 1</label>
+                                    <select id="lisoCategorySelect" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                        <option value="">Keep submitted category</option>
+                                        <?php foreach ($lisoCategories as $lCat): ?>
+                                            <option value="<?php echo (int) $lCat['category_id']; ?>"><?php echo htmlspecialchars((string) $lCat['category_name']); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="lisoCaseTypeSelect" style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 3px;">Case Type</label>
+                                    <select id="lisoCaseTypeSelect" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                        <option value="Civil">Civil</option>
+                                        <option value="Criminal">Criminal</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div id="lisoOtherCatWrap" style="display: none; margin-bottom: 8px;">
+                                <input type="text" id="lisoOtherCategorySpec" maxlength="255" placeholder="Specify custom category details under Others..." style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            </div>
+
+                            <div style="margin-bottom: 8px;">
+                                <label for="lisoSecondaryCategorySelect" style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 3px;">Confirmed Complaint Category 2 (Optional &bull; Up to 2 categories)</label>
+                                <select id="lisoSecondaryCategorySelect" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                    <option value="">None (Single category only)</option>
+                                    <?php foreach ($lisoCategories as $lCat): ?>
+                                        <option value="<?php echo (int) $lCat['category_id']; ?>"><?php echo htmlspecialchars((string) $lCat['category_name']); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div id="lisoSecondaryOtherCatWrap" style="display: none; margin-bottom: 8px;">
+                                <input type="text" id="lisoSecondaryOtherCategorySpec" maxlength="255" placeholder="Specify custom 2nd category details under Others..." style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            </div>
+
+                            <div style="margin-bottom: 8px;">
+                                <label for="lisoComplaintTitleInput" style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 3px;">Confirmed Complaint Subject / Title</label>
+                                <input type="text" id="lisoComplaintTitleInput" maxlength="255" placeholder="Verify or refine neutral complaint title..." style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            </div>
+
+                            <label style="display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #92400e; cursor: pointer;">
+                                <input type="checkbox" id="lisoConfirmClassificationCheck" style="margin-top: 2px;">
+                                <span>Mandatory Human Confirmation: I independently reviewed the resident's original input and confirm the selected category, case type, and complaint title before saving.</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="lisoReviewNotesRow" style="margin-top: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                    <input type="text" id="lisoScreeningDecisionNotes" maxlength="2000" placeholder="Optional LISO screening notes / missing info remarks..." style="flex: 1 1 280px; padding: 7px 10px; font-size: 0.82rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                    <a id="btnProceedMandatoryPaanyaya" href="../paanyaya/stage.php?complaint_id=<?php echo $complaintId; ?>" class="btn-create" style="display: none; text-decoration: none; font-size: 0.84rem; padding: 7px 14px; background: #2563eb; border-color: #2563eb;">
+                        📅 Schedule Mandatory Paanyaya &rarr;
+                    </a>
+                </div>
+            </div>
+
             <!-- Top Hero Section: Primary Case Info & Immediate Context -->
             <div class="case-hero-card">
                 <div class="hero-badges-row">
@@ -388,6 +544,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         <strong style="font-size: 0.82rem; color: #64748b; text-transform: uppercase;">Requested Resolution / Relief:</strong>
                         <p id="complaintRequestedResolution" style="margin: 4px 0 0; font-size: 0.9rem; color: #1e293b;"></p>
                     </div>
+                    <div id="complaintAiSuggestionCallout" style="display:none; margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: #eff6ff; border: 1px solid #bfdbfe;"></div>
                 </div>
             </div>
 

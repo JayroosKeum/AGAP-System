@@ -52,6 +52,7 @@ class LuponDashboardController
         }));
 
         $pendingConciliations = count(array_filter($assignedCases, fn($c) => ($c['case_status'] ?? '') === 'Conciliation'));
+        $pendingVerification = $this->getPendingJurisdictionComplaints();
 
         return [
             'user_id' => $userId,
@@ -63,11 +64,52 @@ class LuponDashboardController
                 'as_secretary' => $secretaryCount,
                 'as_member' => $memberCount,
                 'today_hearings' => $todayHearingsCount,
-                'pending_conciliations' => $pendingConciliations
+                'pending_conciliations' => $pendingConciliations,
+                'pending_verification' => count($pendingVerification)
             ],
             'duty_hearings' => $dutyHearings,
-            'assigned_cases' => $assignedCases
+            'assigned_cases' => $assignedCases,
+            'pending_verification_complaints' => $pendingVerification
         ];
+    }
+
+    /**
+     * Retrieve submitted/pending complaints awaiting Lupon Member/Clerk jurisdiction check.
+     */
+    public function getPendingJurisdictionComplaints(): array
+    {
+        try {
+            $stmt = $this->conn->query("
+                SELECT co.complaint_id, co.complaint_number, co.complaint_title, co.case_type,
+                       co.status, co.complaint_source, co.incident_date, co.incident_location,
+                       co.incident_purok, co.narrative, co.additional_details, co.requested_resolution,
+                       co.review_notes, co.created_at,
+                       cat.category_name, cat.ltia_code,
+                       COALESCE((
+                           SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                           FROM complaint_parties cp
+                           JOIN residents r ON r.resident_id = cp.resident_id
+                           WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Complainant'
+                       ), '') AS complainant_names,
+                       COALESCE((
+                           SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                           FROM complaint_parties cp
+                           JOIN residents r ON r.resident_id = cp.resident_id
+                           WHERE cp.complaint_id = co.complaint_id AND cp.party_type = 'Respondent'
+                       ), '') AS respondent_names
+                FROM complaints co
+                LEFT JOIN cases c ON c.complaint_id = co.complaint_id
+                LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
+                WHERE c.case_id IS NULL
+                  AND COALESCE(co.is_draft, 0) = 0
+                  AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Submitted', 'Pending Review')
+                ORDER BY CASE WHEN co.complaint_source = 'Online' THEN 0 ELSE 1 END ASC, co.created_at DESC
+                LIMIT 25
+            ");
+            return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        } catch (Throwable $e) {
+            return [];
+        }
     }
 
     /**
@@ -336,8 +378,8 @@ class LuponDashboardController
         // 1. Case and Complaint details
         $caseStmt = $this->conn->prepare("
             SELECT c.case_id, c.case_number, c.case_type, c.case_status, c.docket_date,
-                   co.complaint_id, co.complaint_number, co.complaint_title, co.narrative, co.requested_resolution,
-                   co.incident_date, co.incident_location, co.incident_purok,
+                   co.complaint_id, co.complaint_number, co.complaint_title, co.narrative, co.additional_details, co.requested_resolution,
+                   co.incident_date, co.incident_location, co.incident_purok, co.complaint_source, co.review_notes, co.generated_kp7_path,
                    cat.category_name,
                    pg.pangkat_id, pg.formation_date, pg.conciliation_deadline, pg.selection_method,
                    COALESCE(pm_user.position, (
@@ -420,12 +462,55 @@ class LuponDashboardController
             $pangkatMembers = $pmStmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
+        // 6. Created KP Forms & Documents bound to this case/complaint (Read-only preview)
+        $documents = [];
+        try {
+            $docStmt = $this->conn->prepare("
+                SELECT gd.document_id, gd.template_id, dt.template_name, dt.description AS template_description,
+                       gd.file_path, gd.service_status, gd.regeneration_reason, gd.generated_at
+                FROM generated_documents gd
+                INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                WHERE gd.case_id = ?
+                ORDER BY gd.generated_at DESC, gd.document_id DESC
+            ");
+            $docStmt->execute([$caseId]);
+            foreach ($docStmt->fetchAll(PDO::FETCH_ASSOC) as $docRow) {
+                $docId = (int) $docRow['document_id'];
+                $docRow['preview_url'] = "../../../backend/api/documents/kp-form.php?document_id={$docId}&preview=1";
+                $documents[] = $docRow;
+            }
+        } catch (Throwable $docErr) {
+            // keep non-fatal if template join unavailable
+        }
+
+        if (!empty($case['generated_kp7_path']) || $complaintId > 0) {
+            $hasKp7 = false;
+            foreach ($documents as $existingDoc) {
+                if (stripos((string) ($existingDoc['template_name'] ?? ''), 'Form 7') !== false) {
+                    $hasKp7 = true;
+                    break;
+                }
+            }
+            if (!$hasKp7) {
+                $documents[] = [
+                    'document_id' => null,
+                    'template_name' => 'KP Form 7',
+                    'template_description' => "Sumbong (Complainant's Complaint)",
+                    'file_path' => $case['generated_kp7_path'] ?? '',
+                    'service_status' => 'Generated',
+                    'generated_at' => $case['docket_date'] ?? null,
+                    'preview_url' => "../../../backend/api/documents/kp-form.php?complaint_id={$complaintId}&form_code=KP%20Form%207&preview=1"
+                ];
+            }
+        }
+
         return [
             'case' => $case,
             'parties' => $parties,
             'hearings' => $hearings,
             'settlement' => $settlement,
-            'pangkat_members' => $pangkatMembers
+            'pangkat_members' => $pangkatMembers,
+            'documents' => $documents
         ];
     }
 }

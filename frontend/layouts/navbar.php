@@ -11,6 +11,10 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
         </svg>
     </button>
     <div class="navbar-context"><span class="navbar-eyebrow">Barangay Tumana</span><span class="navbar-title">Katarungang Pambarangay</span></div>
+    <form class="navbar-search" id="globalNavSearchForm" action="../complaints/complaint-list.php" method="get" role="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+        <input type="search" id="globalNavSearchInput" name="q" placeholder="Search Case #, Complaint, or Party..." aria-label="Search complaints and cases" autocomplete="off">
+    </form>
     <div class="navbar-right">
         <!-- Global UI Language Switch Toggle (English / Tagalog) -->
         <div class="lang-switch-wrapper" id="langSwitchWrapper">
@@ -71,8 +75,15 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
             </div>
         </div>
 
-        <div class="user-summary"><strong><?php echo htmlspecialchars($_SESSION['username'] ?? 'User', ENT_QUOTES, 'UTF-8'); ?></strong><span><?php echo $roleName; ?></span></div>
-        <a class="notification-link" href="../settings/index.php<?php echo in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true) ? '' : '?tab=profile'; ?>">Settings</a>
+        <?php
+            $navDisplayUser = trim((string) ($_SESSION['full_name'] ?? $_SESSION['username'] ?? 'User'));
+            $navParts = preg_split('/\s+/', $navDisplayUser) ?: ['U'];
+            $navInitials = strtoupper(substr($navParts[0] ?? 'U', 0, 1) . (isset($navParts[1]) ? substr($navParts[1], 0, 1) : ''));
+        ?>
+        <div class="navbar-user-chip">
+            <span class="navbar-avatar" aria-hidden="true"><?php echo htmlspecialchars($navInitials, ENT_QUOTES, 'UTF-8'); ?></span>
+            <div class="user-summary"><strong><?php echo htmlspecialchars($_SESSION['username'] ?? 'User', ENT_QUOTES, 'UTF-8'); ?></strong><span><?php echo htmlspecialchars((string) $roleName, ENT_QUOTES, 'UTF-8'); ?></span></div>
+        </div>
         <form id="globalLogoutForm" method="post" action="../../../backend/api/auth/logout.php" style="display: inline;">
             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8'); ?>">
             <button type="button" class="logout-btn" id="globalLogoutBtn">Sign out</button>
@@ -80,23 +91,4 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
     </div>
 </nav>
 
-<!-- -- Global Sign Out Confirmation Modal with Blurred Background ----------- -->
-<div id="globalLogoutModal" class="agap-signout-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="signoutModalTitle">
-    <div class="agap-signout-card">
-        <div class="agap-signout-icon-wrap">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                <polyline points="16 17 21 12 16 7"></polyline>
-                <line x1="21" y1="12" x2="9" y2="12"></line>
-            </svg>
-        </div>
-        <div class="agap-signout-content">
-            <h3 id="signoutModalTitle">Nais mo bang mag-sign out?</h3>
-            <p>Sigurado ka bang nais mong lumabas sa iyong account? Kakailanganin mong mag-log in muli upang ma-access ang system.</p>
-        </div>
-        <div class="agap-signout-actions">
-            <button type="button" class="btn-signout-cancel" id="btnCancelSignout">Manatili (Cancel)</button>
-            <button type="button" class="btn-signout-confirm" id="btnConfirmSignout">Oo, Mag-sign Out</button>
-        </div>
-    </div>
-</div>
+<?php include __DIR__ . '/signout-modal.php'; ?>

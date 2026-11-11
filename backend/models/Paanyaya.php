@@ -40,6 +40,9 @@ class Paanyaya
 
     private function ensurePartyColumns(): void
     {
+        if ($this->conn->inTransaction()) {
+            return;
+        }
         try {
             $cols = $this->conn->query('DESCRIBE paanyayas')->fetchAll(PDO::FETCH_COLUMN);
             $needed = [
@@ -136,6 +139,9 @@ class Paanyaya
 
             if (!empty($complaint['resolved_without_docketing']) || $complaint['status'] === 'Settled' || $complaint['status'] === 'Resolved at Paanyaya / Closed') {
                 return ['success' => false, 'message' => 'This dispute has already been resolved and is closed.'];
+            }
+            if (in_array((string) $complaint['status'], ['Filed', 'Under Review', 'Needs Information', 'Rejected', 'Archived'], true)) {
+                return ['success' => false, 'message' => 'Complaint must pass LISO preliminary verification (Accepted) before scheduling Paanyaya.'];
             }
         }
 
@@ -1112,6 +1118,32 @@ class Paanyaya
             $caseModel = new CaseModel();
             $summonsModel = new Summons();
 
+            // 0. Enforce LISO verification + Mandatory Paanyaya gate before docketing into Mediation
+            $gateStmt = $this->conn->prepare('SELECT status FROM complaints WHERE complaint_id = ? LIMIT 1');
+            $gateStmt->execute([$complaintId]);
+            $compStatus = (string) ($gateStmt->fetchColumn() ?: '');
+            if ($compStatus === '' || in_array($compStatus, ['Filed', 'Under Review', 'Needs Information', 'Rejected', 'Archived', 'Dismissed'], true)) {
+                return ['success' => false, 'message' => 'Complaint must be verified by LISO and complete mandatory Paanyaya before proceeding to Mediation.'];
+            }
+
+            $hasPaanyayaRecord = false;
+            foreach ([
+                'SELECT 1 FROM paanyaya_minutes WHERE complaint_id = ? LIMIT 1',
+                'SELECT 1 FROM paanyaya_sessions WHERE complaint_id = ? LIMIT 1',
+                'SELECT 1 FROM paanyaya_stages WHERE complaint_id = ? AND status != \'Not Started\' LIMIT 1',
+                'SELECT 1 FROM paanyayas WHERE complaint_id = ? OR escalated_to_complaint_id = ? LIMIT 1'
+            ] as $sqlGate) {
+                $gStmt = $this->conn->prepare($sqlGate);
+                $gStmt->execute(str_contains($sqlGate, 'OR escalated_to_complaint_id') ? [$complaintId, $complaintId] : [$complaintId]);
+                if ($gStmt->fetchColumn()) {
+                    $hasPaanyayaRecord = true;
+                    break;
+                }
+            }
+            if (!$hasPaanyayaRecord) {
+                return ['success' => false, 'message' => 'Paanyaya is mandatory before escalating a complaint to formal Mediation.'];
+            }
+
             // 1. Check if case already docketed
             $checkCase = $this->conn->prepare('SELECT case_id, case_number, case_status FROM cases WHERE complaint_id = ? LIMIT 1');
             $checkCase->execute([$complaintId]);
@@ -1189,9 +1221,6 @@ class Paanyaya
             $medTime = !empty($escalationData['mediation_time']) ? trim((string)$escalationData['mediation_time']) : '';
             $venue = !empty($escalationData['venue']) ? trim((string)$escalationData['venue']) : $venueSetting;
             $summonsResult = [];
-            $hasExplicitSchedule = ($medDate !== '' && $medTime !== '');
-            if ($hasExplicitSchedule) {
-
             if (!empty($medDate)) {
                 if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $medDate)) {
                     return ['success' => false, 'message' => 'Please provide a valid 1st Mediation date (YYYY-MM-DD).'];
@@ -1305,92 +1334,29 @@ class Paanyaya
 
             // 3. Issue First Summons (Auto-generates KP Form 8 and KP Form 9)
             $summonsResult = $summonsModel->issueFirstSummon($complaintId, $userId ?? 1, $hearingPayload);
-            } // end if ($hasExplicitSchedule)
 
-            if ($hasExplicitSchedule && empty($summonsResult['success'])) {
+            if (empty($summonsResult['success'])) {
                 return [
                     'success' => false,
                     'message' => $summonsResult['message'] ?? 'Failed to issue 1st Mediation summons.'
                 ];
             }
 
-            // 4. Auto-generate KP Form 7 (Formal Complaint)
+            // 4. Auto-generate & persist KP Form 7, KP Form 8, and KP Form 9
             $kp7Path = null;
             try {
-                $kp7Dir = dirname(__DIR__, 2) . '/storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber);
-                if (!is_dir($kp7Dir)) {
-                    @mkdir($kp7Dir, 0750, true);
-                }
-
-                $kp7Relative = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber) . '/KP-Form-7-Complaint-' . date('Ymd-His') . '.pdf';
-                $kp7Absolute = dirname(__DIR__, 2) . '/' . $kp7Relative;
-
-                // Load complaint data for KP Form 7
-                $cDetailsStmt = $this->conn->prepare("
-                    SELECT c.*, cat.category_name 
-                    FROM complaints c 
-                    LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id 
-                    WHERE c.complaint_id = ? LIMIT 1
-                ");
-                $cDetailsStmt->execute([$complaintId]);
-                $cDetails = $cDetailsStmt->fetch(PDO::FETCH_ASSOC);
-
-                $partyStmt = $this->conn->prepare("
-                    SELECT cp.*, TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
-                           r.address, r.purok
-                    FROM complaint_parties cp
-                    INNER JOIN residents r ON r.resident_id = cp.resident_id
-                    WHERE cp.complaint_id = ?
-                    ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name
-                ");
-                $partyStmt->execute([$complaintId]);
-                $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
-
-                $complainants = [];
-                $respondents = [];
-                foreach ($parties as $p) {
-                    $item = [
-                        'full_name' => $p['full_name'],
-                        'address' => trim(implode(', ', array_filter([$p['address'] ?? '', $p['purok'] ?? '']))),
-                    ];
-                    if ($p['party_type'] === 'Complainant') $complainants[] = $item;
-                    if ($p['party_type'] === 'Respondent') $respondents[] = $item;
-                }
-
-                $kp7Data = [
-                    'complaint_id' => $complaintId,
-                    'case_number' => $caseNumber,
-                    'complaint_number' => $caseNumber,
-                    'complaint_title' => $cDetails['complaint_title'] ?? '',
-                    'category_name' => $cDetails['category_name'] ?? '',
-                    'narrative' => $cDetails['narrative'] ?? '',
-                    'requested_resolution' => $cDetails['requested_resolution'] ?? '',
-                    'incident_date' => $cDetails['incident_date'] ?? date('Y-m-d'),
-                    'incident_time' => $cDetails['incident_time'] ?? null,
-                    'incident_location' => $cDetails['incident_location'] ?? 'Barangay Tumana',
-                    'filed_date' => date('Y-m-d'),
-                    'complainants' => $complainants,
-                    'respondents' => $respondents,
-                ];
-
-                $this->pdf->generateKp7($kp7Data, $kp7Absolute);
-
-                if (file_exists($kp7Absolute)) {
-                    $kp7Path = $kp7Relative;
-                    // Register KP Form 7 in generated_documents
-                    $tplStmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 7' LIMIT 1");
-                    $tplStmt->execute();
-                    $kp7TplId = (int) $tplStmt->fetchColumn() ?: 1;
-
-                    $insDoc = $this->conn->prepare("
-                        INSERT INTO generated_documents (
-                            case_id, template_id, file_path, generated_by, service_status
-                        ) VALUES (?, ?, ?, ?, 'Served')
-                    ");
-                    $insDoc->execute([$caseId, $kp7TplId, $kp7Relative, $userId ?? 1]);
+                require_once __DIR__ . '/../services/KpFormService.php';
+                $kpSvc = new KpFormService($this->conn);
+                $kpAuto = $kpSvc->autoGenerateForEvent('formal_docketing', $caseId, (int) ($userId ?: 1), [
+                    'hearing_id' => (int) ($summonsResult['hearing_id'] ?? 0) ?: null,
+                ]);
+                foreach ($kpAuto['generated'] ?? [] as $item) {
+                    if (($item['form_code'] ?? '') === 'KP Form 7' && !empty($item['file_path'])) {
+                        $kp7Path = $item['file_path'];
+                    }
                 }
             } catch (Throwable $docErr) {
-                error_log('Failed to generate KP Form 7 on escalation: ' . $docErr->getMessage());
+                error_log('Failed to generate KP Forms 7-9 on escalation: ' . $docErr->getMessage());
             }
 
             // 5. Update complaints status to Mediation
@@ -1785,6 +1751,9 @@ class Paanyaya
         if (!$complaint) {
             return ['success' => false, 'message' => 'Complaint not found.'];
         }
+        if (in_array((string) $complaint['status'], ['Filed', 'Under Review', 'Needs Information', 'Rejected', 'Archived'], true)) {
+            return ['success' => false, 'message' => 'Complaint must be verified by LISO (Accepted) before issuing Paanyaya.'];
+        }
 
         $stage = $this->getOrCreateStage($complaintId, $stageType);
 
@@ -2103,8 +2072,51 @@ class Paanyaya
     /**
      * Ensures actual_start_time and session_remarks columns exist in paanyaya_minutes and paanyaya_sessions.
      */
+    public function getCarryoverContext(int $complaintId, string $stageType = self::STAGE_1): array
+    {
+        $context = [
+            'carried_from_stage' => 'Complaint Intake',
+            'prior_summary' => '',
+            'main_dispute_identified' => '',
+            'agreed_terms' => '',
+            'unresolved_issues' => '',
+        ];
+        if ($complaintId < 1) {
+            return $context;
+        }
+        try {
+            $cStmt = $this->conn->prepare('SELECT complaint_title, narrative, requested_resolution FROM complaints WHERE complaint_id = ? LIMIT 1');
+            $cStmt->execute([$complaintId]);
+            $comp = $cStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $context['main_dispute_identified'] = trim((string) ($comp['complaint_title'] ?? ''));
+            $context['prior_summary'] = trim((string) ($comp['narrative'] ?? ''));
+            if (!empty($comp['requested_resolution'])) {
+                $context['unresolved_issues'] = 'Relief sought: ' . trim((string) $comp['requested_resolution']);
+            }
+
+            if ($stageType === self::STAGE_2) {
+                $p1 = $this->getStageMinutes($complaintId, self::STAGE_1);
+                if ($p1) {
+                    $context['carried_from_stage'] = 'Paanyaya 1';
+                    $context['prior_summary'] = trim((string) ($p1['discussion_summary'] ?? $context['prior_summary']));
+                    if (!empty($p1['main_dispute_identified'])) {
+                        $context['main_dispute_identified'] = trim((string) $p1['main_dispute_identified']);
+                    }
+                    $context['agreed_terms'] = trim((string) ($p1['agreed_terms'] ?? ''));
+                    $context['unresolved_issues'] = trim((string) ($p1['unresolved_issues'] ?? $p1['session_remarks'] ?? $context['unresolved_issues']));
+                }
+            }
+        } catch (Throwable $e) {
+            error_log('Paanyaya::getCarryoverContext warning: ' . $e->getMessage());
+        }
+        return $context;
+    }
+
     public function ensureMinutesColumnsExist(): void
     {
+        if ($this->conn->inTransaction()) {
+            return;
+        }
         try {
             $cols = array_column($this->conn->query("DESCRIBE paanyaya_minutes")->fetchAll(PDO::FETCH_ASSOC), 'Field');
             if (!in_array('actual_start_time', $cols, true)) {
@@ -2285,37 +2297,38 @@ class Paanyaya
             $presiderIds = array_values(array_filter(array_map('intval', (array)$rawPresiders), fn($id) => $id > 0));
             $presidersJson = !empty($presiderIds) ? json_encode($presiderIds) : json_encode([]);
 
-            $insStmt = $this->conn->prepare("
-                INSERT INTO paanyaya_minutes (
-                    complaint_id, stage_type, dialogue_date, actual_start_time,
-                    complainant_attended, respondent_attended,
-                    discussion_summary, agreed_terms, session_remarks,
-                    outcome, complainant_choice,
-                    scanned_minutes_path, recorded_by, presiding_officer_ids, created_at
-                ) VALUES (
-                    ?, ?, ?, ?,
-                    ?, ?,
-                    ?, ?, ?,
-                    ?, ?,
-                    ?, ?, ?, CURRENT_TIMESTAMP
-                )
-            ");
-            $insStmt->execute([
-                $complaintId,
-                $stageType,
-                $dialogueDate,
-                $actualStartTime,
-                $compAttended,
-                $respAttended,
-                $discussionSummary,
-                $agreedTerms ?: null,
-                $sessionRemarks ?: null,
-                $outcome,
-                $complainantChoice,
-                $scannedMinutesPath,
-                $userId,
-                $presidersJson
-            ]);
+            $pmCols = [];
+            try {
+                $pmCols = $this->conn->query('SHOW COLUMNS FROM paanyaya_minutes')->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            } catch (Throwable $e) {}
+
+            $pmInsertCols = [
+                'complaint_id', 'stage_type', 'dialogue_date', 'actual_start_time',
+                'complainant_attended', 'respondent_attended',
+                'discussion_summary', 'agreed_terms', 'session_remarks',
+                'outcome', 'complainant_choice',
+                'scanned_minutes_path', 'recorded_by', 'presiding_officer_ids'
+            ];
+            $pmInsertVals = [
+                $complaintId, $stageType, $dialogueDate, $actualStartTime,
+                $compAttended, $respAttended,
+                $discussionSummary, $agreedTerms ?: null, $sessionRemarks ?: null,
+                $outcome, $complainantChoice,
+                $scannedMinutesPath, $userId, $presidersJson
+            ];
+            $mainDispute = trim((string) ($data['main_dispute_identified'] ?? ''));
+            if (in_array('main_dispute_identified', $pmCols, true)) {
+                $pmInsertCols[] = 'main_dispute_identified';
+                $pmInsertVals[] = $mainDispute !== '' ? $mainDispute : null;
+            }
+            $unresolved = trim((string) ($data['unresolved_issues'] ?? ''));
+            if (in_array('unresolved_issues', $pmCols, true)) {
+                $pmInsertCols[] = 'unresolved_issues';
+                $pmInsertVals[] = $unresolved !== '' ? $unresolved : null;
+            }
+            $pmPlaceholders = implode(', ', array_fill(0, count($pmInsertCols), '?'));
+            $insStmt = $this->conn->prepare('INSERT INTO paanyaya_minutes (' . implode(', ', $pmInsertCols) . ', created_at) VALUES (' . $pmPlaceholders . ', CURRENT_TIMESTAMP)');
+            $insStmt->execute($pmInsertVals);
             $minutesId = (int) $this->conn->lastInsertId();
 
             if ($stageType === self::STAGE_1) {

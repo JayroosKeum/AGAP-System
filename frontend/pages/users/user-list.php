@@ -26,9 +26,12 @@ include '../../layouts/header.php';
         <div class="page-header">
             <div>
                 <h1>User Management</h1>
-                <p>Create accounts and assign system roles.</p>
+                <p>Create accounts, assign roles, and disable or re-enable account access.</p>
             </div>
-            <button type="button" class="btn-create" onclick="openUserModal()">Add User</button>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                <a href="resident-verification.php" class="action-buttons" style="text-decoration:none; background:#eef6f2; color:#102b2d; border:1px solid #cde2d6; padding:9px 14px; border-radius:6px; font-weight:700; font-size:0.86rem;">Resident Verification &rarr;</a>
+                <button type="button" class="btn-create" onclick="openUserModal()">Add User</button>
+            </div>
         </div>
         
         <div class="table-container">

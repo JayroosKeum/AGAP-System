@@ -57,16 +57,9 @@
     // Accessibility Controls: Large Text & High Contrast
     const applyAccessibilitySettings = () => {
         const root = document.body;
-        const fontBtn = document.getElementById('btnToggleFontSize');
         const contrastBtn = document.getElementById('btnToggleContrast');
-
-        if (state.fontSizeMode === 'large') {
-            root.classList.add('font-size-large');
-            if (fontBtn) fontBtn.classList.add('active');
-        } else {
-            root.classList.remove('font-size-large');
-            if (fontBtn) fontBtn.classList.remove('active');
-        }
+        const currentStep = typeof window.getAgapFontStep === 'function' ? window.getAgapFontStep() : (state.fontSizeMode === 'large' ? 2 : 1);
+        root.classList.toggle('font-size-large', currentStep >= 2);
 
         if (state.contrastMode) {
             root.classList.add('high-contrast-mode');
@@ -110,6 +103,86 @@
         } else {
             setText('dutyDayDisplaySub', `${dutyDay || 'Wednesday'} Team · Regular Pangkat Duty`);
         }
+    };
+
+    // Render Pending Resident Submissions for Jurisdiction Verification (Lupon passes to Clerk)
+    const renderPendingVerification = (items) => {
+        const container = document.getElementById('luponJurisdictionQueueContainer');
+        const badge = document.getElementById('jurisdictionQueueBadge');
+        const pillCount = document.getElementById('quickVerifyCount');
+        const rows = Array.isArray(items) ? items : [];
+        if (badge) badge.textContent = `${rows.length} Pending`;
+        if (pillCount) pillCount.textContent = String(rows.length);
+        if (!container) return;
+
+        container.replaceChildren();
+        if (rows.length === 0) {
+            container.innerHTML = '<div style="padding:18px; text-align:center; color:#64748b; background:#f8faf9; border:1px dashed #d5e4dc; border-radius:10px; grid-column:1/-1;">Walang pending complaint na naghihintay ng jurisdiction verification.</div>';
+            return;
+        }
+
+        rows.forEach(item => {
+            const card = document.createElement('article');
+            card.className = 'jurisdiction-verify-card';
+            const compRef = item.complaint_number ? `#${item.complaint_number}` : `#${item.complaint_id}`;
+            const sourceLabel = item.complaint_source === 'Online' ? 'Online Resident Submission' : 'Walk-in Filing';
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <strong style="color:#102b2d; font-size:0.95rem;">Complaint ${escapeHtml(compRef)}</strong>
+                    <span style="font-size:0.74rem; font-weight:700; padding:3px 8px; border-radius:999px; background:#eef6f2; color:#1b6553; border:1px solid #cde2d6;">${escapeHtml(sourceLabel)}</span>
+                </div>
+                <div style="font-weight:700; color:#0f172a; font-size:0.96rem;">${escapeHtml(item.complaint_title || 'Submitted Dispute')}</div>
+                <div style="font-size:0.86rem; color:#334155;">
+                    <div><strong>Nagsusumbong:</strong> ${escapeHtml(item.complainant_names || 'Complainant')}</div>
+                    <div><strong>Inirereklamo:</strong> ${escapeHtml(item.respondent_names || 'Respondent')}</div>
+                    <div><strong>Kategorya:</strong> ${escapeHtml(item.category_name || item.case_type || 'General KP')}</div>
+                </div>
+                <div style="font-size:0.84rem; color:#475569; line-height:1.4; max-height:68px; overflow:hidden;">
+                    ${escapeHtml(String(item.narrative || '').slice(0, 180))}${String(item.narrative || '').length > 180 ? '...' : ''}
+                </div>
+                <div class="jurisdiction-verify-actions">
+                    <button type="button" class="btn-verify-pass" data-decision="Accepted">Verify Jurisdiction &rarr; Pass to Clerk</button>
+                    <button type="button" class="btn-verify-reject" data-decision="Rejected">Flag Outside KP</button>
+                    <a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" style="margin-left:auto; font-size:0.82rem; font-weight:700; color:#1b6553; text-decoration:none; align-self:center;">Read Full Salaysay &rarr;</a>
+                </div>
+            `;
+
+            card.querySelectorAll('button[data-decision]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const decision = btn.dataset.decision;
+                    const notePrompt = decision === 'Accepted'
+                        ? 'Lupon Member Note (optional, e.g., Verified within Barangay Tumana KP jurisdiction):'
+                        : 'Ilagay ang dahilan kung bakit outside KP jurisdiction / kailangan ng info:';
+                    const defaultNote = decision === 'Accepted'
+                        ? 'Jurisdiction verified by Lupon Member; endorsed to Lupon Clerk for Paanyaya scheduling.'
+                        : '';
+                    const note = window.prompt(notePrompt, defaultNote);
+                    if (note === null) return;
+
+                    btn.disabled = true;
+                    try {
+                        const fd = new FormData();
+                        fd.append('complaint_id', String(item.complaint_id));
+                        fd.append('status', decision);
+                        fd.append('review_notes', note.trim() || defaultNote || 'Reviewed by Lupon Member');
+                        const res = await fetch('../../../backend/api/complaints/review.php', {
+                            method: 'POST',
+                            body: fd
+                        });
+                        const json = await res.json().catch(() => ({}));
+                        if (!res.ok || !json.success) {
+                            throw new Error(json.message || 'Hindi ma-verify ang reklamo.');
+                        }
+                        await fetchLuponData();
+                    } catch (err) {
+                        alert(err.message || 'Error during verification.');
+                        btn.disabled = false;
+                    }
+                });
+            });
+
+            container.appendChild(card);
+        });
     };
 
     // Render Duty Day Hearing Calendar & Schedule
@@ -424,9 +497,21 @@
                         <strong>Napagkasunduang Aksyon / Hakbang:</strong><br>
                         ${escapeHtml(h.agreements_action_items).replace(/\n/g, '<br>')}
                     </div>` : ''}
+                    ${h.complainant_statement ? `
+                    <div style="font-size: 0.88rem; color: #1e293b; margin-top: 6px; background:#f8fafc; padding:8px 10px; border-radius:6px;">
+                        <strong>Salaysay ng Nagsusumbong:</strong> ${escapeHtml(h.complainant_statement)}
+                    </div>` : ''}
+                    ${h.respondent_statement ? `
+                    <div style="font-size: 0.88rem; color: #1e293b; margin-top: 6px; background:#f8fafc; padding:8px 10px; border-radius:6px;">
+                        <strong>Salaysay ng Inirereklamo:</strong> ${escapeHtml(h.respondent_statement)}
+                    </div>` : ''}
                     ${h.settlement_discussion_notes ? `
                     <div style="font-size: 0.88rem; color: #475569; margin-top: 6px;">
-                        <em>Tala ng Usapan:</em> ${escapeHtml(h.settlement_discussion_notes)}
+                        <em>Tala ng Usapan / Minutes:</em> ${escapeHtml(h.settlement_discussion_notes)}
+                    </div>` : ''}
+                    ${h.session_outcome ? `
+                    <div style="font-size: 0.86rem; color: #102b2d; font-weight:700; margin-top: 6px;">
+                        Resulta ng Sesyon: ${escapeHtml(h.session_outcome)}
                     </div>` : ''}
                 `;
                 timeline.appendChild(entry);
@@ -434,6 +519,44 @@
             histSec.appendChild(timeline);
         }
         modalBody.appendChild(histSec);
+
+        // 6. Created KP Forms & Documents (Read-Only Preview Only)
+        const docs = Array.isArray(d.documents) ? d.documents : [];
+        const docSec = document.createElement('section');
+        docSec.className = 'dossier-section';
+        docSec.innerHTML = `<h3 class="dossier-section-title">Mga Nalikhang KP Forms (Read-Only Preview)</h3>`;
+
+        if (docs.length === 0) {
+            docSec.innerHTML += '<div style="color:#64748b; font-size:0.92rem;">Wala pang naitalang nalikhang KP Form para sa kasong ito.</div>';
+        } else {
+            const grid = document.createElement('div');
+            grid.className = 'dossier-docs-grid';
+            docs.forEach(doc => {
+                const card = document.createElement('div');
+                card.className = 'dossier-doc-item';
+                card.innerHTML = `
+                    <div>
+                        <strong style="color:#102b2d; font-size:0.95rem;">${escapeHtml(doc.template_name || 'KP Form')}</strong>
+                        <div style="font-size:0.8rem; color:#475569; margin-top:2px;">${escapeHtml(doc.template_description || '')}</div>
+                        <div style="font-size:0.75rem; color:#1b6553; font-weight:700; margin-top:4px;">Status: ${escapeHtml(doc.service_status || 'Generated')}</div>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <a href="${escapeHtml(doc.preview_url || '#')}" target="_blank" rel="noopener noreferrer" class="btn-lupon-touch" style="padding:7px 12px; font-size:0.84rem; min-height:auto; text-decoration:none; background:#102b2d; color:#fff;">
+                            Preview KP Form
+                        </a>
+                    </div>
+                `;
+                grid.appendChild(card);
+            });
+            docSec.appendChild(grid);
+        }
+        modalBody.appendChild(docSec);
+
+        // Prepend clear Read-Only Notice
+        const roBanner = document.createElement('div');
+        roBanner.className = 'dossier-readonly-banner';
+        roBanner.innerHTML = '<strong>Read-Only Lupon View:</strong> Maaari mong tingnan ang detalye ng kaso, hearing minutes, at mga KP Form. Tanging Lupon Clerk lamang ang maaaring mag-edit o mag-schedule.';
+        modalBody.prepend(roBanner);
     };
 
     const closeDossierModal = () => {
@@ -462,6 +585,7 @@
 
             // Render all UI components
             renderKpis(data.kpis, data.duty_day);
+            renderPendingVerification(data.pending_verification_complaints || []);
             renderDutyHearings(data.duty_hearings, data.duty_day);
             renderAssignedCases(data.assigned_cases);
 
@@ -474,7 +598,7 @@
 
     // Event Listeners
     const initListeners = () => {
-        document.getElementById('btnToggleFontSize')?.addEventListener('click', toggleFontSize);
+        window.addEventListener('agapFontScaleChanged', () => applyAccessibilitySettings());
         document.getElementById('btnToggleContrast')?.addEventListener('click', toggleHighContrast);
 
         document.getElementById('dossierCloseBtn')?.addEventListener('click', closeDossierModal);
@@ -495,60 +619,6 @@
             window.print();
         });
 
-        // KPI Cards Click & Filter Navigation
-        document.querySelectorAll('.lupon-kpi-card[data-lupon-card]').forEach(card => {
-            const clickHandler = () => {
-                const type = card.dataset.luponCard;
-                const wasActive = card.classList.contains('is-active');
-                document.querySelectorAll('.lupon-kpi-card').forEach(c => c.classList.remove('is-active'));
-
-                if (type === 'chair') {
-                    if (wasActive) {
-                        renderAssignedCases(state.data?.assigned_cases || []);
-                    } else {
-                        card.classList.add('is-active');
-                        const allCases = state.data?.assigned_cases || [];
-                        const chairCases = allCases.filter(c => c.my_role === 'Chairman');
-                        renderAssignedCases(chairCases);
-                        const countBadge = document.getElementById('assignedCasesCountBadge');
-                        if (countBadge) countBadge.textContent = `${chairCases.length} Kaso (Chairperson)`;
-                    }
-                    document.getElementById('luponAssignedCasesContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else if (type === 'assigned') {
-                    if (!wasActive) card.classList.add('is-active');
-                    renderAssignedCases(state.data?.assigned_cases || []);
-                    document.getElementById('luponAssignedCasesContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else if (type === 'today') {
-                    const allHearings = state.data?.duty_hearings || [];
-                    const todayDateStr = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
-                    if (wasActive) {
-                        renderDutyHearings(allHearings, state.data?.duty_day);
-                    } else {
-                        card.classList.add('is-active');
-                        const todayOnly = allHearings.filter(h => {
-                            const hDateOnly = (h.hearing_date || '').split(' ')[0] || (h.hearing_date || '').split('T')[0];
-                            return hDateOnly === todayDateStr;
-                        });
-                        renderDutyHearings(todayOnly, state.data?.duty_day);
-                        const countBadge = document.getElementById('dutyHearingsCountBadge');
-                        if (countBadge) countBadge.textContent = `${todayOnly.length} Schedule (Ngayong Araw)`;
-                    }
-                    document.getElementById('luponDutyHearingsContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else if (type === 'duty') {
-                    if (!wasActive) card.classList.add('is-active');
-                    renderDutyHearings(state.data?.duty_hearings || [], state.data?.duty_day);
-                    document.getElementById('luponDutyHearingsContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            };
-
-            card.addEventListener('click', clickHandler);
-            card.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    clickHandler();
-                }
-            });
-        });
     };
 
     // Bootstrap

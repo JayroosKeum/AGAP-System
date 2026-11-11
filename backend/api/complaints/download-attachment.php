@@ -2,12 +2,14 @@
 
 session_start();
 require_once '../../controllers/ComplaintController.php';
+require_once '../../middleware/rbac.php';
 
+$db = (new Database())->connect();
 if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     http_response_code(401);
     exit('Authentication required.');
 }
-if (!in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'BPSO', 'LISO', 'Resident'], $db)) {
     http_response_code(403);
     exit('Unauthorized.');
 }
@@ -18,10 +20,20 @@ if (!$attachmentId) {
     exit('A valid attachment ID is required.');
 }
 
-$attachment = (new ComplaintController())->getAttachment((int) $attachmentId);
+$controller = new ComplaintController();
+$attachment = $controller->getAttachment((int) $attachmentId);
 if (!$attachment) {
     http_response_code(404);
     exit('Attachment not found.');
+}
+
+$roleName = agapGetRoleName($db);
+if ($roleName === 'Resident') {
+    $userId = agapSessionUserId();
+    if (!agapResidentOwnsComplaint($db, (int) ($attachment['complaint_id'] ?? 0), $userId)) {
+        http_response_code(403);
+        exit('Unauthorized.');
+    }
 }
 
 $base1 = realpath(dirname(__DIR__, 3) . '/storage/uploads/complaint-evidence');

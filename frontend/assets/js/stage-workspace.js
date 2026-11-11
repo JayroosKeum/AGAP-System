@@ -1889,24 +1889,6 @@ function renderHeaderAndBreadcrumbs(data, stage) {
         badgeEl.style.background = bg;
         badgeEl.style.color = color;
     }
-    if (false) {
-        let bg = '#f1f5f9', color = '#475569';
-
-        const st = stage.stage_status;
-
-        if (st === 'Completed' || st === 'Settled') { bg = '#dcfce7'; color = '#15803d'; }
-
-        else if (st === 'In Progress') { bg = '#dbeafe'; color = '#1d4ed8'; }
-
-        else if (st === 'Awaiting Outcome' || st === 'Ready for Referral') { bg = '#fef3c7'; color = '#b45309'; }
-
-        else if (st === 'Referred to Pangkat') { bg = '#e0f2fe'; color = '#0369a1'; }
-
-        badgeEl.style.background = bg;
-
-        badgeEl.style.color = color;
-
-    }
 
 
 
@@ -2003,7 +1985,7 @@ function renderWorkspaceActions(stage) {
 
 
 
-    primary.innerHTML = `<button type="button" class="btn-secondary" onclick="openPrintBlankMinutes()" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px; background:#fff; border:1px solid #cbd5e1; cursor:pointer; font-weight:600; color:#334155; margin-right:6px;" title="Print official blank ruled minutes sheet">🖨️ Print Blank Minutes Sheet</button><button type="button" class="btn-create" onclick="${handler}" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px;">${escapeHtml(label)} &rarr;</button>`;
+    primary.innerHTML = `<button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px; background:#fff; border:1px solid #cbd5e1; cursor:pointer; font-weight:600; color:#334155; margin-right:6px;" title="Print official blank ruled minutes sheet">🖨️ Print Blank Minutes Sheet</button><button type="button" class="btn-create" onclick="${handler}" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px;">${escapeHtml(label)} &rarr;</button>`;
 
 
 
@@ -3505,7 +3487,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     </span>
 
-                    <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes()" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Print official blank ruled minutes sheet">
+                    <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Print official blank ruled minutes sheet">
 
                         🖨️ Print Blank Minutes Sheet
 
@@ -3567,6 +3549,15 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
 
 
+                    ${(!session.minutes_id && session.carryover && (session.carryover.prior_summary || session.carryover.unresolved_issues || session.carryover.previous_proposal)) ? `
+                        <div style="background:#f8fafc; border:1px solid #cbd5e1; border-left:4px solid #2563eb; border-radius:8px; padding:11px 14px; margin-bottom:12px; font-size:0.8rem; color:#334155;">
+                            <strong style="display:block; color:#1e3a8a; margin-bottom:4px;">Carryover from ${escapeHtml(session.carryover.carried_from_stage || 'Prior Session')}</strong>
+                            ${session.carryover.prior_summary ? `<div style="margin-bottom:3px;"><strong>Prior Discussion:</strong> ${escapeHtml(String(session.carryover.prior_summary).slice(0, 320))}${String(session.carryover.prior_summary).length > 320 ? '…' : ''}</div>` : ''}
+                            ${session.carryover.previous_proposal ? `<div style="margin-bottom:3px;"><strong>Previous Proposal:</strong> ${escapeHtml(session.carryover.previous_proposal)}</div>` : ''}
+                            ${session.carryover.unresolved_issues ? `<div><strong>Unresolved Issues:</strong> ${escapeHtml(session.carryover.unresolved_issues)}</div>` : ''}
+                        </div>
+                    ` : ''}
+
                     <!-- Dispute Focus / Main Issue -->
 
                     <div class="form-group" style="margin-bottom: 12px;">
@@ -3579,7 +3570,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                         </label>
 
-                        <input type="text" id="minDisputeSummary_${hId}" name="minDisputeSummary" maxlength="1000" placeholder="Halimbawa: Paniningil ng utang, alitan sa boundary o bakod, panggugulo sa oras ng pahinga..." value="${escapeHtml(session.main_dispute_identified || stageWorkspaceState.stageData?.case?.complaint_title || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <input type="text" id="minDisputeSummary_${hId}" name="minDisputeSummary" maxlength="1000" placeholder="Halimbawa: Paniningil ng utang, alitan sa boundary o bakod, panggugulo sa oras ng pahinga..." value="${escapeHtml(session.main_dispute_identified || session.carryover?.main_dispute_identified || stageWorkspaceState.stageData?.case?.complaint_title || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
 
                     </div>
 
@@ -3677,11 +3668,15 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                                 <input type="file" id="uploadHandwrittenMinutesInput_${hId}" data-hearing-id="${hId}" accept="image/*,.pdf" style="display: none;" onchange="handleMinutesEvidenceUpload(this, 'handwritten_minutes', ${hId})">
 
-                                <button type="button" class="btn-secondary" onclick="document.getElementById('uploadHandwrittenMinutesInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${readonlyAttr}>
-
-                                    📄 Upload Scanned / Written Minutes
-
-                                </button>
+                                <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                                    <button type="button" class="btn-secondary" onclick="document.getElementById('uploadHandwrittenMinutesInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${readonlyAttr}>
+                                        📄 Upload Only
+                                    </button>
+                                    <input type="file" id="oneStepHandwrittenInput_${hId}" accept="image/*,.pdf" style="display:none;" onchange="handleOneStepHandwrittenMinutes(this, ${hId})">
+                                    <button type="button" class="btn-secondary" onclick="document.getElementById('oneStepHandwrittenInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px; border-color:#2563eb; color:#1d4ed8; background:#eff6ff;" ${readonlyAttr}>
+                                        ⚡ 1-Step Scan (Archive + OCR + Draft)
+                                    </button>
+                                </div>
 
                             </div>
 
@@ -3799,7 +3794,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                         </label>
 
-                        <textarea id="minUnresolved_${hId}" name="minUnresolved" rows="2" maxlength="3000" placeholder="Mga puntong hindi nagkasundo ang mga partido..." ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.unresolved_issues || '')}</textarea>
+                        <textarea id="minUnresolved_${hId}" name="minUnresolved" rows="2" maxlength="3000" placeholder="Mga puntong hindi nagkasundo ang mga partido..." ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.unresolved_issues || (!session.minutes_id ? (session.carryover?.unresolved_issues || '') : ''))}</textarea>
 
                     </div>
 
@@ -3909,7 +3904,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     <div style="display: flex; gap: 8px;">
 
-                        <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes()" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                        <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
 
                             🖨️ Print Blank Minutes Sheet
 
@@ -4635,7 +4630,9 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
         main_dispute_identified: getVal('minDisputeSummary'),
 
-        agenda_topics: '',
+        previous_proposal: session.carryover?.previous_proposal || session.previous_proposal || '',
+
+        agenda_topics: session.carryover?.agenda_topics || '',
 
         new_proposal: '',
 
@@ -8429,6 +8426,60 @@ async function handleStageNotesFileSelected(input, hearingId = null) {
 
 window.handleStageNotesFileSelected = handleStageNotesFileSelected;
 
+async function handleOneStepHandwrittenMinutes(input, hearingId) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    const consentBox = getMinutesField('stageAiConsentCheckbox', hearingId);
+    const statusBanner = getMinutesField('stageAiStatusBanner', hearingId);
+    try {
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = '<strong>Step 1/3:</strong> Archiving original handwritten scan...';
+        }
+        const archFd = new FormData();
+        archFd.append('hearing_id', String(hearingId));
+        archFd.append('case_id', String(stageWorkspaceState.caseId || 0));
+        archFd.append('document_type', 'handwritten_minutes');
+        archFd.append('file', file);
+        const archRes = await fetch(getStageApiUrl('hearings/upload-minutes-evidence.php'), { method: 'POST', body: archFd });
+        const archJson = await archRes.json().catch(() => ({}));
+        if (!archRes.ok || !archJson.success) {
+            throw new Error(archJson.message || 'Unable to archive handwritten minutes.');
+        }
+        if (typeof refreshMinutesDocuments === 'function') {
+            await refreshMinutesDocuments(hearingId);
+        }
+        if (!consentBox?.checked) {
+            if (statusBanner) statusBanner.innerHTML = '<strong>Original scan archived.</strong> Check Gemini AI consent to run OCR & AI drafting.';
+            return;
+        }
+        if (statusBanner) {
+            statusBanner.innerHTML = '<strong>Step 2/3:</strong> Transcribing handwritten sheet via OCR...';
+        }
+        const ocrFd = new FormData();
+        ocrFd.append('image', file);
+        ocrFd.append('external_ai_consent', '1');
+        const ocrRes = await fetch(getStageApiUrl('ai/ocr-notes.php'), { method: 'POST', body: ocrFd });
+        const ocrJson = await ocrRes.json().catch(() => ({}));
+        if (!ocrRes.ok || !ocrJson.success || !ocrJson.text) {
+            throw new Error(ocrJson.message || 'Handwritten scan archived, but OCR extraction failed.');
+        }
+        appendGeminiTextToMinutes(ocrJson.text, 'Handwritten Minutes OCR', hearingId);
+        if (statusBanner) {
+            statusBanner.innerHTML = '<strong>Step 3/3:</strong> Generating structured AI minutes draft...';
+        }
+        await generateAiHearingMinutesDraft(hearingId);
+    } catch (err) {
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = `<span style="color:#b91c1c;">${escapeHtml(err.message || '1-Step scan error')}</span>`;
+        }
+    } finally {
+        input.value = '';
+    }
+}
+window.handleOneStepHandwrittenMinutes = handleOneStepHandwrittenMinutes;
+
 
 
 function appendGeminiTextToMinutes(newText, sourceLabel, hearingId = null) {
@@ -11698,6 +11749,60 @@ window.triggerStageNotesUpload = triggerStageNotesUpload;
 
 window.handleStageNotesFileSelected = handleStageNotesFileSelected;
 
+async function handleOneStepHandwrittenMinutes(input, hearingId) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    const consentBox = getMinutesField('stageAiConsentCheckbox', hearingId);
+    const statusBanner = getMinutesField('stageAiStatusBanner', hearingId);
+    try {
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = '<strong>Step 1/3:</strong> Archiving original handwritten scan...';
+        }
+        const archFd = new FormData();
+        archFd.append('hearing_id', String(hearingId));
+        archFd.append('case_id', String(stageWorkspaceState.caseId || 0));
+        archFd.append('document_type', 'handwritten_minutes');
+        archFd.append('file', file);
+        const archRes = await fetch(getStageApiUrl('hearings/upload-minutes-evidence.php'), { method: 'POST', body: archFd });
+        const archJson = await archRes.json().catch(() => ({}));
+        if (!archRes.ok || !archJson.success) {
+            throw new Error(archJson.message || 'Unable to archive handwritten minutes.');
+        }
+        if (typeof refreshMinutesDocuments === 'function') {
+            await refreshMinutesDocuments(hearingId);
+        }
+        if (!consentBox?.checked) {
+            if (statusBanner) statusBanner.innerHTML = '<strong>Original scan archived.</strong> Check Gemini AI consent to run OCR & AI drafting.';
+            return;
+        }
+        if (statusBanner) {
+            statusBanner.innerHTML = '<strong>Step 2/3:</strong> Transcribing handwritten sheet via OCR...';
+        }
+        const ocrFd = new FormData();
+        ocrFd.append('image', file);
+        ocrFd.append('external_ai_consent', '1');
+        const ocrRes = await fetch(getStageApiUrl('ai/ocr-notes.php'), { method: 'POST', body: ocrFd });
+        const ocrJson = await ocrRes.json().catch(() => ({}));
+        if (!ocrRes.ok || !ocrJson.success || !ocrJson.text) {
+            throw new Error(ocrJson.message || 'Handwritten scan archived, but OCR extraction failed.');
+        }
+        appendGeminiTextToMinutes(ocrJson.text, 'Handwritten Minutes OCR', hearingId);
+        if (statusBanner) {
+            statusBanner.innerHTML = '<strong>Step 3/3:</strong> Generating structured AI minutes draft...';
+        }
+        await generateAiHearingMinutesDraft(hearingId);
+    } catch (err) {
+        if (statusBanner) {
+            statusBanner.style.display = 'block';
+            statusBanner.innerHTML = `<span style="color:#b91c1c;">${escapeHtml(err.message || '1-Step scan error')}</span>`;
+        }
+    } finally {
+        input.value = '';
+    }
+}
+window.handleOneStepHandwrittenMinutes = handleOneStepHandwrittenMinutes;
+
 window.openPreviewMinutesModal = openPreviewMinutesModal;
 
 window.closePreviewMinutesModal = closePreviewMinutesModal;
@@ -12276,13 +12381,19 @@ async function handleRecordTransmittalSubmit(event) {
 
 
 
-        notifyUser(json.message || 'Court & DILG transmittal recorded successfully!', 'success');
+        notifyUser(json.message || 'Court & DILG transmittal recorded and official Transmittal Letter form generated!', 'success');
 
         closeRecordTransmittalModal();
 
         if (stageWorkspaceState.caseId) {
 
             loadTransmittalCard(stageWorkspaceState.caseId);
+
+            if (typeof openPreviewTransmittalModal === 'function') {
+
+                openPreviewTransmittalModal(stageWorkspaceState.caseId);
+
+            }
 
         }
 
@@ -12324,13 +12435,15 @@ window.handleRecordTransmittalSubmit = handleRecordTransmittalSubmit;
 
 
 
-function openPrintBlankMinutes(caseId, complaintId) {
+function openPrintBlankMinutes(caseId, complaintId, hearingId = 0) {
 
     const csId = caseId || stageWorkspaceState.caseId || 0;
 
     const cmpId = complaintId || stageWorkspaceState.complaintId || 0;
 
-    window.open(`../../../frontend/pages/complaints/print-blank-minutes.php?case_id=${encodeURIComponent(csId)}&id=${encodeURIComponent(cmpId)}`, '_blank');
+    const hParam = hearingId ? `&hearing_id=${encodeURIComponent(hearingId)}` : '';
+
+    window.open(`../../../frontend/pages/complaints/print-blank-minutes.php?case_id=${encodeURIComponent(csId)}&id=${encodeURIComponent(cmpId)}${hParam}`, '_blank');
 
 }
 

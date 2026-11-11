@@ -187,6 +187,13 @@ class PaanyayaModel
         $venue = 'Tanggapan ng Punong Barangay, Barangay Tumana';
         $attemptNumber = ($stageType === 'Paanyaya 2') ? 2 : 1;
 
+        $chkStmt = $this->conn->prepare('SELECT status FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $chkStmt->execute([$complaintId]);
+        $compSt = (string) ($chkStmt->fetchColumn() ?: '');
+        if ($compSt === '' || in_array($compSt, ['Filed', 'Under Review', 'Needs Information', 'Rejected', 'Archived'], true)) {
+            throw new InvalidArgumentException('Complaint must pass LISO preliminary verification (Accepted) before scheduling Paanyaya.');
+        }
+
         $this->conn->beginTransaction();
         try {
             // 1. Get or Create paanyaya_stages row

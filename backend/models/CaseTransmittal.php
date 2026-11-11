@@ -472,10 +472,33 @@ class CaseTransmittal
             // non-fatal history log
         }
 
+        // Automatically generate and persist official MTC & DILG Transmittal Letter Form
+        $generatedPdfRel = null;
+        try {
+            require_once __DIR__ . '/../services/PDFService.php';
+            $pdfDir = __DIR__ . '/../../storage/documents/kp-forms/' . $caseId;
+            if (!is_dir($pdfDir)) {
+                @mkdir($pdfDir, 0755, true);
+            }
+            $safeCaseNum = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $caseNum);
+            $pdfName = sprintf('Transmittal_Letter-%s-%s.pdf', $safeCaseNum, date('Ymd-His'));
+            $absSavePath = $pdfDir . '/' . $pdfName;
+            (new PDFService($this->conn))->generateTransmittalLetter($caseId, [
+                'transmittal_date' => $transmittalDate,
+                'save_path' => $absSavePath
+            ]);
+            $generatedPdfRel = 'storage/documents/kp-forms/' . $caseId . '/' . $pdfName;
+        } catch (Throwable $pdfErr) {
+            error_log('Auto-generate transmittal letter warning: ' . $pdfErr->getMessage());
+        }
+
         return [
             'success' => true,
-            'message' => 'Court & DILG transmittal recorded successfully.',
-            'transmittal' => $this->getByCaseId($caseId)
+            'message' => 'Court & DILG transmittal recorded and official Transmittal Letter form generated.',
+            'transmittal' => $this->getByCaseId($caseId),
+            'generated_file_path' => $generatedPdfRel,
+            'preview_url' => "../../../backend/api/transmittals/preview.php?case_id={$caseId}&html=1",
+            'download_url' => "../../../backend/api/transmittals/preview.php?case_id={$caseId}&download=1"
         ];
     }
 

@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/MediationDeadlineService.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 class Settlement
 {
@@ -224,7 +225,11 @@ class Settlement
             return ['success' => false, 'message' => 'Valid case ID is required.'];
         }
 
-        $settlementDate = !empty($data['settlement_date']) ? date('Y-m-d', strtotime($data['settlement_date'])) : date('Y-m-d');
+        $rawSettlementDate = trim((string) ($data['settlement_date'] ?? ''));
+        if ($rawSettlementDate !== '' && !ValidationService::date($rawSettlementDate)) {
+            return ['success' => false, 'message' => 'Settlement date must be a valid date (YYYY-MM-DD).'];
+        }
+        $settlementDate = $rawSettlementDate !== '' ? $rawSettlementDate : date('Y-m-d');
         $agreementDetails = trim((string) ($data['agreement_details'] ?? ''));
         if ($agreementDetails === '') {
             return ['success' => false, 'message' => 'Detailed settlement agreement terms are required.'];
@@ -249,10 +254,42 @@ class Settlement
         $caseFolder = !empty($data['original_in_case_folder']) ? 1 : 0;
         $copiesIssued = !empty($data['certified_copies_issued']) ? 1 : 0;
 
-        $totalAmount = !empty($data['total_amount']) ? (float) $data['total_amount'] : 0.00;
+        if (!ValidationService::maxLength($agreementDetails, 15000) || !ValidationService::text($agreementDetails, true)) {
+            return ['success' => false, 'message' => 'Settlement agreement terms must be 15,000 characters or fewer without unsupported control characters.'];
+        }
+        $rawTotalAmount = $data['total_amount'] ?? '';
+        if ($rawTotalAmount !== '' && $rawTotalAmount !== null) {
+            $parsedAmount = ValidationService::decimal($rawTotalAmount, 0.0, 999999999.99);
+            if ($parsedAmount === null) {
+                return ['success' => false, 'message' => 'Total settlement amount must be a valid non-negative amount.'];
+            }
+            $totalAmount = $parsedAmount;
+        } else {
+            $totalAmount = 0.00;
+        }
         $responsibleParty = in_array($data['responsible_party'] ?? '', ['Respondent', 'Complainant', 'Both'], true) ? $data['responsible_party'] : 'Respondent';
         $hasInstallment = !empty($data['has_installment']) ? 1 : 0;
-        $complianceDueDate = !empty($data['compliance_due_date']) ? date('Y-m-d', strtotime($data['compliance_due_date'])) : null;
+        $rawComplianceDue = trim((string) ($data['compliance_due_date'] ?? ''));
+        if ($rawComplianceDue !== '' && !ValidationService::date($rawComplianceDue)) {
+            return ['success' => false, 'message' => 'Compliance due date must be a valid date (YYYY-MM-DD).'];
+        }
+        $complianceDueDate = $rawComplianceDue !== '' ? $rawComplianceDue : null;
+        if (!empty($data['has_installment']) && !empty($data['installments']) && is_array($data['installments'])) {
+            foreach ($data['installments'] as $idx => $instCheck) {
+                $dRaw = trim((string) ($instCheck['due_date'] ?? ''));
+                $aRaw = $instCheck['amount_due'] ?? $instCheck['amount'] ?? null;
+                $nRaw = trim((string) ($instCheck['notes'] ?? ''));
+                if ($dRaw === '' || !ValidationService::date($dRaw)) {
+                    return ['success' => false, 'message' => 'Installment #' . ($idx + 1) . ' requires a valid due date (YYYY-MM-DD).'];
+                }
+                if (ValidationService::decimal($aRaw, 0.01, 999999999.99) === null) {
+                    return ['success' => false, 'message' => 'Installment #' . ($idx + 1) . ' amount must be greater than 0.'];
+                }
+                if (!ValidationService::maxLength($nRaw, 500) || !ValidationService::text($nRaw, true)) {
+                    return ['success' => false, 'message' => 'Installment #' . ($idx + 1) . ' notes must be 500 characters or fewer.'];
+                }
+            }
+        }
         $complianceStatus = in_array($data['compliance_status'] ?? '', ['Pending', 'Partially Paid', 'Fully Paid', 'Overdue', 'Breached', 'Complied', 'Violated'], true) ? $data['compliance_status'] : 'Pending';
 
         $isNested = $this->conn->inTransaction();
@@ -371,10 +408,20 @@ class Settlement
             if (!$isNested) {
                 $this->conn->commit();
             }
+            $kp16DocId = null;
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                $kpRes = (new KpFormService($this->conn))->autoGenerateForEvent('settlement_recorded', $caseId, $actorUserId ?: 1);
+                $kp16DocId = $kpRes['generated'][0]['document_id'] ?? null;
+            } catch (Throwable $kpErr) {
+                error_log('Settlement KP Form 16 generation warning: ' . $kpErr->getMessage());
+            }
             return [
                 'success' => true,
                 'message' => 'Amicable settlement recorded successfully.',
                 'settlement_id' => $settlementId,
+                'kp_form' => 'KP Form 16',
+                'kp16_document_id' => $kp16DocId,
                 'repudiation_deadline' => $repudiationDeadline,
                 'six_month_deadline' => $sixMonthDeadline,
             ];
@@ -382,7 +429,8 @@ class Settlement
             if (!$isNested && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
-            return ['success' => false, 'message' => 'Failed to save settlement: ' . $e->getMessage()];
+            error_log('Settlement::saveSettlement error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Failed to save settlement due to a system error.' : ('Failed to save settlement: ' . $e->getMessage())];
         }
     }
 
@@ -406,8 +454,25 @@ class Settlement
             }
 
             $settlementId = (int) $installment['settlement_id'];
-            $amountPaid = (float) ($data['amount_paid'] ?? $installment['amount_due']);
-            $paymentDate = !empty($data['payment_date']) ? date('Y-m-d H:i:s', strtotime($data['payment_date'])) : date('Y-m-d H:i:s');
+            $rawAmountPaid = $data['amount_paid'] ?? $installment['amount_due'];
+            $amountPaid = ValidationService::decimal($rawAmountPaid, 0.01, 999999999.99);
+            if ($amountPaid === null) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Amount paid must be a valid positive number greater than 0.'];
+            }
+            $rawPayDate = trim((string) ($data['payment_date'] ?? ''));
+            if ($rawPayDate === '') {
+                $paymentDate = date('Y-m-d H:i:s');
+            } elseif (ValidationService::dateTime($rawPayDate, 'Y-m-d\TH:i')) {
+                $paymentDate = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawPayDate)->format('Y-m-d H:i:s');
+            } elseif (ValidationService::dateTime($rawPayDate, 'Y-m-d H:i:s')) {
+                $paymentDate = $rawPayDate;
+            } elseif (ValidationService::date($rawPayDate)) {
+                $paymentDate = $rawPayDate . ' 00:00:00';
+            } else {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Provide a valid payment date and time.'];
+            }
             $receiptNumber = trim((string) ($data['receipt_number'] ?? ''));
             $receiptPath = trim((string) ($data['receipt_path'] ?? ''));
             $notes = trim((string) ($data['notes'] ?? ''));
@@ -470,7 +535,8 @@ class Settlement
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
-            return ['success' => false, 'message' => 'Payment logging failed: ' . $e->getMessage()];
+            error_log('Settlement::recordInstallmentPayment error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Payment logging failed due to a system error.' : ('Payment logging failed: ' . $e->getMessage())];
         }
     }
 
@@ -485,6 +551,9 @@ class Settlement
         }
 
         $reason = trim((string) ($data['repudiation_reason'] ?? ''));
+        if ($reason === '' || !ValidationService::maxLength($reason, 10000) || !ValidationService::text($reason, true)) {
+            return ['success' => false, 'message' => 'Provide a valid sworn repudiation narrative (10,000 characters or fewer).'];
+        }
         if ($reason === '') {
             return ['success' => false, 'message' => 'A sworn narrative alleging fraud, violence, or intimidation is required.'];
         }
@@ -592,6 +661,12 @@ class Settlement
             if (!$isNested) {
                 $this->conn->commit();
             }
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                (new KpFormService($this->conn))->autoGenerateForEvent('settlement_repudiated', (int) $settlement['case_id'], $actorUserId ?: 1);
+            } catch (Throwable $kpErr) {
+                error_log('Settlement repudiation KP Form 17/20 warning: ' . $kpErr->getMessage());
+            }
             return [
                 'success' => true,
                 'message' => 'Sworn repudiation statement filed successfully. Case marked as Repudiated.',
@@ -602,7 +677,8 @@ class Settlement
             if (!$isNested && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
-            return ['success' => false, 'message' => 'Repudiation filing failed: ' . $e->getMessage()];
+            error_log('Settlement::fileRepudiation error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Repudiation filing failed due to a system error.' : ('Repudiation filing failed: ' . $e->getMessage())];
         }
     }
 
@@ -619,7 +695,22 @@ class Settlement
         $obligation = trim((string) ($data['obligation_violated'] ?? ''));
         $amountOrRequirement = trim((string) ($data['amount_or_requirement'] ?? ''));
         $movingParty = filter_var($data['motion_filed_by'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        $hearingDate = !empty($data['hearing_date']) ? date('Y-m-d H:i:s', strtotime((string) $data['hearing_date'])) : '';
+        $rawHearingDate = trim((string) ($data['hearing_date'] ?? ''));
+        if ($rawHearingDate === '') {
+            $hearingDate = '';
+        } elseif (ValidationService::dateTime($rawHearingDate, 'Y-m-d\TH:i')) {
+            $hearingDate = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $rawHearingDate)->format('Y-m-d H:i:s');
+        } elseif (ValidationService::dateTime($rawHearingDate, 'Y-m-d H:i:s')) {
+            $hearingDate = $rawHearingDate;
+        } elseif (ValidationService::date($rawHearingDate)) {
+            $hearingDate = $rawHearingDate . ' 09:00:00';
+        } else {
+            return ['success' => false, 'message' => 'Provide a valid execution hearing date and time.'];
+        }
+        if (!ValidationService::maxLength($obligation, 2000) || !ValidationService::text($obligation, true)
+            || !ValidationService::maxLength($amountOrRequirement, 255) || !ValidationService::text($amountOrRequirement)) {
+            return ['success' => false, 'message' => 'Violated obligation or relief sought contains invalid characters or exceeds maximum length.'];
+        }
         $narrative = trim((string) ($data['motion_narrative'] ?? ''));
         if ($narrative === '') $narrative = trim("Obligation alleged as unfulfilled: {$obligation}\nRelief requested: {$amountOrRequirement}\n" . trim((string) ($data['evidence_notes'] ?? '')));
         if ($obligation === '' || $amountOrRequirement === '' || !$movingParty || $hearingDate === '') return ['success' => false, 'message' => 'Provide the moving party, violated obligation, relief sought, and KP Form 24 hearing date.'];
@@ -647,10 +738,17 @@ class Settlement
             $this->conn->prepare("UPDATE settlements SET compliance_status = 'Breached', updated_at = NOW() WHERE settlement_id = ?")->execute([$settlementId]);
             $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', ?, ?)")->execute([(int) $locked['case_id'], "KP Form 23 motion filed (Execution #{$executionId}); KP Form 24 hearing set for {$hearingDate}.", $actorUserId]);
             if (!$nested) $this->conn->commit();
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                (new KpFormService($this->conn))->autoGenerateForEvent('execution_motion_filed', (int) $locked['case_id'], $actorUserId ?: 1);
+            } catch (Throwable $kpErr) {
+                error_log('Settlement execution KP Form 23/24 warning: ' . $kpErr->getMessage());
+            }
             return ['success' => true, 'message' => 'KP Form 23 filed and KP Form 24 hearing scheduled.', 'execution_id' => $executionId, 'kp_forms' => ['KP Form 23', 'KP Form 24']];
         } catch (Throwable $e) {
             if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
-            return ['success' => false, 'message' => 'Execution filing failed: ' . $e->getMessage()];
+            error_log('Settlement::fileExecutionMotion error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Execution filing failed due to a system error.' : ('Execution filing failed: ' . $e->getMessage())];
         }
     }
 
@@ -658,7 +756,14 @@ class Settlement
     public function recordExecutionHearing(int $executionId, array $data, int $actorUserId): array
     {
         $minutes = trim((string) ($data['hearing_minutes'] ?? ''));
-        $graceEnd = !empty($data['grace_period_end_date']) ? date('Y-m-d', strtotime((string) $data['grace_period_end_date'])) : '';
+        $rawGraceEnd = trim((string) ($data['grace_period_end_date'] ?? ''));
+        $graceEnd = ($rawGraceEnd !== '' && ValidationService::date($rawGraceEnd)) ? $rawGraceEnd : '';
+        if ($rawGraceEnd !== '' && $graceEnd === '') {
+            return ['success' => false, 'message' => 'Grace period end date must be a valid date (YYYY-MM-DD).'];
+        }
+        if (!ValidationService::maxLength($minutes, 15000) || !ValidationService::text($minutes, true)) {
+            return ['success' => false, 'message' => 'Execution hearing minutes must be 15,000 characters or fewer without control characters.'];
+        }
         $allowedAttendance = ['Present', 'Absent', 'Excused'];
         $complainant = $data['complainant_attended'] ?? 'Absent';
         $respondent = $data['respondent_attended'] ?? 'Absent';
@@ -683,7 +788,8 @@ class Settlement
             return ['success' => true, 'message' => 'KP Form 24 minutes recorded and grace period activated.', 'kp_form' => 'KP Form 24'];
         } catch (Throwable $e) {
             if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
-            return ['success' => false, 'message' => 'Execution hearing update failed: ' . $e->getMessage()];
+            error_log('Settlement::recordExecutionHearing error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Execution hearing update failed due to a system error.' : ('Execution hearing update failed: ' . $e->getMessage())];
         }
     }
 
@@ -704,10 +810,17 @@ class Settlement
             $this->conn->prepare("UPDATE execution_proceedings SET notice_of_execution_date = ?, execution_status = 'Notice of Execution Issued', updated_at = NOW() WHERE execution_id = ?")->execute([$noticeDate, $executionId]);
             $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', ?, ?)")->execute([(int) $exec['case_id'], "KP Form 25 Notice of Execution issued on {$noticeDate} after unfulfilled grace period.", $actorUserId]);
             if (!$nested) $this->conn->commit();
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                (new KpFormService($this->conn))->autoGenerateForEvent('notice_of_execution_issued', (int) $exec['case_id'], $actorUserId ?: 1);
+            } catch (Throwable $kpErr) {
+                error_log('Settlement execution KP Form 25 warning: ' . $kpErr->getMessage());
+            }
             return ['success' => true, 'message' => 'KP Form 25 Notice of Execution issued.', 'kp_form' => 'KP Form 25'];
         } catch (Throwable $e) {
             if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
-            return ['success' => false, 'message' => 'Notice of Execution could not be issued: ' . $e->getMessage()];
+            error_log('Settlement::issueNoticeOfExecution error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Notice of Execution could not be issued due to a system error.' : ('Notice of Execution could not be issued: ' . $e->getMessage())];
         }
     }
 
@@ -727,7 +840,8 @@ class Settlement
             return ['success' => true, 'message' => 'Execution marked Enforced / Complied.'];
         } catch (Throwable $e) {
             if (!$nested && $this->conn->inTransaction()) $this->conn->rollBack();
-            return ['success' => false, 'message' => 'Execution completion failed: ' . $e->getMessage()];
+            error_log('Settlement::updateExecutionStatus error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Execution completion failed due to a system error.' : ('Execution completion failed: ' . $e->getMessage())];
         }
     }
 

@@ -7,8 +7,12 @@ class AuditService
 {
     private $conn;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null)
     {
+        if ($conn !== null) {
+            $this->conn = $conn;
+            return;
+        }
         $database = new Database();
 
         $this->conn =
@@ -47,7 +51,7 @@ class AuditService
             ]);
 
         }
-        catch(Exception $e)
+        catch(Throwable $e)
         {
             error_log(
                 $e->getMessage()

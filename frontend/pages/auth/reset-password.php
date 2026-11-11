@@ -9,25 +9,14 @@ include '../../layouts/header.php';
 
 <main class="login-screen">
     <div class="login-shell">
-        <section class="login-welcome" aria-labelledby="reset-welcome-title">
-            <a class="login-brand" href="../landing/index.php" aria-label="AGAP home">
-                <img src="../../assets/images/tumana_logo.jpg" alt="">
-                <span><strong>AGAP</strong><small>Barangay Tumana</small></span>
-            </a>
-
-            <div class="welcome-copy">
-                <p class="login-eyebrow">Katarungang Pambarangay · Marikina City</p>
-                <h1 id="reset-welcome-title">Set a new <span>secure password.</span></h1>
-                <p>Choose a strong password to protect your staff access and official case records.</p>
-            </div>
-
-            <div class="welcome-foot">
-                <img src="../../assets/images/marikina_logo.jpg" alt="City of Marikina seal">
-                <span>Supporting fair and orderly community resolution.</span>
-            </div>
-            <div class="login-decoration login-decoration-one" aria-hidden="true"></div>
-            <div class="login-decoration login-decoration-two" aria-hidden="true"></div>
-        </section>
+        <?php
+        $authWelcome = [
+            'title_id' => 'reset-welcome-title',
+            'title_html' => 'Set a new <span>secure password.</span>',
+            'subtitle' => 'Choose a strong password to protect your AGAP account access and official barangay records.',
+        ];
+        include '../../layouts/auth-welcome.php';
+        ?>
 
         <section class="login-form-area" aria-label="Reset password form">
             <?php if (!$isValidToken): ?>
@@ -49,7 +38,7 @@ include '../../layouts/header.php';
                     </p>
                 </div>
             <?php else: ?>
-                <form id="resetPasswordForm" class="login-card" novalidate>
+                <form id="resetPasswordForm" class="login-card">
                     <p class="login-eyebrow">CREDENTIAL UPDATE</p>
                     <h2>Reset your password</h2>
                     <p class="login-intro">Create a new password. Use at least 12 characters with uppercase, lowercase, and a number.</p>
@@ -60,12 +49,12 @@ include '../../layouts/header.php';
 
                     <div class="form-group">
                         <label for="newPassword">New Password</label>
-                        <input type="password" id="newPassword" name="password" autocomplete="new-password" placeholder="At least 12 characters" required autofocus>
+                        <input type="password" id="newPassword" name="password" minlength="12" maxlength="128" data-validate="password" autocomplete="new-password" placeholder="At least 12 characters" required autofocus>
                     </div>
 
                     <div class="form-group">
                         <label for="passwordConfirmation">Confirm New Password</label>
-                        <input type="password" id="passwordConfirmation" name="password_confirmation" autocomplete="new-password" placeholder="Re-enter your new password" required>
+                        <input type="password" id="passwordConfirmation" name="password_confirmation" minlength="12" maxlength="128" data-validate="password-confirm" autocomplete="new-password" placeholder="Re-enter your new password" required>
                     </div>
 
                     <button type="submit" id="submitBtn">

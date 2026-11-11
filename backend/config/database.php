@@ -1,5 +1,7 @@
 <?php
 date_default_timezone_set('Asia/Manila');
+require_once __DIR__ . '/../services/SecurityBootstrap.php';
+SecurityBootstrap::applyHttpHeaders();
 
 // All database-backed API mutations pass through this configuration file. Keep
 // CSRF enforcement here so new routes do not depend on each controller author
@@ -24,9 +26,7 @@ if (PHP_SAPI !== 'cli' && str_contains($agapScriptPath, '/backend/api/')) {
 
     if (!$isPublicAuth) {
         require_once __DIR__ . '/../services/CsrfService.php';
-        if (session_status() === PHP_SESSION_NONE) {
-            session_start();
-        }
+        SecurityBootstrap::startSession();
         CsrfService::enforceForApiRequest();
     }
 }
@@ -91,7 +91,19 @@ class Database {
                 }
             }
 
-            die("Database Error: " . $e->getMessage());
+            error_log('Database connection error: ' . $e->getMessage());
+            if (PHP_SAPI === 'cli') {
+                throw $e;
+            }
+            http_response_code(500);
+            $scriptPath = str_replace('\\', '/', (string) ($_SERVER['SCRIPT_NAME'] ?? ''));
+            if (str_contains($scriptPath, '/backend/api/')) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Service temporarily unavailable. Please try again later.']);
+            } else {
+                echo 'Service temporarily unavailable. Please try again later.';
+            }
+            exit;
         }
     }
 
@@ -146,5 +158,29 @@ class Database {
             return $value;
         }
         return self::$envValues[$name] ?? $default;
+    }
+}
+
+if (PHP_SAPI !== 'cli' && str_contains($agapScriptPath, '/backend/api/')) {
+    $sessionExemptEndpoints = [
+        '/backend/api/auth/login.php',
+        '/backend/api/auth/logout.php',
+        '/backend/api/auth/resident-register.php',
+        '/backend/api/auth/request-password-reset.php',
+        '/backend/api/auth/reset-password.php',
+        '/backend/api/auth/verify-email.php',
+        '/backend/api/auth/activate.php',
+    ];
+    $isSessionExempt = false;
+    foreach ($sessionExemptEndpoints as $endpoint) {
+        if (str_ends_with($agapScriptPath, $endpoint)) {
+            $isSessionExempt = true;
+            break;
+        }
+    }
+
+    if (!$isSessionExempt && !empty($_SESSION['user_id'])) {
+        require_once __DIR__ . '/../services/SingleSessionService.php';
+        SingleSessionService::enforceForApi();
     }
 }

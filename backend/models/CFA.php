@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 class CFA
 {
@@ -239,6 +240,9 @@ class CFA
     {
         $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $reason = trim((string) ($data['reason'] ?? ''));
+        if ($reason !== '' && (!ValidationService::maxLength($reason, 5000) || !ValidationService::text($reason, true))) {
+            return ['success' => false, 'message' => 'CFA issuance reason must be 5,000 characters or fewer without unsupported control characters.'];
+        }
 
         if (!$caseId) {
             return ['success' => false, 'message' => 'A valid case is required.'];
@@ -248,6 +252,11 @@ class CFA
             return ['success' => false, 'message' => 'Please provide the reason for issuing the Certificate to File Action.'];
         }
 
+        // Already normalized above; keep variable readable
+        $requestedType = trim((string) ($data['cfa_type'] ?? ''));
+        if ($requestedType !== '' && !in_array($requestedType, ['KP Form 20', 'KP Form 20-A', 'KP Form 20-B'], true)) {
+            return ['success' => false, 'message' => 'Select a valid CFA form variant (KP Form 20, 20-A, or 20-B).'];
+        }
         $isReopenWorkflow = !empty($data['workflow']) && in_array($data['workflow'], ['noncompliance_reopen', 'settled_noncompliance'], true);
 
         // Server-side eligibility determination
@@ -261,7 +270,7 @@ class CFA
         }
 
         // Determine CFA form type
-        $requestedType = trim((string) ($data['cfa_type'] ?? ''));
+        // Already normalized above; keep variable readable
         $targetForm = 'KP Form 20';
 
         if ($requestedType !== '') {
@@ -387,7 +396,7 @@ class CFA
                 $this->conn->rollBack();
             }
             error_log($e->getMessage());
-            return ['success' => false, 'message' => 'Failed to issue CFA: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Failed to issue CFA due to a system error. Please try again.'];
         }
     }
 

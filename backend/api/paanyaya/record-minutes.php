@@ -3,19 +3,23 @@
 session_start();
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../models/Paanyaya.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Authentication required.']);
+$db = (new Database())->connect();
+agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'], $db);
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
     exit;
 }
 
 $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
 if (str_contains($contentType, 'application/json')) {
-    $input = json_decode(file_get_contents('php://input'), true) ?: [];
+    $input = json_decode((string) file_get_contents('php://input'), true) ?: [];
 } else {
     $input = $_POST;
 }
@@ -36,11 +40,11 @@ $proofFile = $_FILES['scanned_minutes'] ?? ($_FILES['proof_file'] ?? null);
 
 try {
     $paanyayaModel = new Paanyaya();
-    $userId = (int) $_SESSION['user_id'];
+    $userId = agapSessionUserId();
 
     $result = $paanyayaModel->recordMinutes((int) $complaintId, $stageType, $input, $userId, $proofFile);
 
-    if (!$result['success']) {
+    if (empty($result['success'])) {
         http_response_code(422);
     } else {
         $_SESSION['complaint_flash'] = [
@@ -52,10 +56,11 @@ try {
     echo json_encode($result);
     exit;
 } catch (Throwable $e) {
+    error_log('paanyaya/record-minutes error: ' . $e->getMessage());
     http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => 'Internal server error: ' . $e->getMessage()
+        'message' => 'Unable to save Paanyaya dialogue minutes right now.'
     ]);
     exit;
 }

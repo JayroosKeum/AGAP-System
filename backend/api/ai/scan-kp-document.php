@@ -6,11 +6,10 @@ if (session_status() === PHP_SESSION_NONE) {
 
 header('Content-Type: application/json; charset=utf-8');
 
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access. Please log in.']);
-    exit;
-}
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
+require_once __DIR__ . '/../../services/AiRequestRateLimit.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -18,7 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-require_once __DIR__ . '/../../config/database.php';
+CsrfService::enforceForApiRequest();
+$db = (new Database())->connect();
+agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'BPSO', 'LISO'], $db);
+
 require_once __DIR__ . '/../../models/Setting.php';
 require_once __DIR__ . '/../../services/GeminiService.php';
 
@@ -74,8 +76,19 @@ if ($mimeType === 'image/jpg') {
     $mimeType = 'image/jpeg';
 }
 
+$consent = $_POST['external_ai_consent'] ?? null;
+if (!in_array($consent, [true, 1, '1', 'true'], true)) {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'Confirm that this scanned document may be processed by Google Gemini AI.']);
+    exit;
+}
+if (!AiRequestRateLimit::consume()) {
+    http_response_code(429);
+    echo json_encode(['success' => false, 'message' => 'Please wait a few minutes before making another AI scan request.']);
+    exit;
+}
+
 // Fetch categories from DB for intelligent matching
-$db = (new Database())->connect();
 $categoriesStmt = $db->query("SELECT category_id, category_name FROM complaint_categories WHERE COALESCE(is_active, 1) = 1 ORDER BY category_name ASC");
 $allCategories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 

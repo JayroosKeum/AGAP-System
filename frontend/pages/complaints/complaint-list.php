@@ -2,8 +2,11 @@
 
 session_start();
 
+require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/../../../backend/middleware/rbac.php';
+$rbacDb = (new Database())->connect();
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2], true)) {
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'BPSO', 'LISO'], $rbacDb)) {
     $redirect = match ($roleId) {
         3 => '../dashboard/lupon-dashboard.php',
         4 => '../dashboard/server-dashboard.php',
@@ -68,9 +71,6 @@ include '../../layouts/header.php';
                 Add Complaint
             </a>
             <div style="display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                <a href="../paanyaya/index.php" class="btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 8px; font-weight: 600; font-size: 0.86rem; background: #f0fdf4; color: #15803d; border: 1px solid #86efac;">
-                    <span>🤝 Start Informal Dialogue (Paanyaya)</span>
-                </a>
                 <a href="complaint-create.php" class="btn-create" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     File Official Complaint
@@ -95,7 +95,10 @@ include '../../layouts/header.php';
             <button type="button" class="nav-tab-btn active" data-tab-status="">
                 All <span class="tab-count-pill" id="tabCountAll">0</span>
             </button>
-            <button type="button" class="nav-tab-btn" data-tab-status="Paanyaya" style="display: none;">
+            <button type="button" class="nav-tab-btn" data-tab-status="Under Review">
+                Verification <span class="tab-count-pill" id="tabCountReview">0</span>
+            </button>
+            <button type="button" class="nav-tab-btn" data-tab-status="Paanyaya">
                 Paanyaya <span class="tab-count-pill" id="tabCountPaanyaya">0</span>
             </button>
             <button type="button" class="nav-tab-btn" data-tab-status="Mediation">

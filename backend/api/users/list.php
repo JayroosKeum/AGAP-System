@@ -15,4 +15,4 @@ if ((int) ($_SESSION['role_id'] ?? 0) !== 1) {
     exit;
 }
 
-echo json_encode(['success' => true, 'users' => (new UserController())->index()]);
+echo json_encode(['success' => true, 'current_user_id' => (int) ($_SESSION['user_id'] ?? 0), 'users' => (new UserController())->index()]);

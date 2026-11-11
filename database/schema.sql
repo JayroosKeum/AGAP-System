@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS users (
     activation_expires_at DATETIME NULL,
     email_verification_token CHAR(64) NULL,
     email_verification_expires_at DATETIME NULL,
+    active_session_token CHAR(64) NULL,
+    active_session_last_seen DATETIME NULL,
     notification_audio TINYINT(1) NOT NULL DEFAULT 1,
     notification_inbox TINYINT(1) NOT NULL DEFAULT 1,
     preferred_language VARCHAR(10) NOT NULL DEFAULT 'fil',
@@ -65,6 +67,7 @@ CREATE TABLE IF NOT EXISTS users (
     KEY idx_users_role_id (role_id),
     KEY idx_users_activation_expiry (activation_expires_at),
     KEY idx_users_email_verification_expiry (email_verification_expires_at),
+    KEY idx_users_active_session (active_session_token),
     CONSTRAINT fk_users_role
         FOREIGN KEY (role_id) REFERENCES roles (role_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB;
@@ -80,6 +83,18 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
     KEY idx_password_reset_tokens_user_expiry (user_id, expires_at),
     CONSTRAINT fk_password_reset_tokens_user
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+    attempt_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    scope_type ENUM('username', 'ip') NOT NULL,
+    scope_key VARCHAR(150) NOT NULL,
+    failed_attempts INT UNSIGNED NOT NULL DEFAULT 0,
+    first_failed_at DATETIME NOT NULL,
+    locked_until DATETIME NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_login_attempt_scope (scope_type, scope_key),
+    KEY idx_login_attempts_locked_until (locked_until)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS login_logs (
@@ -194,18 +209,34 @@ CREATE TABLE IF NOT EXISTS complaints (
     paanyaya_complainant_choice VARCHAR(50) NULL DEFAULT NULL,
     ltia_category VARCHAR(100) NULL,
     encoded_by INT UNSIGNED NULL,
+    complaint_source ENUM('Online', 'Walk-in') NOT NULL DEFAULT 'Walk-in',
+    linked_to_complaint_id INT UNSIGNED NULL,
+    created_by INT UNSIGNED NULL,
+    walkin_verified_at DATETIME NULL,
+    walkin_verified_by INT UNSIGNED NULL,
+    walkin_notes TEXT NULL,
+    generated_kp7_path VARCHAR(1024) NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_complaints_number (complaint_number),
     KEY idx_complaints_category_id (category_id),
     KEY idx_complaints_secondary_category_id (secondary_category_id),
     KEY idx_complaints_status_created_at (status, created_at),
+    KEY idx_complaints_source (complaint_source),
+    KEY idx_complaints_linked_to (linked_to_complaint_id),
+    KEY idx_complaints_created_by (created_by),
     CONSTRAINT fk_complaints_category
         FOREIGN KEY (category_id) REFERENCES complaint_categories (category_id) ON DELETE RESTRICT,
     CONSTRAINT fk_complaints_secondary_category
         FOREIGN KEY (secondary_category_id) REFERENCES complaint_categories (category_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_encoded_by
-        FOREIGN KEY (encoded_by) REFERENCES users (user_id) ON DELETE SET NULL
+        FOREIGN KEY (encoded_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_linked_to
+        FOREIGN KEY (linked_to_complaint_id) REFERENCES complaints (complaint_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_created_by
+        FOREIGN KEY (created_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_walkin_verified_by
+        FOREIGN KEY (walkin_verified_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS complaint_parties (
@@ -411,6 +442,9 @@ CREATE TABLE IF NOT EXISTS paanyaya_minutes (
     outcome ENUM('Settled', 'No_Agreement', 'Party_Absent', 'Dismissed') NOT NULL,
     complainant_choice ENUM('Request_Paanyaya_2', 'Escalate_Mediation', 'Dismissed', 'None') DEFAULT 'None',
     scanned_minutes_path VARCHAR(255) NULL,
+    main_dispute_identified TEXT NULL,
+    unresolved_issues TEXT NULL,
+    generated_pdf_path VARCHAR(500) NULL,
     recorded_by INT UNSIGNED NOT NULL,
     presiding_officer_ids JSON NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -821,6 +855,9 @@ CREATE TABLE IF NOT EXISTS hearing_minutes (
     agenda_topics TEXT NULL,
     agreements_action_items TEXT NULL,
     unresolved_issues TEXT NULL,
+    carried_from_stage VARCHAR(50) NULL,
+    carried_from_id INT UNSIGNED NULL,
+    generated_pdf_path VARCHAR(500) NULL,
     finalized_by INT UNSIGNED NULL,
     finalized_at DATETIME NULL,
     outcome_remarks TEXT NULL,
@@ -1282,7 +1319,10 @@ INSERT INTO roles (role_name) VALUES
     ('Administrator'),
     ('Lupon Clerk'),
     ('Lupon Member'),
-    ('Summons Server')
+    ('Summons Server'),
+    ('BPSO'),
+    ('LISO'),
+    ('Resident')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
 -- Initial local accounts. Default strong seed password: PassTumana2026!

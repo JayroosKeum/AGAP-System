@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once '../../../backend/services/SecurityBootstrap.php';
+SecurityBootstrap::startSession();
 
 // Enforce access control: Admin (1), Lupon Clerk (2), and Lupon Member (3)
 if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 3], true)) {
@@ -34,12 +35,11 @@ include '../../layouts/header.php';
                     <strong id="dutyDayHeaderTag" style="font-size:0.85rem; color:#0f172a;">Pangkat Duty Team</strong>
                 </div>
                 <div class="lupon-accessibility-controls">
+                    <a href="#jurisdictionQueue" class="btn-accessibility-pill" style="background:#102b2d; color:#ffffff; border-color:#102b2d; text-decoration:none;">Verify Complaints (<span id="quickVerifyCount">0</span>)</a>
                     <button type="button" class="btn-accessibility-pill" onclick="window.open('../../../backend/api/reports/council_brief.php?autoprint=1', '_blank', 'width=1020,height=820,noopener,noreferrer')" title="I-print ang 1-Page Monthly Council Meeting Executive Brief" style="background:#0f172a; color:#ffffff; border-color:#0f172a;">
                         <span>1-Click Council Brief</span>
                     </button>
-                    <button type="button" class="btn-accessibility-pill" id="btnToggleFontSize" title="Palakihin o Paliitin ang Titik">
-                        <span>Malaking Titik (A+)</span>
-                    </button>
+                    <?php $agapFontSliderCompact = true; include '../../layouts/font-size-slider.php'; ?>
                     <button type="button" class="btn-accessibility-pill" id="btnToggleContrast" title="Mataas na Contrast para sa Madaling Pagbasa">
                         <span>High Contrast</span>
                     </button>
@@ -52,7 +52,7 @@ include '../../layouts/header.php';
             <!-- ── Top KPIs Summary Cards (Senior-Friendly, High Contrast) ─────── -->
             <section class="lupon-kpis-grid" aria-label="Lupon Member KPIs">
                 <!-- Duty Day Indicator -->
-                <article class="lupon-kpi-card kpi-duty" data-lupon-card="duty" role="button" tabindex="0" title="I-click upang makita ang hearing calendar para sa araw ng duty">
+                <article class="lupon-kpi-card kpi-duty" data-lupon-card="duty">
                     <div class="kpi-card-header">
                         <span class="lupon-kpi-label">Araw ng Duty</span>
                         <span class="lupon-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
@@ -62,7 +62,7 @@ include '../../layouts/header.php';
                 </article>
 
                 <!-- Total Assigned Cases -->
-                <article class="lupon-kpi-card kpi-assigned" data-lupon-card="assigned" role="button" tabindex="0" title="I-click upang ipakita ang lahat ng hawak na kaso">
+                <article class="lupon-kpi-card kpi-assigned" data-lupon-card="assigned">
                     <div class="kpi-card-header">
                         <span class="lupon-kpi-label">Hawak na Kaso</span>
                         <span class="lupon-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
@@ -72,7 +72,7 @@ include '../../layouts/header.php';
                 </article>
 
                 <!-- As Chairperson -->
-                <article class="lupon-kpi-card kpi-chair" data-lupon-card="chair" role="button" tabindex="0" title="I-click upang i-filter ang mga kasong pinamumunuan bilang Chairperson">
+                <article class="lupon-kpi-card kpi-chair" data-lupon-card="chair">
                     <div class="kpi-card-header">
                         <span class="lupon-kpi-label">Bilang Chairperson</span>
                         <span class="lupon-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="6"></circle><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"></path></svg></span>
@@ -82,7 +82,7 @@ include '../../layouts/header.php';
                 </article>
 
                 <!-- Hearings Today -->
-                <article class="lupon-kpi-card kpi-today" data-lupon-card="today" role="button" tabindex="0" title="I-click upang i-filter ang mga pagdinig ngayong araw lamang">
+                <article class="lupon-kpi-card kpi-today" data-lupon-card="today">
                     <div class="kpi-card-header">
                         <span class="lupon-kpi-label">Pagdinig Ngayong Araw</span>
                         <span class="lupon-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></span>
@@ -93,6 +93,23 @@ include '../../layouts/header.php';
             </section>
 
             <!-- ── Main Two-Column View: Duty Hearings & Assigned Cases ────────── -->
+
+            <!-- Resident Submissions Jurisdiction Verification Panel (Lupon passes verified complaints to Clerk) -->
+            <section class="jurisdiction-queue-panel" id="jurisdictionQueue" aria-label="Pending Resident Submissions Jurisdiction Review">
+                <div class="lupon-panel-header" style="margin-bottom: 6px;">
+                    <div class="lupon-panel-title-wrap">
+                        <h2 style="margin:0; font-size:1.15rem; color:#102b2d;">Pending Resident Submissions — Jurisdiction Verification</h2>
+                    </div>
+                    <span class="lupon-panel-badge" id="jurisdictionQueueBadge">0 Pending</span>
+                </div>
+                <p style="margin: 0; font-size: 0.9rem; color: #475569;">
+                    Suriin kung nasa saklaw ng Katarungang Pambarangay (KP) ang isinumiteng reklamo. Pagkatapos ma-verify, ipapasa ito sa Lupon Clerk para i-schedule ang Paanyaya (walang pag-edit o pag-schedule sa panig ng Lupon Member).
+                </p>
+                <div class="jurisdiction-queue-grid" id="luponJurisdictionQueueContainer">
+                    <div style="padding: 18px; text-align: center; color: #64748b;">Kinukuha ang mga isinumiteng reklamo...</div>
+                </div>
+            </section>
+
             <div class="lupon-main-layout">
 
                 <!-- Left Column: My Duty Day Hearing Calendar & Schedule -->
@@ -124,7 +141,7 @@ include '../../layouts/header.php';
                 </section>
 
                 <!-- Right Column: My Assigned Pangkat Cases -->
-                <section class="lupon-panel-card" aria-label="My Assigned Pangkat Cases">
+                <section class="lupon-panel-card" id="assignedCasesSection" aria-label="My Assigned Pangkat Cases">
                     <div class="lupon-panel-header">
                         <div class="lupon-panel-title-wrap">
                             <h3>My Assigned Pangkat Cases</h3>

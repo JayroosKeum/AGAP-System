@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../models/Arbitration.php';
 require_once __DIR__ . '/../models/CaseStage.php';
 require_once __DIR__ . '/../services/AuditService.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -27,11 +28,17 @@ class ArbitrationController
         }
 
         $awardDate = trim((string) ($data['award_date'] ?? ''));
+        if ($awardDate !== '' && !ValidationService::date($awardDate)) {
+            return ['success' => false, 'message' => 'Arbitration award date must be a valid date (YYYY-MM-DD).'];
+        }
         if ($awardDate === '') {
             return ['success' => false, 'message' => 'Arbitration award date is required.'];
         }
 
         $awardDetails = trim((string) ($data['award_details'] ?? $data['award_terms'] ?? ''));
+        if ($awardDetails !== '' && (!ValidationService::maxLength($awardDetails, 15000) || !ValidationService::text($awardDetails, true))) {
+            return ['success' => false, 'message' => 'Arbitration award terms must be 15,000 characters or fewer without control characters.'];
+        }
         if ($awardDetails === '') {
             return ['success' => false, 'message' => 'Specific terms and findings of the arbitration award are required.'];
         }
@@ -41,6 +48,9 @@ class ArbitrationController
         $agreementDate = !empty($existing['agreement_date'])
             ? $existing['agreement_date']
             : (!empty($data['agreement_date']) ? trim((string) $data['agreement_date']) : date('Y-m-d'));
+        if (!ValidationService::date($agreementDate)) {
+            return ['success' => false, 'message' => 'Arbitration agreement date must be a valid date (YYYY-MM-DD).'];
+        }
 
         // Statutory validation under RA 7160 Sec. 413:
         // 1. Cannot be issued earlier than Day 6 (5-day backing out/repudiation window expires)
@@ -89,6 +99,13 @@ class ArbitrationController
                 $stageModel->recordOutcome($caseId, 'Arbitration', 'Arbitration Award', $awardDetails, $userId);
             } catch (Throwable $e) {
                 error_log('Error updating stage outcome on arbitration award: ' . $e->getMessage());
+            }
+
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                (new KpFormService())->autoGenerateForEvent('arbitration_awarded', $caseId, $userId ?: 1);
+            } catch (Throwable $kpErr) {
+                error_log('ArbitrationController KP Form 15 notice: ' . $kpErr->getMessage());
             }
 
             return [

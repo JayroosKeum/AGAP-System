@@ -1115,6 +1115,18 @@ class CaseStage
             $scStmt->execute([$caseId, $hId]);
             $sessions[count($sessions) - 1]['show_cause_hearings'] = $scStmt->fetchAll(PDO::FETCH_ASSOC);
 
+            if (empty($h['minute_id'])) {
+                try {
+                    require_once __DIR__ . '/HearingMinutes.php';
+                    $hmHelper = new HearingMinutes($this->conn);
+                    $sessions[count($sessions) - 1]['carryover'] = $hmHelper->getCarryoverContext($hId, $caseId, (string) ($h['hearing_type'] ?? $stageType));
+                } catch (Throwable $ce) {
+                    $sessions[count($sessions) - 1]['carryover'] = null;
+                }
+            } else {
+                $sessions[count($sessions) - 1]['carryover'] = null;
+            }
+
             $index++;
         }
 
@@ -1394,6 +1406,24 @@ class CaseStage
                 $this->conn->commit();
             }
 
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                $kpSvc = new KpFormService($this->conn);
+                if ($outcome === 'Settled') {
+                    $kpSvc->autoGenerateForEvent('settlement_recorded', $caseId, $userId ?: 1);
+                } elseif ($outcome === 'Dismissed') {
+                    $kpSvc->generateAndPersistForm('KP Form 21', $caseId, $userId ?: 1, ['idempotent' => true, 'bypass_prerequisites' => true]);
+                } elseif ($outcome === 'Arbitration') {
+                    $kpSvc->autoGenerateForEvent('arbitration_agreed', $caseId, $userId ?: 1);
+                } elseif ($outcome === 'Arbitration Award') {
+                    $kpSvc->autoGenerateForEvent('arbitration_awarded', $caseId, $userId ?: 1);
+                } elseif ($outcome === 'Unsuccessful' && $stageType === 'Conciliation') {
+                    $kpSvc->autoGenerateForEvent('conciliation_unsuccessful', $caseId, $userId ?: 1);
+                }
+            } catch (Throwable $kpErr) {
+                error_log('CaseStage::recordOutcome KP form notice: ' . $kpErr->getMessage());
+            }
+
             return [
                 'success' => true,
                 'message' => "{$stageType} outcome successfully recorded as {$outcome}.",
@@ -1406,7 +1436,8 @@ class CaseStage
             if ($manageTx && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
-            return ['success' => false, 'message' => 'Unable to record stage outcome: ' . $e->getMessage()];
+            error_log('CaseStage::recordOutcome error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Unable to record stage outcome due to a system error.' : ('Unable to record stage outcome: ' . $e->getMessage())];
         }
     }
 
@@ -1734,7 +1765,8 @@ class CaseStage
             if ($manageTx && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
-            return ['success' => false, 'message' => 'Referral to Pangkat failed: ' . $e->getMessage()];
+            error_log('CaseStage::referToPangkat error: ' . $e->getMessage());
+            return ['success' => false, 'message' => $e instanceof PDOException ? 'Referral to Pangkat failed due to a system error.' : ('Referral to Pangkat failed: ' . $e->getMessage())];
         }
     }
 

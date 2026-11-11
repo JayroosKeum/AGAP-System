@@ -7,6 +7,8 @@ require_once __DIR__ . '/../services/ComplaintLifecycleService.php';
 class Complaint
 {
     private PDO $conn;
+    private ?array $complaintColumnsCache = null;
+    private ?array $intakeColumnsCache = null;
 
     public function __construct()
     {
@@ -16,18 +18,68 @@ class Complaint
             $database->connect();
     }
 
-    public function getAll()
+    private function hasComplaintColumn(string $column): bool
+    {
+        if ($this->complaintColumnsCache === null) {
+            try {
+                $this->complaintColumnsCache = $this->conn->query('SHOW COLUMNS FROM complaints')->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            } catch (Throwable $e) {
+                $this->complaintColumnsCache = [];
+            }
+        }
+        return in_array($column, $this->complaintColumnsCache, true);
+    }
+
+    private function hasIntakeScreeningColumn(string $column): bool
+    {
+        if ($this->intakeColumnsCache === null) {
+            try {
+                $this->intakeColumnsCache = $this->conn->query('SHOW COLUMNS FROM complaint_intake_screenings')->fetchAll(PDO::FETCH_COLUMN) ?: [];
+            } catch (Throwable $e) {
+                $this->intakeColumnsCache = [];
+            }
+        }
+        return in_array($column, $this->intakeColumnsCache, true);
+    }
+
+    public function getAll(?array $viewerScope = null)
     {
         try {
+            $where = [];
+            $params = [];
+            if (!empty($viewerScope['role_name']) && $viewerScope['role_name'] === 'Resident' && !empty($viewerScope['user_id'])) {
+                if ($this->hasComplaintColumn('created_by')) {
+                    $where[] = '(c.created_by = ? OR c.encoded_by = ?)';
+                    $params[] = (int) $viewerScope['user_id'];
+                    $params[] = (int) $viewerScope['user_id'];
+                } else {
+                    $where[] = 'c.encoded_by = ?';
+                    $params[] = (int) $viewerScope['user_id'];
+                }
+            } else {
+                $where[] = 'COALESCE(c.is_draft, 0) = 0';
+            }
+            $whereSql = $where !== [] ? ('WHERE ' . implode(' AND ', $where)) : '';
 
             $stmt =
             $this->conn->prepare("
                 SELECT
                     c.*,
                     cc.category_name,
+                    cc2.category_name AS secondary_category_name,
                     cs.case_id,
                     cs.case_number,
-                    cs.case_status
+                    cs.case_status,
+                    (
+                        SELECT GROUP_CONCAT(
+                            TRIM(CONCAT_WS(' ', r_resp.first_name, NULLIF(r_resp.middle_name, ''), r_resp.last_name, r_resp.suffix))
+                            ORDER BY cp_resp.party_id SEPARATOR ', '
+                        )
+                        FROM complaint_parties cp_resp
+                        INNER JOIN residents r_resp ON r_resp.resident_id = cp_resp.resident_id
+                        WHERE cp_resp.complaint_id = c.complaint_id
+                          AND cp_resp.party_type = 'Respondent'
+                    ) AS respondent_name
                 FROM complaints c
                 LEFT JOIN complaint_categories cc
                     ON c.category_id = cc.category_id
@@ -35,15 +87,18 @@ class Complaint
                     ON c.secondary_category_id = cc2.category_id
                 LEFT JOIN cases cs
                     ON cs.complaint_id = c.complaint_id
+                {$whereSql}
                 ORDER BY c.created_at DESC
             ");
 
-            $stmt->execute();
+            $stmt->execute($params);
 
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $lifecycle = new ComplaintLifecycleService($this->conn);
             foreach ($rows as &$row) {
-                $row['lifecycle_status'] = $lifecycle->forComplaint((int) $row['complaint_id']);
+                $summary = $lifecycle->resolveSummaryForComplaint((int) $row['complaint_id']);
+                $row['lifecycle_status'] = $summary['lifecycle_status'];
+                $row['workflow_stage'] = $summary['workflow_stage'];
                 if (!empty($row['other_category_specification']) && (stripos($row['category_name'] ?? '', 'Others') !== false || stripos($row['category_name'] ?? '', 'Iba pa') !== false)) {
                     $row['category_name_display'] = 'Others: ' . $row['other_category_specification'];
                 } else {
@@ -90,10 +145,19 @@ class Complaint
 
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) {
-                $row['lifecycle_status'] = (new ComplaintLifecycleService($this->conn))->forComplaint((int) $row['complaint_id']);
+                $summary = (new ComplaintLifecycleService($this->conn))->resolveSummaryForComplaint((int) $row['complaint_id']);
+                $row['lifecycle_status'] = $summary['lifecycle_status'];
+                $row['workflow_stage'] = $summary['workflow_stage'];
                 $screening = $this->conn->prepare('SELECT * FROM complaint_intake_screenings WHERE complaint_id = ?');
                 $screening->execute([(int) $row['complaint_id']]);
                 $row['intake_screening'] = $screening->fetch(PDO::FETCH_ASSOC) ?: null;
+                $row['ai_suggestion'] = null;
+                if (!empty($row['intake_screening']['ai_suggestion_json'])) {
+                    $decodedSug = json_decode((string) $row['intake_screening']['ai_suggestion_json'], true);
+                    if (is_array($decodedSug)) {
+                        $row['ai_suggestion'] = $decodedSug;
+                    }
+                }
                 require_once __DIR__ . '/ComplaintScannedDocument.php';
                 $scannedDocModel = new ComplaintScannedDocument($this->conn);
                 $row['scanned_document'] = $scannedDocModel->getCurrentByComplaint((int) $row['complaint_id']);
@@ -163,68 +227,70 @@ class Complaint
             if (!$partiesValidation['success']) {
                 return $partiesValidation;
             }
+            $rawSource = trim((string) ($data['complaint_source'] ?? 'Walk-in'));
+            $complaintSource = strcasecmp($rawSource, 'Online') === 0 ? 'Online' : 'Walk-in';
+            $data['complaint_source'] = $complaintSource;
+            $isOnlineSubmission = ($complaintSource === 'Online');
+
             $jurisdictionValidation = $this->validateJurisdictionInput($data);
             if (!$jurisdictionValidation['success']) {
                 return $jurisdictionValidation;
             }
-            $duplicates = $this->findPotentialDuplicates($data);
-            if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
-                return [
-                    'success' => false,
-                    'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
-                    'message' => 'A possible duplicate complaint was found. Review it and confirm that this filing should proceed.',
-                    'duplicates' => $duplicates,
-                ];
+            $isDraft = !empty($data['is_draft']) ? 1 : 0;
+            if (!$isDraft) {
+                $duplicates = $this->findPotentialDuplicates($data);
+                if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
+                    if ($isOnlineSubmission) {
+                        $dupRefs = array_values(array_filter(array_map(
+                            static fn (array $d): string => trim((string) ($d['complaint_number'] ?? '')),
+                            $duplicates
+                        )));
+                        $dupNote = 'Possible prior complaint(s) for LISO review' . ($dupRefs ? (': ' . implode(', ', $dupRefs)) : '.');
+                        $mergedNotes = trim(implode("\n", array_filter([
+                            trim((string) ($data['screening_notes'] ?? '')),
+                            $dupNote,
+                        ])));
+                        $data['screening_notes'] = mb_substr($mergedNotes, 0, 2000);
+                    } else {
+                        return [
+                            'success' => false,
+                            'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
+                            'message' => 'A possible duplicate complaint was found. Link the walk-in visit to the existing record or confirm before filing a separate record.',
+                            'duplicates' => $duplicates,
+                        ];
+                    }
+                }
             }
 
             if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
                 session_start();
             }
 
+            $sessionUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+            $actorUserId = $sessionUserId ?: (PHP_SAPI === 'cli' ? ((int) ($data['created_by'] ?? $data['encoded_by'] ?? $data['clerk_id'] ?? 1)) : null);
+            if (!$actorUserId) {
+                return ['success' => false, 'message' => 'Authentication required to submit a complaint.'];
+            }
+
+            $linkedToId = filter_var($data['linked_to_complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+            $initialStatus = ($isOnlineSubmission && !$isDraft) ? 'Under Review' : 'Filed';
+
             $caseType = in_array(trim((string)($data['case_type'] ?? '')), ['Civil', 'Criminal'], true)
                 ? trim((string)$data['case_type'])
                 : 'Civil';
 
             $this->conn->beginTransaction();
-            $stmt =
-            $this->conn->prepare("
-                INSERT INTO complaints
-                (
-                    category_id,
-                    secondary_category_id,
-                    other_category_specification,
-                    secondary_other_category_specification,
-                    case_type,
-                    complaint_title,
-                    incident_date,
-                    incident_time,
-                    is_time_approximate,
-                    is_time_unknown,
-                    incident_location,
-                    incident_city,
-                    incident_barangay,
-                    incident_street,
-                    incident_purok,
-                    incident_landmark,
-                    incident_location_details,
-                    narrative,
-                    additional_details,
-                    requested_resolution,
-                    status,
-                    document_status,
-                    is_draft,
-                    encoded_by
-                )
-                VALUES
-                (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-                )
-            ");
-
+            $cols = [
+                'category_id', 'secondary_category_id', 'other_category_specification', 'secondary_other_category_specification',
+                'case_type', 'complaint_title', 'incident_date', 'incident_time', 'is_time_approximate', 'is_time_unknown',
+                'incident_location', 'incident_city', 'incident_barangay', 'incident_street', 'incident_purok',
+                'incident_landmark', 'incident_location_details', 'narrative', 'additional_details', 'requested_resolution',
+                'status', 'document_status', 'is_draft', 'encoded_by'
+            ];
             $timeVal = !empty($data['is_time_unknown']) ? null : (trim((string) ($data['incident_time'] ?? '')) ?: null);
             $secCatId = filter_var($data['secondary_category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
             $secOtherSpec = trim((string)($data['secondary_other_category_specification'] ?? '')) ?: null;
-            $stmt->execute([
+            $vals = [
                 $data['category_id'],
                 $secCatId,
                 trim((string) ($data['other_category_specification'] ?? '')) ?: null,
@@ -245,84 +311,72 @@ class Complaint
                 trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 trim((string) ($data['requested_resolution'] ?? '')) ?: null,
-                'Mediation',
+                $initialStatus,
                 'No Scan Uploaded',
-                0,
-                $_SESSION['user_id'] ?? $data['clerk_id'] ?? $data['encoded_by'] ?? 1
-            ]);
+                $isDraft,
+                ($complaintSource === 'Walk-in' || !$this->hasComplaintColumn('created_by')) ? $actorUserId : null
+            ];
+
+            if ($this->hasComplaintColumn('complaint_source')) {
+                $cols[] = 'complaint_source';
+                $vals[] = $complaintSource;
+            }
+            if ($this->hasComplaintColumn('linked_to_complaint_id')) {
+                $cols[] = 'linked_to_complaint_id';
+                $vals[] = $linkedToId;
+            }
+            if ($this->hasComplaintColumn('created_by')) {
+                $cols[] = 'created_by';
+                $vals[] = $actorUserId;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($cols), '?'));
+            $stmt = $this->conn->prepare('INSERT INTO complaints (' . implode(', ', $cols) . ') VALUES (' . $placeholders . ')');
+            $stmt->execute($vals);
 
             $complaintId = (int) $this->conn->lastInsertId();
-            require_once __DIR__ . '/CaseModel.php';
-            $docketDate = date('Y-m-d');
-            $caseInsertStmt = $this->conn->prepare("
-                INSERT INTO cases (complaint_id, case_type, case_status, docket_date)
-                VALUES (?, ?, 'Mediation', ?)
-            ");
-            $caseInsertStmt->execute([
-                $complaintId,
-                in_array($caseType, ['Civil', 'Criminal', 'Others'], true) ? $caseType : 'Others',
-                $docketDate
-            ]);
-            $caseId = (int) $this->conn->lastInsertId();
-            $complaintNumber = CaseModel::generateCaseNumber($this->conn, $docketDate, $caseId);
-            $this->conn->prepare('UPDATE cases SET case_number = ? WHERE case_id = ?')
-                ->execute([$complaintNumber, $caseId]);
-            try {
-                $adminStmt = $this->conn->prepare("
-                    SELECT u.user_id FROM users u
-                    JOIN roles r ON u.role_id = r.role_id
-                    WHERE r.role_name = 'Administrator' AND u.status = 'Active'
-                    ORDER BY u.user_id ASC LIMIT 1
-                ");
-                $adminStmt->execute();
-                $adminUserId = (int) $adminStmt->fetchColumn();
-                if ($adminUserId > 0) {
-                    $this->conn->prepare("INSERT INTO case_assignments (case_id, user_id, role_in_case) VALUES (?, ?, 'Head')")
-                        ->execute([$caseId, $adminUserId]);
-                }
-            } catch (Throwable $ae) {
-                error_log('Could not auto-assign Administrator on complaint creation: ' . $ae->getMessage());
-            }
-            try {
-                require_once __DIR__ . '/CaseStage.php';
-                (new CaseStage($this->conn))->startStage($caseId, 'Mediation');
-            } catch (Throwable $se) {
-                error_log('Could not initialize Mediation case_stages row: ' . $se->getMessage());
-            }
+            $complaintNumber = sprintf('CMP-%s-%04d', date('Y'), $complaintId);
             $numberStatement = $this->conn->prepare(
-                'UPDATE complaints SET complaint_number = ?, status = \'Mediation\', paanyaya_attempt_count = 0, max_paanyaya_reached = 0, resolved_without_docketing = 0 WHERE complaint_id = ?'
+                'UPDATE complaints SET complaint_number = ?, status = ?, paanyaya_attempt_count = 0, max_paanyaya_reached = 0, resolved_without_docketing = 0 WHERE complaint_id = ?'
             );
-            $numberStatement->execute([$complaintNumber, $complaintId]);
+            $numberStatement->execute([$complaintNumber, $initialStatus, $complaintId]);
             $this->applyMapLocation($complaintId, $data);
             $this->applyParties($complaintId, $data);
             $this->saveIntakeScreening($complaintId, $data);
-            try {
-                require_once __DIR__ . '/../services/NotificationService.php';
-                $notifService = new NotificationService();
-                $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
-                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId . "&tab=mediation";
-                $notifService->notifyRoles(
-                    ['Administrator', 'Lupon Clerk'],
-                    'New Complaint Filed',
-                    "New complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") has been officially filed and placed into Mediation (Stage 1).",
-                    $_SESSION['user_id'] ?? null,
-                    'info',
-                    $actionUrl
-                );
-            } catch (Throwable $ne) {
-                error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
+
+            if (!$isDraft) {
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notifService = new NotificationService();
+                    $actionUrl = '../complaints/complaint-details.php?id=' . (int) $complaintId;
+                    $notifService->notifyRoles(
+                        ['Administrator', 'Lupon Clerk', 'LISO'],
+                        "New {$complaintSource} Complaint Filed",
+                        "New {$complaintSource} complaint {$complaintNumber} (" . ($data['complaint_title'] ?? 'General Dispute') . ') submitted for preliminary LISO verification before mandatory Paanyaya.',
+                        $actorUserId,
+                        'info',
+                        $actionUrl
+                    );
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
+                }
             }
 
             $this->conn->commit();
             return [
                 'success' => true,
-                'message' => 'Official complaint filed and docketed into Mediation (Stage 1).',
-                'case_id' => $caseId ?? null,
-                'case_number' => $complaintNumber,
-                'status' => 'Mediation',
+                'message' => $isDraft
+                    ? "Draft saved under Reference ID {$complaintNumber}."
+                    : ($isOnlineSubmission
+                        ? "Your complaint ({$complaintNumber}) has been submitted and is now For Review by Barangay Tumana."
+                        : "Complaint {$complaintNumber} ({$complaintSource}) filed and queued for LISO verification before mandatory Paanyaya."),
+                'case_id' => null,
+                'case_number' => null,
+                'status' => $initialStatus,
+                'complaint_source' => $complaintSource,
                 'complaint_id' => $complaintId,
                 'complaint_number' => $complaintNumber,
-                'is_draft' => false
+                'is_draft' => (bool) $isDraft
             ];
 
         }
@@ -362,6 +416,33 @@ class Complaint
                 }
             }
 
+            if (empty($data['complaint_title']) && !empty($data['title'])) {
+                $data['complaint_title'] = $data['title'];
+            }
+            if (empty($data['narrative']) && !empty($data['complaint_description'])) {
+                $data['narrative'] = $data['complaint_description'];
+            }
+            if (empty($data['incident_street']) && !empty($data['incident_location'])) {
+                $data['incident_street'] = $data['incident_location'];
+            }
+
+            $hasSourceCol = $this->hasComplaintColumn('complaint_source');
+            $sourceSelect = $hasSourceCol ? ', complaint_source' : '';
+            $exists = $this->conn->prepare("SELECT complaint_id, complaint_number, status, is_draft{$sourceSelect} FROM complaints WHERE complaint_id = ?");
+            $exists->execute([$complaintId]);
+            $existingRow = $exists->fetch(PDO::FETCH_ASSOC);
+            if (!$existingRow) {
+                return ['success' => false, 'message' => 'The complaint could not be found.'];
+            }
+
+            $rawSource = trim((string) ($data['complaint_source'] ?? ($existingRow['complaint_source'] ?? 'Walk-in')));
+            $complaintSource = strcasecmp($rawSource, 'Online') === 0 ? 'Online' : 'Walk-in';
+            $data['complaint_source'] = $complaintSource;
+            $isOnlineSubmission = ($complaintSource === 'Online');
+            $isDraft = array_key_exists('is_draft', $data) ? (!empty($data['is_draft']) ? 1 : 0) : 0;
+            $wasDraft = !empty($existingRow['is_draft']);
+            $existingStatus = trim((string) ($existingRow['status'] ?? 'Filed'));
+
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
                 return $validation;
@@ -376,26 +457,44 @@ class Complaint
             }
             // Screening is required when filing. Older records can be
             // corrected without replacing their saved intake assessment.
-            if (array_key_exists('jurisdiction_screened', $data)) {
+            if (array_key_exists('jurisdiction_screened', $data) || $isOnlineSubmission) {
                 $jurisdictionValidation = $this->validateJurisdictionInput($data);
                 if (!$jurisdictionValidation['success']) {
                     return $jurisdictionValidation;
                 }
             }
-            $duplicates = $this->findPotentialDuplicates($data, $complaintId);
-            if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
-                return [
-                    'success' => false,
-                    'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
-                    'message' => 'A possible duplicate complaint was found. Review it and confirm that this filing should proceed.',
-                    'duplicates' => $duplicates,
-                ];
+            if (!$isDraft) {
+                $duplicates = $this->findPotentialDuplicates($data, $complaintId);
+                if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
+                    if ($isOnlineSubmission) {
+                        $dupRefs = array_values(array_filter(array_map(
+                            static fn (array $d): string => trim((string) ($d['complaint_number'] ?? '')),
+                            $duplicates
+                        )));
+                        $dupNote = 'Possible prior complaint(s) for LISO review' . ($dupRefs ? (': ' . implode(', ', $dupRefs)) : '.');
+                        $mergedNotes = trim(implode("\n", array_filter([
+                            trim((string) ($data['screening_notes'] ?? '')),
+                            $dupNote,
+                        ])));
+                        $data['screening_notes'] = mb_substr($mergedNotes, 0, 2000);
+                    } else {
+                        return [
+                            'success' => false,
+                            'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
+                            'message' => 'A possible duplicate complaint was found. Review it and confirm that this filing should proceed.',
+                            'duplicates' => $duplicates,
+                        ];
+                    }
+                }
             }
 
-            $exists = $this->conn->prepare('SELECT complaint_id FROM complaints WHERE complaint_id = ?');
-            $exists->execute([$complaintId]);
-            if (!$exists->fetchColumn()) {
-                return ['success' => false, 'message' => 'The complaint could not be found.'];
+            $nextStatus = $existingStatus !== '' ? $existingStatus : 'Filed';
+            if ($isDraft === 1) {
+                $nextStatus = 'Filed';
+            } elseif ($isOnlineSubmission && ($wasDraft || in_array($existingStatus, ['Filed', 'Needs Information'], true))) {
+                $nextStatus = 'Under Review';
+            } elseif (!$isOnlineSubmission && $wasDraft) {
+                $nextStatus = 'Filed';
             }
 
             $caseType = in_array(trim((string)($data['case_type'] ?? '')), ['Civil', 'Criminal'], true)
@@ -427,7 +526,8 @@ class Complaint
                     narrative=?,
                     additional_details=?,
                     requested_resolution=?,
-                    is_draft=0
+                    status=?,
+                    is_draft=?
                 WHERE complaint_id=?
             ");
 
@@ -455,6 +555,8 @@ class Complaint
                 trim((string) $data['narrative']),
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 trim((string) ($data['requested_resolution'] ?? '')) ?: null,
+                $nextStatus,
+                $isDraft,
                 $complaintId
             ]);
 
@@ -467,17 +569,19 @@ class Complaint
 
             $this->applyMapLocation($complaintId, $data);
 
-            if (isset($data['complainant_resident_id']) || isset($data['respondent_resident_id']) || isset($data['complainant_name']) || isset($data['respondent_name'])) {
+            if (isset($data['complainant_resident_id']) || isset($data['respondent_resident_id']) || isset($data['complainant_name']) || isset($data['respondent_name']) || isset($data['complainant_first_name']) || isset($data['respondent_first_name'])) {
                 $delParties = $this->conn->prepare('DELETE FROM complaint_parties WHERE complaint_id = ?');
                 $delParties->execute([$complaintId]);
                 $this->applyParties($complaintId, $data);
             }
-            if (array_key_exists('jurisdiction_screened', $data)) {
+            if (array_key_exists('jurisdiction_screened', $data) || $isOnlineSubmission || isset($data['ai_suggestion_json'])) {
                 $this->saveIntakeScreening($complaintId, $data);
+            }
+            if (array_key_exists('jurisdiction_screened', $data)) {
                 try {
                     require_once __DIR__ . '/../services/NotificationService.php';
                     $notifService = new NotificationService();
-                    $cNum = $this->conn->query("SELECT complaint_number FROM complaints WHERE complaint_id = {$complaintId}")->fetchColumn() ?: "CMP-#{$complaintId}";
+                    $cNum = (string) ($existingRow['complaint_number'] ?? '') ?: "CMP-#{$complaintId}";
                     $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId . "&tab=mediation";
                     $notifService->notifyRoles(
                         ['Administrator', 'Lupon Clerk'],
@@ -490,14 +594,43 @@ class Complaint
                 } catch (Throwable $ne) {
                     error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
                 }
+            } elseif ($isOnlineSubmission && $wasDraft && !$isDraft) {
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notifService = new NotificationService();
+                    $cNum = (string) ($existingRow['complaint_number'] ?? '') ?: "CMP-#{$complaintId}";
+                    $actionUrl = '../complaints/complaint-details.php?id=' . (int) $complaintId;
+                    $notifService->notifyRoles(
+                        ['Administrator', 'Lupon Clerk', 'LISO'],
+                        'New Online Complaint Filed',
+                        "New Online complaint {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ') submitted for preliminary LISO verification before mandatory Paanyaya.',
+                        $_SESSION['user_id'] ?? null,
+                        'info',
+                        $actionUrl
+                    );
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch online draft submission notification: ' . $ne->getMessage());
+                }
             }
 
             $this->conn->commit();
 
+            $cNum = (string) ($existingRow['complaint_number'] ?? '') ?: sprintf('CMP-%s-%04d', date('Y'), $complaintId);
+            $successMsg = 'Complaint updated successfully.';
+            if ($isDraft) {
+                $successMsg = "Draft saved under Reference ID {$cNum}.";
+            } elseif ($isOnlineSubmission && $wasDraft) {
+                $successMsg = "Your complaint ({$cNum}) has been submitted and is now For Review by Barangay Tumana.";
+            }
+
             return [
                 'success' => true,
-                'message' => 'Complaint updated successfully.',
-                'complaint_id' => $complaintId
+                'message' => $successMsg,
+                'complaint_id' => $complaintId,
+                'complaint_number' => $cNum,
+                'status' => $nextStatus,
+                'complaint_source' => $complaintSource,
+                'is_draft' => (bool) $isDraft,
             ];
 
         }
@@ -514,18 +647,146 @@ class Complaint
         }
     }
 
-    public function review(int $id, string $status, ?string $notes): array
+    public function review(int $id, string $status, ?string $notes, array $classificationData = []): array
     {
         $allowed = ['Under Review', 'Needs Information', 'Accepted', 'Rejected'];
         if (!in_array($status, $allowed, true)) {
             return ['success' => false, 'message' => 'Select a valid review decision.'];
         }
-        $exists = $this->conn->prepare("SELECT complaint_id FROM complaints WHERE complaint_id = ? AND status NOT IN ('Docketed', 'Archived')");
-        $exists->execute([$id]);
-        if (!$exists->fetchColumn()) return ['success' => false, 'message' => 'This complaint cannot be reviewed in its current status.'];
-        $stmt = $this->conn->prepare('UPDATE complaints SET status = ?, review_notes = ? WHERE complaint_id = ?');
-        $stmt->execute([$status, $notes, $id]);
-        return ['success' => true, 'message' => 'Complaint review saved.'];
+
+        $aiUsed = in_array($classificationData['ai_classification_used'] ?? null, [true, 1, '1', 'true'], true);
+        if ($aiUsed && !in_array($classificationData['ai_classification_verified'] ?? null, [true, 1, '1', 'true'], true)) {
+            return [
+                'success' => false,
+                'code' => 'AI_CLASSIFICATION_VERIFICATION_REQUIRED',
+                'message' => 'Human verification required: review the original narrative and check the mandatory confirmation box before saving AI-assisted classification.',
+            ];
+        }
+
+        $lockedStatuses = [
+            'Pre-Docketed (Paanyaya)', 'Paanyaya In Progress', '1st Paanyaya Failed (No-Show)',
+            'Resolved at Paanyaya / Closed', 'Settled', 'Dismissed', 'Docketed', 'Mediation',
+            'Conciliation', 'Arbitration', 'CFA Issued', 'Archived'
+        ];
+        $placeholders = implode(',', array_fill(0, count($lockedStatuses), '?'));
+        $exists = $this->conn->prepare(
+            "SELECT c.complaint_id, c.complaint_number, c.complaint_title FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status NOT IN ({$placeholders}) LIMIT 1"
+        );
+        $exists->execute(array_merge([$id], $lockedStatuses));
+        $row = $exists->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return ['success' => false, 'message' => 'This complaint has already entered Paanyaya or formal proceedings and can no longer be changed during screening.'];
+        }
+
+        $setClauses = ['status = ?', 'review_notes = ?', 'is_draft = 0'];
+        $params = [$status, $notes];
+
+        if (!empty($classificationData['category_id'])) {
+            $catId = filter_var($classificationData['category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if (!$catId) {
+                return ['success' => false, 'message' => 'Select a valid complaint category.'];
+            }
+            $catStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_id = ? AND COALESCE(is_active, 1) = 1 LIMIT 1');
+            $catStmt->execute([$catId]);
+            $catRow = $catStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$catRow) {
+                return ['success' => false, 'message' => 'Selected complaint category was not found or is inactive.'];
+            }
+            $isOther = (stripos((string) $catRow['category_name'], 'Others') !== false || stripos((string) $catRow['category_name'], 'Iba pa') !== false);
+            $otherSpec = trim((string) ($classificationData['other_category_specification'] ?? ''));
+            if ($isOther) {
+                if ($otherSpec === '' || mb_strlen($otherSpec) > 255 || !ValidationService::text($otherSpec)) {
+                    return ['success' => false, 'message' => 'Specify valid custom category details under "Others (Please Specify)".'];
+                }
+            }
+            $setClauses[] = 'category_id = ?';
+            $params[] = (int) $catId;
+            $setClauses[] = 'other_category_specification = ?';
+            $params[] = $isOther ? $otherSpec : null;
+        }
+
+        if (array_key_exists('secondary_category_id', $classificationData)) {
+            $rawSecCat = trim((string) ($classificationData['secondary_category_id'] ?? ''));
+            if ($rawSecCat === '') {
+                $setClauses[] = 'secondary_category_id = ?';
+                $params[] = null;
+                $setClauses[] = 'secondary_other_category_specification = ?';
+                $params[] = null;
+            } else {
+                $secCatId = filter_var($rawSecCat, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if (!$secCatId) {
+                    return ['success' => false, 'message' => 'Select a valid 2nd complaint category.'];
+                }
+                $effectivePrimaryCatId = !empty($classificationData['category_id'])
+                    ? (int) $classificationData['category_id']
+                    : (int) ($this->conn->query("SELECT category_id FROM complaints WHERE complaint_id = {$id}")->fetchColumn() ?: 0);
+                if ($secCatId === $effectivePrimaryCatId) {
+                    return ['success' => false, 'message' => '2nd complaint category must be different from the primary category.'];
+                }
+                $secStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_id = ? AND COALESCE(is_active, 1) = 1 LIMIT 1');
+                $secStmt->execute([$secCatId]);
+                $secRow = $secStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$secRow) {
+                    return ['success' => false, 'message' => 'Selected 2nd complaint category was not found or is inactive.'];
+                }
+                $isSecOther = (stripos((string) $secRow['category_name'], 'Others') !== false || stripos((string) $secRow['category_name'], 'Iba pa') !== false);
+                $secOtherSpec = trim((string) ($classificationData['secondary_other_category_specification'] ?? ''));
+                if ($isSecOther && ($secOtherSpec === '' || mb_strlen($secOtherSpec) > 255 || !ValidationService::text($secOtherSpec))) {
+                    return ['success' => false, 'message' => 'Specify valid custom details for the 2nd "Others (Please Specify)" category.'];
+                }
+                $setClauses[] = 'secondary_category_id = ?';
+                $params[] = (int) $secCatId;
+                $setClauses[] = 'secondary_other_category_specification = ?';
+                $params[] = $isSecOther ? $secOtherSpec : null;
+            }
+        }
+
+        if (!empty($classificationData['case_type'])) {
+            $cType = trim((string) $classificationData['case_type']);
+            if (!in_array($cType, ['Civil', 'Criminal'], true)) {
+                return ['success' => false, 'message' => 'Case type must be Civil or Criminal.'];
+            }
+            $setClauses[] = 'case_type = ?';
+            $params[] = $cType;
+        }
+
+        if (isset($classificationData['complaint_title']) && trim((string) $classificationData['complaint_title']) !== '') {
+            $cTitle = trim((string) $classificationData['complaint_title']);
+            if (mb_strlen($cTitle) > 255 || !ValidationService::text($cTitle)) {
+                return ['success' => false, 'message' => 'Provide a valid complaint title of 255 characters or fewer.'];
+            }
+            $setClauses[] = 'complaint_title = ?';
+            $params[] = $cTitle;
+        }
+
+        $params[] = $id;
+        $stmt = $this->conn->prepare('UPDATE complaints SET ' . implode(', ', $setClauses) . ' WHERE complaint_id = ?');
+        $stmt->execute($params);
+
+        if ($status === 'Accepted') {
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                $cNum = $row['complaint_number'] ?: "CMP-#{$id}";
+                (new NotificationService())->notifyRoles(
+                    ['Administrator', 'Lupon Clerk', 'LISO'],
+                    'Complaint Verified — Ready for Paanyaya',
+                    "Complaint {$cNum} passed LISO preliminary verification and is ready for mandatory Paanyaya scheduling.",
+                    $_SESSION['user_id'] ?? null,
+                    'info',
+                    '../paanyaya/stage.php?complaint_id=' . $id
+                );
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch verification notification: ' . $ne->getMessage());
+            }
+        }
+
+        return [
+            'success' => true,
+            'status' => $status,
+            'message' => $status === 'Accepted'
+                ? 'Complaint verified and endorsed for mandatory Paanyaya.'
+                : 'Complaint review saved.'
+        ];
     }
 
     public function delete(mixed $id): bool
@@ -588,6 +849,24 @@ class Complaint
     {
         $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $categoryNameInput = trim((string)($data['category_name'] ?? ''));
+        $isOnlineSubmission = strcasecmp(trim((string)($data['complaint_source'] ?? '')), 'Online') === 0;
+        if (!$categoryId && $categoryNameInput === '' && $isOnlineSubmission) {
+            $defCatStmt = $this->conn->query("
+                SELECT category_id, category_name
+                FROM complaint_categories
+                WHERE COALESCE(is_active, 1) = 1
+                ORDER BY CASE WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 0 ELSE 1 END ASC, category_id ASC
+                LIMIT 1
+            ");
+            $defCat = $defCatStmt ? $defCatStmt->fetch(PDO::FETCH_ASSOC) : null;
+            if ($defCat) {
+                $categoryId = (int)$defCat['category_id'];
+                $data['category_id'] = $categoryId;
+                if ((stripos($defCat['category_name'], 'Others') !== false || stripos($defCat['category_name'], 'Iba pa') !== false) && empty($data['other_category_specification'])) {
+                    $data['other_category_specification'] = 'Pending Barangay LISO Classification';
+                }
+            }
+        }
         if (!$categoryId && $categoryNameInput !== '') {
             $catStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_name = ? OR category_name LIKE ? LIMIT 1');
             $catStmt->execute([$categoryNameInput, '%' . $categoryNameInput . '%']);
@@ -630,6 +909,17 @@ class Complaint
         $date = trim((string) ($data['incident_date'] ?? ''));
         $time = trim((string) ($data['incident_time'] ?? ''));
         $narrative = trim((string) ($data['narrative'] ?? $data['complaint_description'] ?? ''));
+        if ($title === '' && $isOnlineSubmission) {
+            $narrSingle = preg_replace('/\s+/u', ' ', $narrative);
+            if ($narrSingle !== '') {
+                $title = mb_strlen($narrSingle, 'UTF-8') > 80
+                    ? rtrim(mb_substr($narrSingle, 0, 77, 'UTF-8')) . '...'
+                    : $narrSingle;
+            } else {
+                $title = 'Online Resident Complaint';
+            }
+            $data['complaint_title'] = $title;
+        }
 
         if ($date === '' && !empty($data['incident_datetime'])) {
             $rawDt = trim((string) $data['incident_datetime']);
@@ -663,6 +953,33 @@ class Complaint
                 return ['success' => false, 'message' => 'Please remove unsupported control characters from the custom category specification.'];
             }
         }
+        if ($secCatId !== null) {
+            if ((int) $secCatId === (int) $categoryId) {
+                return ['success' => false, 'message' => '2nd complaint category must be different from the primary category.'];
+            }
+            $secStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_id = ?');
+            $secStmt->execute([$secCatId]);
+            $secRow = $secStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$secRow) {
+                return ['success' => false, 'message' => 'Select a valid 2nd complaint category.'];
+            }
+            $isSecOther = (stripos($secRow['category_name'], 'Others') !== false || stripos($secRow['category_name'], 'Iba pa') !== false);
+            $secOtherSpec = trim((string)($data['secondary_other_category_specification'] ?? ''));
+            if ($isSecOther && ($secOtherSpec === '' || mb_strlen($secOtherSpec) > 255 || !ValidationService::text($secOtherSpec))) {
+                return ['success' => false, 'message' => 'Specify valid custom details for the 2nd complaint category under "Others (Please Specify)".'];
+            }
+        }
+        $aiClassificationUsed = in_array($data['ai_classification_used'] ?? null, [true, 1, '1', 'true'], true);
+        if ($aiClassificationUsed) {
+            $aiClassificationVerified = in_array($data['ai_classification_verified'] ?? null, [true, 1, '1', 'true'], true);
+            if (!$aiClassificationVerified) {
+                return [
+                    'success' => false,
+                    'code' => 'AI_CLASSIFICATION_VERIFICATION_REQUIRED',
+                    'message' => 'Human verification required: please confirm that the selected complaint category, case type, and complaint title match the narrative before saving.',
+                ];
+            }
+        }
         if ($title === '') return ['success' => false, 'message' => 'Complaint title is required.'];
         if (mb_strlen($title) > 255) return ['success' => false, 'message' => 'Complaint title must be 255 characters or fewer.'];
         if (!ValidationService::text($title)) return ['success' => false, 'message' => 'Please remove unsupported characters from the complaint title.'];
@@ -683,11 +1000,17 @@ class Complaint
         if ($narrative === '') return ['success' => false, 'message' => 'Incident narrative is required.'];
         if (mb_strlen($narrative) > 15000) return ['success' => false, 'message' => 'Narrative is too long. Use 15,000 characters or fewer.'];
         if (!ValidationService::text($narrative, true)) return ['success' => false, 'message' => 'Please remove unsupported control characters from the incident narrative.'];
-        foreach (['incident_city' => 100, 'incident_barangay' => 100, 'incident_street' => 255, 'incident_purok' => 100, 'incident_landmark' => 255, 'additional_details' => 5000] as $field => $maxLength) {
+        if (isset($data['offense_fine_max']) && trim((string) $data['offense_fine_max']) !== '' && ValidationService::decimal($data['offense_fine_max'], 0.0, 999999999.99) === null) {
+            return ['success' => false, 'message' => 'Estimated claim / fine amount must be a valid non-negative number.'];
+        }
+        if (isset($data['offense_imprisonment_max']) && trim((string) $data['offense_imprisonment_max']) !== '' && ValidationService::decimal($data['offense_imprisonment_max'], 0.0, 100.0) === null) {
+            return ['success' => false, 'message' => 'Imprisonment years must be a valid non-negative number (0 to 100).'];
+        }
+        foreach (['incident_city' => 100, 'incident_barangay' => 100, 'incident_street' => 255, 'incident_purok' => 100, 'incident_landmark' => 255, 'blotter_ref_no' => 100, 'incident_location_details' => 1000, 'requested_resolution' => 5000, 'additional_details' => 5000] as $field => $maxLength) {
             if (mb_strlen(trim((string) ($data[$field] ?? ''))) > $maxLength) {
                 return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $field)) . " must be {$maxLength} characters or fewer."];
             }
-            if (!ValidationService::text(trim((string) ($data[$field] ?? '')), $field === 'additional_details')) {
+            if (!ValidationService::text(trim((string) ($data[$field] ?? '')), in_array($field, ['additional_details', 'requested_resolution', 'incident_location_details'], true))) {
                 return ['success' => false, 'message' => 'Please remove unsupported control characters from ' . str_replace('_', ' ', $field) . '.'];
             }
         }
@@ -801,11 +1124,16 @@ class Complaint
 
     private function resolveOrRegisterResident(array $data, string $prefix): ?int
     {
+        $isOnlineSource = strcasecmp(trim((string) ($data['complaint_source'] ?? '')), 'Online') === 0;
         $resId = filter_var($data[$prefix . '_resident_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
         if ($resId && $resId > 0) {
-            $stmt = $this->conn->prepare('SELECT resident_id FROM residents WHERE resident_id = ?');
+            $stmt = $this->conn->prepare('SELECT resident_id, residency_verified FROM residents WHERE resident_id = ?');
             $stmt->execute([$resId]);
-            if ($stmt->fetchColumn()) {
+            $existingRes = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($existingRes) {
+                if ($isOnlineSource && !empty($existingRes['residency_verified'])) {
+                    return $resId;
+                }
                 $updFields = [];
                 $updParams = [];
 
@@ -867,11 +1195,11 @@ class Complaint
                     $updParams[] = $occupationVal;
                 }
 
-                $homeLat = (isset($data[$prefix . '_latitude']) && $data[$prefix . '_latitude'] !== '') 
-                    ? (float)$data[$prefix . '_latitude'] 
+                $homeLat = (isset($data[$prefix . '_latitude']) && $data[$prefix . '_latitude'] !== '')
+                    ? (float)$data[$prefix . '_latitude']
                     : ((isset($data[$prefix . '_home_latitude']) && $data[$prefix . '_home_latitude'] !== '') ? (float)$data[$prefix . '_home_latitude'] : null);
-                $homeLng = (isset($data[$prefix . '_longitude']) && $data[$prefix . '_longitude'] !== '') 
-                    ? (float)$data[$prefix . '_longitude'] 
+                $homeLng = (isset($data[$prefix . '_longitude']) && $data[$prefix . '_longitude'] !== '')
+                    ? (float)$data[$prefix . '_longitude']
                     : ((isset($data[$prefix . '_home_longitude']) && $data[$prefix . '_home_longitude'] !== '') ? (float)$data[$prefix . '_home_longitude'] : null);
                 if ($homeLat !== null && $homeLng !== null) {
                     $updFields[] = "home_latitude = ?";
@@ -926,14 +1254,19 @@ class Complaint
             $isTenant = 2;
         }
 
-        $residencyVerified = isset($data[$prefix . '_residency_verified']) ? (!empty($data[$prefix . '_residency_verified']) ? 1 : 0) : 1;
+        $residencyVerified = $isOnlineSource
+            ? 0
+            : (isset($data[$prefix . '_residency_verified']) ? (!empty($data[$prefix . '_residency_verified']) ? 1 : 0) : 1);
 
         // Check if an existing profile matches this name
-        $findStmt = $this->conn->prepare('SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
+        $findStmt = $this->conn->prepare('SELECT resident_id, residency_verified FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
         $findStmt->execute([$firstName, $lastName]);
-        $existingId = $findStmt->fetchColumn();
-        if ($existingId) {
-            $existingId = (int)$existingId;
+        $existingMatch = $findStmt->fetch(PDO::FETCH_ASSOC);
+        if ($existingMatch) {
+            $existingId = (int)$existingMatch['resident_id'];
+            if ($isOnlineSource && !empty($existingMatch['residency_verified'])) {
+                return $existingId;
+            }
             $updFields = [];
             $updParams = [];
             if ($address !== null && $address !== '') {
@@ -971,11 +1304,11 @@ class Complaint
                 $updFields[] = "occupation = ?";
                 $updParams[] = $occupation;
             }
-            $homeLat = (isset($data[$prefix . '_latitude']) && $data[$prefix . '_latitude'] !== '') 
-                ? (float)$data[$prefix . '_latitude'] 
+            $homeLat = (isset($data[$prefix . '_latitude']) && $data[$prefix . '_latitude'] !== '')
+                ? (float)$data[$prefix . '_latitude']
                 : ((isset($data[$prefix . '_home_latitude']) && $data[$prefix . '_home_latitude'] !== '') ? (float)$data[$prefix . '_home_latitude'] : null);
-            $homeLng = (isset($data[$prefix . '_longitude']) && $data[$prefix . '_longitude'] !== '') 
-                ? (float)$data[$prefix . '_longitude'] 
+            $homeLng = (isset($data[$prefix . '_longitude']) && $data[$prefix . '_longitude'] !== '')
+                ? (float)$data[$prefix . '_longitude']
                 : ((isset($data[$prefix . '_home_longitude']) && $data[$prefix . '_home_longitude'] !== '') ? (float)$data[$prefix . '_home_longitude'] : null);
             if ($homeLat !== null && $homeLng !== null) {
                 $updFields[] = "home_latitude = ?";
@@ -994,11 +1327,11 @@ class Complaint
         // Insert new resident record automatically
         $isNonTumana = ($isTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0 || ($address && stripos($address, 'tumana') === false && stripos($address, 'marikina') !== false));
         $calcBarangay = $isNonTumana ? 'Outside Tumana' : 'Tumana';
-        $homeLat = (isset($data[$prefix . '_latitude']) && $data[$prefix . '_latitude'] !== '') 
-            ? (float)$data[$prefix . '_latitude'] 
+        $homeLat = (isset($data[$prefix . '_latitude']) && $data[$prefix . '_latitude'] !== '')
+            ? (float)$data[$prefix . '_latitude']
             : ((isset($data[$prefix . '_home_latitude']) && $data[$prefix . '_home_latitude'] !== '') ? (float)$data[$prefix . '_home_latitude'] : null);
-        $homeLng = (isset($data[$prefix . '_longitude']) && $data[$prefix . '_longitude'] !== '') 
-            ? (float)$data[$prefix . '_longitude'] 
+        $homeLng = (isset($data[$prefix . '_longitude']) && $data[$prefix . '_longitude'] !== '')
+            ? (float)$data[$prefix . '_longitude']
             : ((isset($data[$prefix . '_home_longitude']) && $data[$prefix . '_home_longitude'] !== '') ? (float)$data[$prefix . '_home_longitude'] : null);
 
         $ins = $this->conn->prepare("
@@ -1340,6 +1673,15 @@ class Complaint
             }
         }
 
+        $capType = strtolower(trim((string) ($data['party_capacity_type'] ?? '')));
+        $allowEntity = !empty($data['party_is_juridical']) || !empty($data['party_is_government']) || in_array($capType, ['juridical', 'government'], true);
+        if (($pErr = ValidationService::validatePartyPrefix($data, 'complainant', $allowEntity)) !== null) {
+            return ['success' => false, 'message' => $pErr];
+        }
+        if (($pErr = ValidationService::validatePartyPrefix($data, 'respondent', $allowEntity)) !== null) {
+            return ['success' => false, 'message' => $pErr];
+        }
+
         // Additional parties validation: all additional parties with resident ID must exist
         if (!empty($data['party_resident_ids']) && is_array($data['party_resident_ids'])) {
             $types = $data['party_types'] ?? [];
@@ -1372,22 +1714,30 @@ class Complaint
      * Evaluates dispute context against Katarungang Pambarangay statutory exclusions
      * under RA 7160 §§408, 409, 412 and relevant DILG guidelines.
      */
-    public function validateJurisdictionInput(array $data): array
+    public function validateJurisdictionInput(array &$data): array
     {
         require_once __DIR__ . '/../services/MediationDeadlineService.php';
 
-        if (empty($data['jurisdiction_screened'])) {
+        $isOnlineSubmission = strcasecmp(trim((string) ($data['complaint_source'] ?? '')), 'Online') === 0;
+        $hasManualScreening = !empty($data['jurisdiction_screened']);
+        if (!$hasManualScreening && !$isOnlineSubmission) {
             return [
                 'success' => false,
                 'message' => 'Complete the preliminary jurisdiction and eligibility screen before submitting the complaint.'
             ];
         }
+        $onlineAdvisoryNotes = [];
 
         $disputeContext = [];
 
         // 1. Explicit statutory exclusion flags passed from UI / API
         $disputeContext['party_is_government']        = !empty($data['party_is_government']);
-        $disputeContext['party_is_public_officer']    = !empty($data['party_is_public_officer']) || !empty($data['involves_public_officer_official_capacity']);
+        $capacityType = strtolower(trim((string) ($data['party_capacity_type'] ?? '')));
+        $disputeContext['party_is_juridical']         = !empty($data['party_is_juridical']) || $capacityType === 'juridical';
+        if ($capacityType === 'government') {
+            $disputeContext['party_is_government'] = true;
+        }
+        $disputeContext['party_is_public_officer']    = !empty($data['party_is_public_officer']) || !empty($data['involves_public_officer_official_capacity']) || $capacityType === 'public_officer';
         $disputeContext['offense_imprisonment_max']   = (float) ($data['offense_imprisonment_max'] ?? 0);
         $disputeContext['offense_fine_max']           = (float) ($data['offense_fine_max'] ?? 0);
         if (array_key_exists('has_private_offended_party', $data)) {
@@ -1450,6 +1800,20 @@ class Complaint
             }
         }
 
+        // 2a. Walk-in / inline Non-Resident Respondent venue check (RA 7160 §409)
+        $respIsNonResident = strcasecmp(trim((string) ($data['respondent_purok'] ?? '')), 'Non-Resident') === 0
+            || (int) ($data['respondent_is_tenant'] ?? 0) === 2;
+        if ($respIsNonResident && empty($data['respondent_kp_jurisdiction_exception'])) {
+            if (!$isOnlineSubmission || $hasManualScreening) {
+                return [
+                    'success' => false,
+                    'code'    => 'KP_VENUE_NON_RESIDENT_RESPONDENT',
+                    'message' => 'RA 7160 §409: The respondent is a non-resident of Barangay Tumana. Confirm a §409(c/d) exception (dispute involves real property or workplace/school in Tumana) or advise filing in the respondent\'s barangay.',
+                ];
+            }
+            $onlineAdvisoryNotes[] = 'Non-resident respondent selected — LISO to verify RA 7160 §409 venue exception during review.';
+        }
+
         // 2b. Safe Spaces Act (RA 11313) Catcalling/Whistling mandatory 1st Offense verification
         $catIdCheck = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT);
         if ($catIdCheck) {
@@ -1457,26 +1821,39 @@ class Complaint
             $cStmt->execute([$catIdCheck]);
             $catNameStr = strtolower((string)($cStmt->fetchColumn() ?: ''));
             if (str_contains($catNameStr, 'safe spaces') || str_contains($catNameStr, 'catcalling') || str_contains($catNameStr, '11313')) {
-                if (!empty($data['is_repeat_offense_vawc'])) {
-                    return [
-                        'success' => false,
-                        'code'    => 'SAFE_SPACES_REPEAT_VAWC_PNP',
-                        'message' => 'RA 11313 §11: 2nd and 3rd offenses under the Safe Spaces Act fall outside Katarungang Pambarangay conciliation and must be routed directly to the Barangay VAWC Desk or PNP WCPD.',
-                    ];
-                }
-                if (empty($data['is_first_offense_catcalling'])) {
-                    return [
-                        'success' => false,
-                        'code'    => 'SAFE_SPACES_FIRST_OFFENSE_REQUIRED',
-                        'message' => 'Mandatory toggle required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed under Barangay jurisdiction (2nd/3rd offenses route to VAWC/PNP).',
-                    ];
+                if (!$isOnlineSubmission || $hasManualScreening) {
+                    if (!empty($data['is_repeat_offense_vawc'])) {
+                        return [
+                            'success' => false,
+                            'code'    => 'SAFE_SPACES_REPEAT_VAWC_PNP',
+                            'message' => 'RA 11313 §11: 2nd and 3rd offenses under the Safe Spaces Act fall outside Katarungang Pambarangay conciliation and must be routed directly to the Barangay VAWC Desk or PNP WCPD.',
+                        ];
+                    }
+                    if (empty($data['is_first_offense_catcalling'])) {
+                        return [
+                            'success' => false,
+                            'code'    => 'SAFE_SPACES_FIRST_OFFENSE_REQUIRED',
+                            'message' => 'Mandatory toggle required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed under Barangay jurisdiction (2nd/3rd offenses route to VAWC/PNP).',
+                        ];
+                    }
+                } else {
+                    $onlineAdvisoryNotes[] = 'Safe Spaces Act indicator detected — LISO to verify offense count / VAWC routing during review.';
                 }
             }
         }
 
         // 3. Real property check: category 6 (Property and Rental Disputes)
         $categoryId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT);
-        if ($categoryId === 6) {
+        $isRealPropertyCategory = ($categoryId === 6)
+            || (!empty($catNameStr) && (
+                str_contains($catNameStr, 'lease')
+                || str_contains($catNameStr, 'rental')
+                || str_contains($catNameStr, 'boundary')
+                || str_contains($catNameStr, 'easement')
+                || str_contains($catNameStr, 'real property')
+                || str_contains($catNameStr, 'usurpation')
+            ));
+        if ($isRealPropertyCategory) {
             $incidentCity = trim((string)($data['incident_city'] ?? ''));
             if ($incidentCity !== '' && stripos($incidentCity, 'Marikina') === false) {
                 $disputeContext['property_in_diff_lgu'] = true;
@@ -1494,15 +1871,27 @@ class Complaint
 
             if ($isDamagesOnlyExclusion && $hasBlotterAck) {
                 // Permitted as Blotter Reference Only
+            } elseif (!$isOnlineSubmission || $hasManualScreening) {
+                return [
+                    'success'           => false,
+                    'code'              => 'KP_JURISDICTION_EXCLUDED',
+                    'message'           => 'This dispute cannot be accepted under Katarungang Pambarangay: ' . implode(' ', $eval['exclusion_grounds']),
+                    'exclusion_grounds' => $eval['exclusion_grounds'],
+                    'evaluation'        => $eval,
+                ];
             } else {
-            return [
-                'success'           => false,
-                'code'              => 'KP_JURISDICTION_EXCLUDED',
-                'message'           => 'This dispute cannot be accepted under Katarungang Pambarangay: ' . implode(' ', $eval['exclusion_grounds']),
-                'exclusion_grounds' => $eval['exclusion_grounds'],
-                'evaluation'        => $eval,
-            ];
+                $onlineAdvisoryNotes[] = 'Pending LISO KP jurisdiction review: ' . implode(' ', $eval['exclusion_grounds']);
             }
+        }
+
+        if ($isOnlineSubmission && !$hasManualScreening) {
+            $reviewNote = 'Submitted online by resident — Pending LISO preliminary jurisdiction & eligibility review.';
+            $mergedNotes = trim(implode("\n", array_filter(array_merge(
+                [$reviewNote],
+                $onlineAdvisoryNotes,
+                [trim((string) ($data['screening_notes'] ?? ''))]
+            ))));
+            $data['screening_notes'] = mb_substr($mergedNotes, 0, 2000);
         }
 
         return [
@@ -1533,16 +1922,18 @@ class Complaint
             throw new InvalidArgumentException('Screening notes must be 2,000 characters or fewer.');
         }
 
-        $stmt = $this->conn->prepare(
-            'INSERT INTO complaint_intake_screenings (
-                complaint_id, party_is_government, party_is_public_officer,
+        $hasAiJsonCol = $this->hasIntakeScreeningColumn('ai_suggestion_json');
+        $aiSuggestionJson = isset($data['ai_suggestion_json']) && trim((string) $data['ai_suggestion_json']) !== ''
+            ? (string) $data['ai_suggestion_json']
+            : null;
+
+        $cols = 'complaint_id, party_is_government, party_is_public_officer,
                 parties_in_diff_lgu, property_in_diff_lgu, accused_under_detention,
                 habeas_corpus_needed, provisional_remedy_needed, prescription_risk,
                 indigenous_community, offense_imprisonment_max, offense_fine_max,
-                has_private_offended_party, duplicate_acknowledged, screening_notes, screened_by
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                party_is_government = VALUES(party_is_government),
+                has_private_offended_party, duplicate_acknowledged, screening_notes, screened_by';
+        $placeholders = '?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?';
+        $updates = 'party_is_government = VALUES(party_is_government),
                 party_is_public_officer = VALUES(party_is_public_officer),
                 parties_in_diff_lgu = VALUES(parties_in_diff_lgu),
                 property_in_diff_lgu = VALUES(property_in_diff_lgu),
@@ -1557,9 +1948,21 @@ class Complaint
                 duplicate_acknowledged = VALUES(duplicate_acknowledged),
                 screening_notes = VALUES(screening_notes),
                 screened_by = VALUES(screened_by),
-                screened_at = CURRENT_TIMESTAMP'
+                screened_at = CURRENT_TIMESTAMP';
+        if ($hasAiJsonCol) {
+            $cols .= ', ai_suggestion_json';
+            $placeholders .= ', ?';
+            $updates .= ', ai_suggestion_json = COALESCE(VALUES(ai_suggestion_json), ai_suggestion_json)';
+        }
+
+        $stmt = $this->conn->prepare(
+            "INSERT INTO complaint_intake_screenings ({$cols}) VALUES ({$placeholders}) ON DUPLICATE KEY UPDATE {$updates}"
         );
-        $stmt->execute([
+        $isOnlineUnscreened = strcasecmp(trim((string) ($data['complaint_source'] ?? '')), 'Online') === 0
+            && empty($data['jurisdiction_screened']);
+        $screenedByUserId = $isOnlineUnscreened ? null : ($_SESSION['user_id'] ?? null);
+
+        $execParams = [
             $complaintId,
             $bool('party_is_government'),
             $bool('party_is_public_officer'),
@@ -1575,12 +1978,29 @@ class Complaint
             $privateOffended,
             $bool('duplicate_acknowledged'),
             $notes,
-            $_SESSION['user_id'] ?? null,
-        ]);
+            $screenedByUserId,
+        ];
+        if ($hasAiJsonCol) {
+            $execParams[] = $aiSuggestionJson;
+        }
+        $stmt->execute($execParams);
     }
 
-    private function findPotentialDuplicates(array $data, ?int $excludeComplaintId = null): array
+    public function findPotentialDuplicates(array $data, ?int $excludeComplaintId = null): array
     {
+        $hasSourceCol = $this->hasComplaintColumn('complaint_source');
+        $sourceSelect = $hasSourceCol ? 'c.complaint_source,' : "'Walk-in' AS complaint_source,";
+        $refNumber = trim((string) ($data['reference_id'] ?? ($data['complaint_number'] ?? '')));
+        if ($refNumber !== '') {
+            $refSql = "SELECT c.complaint_id, c.complaint_number, c.complaint_title, c.status, c.incident_date, c.created_at, {$sourceSelect} cs.case_number, cs.case_status FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id WHERE c.complaint_number = ? AND c.status NOT IN ('Archived', 'Rejected') LIMIT 5";
+            $refStmt = $this->conn->prepare($refSql);
+            $refStmt->execute([$refNumber]);
+            $refRows = $refStmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($refRows !== []) {
+                return $refRows;
+            }
+        }
+
         $complainantId = filter_var($data['complainant_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $respondentId = filter_var($data['respondent_resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         if (!$complainantId) {
@@ -1599,12 +2019,13 @@ class Complaint
             return [];
         }
 
-        $sql = "SELECT c.complaint_id, c.complaint_number, c.complaint_title, c.status, c.incident_date
+        $sql = "SELECT c.complaint_id, c.complaint_number, c.complaint_title, c.status, c.incident_date, c.created_at, {$sourceSelect} cs.case_number, cs.case_status
                 FROM complaints c
                 INNER JOIN complaint_parties complainant ON complainant.complaint_id = c.complaint_id
                     AND complainant.resident_id = ? AND complainant.party_type = 'Complainant'
                 INNER JOIN complaint_parties respondent ON respondent.complaint_id = c.complaint_id
                     AND respondent.resident_id = ? AND respondent.party_type = 'Respondent'
+                LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
                 WHERE c.status NOT IN ('Archived', 'Dismissed', 'Rejected')";
         $params = [(int) $complainantId, (int) $respondentId];
         if ($excludeComplaintId !== null) {
@@ -1615,6 +2036,76 @@ class Complaint
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function linkWalkinToExisting(int $complaintId, int $staffUserId, array $data = []): array
+    {
+        if ($complaintId < 1 || $staffUserId < 1) {
+            return ['success' => false, 'message' => 'A valid complaint and authenticated officer are required.'];
+        }
+
+        $walkinNotes = trim((string) ($data['walkin_notes'] ?? ($data['notes'] ?? '')));
+        if (mb_strlen($walkinNotes) > 2000) {
+            return ['success' => false, 'message' => 'Walk-in follow-up notes must be 2,000 characters or fewer.'];
+        }
+
+        $manageTx = !$this->conn->inTransaction();
+        try {
+            if ($manageTx) {
+                $this->conn->beginTransaction();
+            }
+
+            $stmt = $this->conn->prepare("SELECT complaint_id, complaint_number, complaint_title, status, additional_details FROM complaints WHERE complaint_id = ? LIMIT 1 FOR UPDATE");
+            $stmt->execute([$complaintId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row || in_array((string) $row['status'], ['Archived', 'Rejected'], true)) {
+                if ($manageTx && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
+                return ['success' => false, 'message' => 'That complaint cannot be linked in its current status.'];
+            }
+
+            $stamp = date('Y-m-d H:i');
+            $noteEntry = "[Walk-in Follow-up Linked {$stamp}]" . ($walkinNotes !== '' ? ": {$walkinNotes}" : ' Complainant appeared in person for existing submission.');
+            $mergedDetails = trim((string) ($row['additional_details'] ?? ''));
+            $mergedDetails = $mergedDetails !== '' ? ($mergedDetails . "\n" . $noteEntry) : $noteEntry;
+
+            $sets = ['additional_details = ?', 'updated_at = CURRENT_TIMESTAMP'];
+            $params = [mb_substr($mergedDetails, 0, 10000)];
+            if ($this->hasComplaintColumn('walkin_verified_at')) {
+                $sets[] = 'walkin_verified_at = CURRENT_TIMESTAMP';
+            }
+            if ($this->hasComplaintColumn('walkin_verified_by')) {
+                $sets[] = 'walkin_verified_by = ?';
+                $params[] = $staffUserId;
+            }
+            if ($this->hasComplaintColumn('walkin_notes') && $walkinNotes !== '') {
+                $sets[] = 'walkin_notes = ?';
+                $params[] = $walkinNotes;
+            }
+            $params[] = $complaintId;
+
+            $this->conn->prepare('UPDATE complaints SET ' . implode(', ', $sets) . ' WHERE complaint_id = ?')->execute($params);
+
+            if ($manageTx) {
+                $this->conn->commit();
+            }
+
+            return [
+                'success' => true,
+                'complaint_id' => $complaintId,
+                'complaint_number' => $row['complaint_number'],
+                'status' => $row['status'],
+                'message' => 'Walk-in visit linked to existing complaint ' . ($row['complaint_number'] ?: "#{$complaintId}") . ' without creating a duplicate.',
+                'redirect_url' => '../complaints/complaint-details.php?id=' . $complaintId
+            ];
+        } catch (Throwable $e) {
+            if ($manageTx && $this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('linkWalkinToExisting error: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to link the walk-in visit right now.'];
+        }
     }
 
     private function findResidentIdByName(string $firstName, string $lastName): ?int
@@ -1647,7 +2138,7 @@ class Complaint
 
         // Check existing resident by full name
         $lookup = $this->conn->prepare("
-            SELECT resident_id FROM residents 
+            SELECT resident_id FROM residents
             WHERE TRIM(CONCAT_WS(' ', first_name, last_name)) = ?
                OR TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) = ?
                OR TRIM(CONCAT(last_name, ', ', first_name)) = ?

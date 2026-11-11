@@ -31,6 +31,7 @@ class HearingMinutes
         if (!$row) {
             return false;
         }
+        $row['carryover'] = $this->getCarryoverContext($hearingId, (int) $row['case_id'], (string) ($row['hearing_type'] ?? 'Mediation'));
 
         // Add dual-compatibility aliases for frontend binding
         $row['parties_identified'] = (int) ($row['identity_verified'] ?? 0);
@@ -44,6 +45,106 @@ class HearingMinutes
         $row['duration_exceed_reason'] = $row['outcome_remarks'] ?? '';
 
         return $row;
+    }
+
+    public function getCarryoverContext(int $hearingId, int $caseId, string $hearingType = 'Mediation'): array
+    {
+        $empty = [
+            'carried_from_stage' => '',
+            'carried_from_id' => null,
+            'prior_summary' => '',
+            'main_dispute_identified' => '',
+            'previous_proposal' => '',
+            'agreements_action_items' => '',
+            'unresolved_issues' => '',
+            'agenda_topics' => '',
+        ];
+        if ($caseId < 1) {
+            return $empty;
+        }
+
+        try {
+            // 1. Check most recent prior hearing minutes in the same case (before current hearing date or ID)
+            $curDateStmt = $this->conn->prepare('SELECT hearing_date FROM hearings WHERE hearing_id = ? LIMIT 1');
+            $curDateStmt->execute([$hearingId]);
+            $curDate = $curDateStmt->fetchColumn() ?: null;
+
+            $sql = "
+                SELECT hm.*, h.hearing_type, h.hearing_date
+                FROM hearing_minutes hm
+                INNER JOIN hearings h ON h.hearing_id = hm.hearing_id
+                WHERE hm.case_id = ?
+                  AND hm.hearing_id != ?
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+            ";
+            $params = [$caseId, $hearingId];
+            if ($curDate) {
+                $sql .= ' AND (h.hearing_date < ? OR (h.hearing_date = ? AND h.hearing_id < ?))';
+                $params[] = $curDate;
+                $params[] = $curDate;
+                $params[] = $hearingId;
+            }
+            $sql .= ' ORDER BY h.hearing_date DESC, hm.minute_id DESC LIMIT 1';
+            $prevStmt = $this->conn->prepare($sql);
+            $prevStmt->execute($params);
+            $prev = $prevStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($prev) {
+                $latestProposal = trim((string) ($prev['counteroffer'] ?? '')) ?: trim((string) ($prev['new_proposal'] ?? '')) ?: trim((string) ($prev['previous_proposal'] ?? ''));
+                $unresolved = trim((string) ($prev['unresolved_issues'] ?? ''));
+                return [
+                    'carried_from_stage' => (string) ($prev['session_type'] ?: $prev['hearing_type'] ?: 'Prior Session'),
+                    'carried_from_id' => (int) $prev['minute_id'],
+                    'prior_summary' => trim((string) ($prev['settlement_discussion_notes'] ?? '')),
+                    'main_dispute_identified' => trim((string) ($prev['main_dispute_identified'] ?? '')),
+                    'previous_proposal' => $latestProposal,
+                    'agreements_action_items' => trim((string) ($prev['agreements_action_items'] ?? '')),
+                    'unresolved_issues' => $unresolved,
+                    'agenda_topics' => $unresolved !== '' ? ('Continue resolving: ' . $unresolved) : trim((string) ($prev['agenda_topics'] ?? '')),
+                ];
+            }
+
+            // 2. No prior formal hearing minutes yet (e.g., 1st Mediation) -> pull from mandatory Paanyaya minutes + complaint
+            $compStmt = $this->conn->prepare(
+                'SELECT c.complaint_id, c.complaint_title, c.narrative, c.requested_resolution FROM cases cs INNER JOIN complaints c ON c.complaint_id = cs.complaint_id WHERE cs.case_id = ? LIMIT 1'
+            );
+            $compStmt->execute([$caseId]);
+            $comp = $compStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$comp) {
+                return $empty;
+            }
+            $complaintId = (int) $comp['complaint_id'];
+            $pmStmt = $this->conn->prepare('SELECT * FROM paanyaya_minutes WHERE complaint_id = ? ORDER BY minutes_id DESC LIMIT 1');
+            $pmStmt->execute([$complaintId]);
+            $pm = $pmStmt->fetch(PDO::FETCH_ASSOC);
+            if ($pm) {
+                $unresolved = trim((string) ($pm['unresolved_issues'] ?? '')) ?: trim((string) ($pm['session_remarks'] ?? ''));
+                return [
+                    'carried_from_stage' => (string) ($pm['stage_type'] ?? 'Paanyaya'),
+                    'carried_from_id' => (int) $pm['minutes_id'],
+                    'prior_summary' => trim((string) ($pm['discussion_summary'] ?? '')),
+                    'main_dispute_identified' => trim((string) ($pm['main_dispute_identified'] ?? '')) ?: trim((string) ($comp['complaint_title'] ?? '')),
+                    'previous_proposal' => trim((string) ($pm['agreed_terms'] ?? '')) ?: trim((string) ($comp['requested_resolution'] ?? '')),
+                    'agreements_action_items' => '',
+                    'unresolved_issues' => $unresolved,
+                    'agenda_topics' => $unresolved !== '' ? ('Escalated from ' . ($pm['stage_type'] ?? 'Paanyaya') . ': ' . $unresolved) : '',
+                ];
+            }
+
+            return [
+                'carried_from_stage' => 'Complaint Intake',
+                'carried_from_id' => $complaintId,
+                'prior_summary' => trim((string) ($comp['narrative'] ?? '')),
+                'main_dispute_identified' => trim((string) ($comp['complaint_title'] ?? '')),
+                'previous_proposal' => trim((string) ($comp['requested_resolution'] ?? '')),
+                'agreements_action_items' => '',
+                'unresolved_issues' => '',
+                'agenda_topics' => '',
+            ];
+        } catch (Throwable $e) {
+            error_log('HearingMinutes::getCarryoverContext warning: ' . $e->getMessage());
+            return $empty;
+        }
     }
 
     public function getByCase(int $caseId): array
@@ -204,7 +305,8 @@ class HearingMinutes
         $dispute = mb_substr(trim(strip_tags((string) ($data['main_dispute_identified'] ?? $data['dispute_summary'] ?? ''))), 0, 1000);
         $discussion = mb_substr(trim(strip_tags((string) ($data['settlement_discussion_notes'] ?? $data['session_notes'] ?? $data['session_minutes'] ?? ''))), 0, 5000);
         $caucusNotes = mb_substr(trim(strip_tags((string) ($data['caucus_notes'] ?? ''))), 0, 3000);
-        $prevProposal = mb_substr(trim(strip_tags((string) ($data['previous_proposal'] ?? ''))), 0, 3000);
+        $carryover = $this->getCarryoverContext($hearingId, $caseId, (string) ($hearing['hearing_type'] ?? 'Mediation'));
+        $prevProposal = mb_substr(trim(strip_tags((string) ($data['previous_proposal'] ?? $carryover['previous_proposal'] ?? ''))), 0, 3000);
         $newProposal = mb_substr(trim(strip_tags((string) ($data['new_proposal'] ?? ''))), 0, 3000);
         $counteroffer = mb_substr(trim(strip_tags((string) ($data['counteroffer'] ?? $data['counter_offer'] ?? ''))), 0, 3000);
         $additionalEvidence = mb_substr(trim(strip_tags((string) ($data['additional_evidence_notes'] ?? ''))), 0, 3000);
@@ -465,6 +567,20 @@ class HearingMinutes
             // Post-commit triggers for Dismissed, Party Absent, Rescheduled
             if ($outcome === 'Dismissed' && $status === 'Finalized') {
                 $this->generateKp21OnDismissed($caseId, $hearingId, $userId);
+            } elseif ($outcome === 'Arbitration') {
+                try {
+                    require_once __DIR__ . '/../services/KpFormService.php';
+                    (new KpFormService($this->conn))->autoGenerateForEvent('arbitration_agreed', $caseId, $userId);
+                } catch (Throwable $kpErr) {
+                    error_log('HearingMinutes KP Form 14 generation warning: ' . $kpErr->getMessage());
+                }
+            } elseif ($outcome === 'Pending CFA' && $status === 'Finalized') {
+                try {
+                    require_once __DIR__ . '/../services/KpFormService.php';
+                    (new KpFormService($this->conn))->autoGenerateForEvent('conciliation_unsuccessful', $caseId, $userId);
+                } catch (Throwable $kpErr) {
+                    error_log('HearingMinutes CFA generation warning: ' . $kpErr->getMessage());
+                }
             } elseif ($outcome === 'Party Absent') {
                 $this->handlePartyAbsentOutcome($hearing, $data, $userId, $sessionType, $remarks);
             } elseif ($outcome === 'Rescheduled') {
@@ -675,12 +791,15 @@ class HearingMinutes
             ");
             $dlStmt->execute([$caseId, $conveningDeadline]);
 
-            // 4. Generate KP Form 10
-            require_once __DIR__ . '/../services/PDFService.php';
-            (new PDFService())->generateKp10($caseId, $userId, [
-                'venue' => 'Lupon Court Room',
-                'constitution_date' => date('Y-m-d')
-            ], $this->conn);
+            // 4. Generate KP Forms 10, 11, and 12 (when scheduled)
+            require_once __DIR__ . '/../services/KpFormService.php';
+            $kpSvc = new KpFormService($this->conn);
+            $concH = $this->conn->prepare("SELECT hearing_id FROM hearings WHERE case_id = ? AND hearing_type = 'Conciliation' ORDER BY hearing_id DESC LIMIT 1");
+            $concH->execute([$caseId]);
+            $concHearingId = (int) ($concH->fetchColumn() ?: 0) ?: null;
+            $kpSvc->autoGenerateForEvent('refer_to_pangkat', $caseId, $userId ?: 1, [
+                'hearing_id' => $concHearingId,
+            ]);
         } catch (Throwable $e) {
             error_log('transitionToConciliationOnMediationFailure error: ' . $e->getMessage());
         }

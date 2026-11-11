@@ -4,6 +4,7 @@ session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../controllers/AIController.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
@@ -17,11 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 CsrfService::enforceForApiRequest();
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Only authorized personnel may draft hearing minutes.']);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'], $db);
 
 $raw = file_get_contents('php://input', false, null, 0, 30000);
 if ($raw === false || strlen($raw) > 30000) {
@@ -37,10 +35,13 @@ if (!is_array($payload)) {
 }
 
 $hearingId = filter_var($payload['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$complaintId = filter_var($payload['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$stageType = trim((string) ($payload['stage_type'] ?? 'Paanyaya 1'));
 $sourceText = trim((string) ($payload['source_text'] ?? ''));
-if (!$hearingId || mb_strlen($sourceText) < 20 || mb_strlen($sourceText) > 20000) {
+
+if ((!$hearingId && !$complaintId) || mb_strlen($sourceText) < 20 || mb_strlen($sourceText) > 20000) {
     http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Provide a valid hearing and 20 to 20,000 characters of source notes.']);
+    echo json_encode(['success' => false, 'message' => 'Provide a valid session/complaint and 20 to 20,000 characters of source notes.']);
     exit;
 }
 if (!in_array($payload['external_ai_consent'] ?? null, [true, 1, '1', 'true'], true)) {
@@ -55,19 +56,39 @@ if (!AiRequestRateLimit::consume()) {
 }
 
 try {
-    $db = (new Database())->connect();
-    $stmt = $db->prepare('SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, c.case_id, c.case_number FROM hearings h INNER JOIN cases c ON c.case_id = h.case_id WHERE h.hearing_id = ?');
-    $stmt->execute([$hearingId]);
-    $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
-    if (!$hearing) {
-        http_response_code(404);
-        echo json_encode(['success' => false, 'message' => 'Hearing session not found.']);
-        exit;
+    if ($hearingId) {
+        $stmt = $db->prepare('SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, c.case_id, c.case_number FROM hearings h INNER JOIN cases c ON c.case_id = h.case_id WHERE h.hearing_id = ?');
+        $stmt->execute([$hearingId]);
+        $sessionContext = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$sessionContext) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Hearing session not found.']);
+            exit;
+        }
+        $auditModule = 'Hearings';
+        $auditId = $hearingId;
+    } else {
+        $cStmt = $db->prepare('SELECT complaint_id, complaint_number, complaint_title FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt->execute([$complaintId]);
+        $comp = $cStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$comp) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Complaint not found.']);
+            exit;
+        }
+        $sessionContext = [
+            'hearing_type' => in_array($stageType, ['Paanyaya 1', 'Paanyaya 2'], true) ? $stageType : 'Paanyaya 1',
+            'hearing_date' => date('Y-m-d'),
+            'venue' => 'Tanggapan ng Barangay Tumana',
+            'case_number' => $comp['complaint_number'] ?: ('CMP-' . $complaintId),
+        ];
+        $auditModule = 'Paanyaya';
+        $auditId = $complaintId;
     }
 
-    $result = (new AIController())->draftHearingMinutes($hearing, $sourceText);
-    if ($result['success']) {
-        (new AuditService())->log((int) $_SESSION['user_id'], 'Generated AI hearing-minutes draft (review required)', 'Hearings', $hearingId);
+    $result = (new AIController())->draftHearingMinutes($sessionContext, $sourceText);
+    if (!empty($result['success'])) {
+        (new AuditService())->log(agapSessionUserId(), 'Generated AI session-minutes draft (review required)', $auditModule, $auditId);
         echo json_encode($result);
         exit;
     }
@@ -79,4 +100,3 @@ try {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Unable to draft hearing minutes right now.']);
 }
-

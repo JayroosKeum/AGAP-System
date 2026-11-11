@@ -1,4 +1,5 @@
 let users = [];
+let currentUserId = 0;
 
 const esc = (value) => {
     const node = document.createElement('div');
@@ -43,20 +44,35 @@ async function loadUsers() {
     try {
         const data = await request('../../../backend/api/users/list.php');
         users = data.users;
-        document.getElementById('userTable').innerHTML = users.map((user) => `
-            <tr>
+        currentUserId = Number(data.current_user_id || 0);
+        document.getElementById('userTable').innerHTML = users.map((user) => {
+            const uid = Number(user.user_id);
+            const isSelf = currentUserId > 0 && uid === currentUserId;
+            const isPending = Number(user.pending_verification || 0) === 1;
+            const isActive = (user.status || 'Active') === 'Active';
+            const statusLabel = isActive ? 'Active' : (isPending ? 'Pending Verification' : 'Disabled');
+            const statusClass = isActive ? 'status-active' : (isPending ? 'status-pending' : 'status-disabled');
+            const toggleButton = isPending
+                ? `<button type="button" onclick="resendVerificationEmail(${uid})">Resend verification</button>`
+                : (isActive
+                    ? `<button type="button" class="btn-disable" ${isSelf ? 'disabled title="You cannot disable your own account."' : ''} onclick="toggleUserStatus(${uid}, 'Inactive')">Disable</button>`
+                    : `<button type="button" class="btn-enable" onclick="toggleUserStatus(${uid}, 'Active')">Enable</button>`);
+
+            return `
+            <tr class="${!isActive && !isPending ? 'row-user-disabled' : ''}">
                 <td>${esc(user.first_name)} ${esc(user.last_name)}</td>
                 <td>${esc(user.username)}</td>
                 <td>${esc(user.email)}</td>
                 <td>${esc(user.contact_no || '—')}</td>
                 <td><span class="role">${esc(user.role_name)}</span></td>
-                <td>${esc(user.status || 'Active')}</td>
+                <td><span class="user-status-badge ${statusClass}">${esc(statusLabel)}</span></td>
                 <td class="action-buttons">
-                    ${user.status === 'Inactive' ? `<button type="button" onclick="resendVerificationEmail(${Number(user.user_id)})">Resend verification</button>` : ''}
-                    <button type="button" onclick="editUser(${Number(user.user_id)})">Edit</button>
-                    <button type="button" class="delete" onclick="deleteUser(${Number(user.user_id)})">Delete</button>
+                    ${toggleButton}
+                    <button type="button" onclick="editUser(${uid})">Edit</button>
+                    <button type="button" class="delete" ${isSelf ? 'disabled title="You cannot delete your own account."' : ''} onclick="deleteUser(${uid})">Delete</button>
                 </td>
-            </tr>`).join('') || '<tr><td colspan="7">No users found.</td></tr>';
+            </tr>`;
+        }).join('') || '<tr><td colspan="7">No users found.</td></tr>';
     } catch (error) {
         document.getElementById('userTable').innerHTML = `<tr><td colspan="7">${esc(error.message)}</td></tr>`;
     }
@@ -184,6 +200,29 @@ function validPhilippinePhone(value) {
         digits = digits.slice(1);
     }
     return /^9\d{9}$/.test(digits) || /^(?:2\d{8}|[3-8]\d{8,9})$/.test(digits);
+}
+
+async function toggleUserStatus(id, targetStatus) {
+    const user = users.find((item) => Number(item.user_id) === Number(id));
+    const displayName = user ? `${user.first_name} ${user.last_name} (@${user.username})` : `User #${id}`;
+    const actionWord = targetStatus === 'Inactive' ? 'Disable' : 'Enable';
+    const warningText = targetStatus === 'Inactive'
+        ? `Disable account for ${displayName}? They will not be able to sign in until re-enabled.`
+        : `Re-enable account for ${displayName}? They will regain sign-in access.`;
+
+    if (!confirm(warningText)) return;
+
+    try {
+        const result = await request('../../../backend/api/users/status.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: Number(id), status: targetStatus })
+        });
+        window.agapNotify?.(result.message || `${actionWord}d user account.`, 'success', 'User Management');
+        await loadUsers();
+    } catch (error) {
+        window.agapNotify?.(error.message, 'error', 'User Management');
+    }
 }
 
 async function deleteUser(id) {

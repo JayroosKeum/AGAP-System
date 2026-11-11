@@ -88,37 +88,102 @@
 
     <!-- Top KPI Highlights Grid -->
     <div class="stats-grid" id="statsGrid" aria-live="polite">
-        <article class="stat-card" data-target-stat="all-cases" role="button" tabindex="0" title="Click to view all cases in Case Register">
-            <p id="totalCasesLabel">Total cases</p>
-            <h2 id="totalCases">—</h2>
-            <span id="totalCasesSub">All recorded cases</span>
+        <article class="stat-card" data-target-stat="pending-review">
+            <p id="pendingReviewLabel">Pending screening</p>
+            <h2 id="pendingReview">-</h2>
+            <span id="pendingReviewSub">Needs jurisdiction check</span>
         </article>
-        <article class="stat-card" data-target-stat="hearings-today" role="button" tabindex="0" title="Click to view today's scheduled hearings">
-            <p id="hearingsTodayLabel">Hearings</p>
-            <h2 id="hearingsToday">—</h2>
+        <article class="stat-card" data-target-stat="hearings-today">
+            <p id="hearingsTodayLabel">Hearings today</p>
+            <h2 id="hearingsToday">-</h2>
             <span id="hearingsTodaySub">Scheduled sessions</span>
         </article>
-        <article class="stat-card" data-target-stat="active-mediation" role="button" tabindex="0" title="Click to filter active mediation and conciliation cases">
-            <p id="activeMediationsLabel">Active mediation</p>
-            <h2 id="activeMediations">—</h2>
-            <span id="activeMediationsSub">Mediation or conciliation cases</span>
-        </article>
-        <article class="stat-card" data-target-stat="hearings-week" role="button" tabindex="0" title="Click to view scheduled hearings for this week">
+        <article class="stat-card" data-target-stat="hearings-week">
             <p id="hearingsThisWeekLabel">Hearings in period</p>
-            <h2 id="hearingsThisWeek">—</h2>
+            <h2 id="hearingsThisWeek">-</h2>
             <span id="hearingsThisWeekSub">Next 7 calendar days</span>
         </article>
-        <article class="stat-card" data-target-stat="paanyaya" role="button" tabindex="0" title="Click to view pre-docketed Paanyaya invitations">
+        <article class="stat-card" data-target-stat="paanyaya">
             <p id="paanyayaComplaintsLabel">Paanyaya</p>
-            <h2 id="paanyayaComplaints">—</h2>
+            <h2 id="paanyayaComplaints">-</h2>
             <span id="paanyayaComplaintsSub">Undocketed complaints</span>
         </article>
-        <article class="stat-card" data-target-stat="settled-cases" role="button" tabindex="0" title="Click to filter cases resolved through settlement">
-            <p id="settledCasesLabel">Settled cases</p>
-            <h2 id="settledCases">—</h2>
-            <span id="settledCasesSub">Resolved through settlement</span>
-        </article>
     </div>
+
+    <!-- Unified Bento Visual Summary (Replaces old duplicate Total / Mediation / Settled KPI cards) -->
+    <section class="bento-visual-grid" aria-label="Case Stage and Settlement Visual Summary">
+        <div class="bento-card">
+            <div class="bento-card-head">
+                <div>
+                    <h3>Case Stage Breakdown</h3>
+                    <span id="totalCasesSub">All recorded cases</span>
+                </div>
+                <div class="bento-big-number" id="totalCases">-</div>
+                <span id="bentoAdminStageTotal" hidden aria-hidden="true">-</span>
+            </div>
+            <div class="stage-progress-track" aria-hidden="true">
+                <div class="stage-seg-med" id="bentoAdminSegMed" style="width: 30%;"></div>
+                <div class="stage-seg-con" id="bentoAdminSegCon" style="width: 25%;"></div>
+                <div class="stage-seg-set" id="bentoAdminSegSet" style="width: 35%;"></div>
+                <div class="stage-seg-cfa" id="bentoAdminSegCfa" style="width: 10%;"></div>
+            </div>
+            <div class="bento-stage-pills">
+                <div class="bento-mini-pill">
+                    <span><i class="bento-dot" style="background:#102b2d;"></i>Mediation</span>
+                    <strong id="activeMediations">0</strong>
+                    <span id="bentoAdminMedCount" hidden aria-hidden="true">0</span>
+                </div>
+                <div class="bento-mini-pill">
+                    <span><i class="bento-dot" style="background:#1b6553;"></i>Conciliation</span>
+                    <strong id="bentoAdminConCount">0</strong>
+                </div>
+                <div class="bento-mini-pill">
+                    <span><i class="bento-dot" style="background:#22c55e;"></i>Settled</span>
+                    <strong id="settledCases">0</strong>
+                    <span id="bentoAdminSetCount" hidden aria-hidden="true">0</span>
+                </div>
+                <div class="bento-mini-pill">
+                    <span><i class="bento-dot" style="background:#f59e0b;"></i>Archived / Other</span>
+                    <strong id="bentoAdminCfaCount">0</strong>
+                    <span id="archivedCases" hidden aria-hidden="true">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bento-right-stack">
+            <div class="bento-card">
+                <div class="bento-card-head">
+                    <div>
+                        <h3>Peak Hearing Schedule</h3>
+                        <span>Tue (Mediation) &amp; Wed (Pangkat)</span>
+                    </div>
+                </div>
+                <div class="weekday-bars" id="bentoAdminWeekdayBars">
+                    <div class="weekday-bar-col"><div class="weekday-bar-fill" style="height:24%;"></div><span class="weekday-bar-label">Mon</span></div>
+                    <div class="weekday-bar-col is-peak"><div class="weekday-bar-fill" style="height:86%;"></div><span class="weekday-bar-label">Tue</span></div>
+                    <div class="weekday-bar-col is-duty"><div class="weekday-bar-fill" style="height:70%;"></div><span class="weekday-bar-label">Wed</span></div>
+                    <div class="weekday-bar-col"><div class="weekday-bar-fill" style="height:36%;"></div><span class="weekday-bar-label">Thu</span></div>
+                    <div class="weekday-bar-col"><div class="weekday-bar-fill" style="height:28%;"></div><span class="weekday-bar-label">Fri</span></div>
+                </div>
+            </div>
+
+            <div class="bento-card">
+                <div class="bento-card-head">
+                    <div>
+                        <h3>Amicable Settlement Rate</h3>
+                        <span id="bentoAdminGaugeSub">Live resolution tracking</span>
+                    </div>
+                    <div class="gauge-wrap">
+                        <svg width="88" height="48" viewBox="0 0 100 54" aria-hidden="true">
+                            <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#e6ecea" stroke-width="10" stroke-linecap="round"></path>
+                            <path id="bentoAdminGaugeArc" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#1b6553" stroke-width="10" stroke-linecap="round" stroke-dasharray="126" stroke-dashoffset="42"></path>
+                        </svg>
+                        <div class="gauge-pct" id="bentoAdminGaugePct">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <p id="dashboardMessage" class="dashboard-message" role="status"></p>
 
@@ -271,28 +336,28 @@
 
             <!-- 2. Announcements & Advisories Card -->
             <div class="dash-aside-card">
-                <div class="aside-card-header">
+                <div class="aside-card-header" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="display:inline-flex;color:#1e293b;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></span>
                         <div>
-                            <h3 class="aside-card-title">Announcements</h3>
+                            <h3 class="aside-card-title">Announcements &amp; News</h3>
                             <p class="aside-card-sub">Barangay Tumana bulletin</p>
                         </div>
                     </div>
+                    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true) || in_array(trim((string) ($_SESSION['role_name'] ?? '')), ['Administrator', 'Secretary', 'Lupon Clerk'], true)): ?>
+                        <button type="button" id="btnOpenStaffNewsManager" class="staff-news-manage-btn">Manage News</button>
+                    <?php endif; ?>
                 </div>
                 <div class="dash-aside-body" style="padding: 14px 16px;">
                     <div class="dash-aside-bulletin">
                         <strong>Monthly Council Meeting</strong>
                         <p>Katarungang Pambarangay monthly case presentation takes place on the 1st Monday of every month.</p>
-                        <button type="button" id="btnBulletinCouncilBrief" style="margin-top: 8px; width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 12px; border-radius: 7px; border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.15s ease;">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                            Print 1-Page Council Meeting Brief
-                        </button>
                     </div>
                     <div class="dash-aside-bulletin" style="margin-top: 12px; border-top: 1px dashed #e2e8f0; padding-top: 12px;">
                         <strong>Lupon Duty Attendance</strong>
                         <p>Lupon members are required to report in-person on their assigned weekly duty days in Settings.</p>
                     </div>
+                    <div id="staffBulletinNewsList" class="dash-aside-news-feed"></div>
                 </div>
             </div>
         </aside>
@@ -418,4 +483,16 @@
     <span id="cfaCases" style="display:none;" aria-hidden="true"></span>
     <span id="deadlinesDue" style="display:none;" aria-hidden="true"></span>
     <div id="mediationDeadlines" style="display:none;" aria-hidden="true"></div>
+
+    <?php
+    if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true) || in_array(trim((string) ($_SESSION['role_name'] ?? '')), ['Administrator', 'Secretary', 'Lupon Clerk'], true)) {
+        include __DIR__ . '/news-manager-modal.php';
+    }
+    ?>
+    <script src="../../assets/js/news-widget.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/news-widget.js'); ?>"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            window.AgapNewsWidget?.initStaffBulletin();
+        });
+    </script>
 </section>

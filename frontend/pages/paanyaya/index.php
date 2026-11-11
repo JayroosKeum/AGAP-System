@@ -2,8 +2,11 @@
 
 session_start();
 
+require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/../../../backend/middleware/rbac.php';
+$rbacDb = (new Database())->connect();
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2, 3, 4], true)) {
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO'], $rbacDb)) {
     header('Location: ../auth/login.php');
     exit;
 }
@@ -369,9 +372,6 @@ include '../../layouts/header.php';
     .paanyaya-parties-grid {
         grid-template-columns: 1fr;
     }
-}
-    display: flex;
-    flex-direction: column;
 }
 .modal-card-large {
     max-width: 920px;

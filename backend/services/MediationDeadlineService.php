@@ -920,6 +920,7 @@ class MediationDeadlineService
      *   dispute resolution mechanism are also excluded.
      *
      * @param array $disputeContext  Associative array describing the dispute. Keys:
+     *   - party_is_juridical        (bool)  A party is a corporation, partnership, coop, or association
      *   - party_is_government       (bool)  A party is a government entity/instrumentality
      *   - party_is_public_officer   (bool)  A party is a public officer in official capacity
      *   - offense_imprisonment_max  (float) Maximum imprisonment in years for the offense
@@ -947,6 +948,11 @@ class MediationDeadlineService
         $reviewNotes = [];
 
         // §408(a) — Government party
+        // SC Circular 14-93 / RA 7160 §408 — Natural (individual) persons only
+        if (!empty($disputeContext['party_is_juridical'])) {
+            $grounds[] = 'SC Circular 14-93 / RA 7160 §408: Only natural (individual) persons may be parties to Katarungang Pambarangay conciliation. Corporations, partnerships, cooperatives, or associations are excluded.';
+        }
+
         if (!empty($disputeContext['party_is_government'])) {
             $grounds[] = 'RA 7160 §408(a): A party is a government entity or instrumentality. KP jurisdiction does not apply.';
         }

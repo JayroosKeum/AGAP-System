@@ -6,23 +6,25 @@ session_start();
 
 header('Content-Type: application/json; charset=utf-8');
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int)$_SESSION['role_id'], [1, 2, 3, 4], true)) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access. Please log in.']);
-    exit;
-}
-
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../controllers/PaanyayaController.php';
 
-$controller = new PaanyayaController();
-$userId = (int)$_SESSION['user_id'];
-
+$db = (new Database())->connect();
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$allowedRoles = ($method === 'GET')
+    ? ['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'Summons Server']
+    : ['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'];
+agapRequireApiRoles($allowedRoles, $db);
+
+$controller = new PaanyayaController();
+$userId = agapSessionUserId();
+
 $input = $_GET;
 
 if ($method === 'POST') {
     $raw = file_get_contents('php://input');
-    $jsonData = json_decode($raw, true);
+    $jsonData = json_decode((string) $raw, true);
     if (is_array($jsonData)) {
         $input = array_merge($_POST, $jsonData);
     } else {
@@ -66,10 +68,11 @@ try {
 
         default:
             http_response_code(400);
-            echo json_encode(['success' => false, 'message' => "Unrecognized action: $action"]);
+            echo json_encode(['success' => false, 'message' => 'Unrecognized action requested.']);
             break;
     }
 } catch (Throwable $e) {
+    error_log('paanyaya-actions error: ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Server error: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Unable to process Paanyaya action right now.']);
 }

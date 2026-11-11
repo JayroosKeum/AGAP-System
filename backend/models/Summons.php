@@ -35,17 +35,6 @@ class Summons
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
 
-            // Enforce Paanyaya prerequisite before allowing formal summons creation
-            require_once __DIR__ . '/Paanyaya.php';
-            $paaModel = new Paanyaya($this->conn);
-            $prereq = $paaModel->checkSummonsPrerequisite($complaintId);
-            if (false && !$prereq['allowed'] && empty($mediationData['override_paanyaya'])) {
-                $this->conn->rollBack();
-                return [
-                    'success' => false,
-                    'message' => $prereq['message'] ?? 'Complete the required Paanyaya process before issuing the first formal summons.'
-                ];
-            }
 
             // Parse and prepare mediation schedule parameters
             $medDate = !empty($mediationData['mediation_date']) ? trim((string)$mediationData['mediation_date']) : '';
@@ -468,6 +457,15 @@ class Summons
             }
 
             $this->conn->commit();
+
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                (new KpFormService($this->conn))->autoGenerateForEvent('formal_docketing', (int) $caseId, $userId, [
+                    'hearing_id' => (int) $hearingId,
+                ]);
+            } catch (Throwable $kpErr) {
+                error_log('Summons::issueFirstSummon PDF generation warning: ' . $kpErr->getMessage());
+            }
 
             // Notify Summons Server users
             $this->notifySummonsServers($caseNumber, $summonsNum, $userId);

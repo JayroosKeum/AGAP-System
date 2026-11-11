@@ -1,4 +1,4 @@
-﻿function getOrdinal(n) {
+function getOrdinal(n) {
     const s = ["th", "st", "nd", "rd"];
     const v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -104,6 +104,8 @@ window.addEventListener('pageshow', (event) => {
 
     initialiseComplaintMaps();
     initialiseNarrativeEnhancement();
+    initialiseComplaintClassification();
+    initialiseKpJurisdictionPanel();
     initialiseCaseTabs();
     initialiseDropzone();
 
@@ -193,6 +195,797 @@ function initialiseNarrativeEnhancement() {
     });
 }
 
+function getAgapCsrfToken() {
+    return window.agapCsrfToken
+        || document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
+        || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || '';
+}
+
+function initialiseComplaintClassification() {
+    const button = document.querySelector('[data-classify-complaint]');
+    const narrative = document.getElementById('narrative');
+    const requestedResolution = document.getElementById('requestedResolution');
+    const consent = document.querySelector('[data-ai-external-consent]');
+    const preview = document.querySelector('[data-classification-preview]');
+    if (!button || !narrative || !consent || !preview) return;
+
+    const metaEl = preview.querySelector('[data-classification-meta]');
+    const sourceBadge = preview.querySelector('[data-classification-source-badge]');
+    const advisoryEl = preview.querySelector('[data-classification-advisory]');
+    const optionsContainer = preview.querySelector('[data-classification-options]');
+    const otherWrap = preview.querySelector('[data-classification-other-wrap]');
+    const otherInput = preview.querySelector('[data-classification-other-input]');
+    const secondaryWrap = preview.querySelector('[data-classification-secondary-wrap]');
+    const secondaryCheck = preview.querySelector('[data-classification-secondary-check]');
+    const secondaryText = preview.querySelector('[data-classification-secondary-text]');
+    const titleInput = preview.querySelector('[data-classification-title-input]');
+    const confirmCheck = preview.querySelector('[data-classification-confirm-check]');
+    const applyButton = preview.querySelector('[data-apply-classification]');
+    const discardButton = preview.querySelector('[data-discard-classification]');
+
+    const form = document.getElementById('createComplaintForm') || document.getElementById('editComplaintForm');
+    const categorySelect = document.getElementById('categoryId');
+    const primaryCategoryInput = document.getElementById('primaryCategoryInput');
+    const otherSpecField = document.getElementById('otherCategorySpecification');
+    const caseTypeSelect = document.getElementById('caseType');
+    const complaintTitleInput = document.getElementById('complaintTitle');
+    const secondaryInput = document.getElementById('secondaryCategoryInput');
+    const btnAddSecond = document.getElementById('btnAddSecondCategory');
+    const secondContainer = document.getElementById('secondCategoryContainer');
+
+    const aiUsedInput = document.getElementById('aiClassificationUsed');
+    const aiSuggestedCatInput = document.getElementById('aiSuggestedCategoryId');
+    const aiSuggestedTitleInput = document.getElementById('aiSuggestedTitle');
+    const banner = document.getElementById('aiClassificationVerificationBanner');
+    const bannerBadge = document.getElementById('aiVerifiedBannerBadge');
+    const bannerSummary = document.getElementById('aiVerifiedBannerSummary');
+    const bannerCheck = document.getElementById('chkHumanVerifiedClassification');
+
+    let currentSuggestion = null;
+    let currentSource = '';
+    let hasPendingSuggestion = false;
+    let isApplyingFromAi = false;
+
+    const setBusy = (busy) => {
+        button.disabled = busy;
+        button.textContent = busy ? 'Analyzing…' : 'Suggest Category & Title';
+    };
+
+    const isOthersName = (name) => {
+        const lower = String(name || '').toLowerCase();
+        return lower.includes('others') || lower.includes('iba pa');
+    };
+
+    const inferCaseType = (name) => {
+        const lower = String(name || '').toLowerCase();
+        const criminalHints = [
+            'slander', 'defamation', 'threat', 'physical injur', 'malicious mischief',
+            'unjust vexation', 'theft', 'estafa', 'trespass', 'coercion', 'safe spaces',
+            'catcalling', 'alarms and scandals', 'grave scandal', 'bouncing check',
+            'anti-fencing', 'imprudence', 'unlawful arrest', 'abandonment', 'seduction',
+            'lasciviousness', 'false testimony', 'false certificate', 'fictitious name',
+        ];
+        return criminalHints.some((hint) => lower.includes(hint)) ? 'Criminal' : 'Civil';
+    };
+
+    const confidenceClass = (conf) => {
+        const c = String(conf || '').toLowerCase();
+        if (c === 'high') return 'is-conf-high';
+        if (c === 'low') return 'is-conf-low';
+        return 'is-conf-medium';
+    };
+
+    const syncBannerAppearance = (customSummary = '') => {
+        if (!banner || !aiUsedInput || !bannerCheck) return;
+        const active = aiUsedInput.value === '1';
+        banner.hidden = !active;
+        if (!active) return;
+        const verified = Boolean(bannerCheck.checked);
+        banner.classList.toggle('is-verified', verified);
+        banner.classList.toggle('is-pending', !verified);
+        if (bannerBadge) {
+            bannerBadge.textContent = verified ? 'Human Verification Confirmed' : 'Human Verification Required';
+        }
+        if (bannerSummary) {
+            bannerSummary.textContent = customSummary || (verified
+                ? 'Category, case type, and complaint title were reviewed and confirmed.'
+                : 'Please review the selected category, case type, and title and check the box below to confirm.');
+        }
+    };
+
+    const getSelectedOptionData = () => {
+        if (!currentSuggestion || !optionsContainer) return null;
+        const checkedRadio = optionsContainer.querySelector('input[name="aiClassificationChoice"]:checked');
+        if (!checkedRadio) return null;
+        const val = checkedRadio.value;
+        if (val === '__manual__') {
+            return { isManual: true };
+        }
+        if (val === String(currentSuggestion.primary?.category_id)) {
+            return {
+                isManual: false,
+                category_id: currentSuggestion.primary.category_id,
+                category_name: currentSuggestion.primary.category_name,
+                case_type: currentSuggestion.case_type || inferCaseType(currentSuggestion.primary.category_name),
+            };
+        }
+        const alt = (currentSuggestion.alternatives || []).find((a) => String(a.category_id) === val);
+        if (!alt) return null;
+        return {
+            isManual: false,
+            category_id: alt.category_id,
+            category_name: alt.category_name,
+            case_type: inferCaseType(alt.category_name),
+        };
+    };
+
+    const syncPreviewSelectionUI = () => {
+        if (!optionsContainer) return;
+        optionsContainer.querySelectorAll('.ai-classification-option').forEach((card) => {
+            const radio = card.querySelector('input[type="radio"]');
+            card.classList.toggle('is-selected', Boolean(radio && radio.checked));
+        });
+        const chosen = getSelectedOptionData();
+        const showOther = Boolean(chosen && !chosen.isManual && isOthersName(chosen.category_name));
+        if (otherWrap) {
+            otherWrap.hidden = !showOther;
+            if (showOther && otherInput && !otherInput.value.trim()) {
+                otherInput.value = currentSuggestion?.other_specification || titleInput?.value?.trim() || '';
+            }
+        }
+        if (applyButton) {
+            applyButton.disabled = !Boolean(confirmCheck?.checked);
+        }
+    };
+
+    const renderSuggestionPreview = (result) => {
+        const s = result.suggestion;
+        currentSuggestion = s;
+        currentSource = result.source || 'gemini_ai';
+        hasPendingSuggestion = true;
+
+        if (sourceBadge) {
+            sourceBadge.textContent = currentSource === 'gemini_ai'
+                ? `Gemini AI (${result.model || 'gemini'})`
+                : 'Keyword Fallback';
+        }
+        if (metaEl) {
+            metaEl.textContent = s.verification_note || 'Review the recommended classification and confirm before applying.';
+        }
+        if (advisoryEl) {
+            if (s.jurisdiction_advisory) {
+                advisoryEl.textContent = s.jurisdiction_advisory;
+                advisoryEl.hidden = false;
+            } else {
+                advisoryEl.textContent = '';
+                advisoryEl.hidden = true;
+            }
+        }
+
+        const choices = [];
+        if (s.primary) {
+            choices.push({
+                id: String(s.primary.category_id),
+                name: s.primary.category_name,
+                caseType: s.case_type || inferCaseType(s.primary.category_name),
+                confidence: s.primary.confidence || 'Medium',
+                reason: s.primary.reason || '',
+                isPrimary: true,
+            });
+        }
+        (s.alternatives || []).forEach((alt) => {
+            choices.push({
+                id: String(alt.category_id),
+                name: alt.category_name,
+                caseType: inferCaseType(alt.category_name),
+                confidence: alt.confidence || 'Low',
+                reason: alt.reason || '',
+                isPrimary: false,
+            });
+        });
+
+        if (optionsContainer) {
+            const optionCardsHtml = choices.map((ch, idx) => {
+                const ct = ch.caseType === 'Criminal' ? 'Criminal' : 'Civil';
+                const ctClass = ct === 'Criminal' ? 'is-criminal' : 'is-civil';
+                const badgeLabel = ch.isPrimary ? 'Top Match' : 'Alternative';
+                return `
+                    <label class="ai-classification-option ${idx === 0 ? 'is-selected' : ''}">
+                        <input type="radio" name="aiClassificationChoice" value="${escapeHtml(ch.id)}" ${idx === 0 ? 'checked' : ''}>
+                        <div class="ai-classification-option-body">
+                            <div class="ai-classification-option-title">
+                                <span>${escapeHtml(ch.name)}</span>
+                                <span class="ai-class-badge ${ctClass}">${escapeHtml(ct)}</span>
+                                <span class="ai-class-badge ${confidenceClass(ch.confidence)}">${escapeHtml(badgeLabel)} • ${escapeHtml(ch.confidence)}</span>
+                            </div>
+                            ${ch.reason ? `<div class="ai-classification-option-reason">${escapeHtml(ch.reason)}</div>` : ''}
+                        </div>
+                    </label>
+                `;
+            }).join('');
+
+            const manualCardHtml = `
+                <label class="ai-classification-option">
+                    <input type="radio" name="aiClassificationChoice" value="__manual__">
+                    <div class="ai-classification-option-body">
+                        <div class="ai-classification-option-title">
+                            <span>None of these — I will select the category manually in Section 1</span>
+                        </div>
+                        <div class="ai-classification-option-reason">Apply only the reviewed complaint title (if desired) and pick the category manually.</div>
+                    </div>
+                </label>
+            `;
+            optionsContainer.innerHTML = optionCardsHtml + manualCardHtml;
+        }
+
+        if (secondaryWrap && secondaryCheck && secondaryText) {
+            if (s.secondary && secondaryInput) {
+                secondaryText.textContent = `Also add detected 2nd complaint category: ${s.secondary.category_name}${s.secondary.reason ? ' — ' + s.secondary.reason : ''}`;
+                secondaryCheck.checked = false;
+                secondaryWrap.hidden = false;
+            } else {
+                secondaryCheck.checked = false;
+                secondaryWrap.hidden = true;
+            }
+        }
+
+        if (titleInput) {
+            titleInput.value = s.suggested_title || '';
+        }
+        if (otherInput) {
+            otherInput.value = s.other_specification || '';
+        }
+        if (confirmCheck) {
+            confirmCheck.checked = false;
+        }
+
+        syncPreviewSelectionUI();
+        preview.hidden = false;
+        preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    button.addEventListener('click', async () => {
+        const text = narrative.value.trim();
+        if (text.length < 10) {
+            window.agapNotify?.('Enter at least 10 characters in the narrative before requesting category and title suggestions.', 'error');
+            narrative.focus();
+            return;
+        }
+        if (!consent.checked) {
+            window.agapNotify?.('Confirm that the narrative may be sent to Google Gemini before using AI classification.', 'error');
+            consent.focus();
+            return;
+        }
+
+        setBusy(true);
+        try {
+            const response = await fetch('../../../backend/api/ai/classify-complaint.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': getAgapCsrfToken(),
+                },
+                body: JSON.stringify({
+                    narrative: text,
+                    requested_resolution: requestedResolution?.value?.trim() || '',
+                    external_ai_consent: consent.checked,
+                }),
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || !result.success || !result.suggestion) {
+                throw new Error(result.message || 'Unable to suggest category and complaint title.');
+            }
+            renderSuggestionPreview(result);
+        } catch (error) {
+            window.agapNotify?.(error.message || 'Unable to suggest category and complaint title.', 'error');
+        } finally {
+            setBusy(false);
+        }
+    });
+
+    optionsContainer?.addEventListener('change', syncPreviewSelectionUI);
+    confirmCheck?.addEventListener('change', syncPreviewSelectionUI);
+
+    applyButton?.addEventListener('click', () => {
+        if (!currentSuggestion || !confirmCheck?.checked) {
+            window.agapNotify?.('Check the verification box to confirm the category and title first.', 'error');
+            confirmCheck?.focus();
+            return;
+        }
+        const chosen = getSelectedOptionData();
+        if (!chosen) {
+            window.agapNotify?.('Select a category option before applying.', 'error');
+            return;
+        }
+
+        const verifiedTitle = (titleInput?.value || '').trim();
+        if (!verifiedTitle) {
+            window.agapNotify?.('Enter or confirm a complaint title before applying.', 'error');
+            titleInput?.focus();
+            return;
+        }
+
+        isApplyingFromAi = true;
+        try {
+            if (complaintTitleInput) {
+                complaintTitleInput.value = verifiedTitle;
+                complaintTitleInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            if (!chosen.isManual) {
+                if (caseTypeSelect && chosen.case_type) {
+                    caseTypeSelect.value = chosen.case_type;
+                    caseTypeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                if (primaryCategoryInput) {
+                    primaryCategoryInput.value = chosen.category_name;
+                    primaryCategoryInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    primaryCategoryInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+                if (categorySelect && String(categorySelect.value) !== String(chosen.category_id)) {
+                    categorySelect.value = String(chosen.category_id);
+                    categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+
+                const specVal = (otherInput?.value || '').trim();
+                if (otherSpecField && isOthersName(chosen.category_name) && specVal) {
+                    otherSpecField.value = specVal;
+                    otherSpecField.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+
+                if (complaintTitleInput) {
+                    complaintTitleInput.value = verifiedTitle;
+                    complaintTitleInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+
+            if (secondaryCheck?.checked && currentSuggestion.secondary && secondaryInput) {
+                if (secondContainer) secondContainer.style.display = 'block';
+                if (btnAddSecond) btnAddSecond.style.display = 'none';
+                secondaryInput.value = currentSuggestion.secondary.category_name;
+                secondaryInput.dispatchEvent(new Event('input', { bubbles: true }));
+                secondaryInput.dispatchEvent(new Event('change', { bubbles: true }));
+                if (complaintTitleInput) {
+                    complaintTitleInput.value = verifiedTitle;
+                    complaintTitleInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+
+            if (aiUsedInput) aiUsedInput.value = '1';
+            if (aiSuggestedCatInput) {
+                aiSuggestedCatInput.value = String(currentSuggestion.primary?.category_id || '');
+            }
+            if (aiSuggestedTitleInput) {
+                aiSuggestedTitleInput.value = String(currentSuggestion.suggested_title || '');
+            }
+
+            if (bannerCheck) {
+                bannerCheck.checked = !chosen.isManual;
+            }
+            syncBannerAppearance(
+                chosen.isManual
+                    ? 'Title applied. Select the category manually in Section 1 and check the verification box below.'
+                    : 'Verified category, case type, and complaint title applied from narrative analysis.'
+            );
+
+            hasPendingSuggestion = false;
+            preview.hidden = true;
+
+            if (chosen.isManual) {
+                window.agapNotify?.('Please pick the category manually in Section 1 and check Human Verification before saving.', 'warning');
+                (primaryCategoryInput || categorySelect)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                (primaryCategoryInput || categorySelect)?.focus();
+            } else {
+                window.agapNotify?.('Verified category and complaint title applied to Section 1.', 'success');
+            }
+        } finally {
+            isApplyingFromAi = false;
+        }
+    });
+
+    discardButton?.addEventListener('click', () => {
+        hasPendingSuggestion = false;
+        preview.hidden = true;
+        narrative.focus();
+    });
+
+    const handleManualClassificationEdit = () => {
+        if (isApplyingFromAi || aiUsedInput?.value !== '1') return;
+        if (bannerCheck && bannerCheck.checked) {
+            bannerCheck.checked = false;
+            syncBannerAppearance('Category, case type, or title was modified — please re-confirm verification before saving.');
+        }
+    };
+
+    [primaryCategoryInput, categorySelect, otherSpecField, caseTypeSelect, complaintTitleInput].forEach((el) => {
+        if (!el) return;
+        el.addEventListener('change', handleManualClassificationEdit);
+        if (el.tagName === 'INPUT') {
+            el.addEventListener('input', handleManualClassificationEdit);
+        }
+    });
+
+    bannerCheck?.addEventListener('change', () => {
+        syncBannerAppearance();
+    });
+    syncBannerAppearance();
+
+    form?.addEventListener('submit', (e) => {
+        if (hasPendingSuggestion && !preview.hidden) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.agapNotify?.('Please verify and apply or discard the AI category & title suggestion before submitting.', 'error');
+            preview.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            confirmCheck?.focus();
+            return;
+        }
+        if (aiUsedInput?.value === '1' && !bannerCheck?.checked) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.agapNotify?.('Human verification required: confirm the selected complaint category, case type, and complaint title before saving.', 'error');
+            banner?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            bannerCheck?.focus();
+        }
+    });
+}
+
+function initialiseKpJurisdictionPanel() {
+    const panel = document.getElementById('section-jurisdiction');
+    if (!panel) return;
+
+    const form = document.getElementById('createComplaintForm') || document.getElementById('editComplaintForm');
+    const overallBadge = document.getElementById('kpOverallStatusBadge');
+    const verdictBanner = document.getElementById('kpOverallVerdictBanner');
+    const verdictTitle = document.getElementById('kpOverallVerdictTitle');
+    const verdictList = document.getElementById('kpOverallVerdictList');
+
+    // Venue elements
+    const venueCard = document.getElementById('kpCheckVenueCard');
+    const venuePill = document.getElementById('kpVenueStatusPill');
+    const venueSummary = document.getElementById('kpVenueSummary');
+    const respExceptionWrap = document.getElementById('kpRespExceptionWrap');
+    const chkPanelRespException = document.getElementById('chkKpPanelRespException');
+    const hiddenRespException = document.getElementById('respondentKpException');
+    const chkDiffLgu = document.getElementById('chkKpDifferentLgu');
+    const hiddenSameBrgy = document.getElementById('kpPartiesSameBarangay');
+    const chkPropertyDiffLgu = document.getElementById('chkKpPropertyDiffLgu');
+
+    // Capacity / Individual Person elements
+    const capacityCard = document.getElementById('kpCheckCapacityCard');
+    const capacityPill = document.getElementById('kpCapacityStatusPill');
+    const corpNameAlert = document.getElementById('kpCorporateNameAlert');
+    const capacityRadios = panel.querySelectorAll('input[name="party_capacity_type"]');
+    const hiddenIsGov = document.getElementById('kpPartyIsGovernment');
+    const hiddenIsPublicOfficer = document.getElementById('kpPartyIsPublicOfficer');
+    const hiddenIsJuridical = document.getElementById('kpPartyIsJuridical');
+
+    // Imprisonment elements
+    const impCard = document.getElementById('kpCheckImprisonmentCard');
+    const impPill = document.getElementById('kpImprisonmentStatusPill');
+    const impSelect = document.getElementById('offenseImprisonmentMax');
+    const impHint = document.getElementById('kpImprisonmentHint');
+
+    // Fine / Monetary elements
+    const fineCard = document.getElementById('kpCheckFineCard');
+    const finePill = document.getElementById('kpFineStatusPill');
+    const fineSummary = document.getElementById('kpFineSummary');
+    const btnJumpFine = document.getElementById('btnJumpToFineInput');
+
+    // Extra 408(d) / 412 checks
+    const chkNoPrivate = document.getElementById('chkKpNoPrivateParty');
+    const hiddenHasPrivate = document.getElementById('kpHasPrivateOffendedParty');
+    const chkDetained = document.getElementById('chkKpAccusedDetained');
+    const chkHabeas = document.getElementById('chkKpHabeasCorpus');
+    const chkProvisional = document.getElementById('chkKpProvisionalRemedy');
+    const chkPrescription = document.getElementById('chkKpPrescriptionRisk');
+    const chkIndigenous = document.getElementById('chkKpIndigenous');
+
+    let latestEvaluation = { excluded: false, blotterOnly: false, grounds: [] };
+
+    const setCardState = (cardEl, pillEl, state, pillText) => {
+        if (cardEl) {
+            cardEl.classList.toggle('is-fail', state === 'fail');
+            cardEl.classList.toggle('is-warn', state === 'warn');
+        }
+        if (pillEl) {
+            pillEl.classList.remove('is-pass', 'is-warn', 'is-fail');
+            pillEl.classList.add(state === 'fail' ? 'is-fail' : (state === 'warn' ? 'is-warn' : 'is-pass'));
+            pillEl.textContent = pillText;
+        }
+    };
+
+    const evaluatePanel = () => {
+        const grounds = [];
+        const advisories = [];
+
+        // 1. Venue & Residency check
+        const compPurok = (document.getElementById('complainantPurok')?.value || '').trim();
+        const compTenant = (document.getElementById('complainantIsTenant')?.value || '0').trim();
+        const compAddr = (document.getElementById('complainantAddress')?.value || '').trim();
+        const respPurok = (document.getElementById('respondentPurok')?.value || '').trim();
+        const respTenant = (document.getElementById('respondentIsTenant')?.value || '0').trim();
+        const respAddr = (document.getElementById('respondentAddress')?.value || '').trim();
+        const respHasException = hiddenRespException?.value === '1';
+
+        const compIsNonResident = compPurok === 'Non-Resident' || compTenant === '2';
+        const respIsNonResident = respPurok === 'Non-Resident' || respTenant === '2';
+
+        if (respExceptionWrap && chkPanelRespException) {
+            respExceptionWrap.hidden = !respIsNonResident;
+            chkPanelRespException.checked = respHasException;
+        }
+        if (hiddenSameBrgy && chkDiffLgu) {
+            hiddenSameBrgy.value = chkDiffLgu.checked ? '0' : '1';
+        }
+
+        const compLocText = compPurok
+            ? (compIsNonResident ? 'Non-Resident (Outside Tumana)' : `${compPurok}, Tumana`)
+            : (compAddr ? 'Address entered (Purok unset)' : 'Not yet entered');
+        const respLocText = respPurok
+            ? (respIsNonResident ? 'Non-Resident (Outside Tumana)' : `${respPurok}, Tumana`)
+            : (respAddr ? 'Address entered (Purok unset)' : 'Not yet entered');
+
+        if (venueSummary) {
+            venueSummary.innerHTML = `<strong>Complainant:</strong> ${escapeHtml(compLocText)}<br><strong>Respondent:</strong> ${escapeHtml(respLocText)}`;
+        }
+
+        let venueState = 'pass';
+        let venuePillText = 'Eligible';
+        if (chkDiffLgu?.checked) {
+            venueState = 'fail';
+            venuePillText = 'Different LGUs';
+            grounds.push('R.A. 7160 §408(f): Parties reside in different cities/municipalities and are not both residents of the same barangay.');
+        }
+        if (chkPropertyDiffLgu?.checked) {
+            venueState = 'fail';
+            venuePillText = 'Property Outside City';
+            grounds.push('R.A. 7160 §408(e): Disputed real property is located in a different city/municipality.');
+        }
+        if (respIsNonResident && !respHasException) {
+            venueState = 'fail';
+            venuePillText = 'Venue Required';
+            grounds.push('R.A. 7160 §409: Respondent is a Non-Resident of Barangay Tumana. File in the respondent\'s barangay unless a §409(c/d) exception applies.');
+        } else if (respIsNonResident && respHasException && venueState === 'pass') {
+            venueState = 'warn';
+            venuePillText = '§409(c/d) Exception';
+            advisories.push('Respondent is Non-Resident; venue relies on verified §409(c/d) property/workplace exception in Barangay Tumana.');
+        }
+        if (compIsNonResident && !respIsNonResident && venueState === 'pass') {
+            venueState = 'warn';
+            venuePillText = 'Respondent in Tumana';
+            advisories.push('Complainant is Non-Resident, but Barangay Tumana has venue because the Respondent resides in Tumana (R.A. 7160 §409(b)).');
+        }
+        setCardState(venueCard, venuePill, venueState, venuePillText);
+
+        // 2. Individual / Natural Person check
+        const selectedCapacity = panel.querySelector('input[name="party_capacity_type"]:checked')?.value || 'individual';
+        if (hiddenIsJuridical) hiddenIsJuridical.value = selectedCapacity === 'juridical' ? '1' : '0';
+        if (hiddenIsGov) hiddenIsGov.value = selectedCapacity === 'government' ? '1' : '0';
+        if (hiddenIsPublicOfficer) hiddenIsPublicOfficer.value = selectedCapacity === 'public_officer' ? '1' : '0';
+
+        const compFull = [
+            document.getElementById('complainantFirstName')?.value,
+            document.getElementById('complainantLastName')?.value,
+            document.getElementById('complainantName')?.value
+        ].filter(Boolean).join(' ').trim();
+        const respFull = [
+            document.getElementById('respondentFirstName')?.value,
+            document.getElementById('respondentLastName')?.value,
+            document.getElementById('respondentName')?.value
+        ].filter(Boolean).join(' ').trim();
+        const combinedNames = `${compFull} ${respFull}`.trim();
+
+        const corpRegex = /\b(inc\.?|corp\.?|corporation|company|co\.|llc|llp|ltd\.?|cooperative|coop|association|foundation|homeowners|lending|bank|enterprises|trading)\b/i;
+        const govRegex = /\b(republic of the philippines|department of|city of|barangay tumana|philippine national police|pnp|afp|bureau of|municipality of)\b/i;
+        const looksCorporate = combinedNames !== '' && corpRegex.test(combinedNames);
+        const looksGov = combinedNames !== '' && govRegex.test(combinedNames);
+
+        let capState = 'pass';
+        let capPillText = 'Individual Persons';
+        if (selectedCapacity === 'juridical') {
+            capState = 'fail';
+            capPillText = 'Juridical Entity';
+            grounds.push('SC Circular 14-93 / R.A. 7160 §408: Only natural (individual) persons may participate in KP conciliation (corporations/associations excluded).');
+        } else if (selectedCapacity === 'government') {
+            capState = 'fail';
+            capPillText = 'Government Party';
+            grounds.push('R.A. 7160 §408(a): Disputes where one party is the government or any subdivision/instrumentality are excluded.');
+        } else if (selectedCapacity === 'public_officer') {
+            capState = 'fail';
+            capPillText = 'Public Officer';
+            grounds.push('R.A. 7160 §408(b): Disputes involving a public officer acting in official capacity are excluded.');
+        } else if (looksGov || looksCorporate) {
+            capState = 'warn';
+            capPillText = 'Verify Party Type';
+        }
+
+        if (corpNameAlert) {
+            if (selectedCapacity === 'individual' && (looksGov || looksCorporate)) {
+                corpNameAlert.textContent = looksGov
+                    ? 'A party name resembles a government entity. Confirm below if a party is a government agency or public officer.'
+                    : 'A party name resembles a business/organization. Confirm below whether all parties are private individuals rather than a corporation or association.';
+                corpNameAlert.hidden = false;
+            } else {
+                corpNameAlert.textContent = '';
+                corpNameAlert.hidden = true;
+            }
+        }
+        setCardState(capacityCard, capacityPill, capState, capPillText);
+
+        // 3. Imprisonment <= 1 Year check
+        const caseType = document.getElementById('caseType')?.value || 'Civil';
+        const impVal = parseFloat(impSelect?.value || '0') || 0;
+        let impState = 'pass';
+        let impPillText = caseType === 'Civil' && impVal === 0 ? 'Civil / N/A' : '≤ 1 Year';
+
+        if (impVal > 1.0) {
+            impState = 'fail';
+            impPillText = '> 1 Year (Excluded)';
+            grounds.push('R.A. 7160 §408(c): Offenses punishable by imprisonment exceeding 1 year are outside Lupon Tagapamayapa jurisdiction (refer to PNP / Prosecutor).');
+            if (impHint) impHint.textContent = 'Penalty exceeds 1 year — cannot be conciliated at the barangay.';
+        } else if (caseType === 'Criminal' && impVal === 0) {
+            impState = 'warn';
+            impPillText = 'Verify ≤ 1 Year';
+            if (impHint) impHint.textContent = 'Criminal case selected: verify that maximum statutory imprisonment does not exceed 1 year.';
+            advisories.push('Criminal complaint selected — confirm the maximum imprisonment is 1 year or less.');
+        } else {
+            if (impHint) {
+                impHint.textContent = impVal > 0
+                    ? 'Statutory imprisonment verified at 1 year or less (eligible under §408(c)).'
+                    : 'Civil dispute or no imprisonment exceeding 1 year.';
+            }
+        }
+        setCardState(impCard, impPill, impState, impPillText);
+
+        // 4. Fine / Monetary Claim <= P5,000 check
+        const fineVal = parseFloat(document.getElementById('offenseFineMax')?.value || '0') || 0;
+        const blotterVal = (document.getElementById('blotterRefNo')?.value || '').trim();
+        const blotterAck = Boolean(document.getElementById('blotterOnlyAcknowledged')?.checked);
+        const formattedFine = '₱' + fineVal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        let fineState = 'pass';
+        let finePillText = '≤ ₱5,000';
+        let isBlotterOnly = false;
+
+        if (fineVal > 5000) {
+            if (blotterVal && blotterAck) {
+                fineState = 'warn';
+                finePillText = 'Blotter Ref Only';
+                isBlotterOnly = true;
+                advisories.push(`Claim/damages (${formattedFine}) exceed ₱5,000 — recorded strictly as Blotter Reference Only (${blotterVal}).`);
+            } else {
+                fineState = 'fail';
+                finePillText = '> ₱5,000 Limit';
+                grounds.push(`R.A. 7160 §408(c): Estimated claim/fine (${formattedFine}) exceeds ₱5,000. Issue an official Blotter Reference Number and confirm Blotter-Only protocol, or refer to police/court.`);
+            }
+            if (fineSummary) {
+                fineSummary.innerHTML = `Claim / damages: <strong>${escapeHtml(formattedFine)}</strong> — exceeds ₱5,000 KP threshold.`;
+            }
+        } else {
+            if (fineSummary) {
+                fineSummary.innerHTML = `Claim / damages: <strong>${escapeHtml(formattedFine)}</strong> (within ₱5,000 limit).`;
+            }
+        }
+        setCardState(fineCard, finePill, fineState, finePillText);
+
+        // 5. Additional §408(d) / §412 exclusions
+        if (hiddenHasPrivate && chkNoPrivate) {
+            hiddenHasPrivate.value = chkNoPrivate.checked ? '0' : '1';
+            if (chkNoPrivate.checked) {
+                grounds.push('R.A. 7160 §408(d): Offenses with no private offended party are excluded from KP jurisdiction.');
+            }
+        }
+        if (chkDetained?.checked) {
+            grounds.push('R.A. 7160 §412(a): Accused is under detention — parties may proceed directly to court.');
+        }
+        if (chkHabeas?.checked) {
+            grounds.push('R.A. 7160 §412(b): Action involves habeas corpus / deprivation of personal liberty.');
+        }
+        if (chkProvisional?.checked) {
+            grounds.push('R.A. 7160 §412(c): Action is coupled with a provisional judicial remedy.');
+        }
+        if (chkPrescription?.checked) {
+            grounds.push('R.A. 7160 §412(d): Delay through KP conciliation risks barring the action by prescription.');
+        }
+        if (chkIndigenous?.checked) {
+            advisories.push('DILG advisory: Verify whether Indigenous Cultural Community customary dispute settlement applies before docketing.');
+        }
+
+        // Update overall verdict banner
+        const isExcluded = grounds.length > 0;
+        latestEvaluation = { excluded: isExcluded, blotterOnly: isBlotterOnly, grounds };
+
+        if (overallBadge) {
+            overallBadge.classList.remove('is-eligible', 'is-blotter-only', 'is-excluded');
+            if (isExcluded) {
+                overallBadge.classList.add('is-excluded');
+                overallBadge.textContent = 'Outside KP Jurisdiction';
+            } else if (isBlotterOnly) {
+                overallBadge.classList.add('is-blotter-only');
+                overallBadge.textContent = 'Blotter Reference Only';
+            } else {
+                overallBadge.classList.add('is-eligible');
+                overallBadge.textContent = 'Within KP Jurisdiction';
+            }
+        }
+
+        if (verdictBanner && verdictTitle && verdictList) {
+            verdictBanner.classList.remove('is-eligible', 'is-blotter-only', 'is-excluded');
+            if (isExcluded) {
+                verdictBanner.classList.add('is-excluded');
+                verdictTitle.textContent = 'Outside Katarungang Pambarangay Jurisdiction — Action Required Before Filing';
+                verdictList.innerHTML = grounds.map((g) => `<li>${escapeHtml(g)}</li>`).join('');
+            } else if (isBlotterOnly) {
+                verdictBanner.classList.add('is-blotter-only');
+                verdictTitle.textContent = 'Blotter Reference Only (Claim > ₱5,000)';
+                verdictList.innerHTML = advisories.map((a) => `<li>${escapeHtml(a)}</li>`).join('');
+            } else {
+                verdictBanner.classList.add('is-eligible');
+                verdictTitle.textContent = 'Eligible for Katarungang Pambarangay Conciliation';
+                const notes = advisories.length > 0
+                    ? advisories
+                    : ['All 4 statutory checks passed: Barangay Tumana venue, private individual persons, imprisonment ≤ 1 year, and claim/fine ≤ ₱5,000.'];
+                verdictList.innerHTML = notes.map((n) => `<li>${escapeHtml(n)}</li>`).join('');
+            }
+        }
+    };
+
+    chkPanelRespException?.addEventListener('change', () => {
+        if (hiddenRespException) {
+            hiddenRespException.value = chkPanelRespException.checked ? '1' : '0';
+        }
+        evaluatePanel();
+    });
+
+    btnJumpFine?.addEventListener('click', () => {
+        const fineInput = document.getElementById('offenseFineMax');
+        if (!fineInput) return;
+        fineInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        fineInput.focus();
+    });
+
+    const watchIds = [
+        'caseType', 'categoryId', 'primaryCategoryInput', 'offenseFineMax', 'requestedResolution',
+        'blotterRefNo', 'blotterOnlyAcknowledged', 'incidentCity', 'incidentPurok',
+        'complainantPurok', 'complainantIsTenant', 'complainantAddress',
+        'respondentPurok', 'respondentIsTenant', 'respondentAddress', 'respondentKpException',
+        'offenseImprisonmentMax', 'chkKpDifferentLgu', 'chkKpPropertyDiffLgu',
+        'chkKpNoPrivateParty', 'chkKpAccusedDetained', 'chkKpHabeasCorpus',
+        'chkKpProvisionalRemedy', 'chkKpPrescriptionRisk', 'chkKpIndigenous'
+    ];
+    watchIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', evaluatePanel);
+        el.addEventListener('input', evaluatePanel);
+    });
+    capacityRadios.forEach((radio) => radio.addEventListener('change', evaluatePanel));
+    document.addEventListener('agap:parties-updated', evaluatePanel);
+
+    evaluatePanel();
+
+    form?.addEventListener('submit', (e) => {
+        evaluatePanel();
+        if (latestEvaluation.excluded) {
+            // Let existing >₱5,000 blotter UX in page script handle fine-only warning if blotter/ack is the sole issue
+            const fineVal = parseFloat(document.getElementById('offenseFineMax')?.value || '0') || 0;
+            const blotterVal = (document.getElementById('blotterRefNo')?.value || '').trim();
+            const blotterAck = Boolean(document.getElementById('blotterOnlyAcknowledged')?.checked);
+            const fineOnlyIssue = latestEvaluation.grounds.length === 1 && fineVal > 5000 && (!blotterVal || !blotterAck);
+            if (fineOnlyIssue) {
+                return;
+            }
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            window.agapNotify?.(latestEvaluation.grounds[0], 'error');
+            panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    });
+}
+
 function canAccessTab(tabId, caseStatus, stageProgress) {
     if (tabId === 'tab-overview') {
         return { allowed: true };
@@ -234,7 +1027,7 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     const p2Stage = complaint.paanyaya_stages?.stage_2;
     const isP2Pending = false;
 
-    const isPaanyayaCompletedOrEscalated = true || (
+    const isPaanyayaCompletedOrEscalated = (
         Boolean(caseId) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'CFA', 'Settled', 'Resolution / Closed'].includes(lifecycle) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Closed'].includes(cStatus) ||
@@ -637,23 +1430,16 @@ async function loadComplaintDetails() {
         }
 
         // Format Docket Number (e.g. 10-17-2026) or Paanyaya Case Number (e.g. P-10-86-2026)
-        const isPaanyayaRecord = false;
-        const formatDocketDisplay = (num, id, dt) => {
-            if (num && String(num).startsWith('P-')) return String(num);
-            if (num && !String(num).startsWith('CMP-')) return String(num);
-            const d = dt ? new Date(dt) : new Date();
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const ss = String(id || 1).padStart(2, '0');
-            const yy = d.getFullYear() || 2026;
-            return isPaanyayaRecord ? `P-${mm}-${ss}-${yy}` : `${mm}-${ss}-${yy}`;
-        };
-        const docketNum = formatDocketDisplay(data.case_number || data.complaint_number, data.complaint_id, data.created_at);
+        const hasDocketCase = Boolean(data.case_id && data.case_number);
+        const isPaanyayaRecord = !hasDocketCase && (String(data.status || '').toLowerCase().includes('paanyaya') || data.lifecycle_status === 'Paanyaya');
+        const preDocketRef = data.complaint_number || ('CMP-' + String(data.complaint_id || 0).padStart(4, '0'));
+        const docketNum = hasDocketCase ? String(data.case_number) : preDocketRef;
         const compNum = docketNum;
 
-        // Header Case Number
+        // Header Case Number / Reference ID
         const compNumEl = document.getElementById('complaintNumber');
         if (compNumEl) {
-            compNumEl.textContent = (isPaanyayaRecord ? 'Paanyaya Case #' : 'Case #') + docketNum;
+            compNumEl.textContent = (hasDocketCase ? 'Case #' : 'Ref #') + docketNum;
         }
 
         const compTitleEl = document.getElementById('complaintTitle');
@@ -693,8 +1479,10 @@ async function loadComplaintDetails() {
             displayStage = 'CFA Stage (Court Referral)';
         } else if (isSettled) {
             displayStage = 'Settled (Amicable Settlement)';
-        } else if (false && (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)')) {
-            displayStage = 'Paanyaya';
+        } else if (!hasDocketCase && ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected'].includes(data.status)) {
+            displayStage = data.status === 'Accepted' ? 'Approved (Within Jurisdiction)' : (data.status === 'Under Review' || data.status === 'Filed' ? 'For Review' : data.status);
+        } else if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
+            displayStage = 'Paanyaya Stage';
         } else {
             const effStage = caseStage || 'Mediation';
             displayStage = effStage.endsWith('Stage') ? effStage : (effStage + ' Stage');
@@ -720,7 +1508,11 @@ async function loadComplaintDetails() {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
-            } else if (false && (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)')) {
+            } else if (!hasDocketCase && ['Filed', 'Under Review', 'Needs Information', 'Accepted'].includes(data.status)) {
+                statusEl.style.background = '#eff6ff';
+                statusEl.style.color = '#1d4ed8';
+                statusEl.style.border = '1px solid #bfdbfe';
+            } else if (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)') {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
@@ -763,6 +1555,10 @@ async function loadComplaintDetails() {
         // Render Cross-Link Alert Banner for Concurrent Disputes (Module 5)
         if (typeof renderCrossLinkAlertBanner === 'function') {
             renderCrossLinkAlertBanner(data.concurrent_disputes || data.case_workspace?.concurrent_disputes);
+        }
+
+        if (typeof renderLisoVerificationBanner === 'function') {
+            renderLisoVerificationBanner(data);
         }
 
         // Hero Case Type Badge
@@ -840,6 +1636,46 @@ async function loadComplaintDetails() {
         } else {
             if (addWrap) addWrap.style.display = 'none';
             if (tab2AddWrap) tab2AddWrap.style.display = 'none';
+        }
+
+        const aiCallout = document.getElementById('complaintAiSuggestionCallout');
+        const aiSectionEl = document.getElementById('lisoAiScreeningSection');
+        const aiSectionVisible = Boolean(aiSectionEl && aiSectionEl.style.display !== 'none');
+        if (aiCallout) {
+            const aiSug = data.ai_suggestion || null;
+            if (aiSug && aiSug.primary && aiSug.primary.category_name && !aiSectionVisible) {
+                const aiType = escapeHtml(aiSug.case_type || 'Civil');
+                const aiConf = escapeHtml(aiSug.primary.confidence || 'Medium');
+                const aiSource = aiSug.source === 'gemini_ai'
+                    ? 'Gemini AI Advisory'
+                    : (aiSug.auto_generated_on_submit ? 'Auto-Suggested on Submit (Local Advisory)' : 'Local Advisory Match');
+                const aiTitleHtml = aiSug.suggested_title
+                    ? `<div style="font-size:0.82rem; color:#334155; margin-top:4px;"><strong>Suggested Subject:</strong> ${escapeHtml(aiSug.suggested_title)}</div>`
+                    : '';
+                const aiReasonHtml = aiSug.primary.reason
+                    ? `<div style="font-size:0.82rem; color:#475569; margin-top:4px;">${escapeHtml(aiSug.primary.reason)}</div>`
+                    : '';
+                const aiJurHtml = aiSug.jurisdiction_advisory
+                    ? `<div style="font-size:0.78rem; color:#92400e; background:#fffbeb; border:1px solid #fcd34d; border-radius:6px; padding:6px 8px; margin-top:6px;"><strong>Jurisdiction Note:</strong> ${escapeHtml(aiSug.jurisdiction_advisory)}</div>`
+                    : '';
+                aiCallout.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                        <strong style="font-size:0.82rem; color:#1e40af; text-transform:uppercase;">AI Suggested Classification (For Lupon Reference)</strong>
+                        <span style="font-size:0.72rem; font-weight:700; padding:2px 8px; border-radius:999px; background:#dbeafe; color:#1e40af;">${escapeHtml(aiSource)}</span>
+                    </div>
+                    <div style="font-size:0.88rem; color:#0f172a; font-weight:700;">
+                        ${escapeHtml(aiSug.primary.category_name)}
+                        <span style="font-size:0.74rem; font-weight:600; color:#334155; margin-left:6px;">(${aiType} &bull; ${aiConf} Confidence)</span>
+                    </div>
+                    ${aiTitleHtml}
+                    ${aiReasonHtml}
+                    ${aiJurHtml}
+                `;
+                aiCallout.style.display = 'block';
+            } else {
+                aiCallout.style.display = 'none';
+                aiCallout.innerHTML = '';
+            }
         }
 
         // Incident Location & Leaflet Maps
@@ -1566,18 +2402,12 @@ function renderOfficialKpForms(workspace, complaint) {
     const scanDoc = activeComplaint.current_scan || null;
     const hasScan = Boolean(scanDoc && scanDoc.file_path);
     const filedDate = activeComplaint.created_at ? formatDateReadable(activeComplaint.created_at) : 'N/A';
+    const complaintStatus = String(activeComplaint.status || '').trim();
+    const isKp7PendingReview = Number(activeComplaint.is_draft || 0) === 1
+        || (/^(Under Review|Needs Information|Rejected)$/i.test(complaintStatus) && !activeComplaint.case_id && !hasScan && !activeComplaint.generated_kp7_path)
+        || (activeComplaint.complaint_source === 'Online' && /^Filed$/i.test(complaintStatus) && !activeComplaint.case_id && !hasScan && !activeComplaint.generated_kp7_path);
 
     const rawDocs = workspace?.documents || [];
-    const paanyayaStatuses = [
-        'Pre-Docketed (Paanyaya)',
-        '1st Paanyaya Failed (No-Show)',
-        'Paanyaya In Progress',
-        'Resolved at Paanyaya / Closed',
-        'Paanyaya'
-    ];
-    const isPaanyaya = paanyayaStatuses.includes(activeComplaint.status || '') ||
-                       Boolean(activeComplaint.resolved_without_docketing) ||
-                       (typeof activeComplaint.status === 'string' && activeComplaint.status.toLowerCase().includes('paanyaya'));
     const hasPaanyayaDoc = false;
 
     // Filter and deduplicate documents:
@@ -1625,7 +2455,8 @@ function renderOfficialKpForms(workspace, complaint) {
     const stg2Count = stg2.attempts_count || 0;
     const hasP2Attempt = false;
 
-    const totalCount = docs.length + (complaintId > 0 ? (hasPaanyayaDoc ? (hasP2Attempt ? 3 : 2) : 1) : 0) + 2;
+    const kp7Count = (complaintId > 0 && !isKp7PendingReview) ? (hasPaanyayaDoc ? (hasP2Attempt ? 3 : 2) : 1) : 0;
+    const totalCount = docs.length + kp7Count + (isKp7PendingReview ? 0 : 2);
     const countText = `${totalCount} Issued`;
     const formsCountText = `${totalCount} form${totalCount === 1 ? '' : 's'}`;
 
@@ -1757,66 +2588,64 @@ function renderOfficialKpForms(workspace, complaint) {
     }
 
     // 1. Primary Complaint Form: KP Form 7 (Reklamo)
-    if (complaintId > 0) {
-        if (false && isPaanyaya) {
-            rowsHtml += `
-                <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #f59e0b;">
-                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                        <div>
-                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                <span style="font-weight: 700; color: #64748b;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
-                                <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fef3c7; color: #b45309; border: 1px solid #fde68a;">
-                                    KP Form 7: On Hold (Pending Paanyaya Outcome)
-                                </span>
-                            </div>
-                            <div class="kp-form-meta-text">
-                                <span>Pre-Docketing Phase &bull; Form will only generate if formal escalation occurs</span>
-                            </div>
+    if (complaintId > 0 && isKp7PendingReview) {
+        const isDeclined = /^Rejected$/i.test(complaintStatus);
+        rowsHtml += `
+            <div class="kp-form-item-row" style="background: #fffbeb; border-left: 4px solid ${isDeclined ? '#94a3b8' : '#d97706'};">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <div>
+                        <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
+                        </div>
+                        <div class="kp-form-meta-text">
+                            <span>Submitted: ${escapeHtml(filedDate)}</span>
+                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${isDeclined ? '#f1f5f9' : '#fef3c7'}; color: ${isDeclined ? '#475569' : '#b45309'};">
+                                ${isDeclined ? 'DECLINED — NOT ISSUED' : 'PENDING REVIEW — NOT YET GENERATED'}
+                            </span>
+                            <span>${isDeclined ? 'No KP Form 7 was issued.' : 'Will be generated automatically once accepted after review.'}</span>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                        <button type="button" class="btn-small-link" disabled style="opacity: 0.55; cursor: not-allowed; color: #94a3b8; border-color: #cbd5e1;" title="KP Form 7 is on hold pending Paanyaya outcome.">
-                            On Hold
-                        </button>
-                    </div>
                 </div>
-            `;
-        } else {
-            rowsHtml += `
-                <div class="kp-form-item-row" style="background: #ffffff;">
-                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                        <div>
-                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                                <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
-                            </div>
-                            <div class="kp-form-meta-text">
-                                <span>Filed: ${escapeHtml(filedDate)}</span>
-                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${hasScan ? '#dcfce7' : '#e0f2fe'}; color: ${hasScan ? '#15803d' : '#0369a1'};">
-                                    ${hasScan ? `SCANNED COPY ATTACHED (v${escapeHtml(String(scanDoc.version_number || 1))})` : 'DIGITAL FORM ISSUED'}
-                                </span>
-                            </div>
+            </div>
+        `;
+    } else if (complaintId > 0) {
+        rowsHtml += `
+            <div class="kp-form-item-row" style="background: #ffffff;">
+                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                    <div>
+                        <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-weight: 700; color: #0f172a;">Pormularyo ng KP Blg. 7 (Reklamo / Formal Complaint)</span>
+                        </div>
+                        <div class="kp-form-meta-text">
+                            <span>Filed: ${escapeHtml(filedDate)}</span>
+                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: ${hasScan ? '#dcfce7' : '#e0f2fe'}; color: ${hasScan ? '#15803d' : '#0369a1'};">
+                                ${hasScan ? `SCANNED COPY ATTACHED (v${escapeHtml(String(scanDoc.version_number || 1))})` : 'DIGITAL FORM ISSUED'}
+                            </span>
                         </div>
                     </div>
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                        <button type="button" class="btn-small-link" onclick="openKp7DigitalPreviewModal(${Number(complaintId)})" style="color: #0284c7; border-color: #bae6fd; font-weight: 600;">
-                            Preview / Print
-                        </button>
-                        ${hasScan ? `
-                            <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
-                                View Scan
-                            </a>
-                            <button type="button" class="btn-small-link" onclick="openScanHistoryModal(${Number(complaintId)})" title="View version history">
-                                Version History
-                            </button>
-                        ` : `
-                            <button type="button" class="btn-small-link" onclick="openUploadScanModal()" style="color: #64748b; border-color: #cbd5e1;">
-                                + Upload Scan
-                            </button>
-                        `}
-                    </div>
                 </div>
-            `;
-        }
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                    <button type="button" class="btn-small-link" onclick="openKp7DigitalPreviewModal(${Number(complaintId)})" style="color: #0284c7; border-color: #bae6fd; font-weight: 600;">
+                        Preview / Print
+                    </button>
+                    <a href="../../../backend/api/complaints/kp7-preview.php?id=${encodeURIComponent(complaintId)}&download=1" class="btn-small-link" style="color: #1e40af; border-color: #bfdbfe; font-weight: 600; text-decoration: none;">
+                        Download PDF
+                    </a>
+                    ${hasScan ? `
+                        <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
+                            View Scan
+                        </a>
+                        <button type="button" class="btn-small-link" onclick="openScanHistoryModal(${Number(complaintId)})" title="View version history">
+                            Version History
+                        </button>
+                    ` : `
+                        <button type="button" class="btn-small-link" onclick="openUploadScanModal()" style="color: #64748b; border-color: #cbd5e1;">
+                            + Upload Scan
+                        </button>
+                    `}
+                </div>
+            </div>
+        `;
     }
 
     // 2. Subsequent Issued Documents (Summons, Notices, Subpoenas, etc.)
@@ -3008,20 +3837,6 @@ async function loadHearingSessions(stageType = 'Mediation') {
     return runPromise;
 }
 window.loadHearingSessions = loadHearingSessions;
-if (false) {
-    if (false) {
-        const unused = `
-                <div>
-                    <button>Retry</button>
-                </div>
-            </div>
-        `;
-    }
-}
-// end unused block
-window.loadHearingSessions = loadHearingSessions;
-window.loadHearingSessions = loadHearingSessions;
-// end loadHearingSessions
 
 function renderHearingSessionCards(sessions, containerId, badgeId, stageType, caseId) {
     const container = document.getElementById(containerId);
@@ -3054,19 +3869,6 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                     </p>
                 </div>
             `;
-            return;
-        }
-        if (false) {
-            container.innerHTML = `
-                <div>
-                    <p>
-                        No ${escapeHtml(stageType.toLowerCase())} hearing sessions scheduled yet.
-                </p>
-                <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('${stageType}')" style="font-size: 0.84rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 6px;">
-                    + Schedule ${escapeHtml(stageType)} Session &rarr;
-                </button>
-            </div>
-        `;
         return;
     }
 
@@ -3244,8 +4046,10 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
 }
 
 function applyOutcomeReadOnlyLock(isLocked) {
-    window.__agapCaseOutcomeLocked = Boolean(isLocked);
-    const readOnlyTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation'];
+    const effectiveLock = Boolean(isLocked || window.__agapLuponReadOnly);
+    window.__agapCaseOutcomeLocked = effectiveLock;
+    isLocked = effectiveLock;
+    const readOnlyTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
     ['statusTrackerButton', 'editComplaintBtn'].forEach(id => {
         const control = document.getElementById(id);
         if (!control) return;
@@ -3259,10 +4063,11 @@ function applyOutcomeReadOnlyLock(isLocked) {
         pane.classList.toggle('case-outcome-readonly', Boolean(isLocked));
         const existingBanner = pane.querySelector('.case-outcome-readonly-banner');
         if (isLocked && !existingBanner) {
+            const isLuponViewOnly = Boolean(window.__agapLuponReadOnly);
             const banner = document.createElement('div');
             banner.className = 'case-outcome-readonly-banner';
             banner.setAttribute('role', 'note');
-            banner.innerHTML = '<strong>Case finalized — view only.</strong><span>This case has reached its final outcome. All hearing sessions, statements, minutes, and documents remain openable and viewable below.</span>';
+            banner.innerHTML = isLuponViewOnly ? '<strong>Lupon Member View Only.</strong><span>Maaaring basahin ang case details, hearing minutes, at mga KP Form. Hindi pinapayagan ang pag-edit o pag-schedule sa role na ito.</span>' : '<strong>Case finalized — view only.</strong><span>This case has reached its final outcome. All hearing sessions, statements, minutes, and documents remain openable and viewable below.</span>';
             pane.prepend(banner);
         } else if (!isLocked && existingBanner) {
             existingBanner.remove();
@@ -3342,6 +4147,12 @@ document.addEventListener('click', (event) => {
         }
     }
 }, true);
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.__agapLuponReadOnly && typeof applyOutcomeReadOnlyLock === 'function') {
+        applyOutcomeReadOnlyLock(true);
+    }
+});
 
 async function openSessionDocumentsDrawer(hearingId, caseId, sessionLabel) {
     const modal = document.getElementById('sessionDocumentsDrawer');
@@ -5497,82 +6308,6 @@ function openIssueSummonModal() {
     return openEmbeddedScheduleModal('Mediation');
 }
 
-function _legacyOpenIssueSummonModal() {
-    // Guard against issuing summons before completing Paanyaya prerequisites
-    const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-    if (false && paaPrereq && !paaPrereq.allowed) {
-        window.agapNotify?.(
-            paaPrereq.message || paaPrereq.reason || 'Complete the required Paanyaya process before issuing the first formal summons.',
-            'warning',
-            'Paanyaya Prerequisite Required'
-        );
-        if (typeof switchCaseTab === 'function') {
-            switchCaseTab('tab-paanyaya');
-        }
-        return;
-    }
-    const progress = window.caseProgressData;
-    const btnInfo = progress?.actions?.summon_button;
-    if (btnInfo?.disabled) {
-        window.agapNotify?.(
-            btnInfo.tooltip || 'An attempt to deliver the summons must first be made and recorded before issuing the next attempt.',
-            'warning',
-            'Delivery Attempt Required'
-        );
-        return;
-    }
-
-    const modal = document.getElementById('issueSummonModal');
-    if (!modal) return;
-    const msg = document.getElementById('issueSummonMessage');
-    const conflictAlert = document.getElementById('summonScheduleConflictAlert');
-    if (msg) msg.textContent = '';
-    if (conflictAlert) {
-        conflictAlert.textContent = '';
-        conflictAlert.style.display = 'none';
-    }
-
-    const dateInput = document.getElementById('summonMediationDate');
-    if (dateInput) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayStr = today.toISOString().slice(0, 10);
-
-        // Compute deadline: strictly 15 business/working days (skipping weekends & holidays)
-        let deadlineStr = null;
-        let deadlineLabel = '';
-        const baseDate = window.complaintCreatedAt ? new Date(window.complaintCreatedAt) : today;
-        deadlineStr = calculateBusinessDays(baseDate, 15);
-        const deadlineDateObj = new Date(deadlineStr + 'T00:00:00');
-        deadlineLabel = deadlineDateObj.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
-
-        dateInput.min = todayStr;
-
-        // Set default to next business day if not set
-        if (!dateInput.value) {
-            const nextBizDay = calculateBusinessDays(today, 2);
-            dateInput.value = nextBizDay;
-        }
-    }
-
-    const timeInput = document.getElementById('summonMediationTime');
-    if (timeInput) {
-        timeInput.setCustomValidity('');
-        const medStart = (window.AGAP_SETTINGS?.mediation_hours_start || '13:00').slice(0, 5);
-        const medEnd = (window.AGAP_SETTINGS?.mediation_hours_end || '16:30').slice(0, 5);
-        timeInput.min = medStart;
-        timeInput.max = medEnd;
-        if (!timeInput.value || timeInput.value < medStart || timeInput.value > medEnd) {
-            timeInput.value = medStart;
-        }
-        if (false) {
-            timeInput.value = stageType === 'Conciliation' ? workStartStr : medStartStr;
-        }
-    }
-
-    modal.style.display = 'flex';
-    checkMediationScheduleConflict();
-}
 
 function closeIssueSummonModal() {
     const modal = document.getElementById('issueSummonModal');
@@ -5580,19 +6315,6 @@ function closeIssueSummonModal() {
 }
 
 function handleIssueSummonClick() {
-    // Guard against issuing summons before completing Paanyaya prerequisites
-    const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-    if (false && paaPrereq && !paaPrereq.allowed) {
-        window.agapNotify?.(
-            paaPrereq.message || paaPrereq.reason || 'Complete the required Paanyaya process before issuing the first formal summons.',
-            'warning',
-            'Paanyaya Prerequisite Required'
-        );
-        if (typeof switchCaseTab === 'function') {
-            switchCaseTab('tab-paanyaya');
-        }
-        return;
-    }
     const params = new URLSearchParams(window.location.search);
     const complaintId = params.get('id');
     if (!complaintId) return;
@@ -7329,42 +8051,20 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 function renderKp7Overview(complaint) {
     if (!complaint) return;
-    const paanyayaStatuses = [
-        'Pre-Docketed (Paanyaya)',
-        '1st Paanyaya Failed (No-Show)',
-        'Paanyaya In Progress',
-        'Resolved at Paanyaya / Closed',
-        'Paanyaya'
-    ];
-    const isPaanyaya = paanyayaStatuses.includes(complaint.status || '') ||
-                       Boolean(complaint.resolved_without_docketing) ||
-                       (typeof complaint.status === 'string' && complaint.status.toLowerCase().includes('paanyaya'));
 
     const docStatus = complaint.document_status || (complaint.current_scan ? 'Scan Uploaded' : 'No Scan Uploaded');
     const badgeEl = document.getElementById('kp7DocStatusBadge');
     if (badgeEl) {
-        if (false && isPaanyaya) {
-            badgeEl.className = 'badge-doc-status badge-doc-pending';
-            badgeEl.style.background = '#fef3c7';
-            badgeEl.style.color = '#b45309';
-            badgeEl.style.borderColor = '#fde68a';
-            badgeEl.textContent = 'KP Form 7: On Hold (Pending Paanyaya Outcome)';
-        } else {
-            let badgeCls = 'badge-doc-no-scan';
-            if (docStatus === 'Updated Scan Uploaded') badgeCls = 'badge-doc-updated';
-            else if (docStatus === 'Scan Uploaded') badgeCls = 'badge-doc-uploaded';
-            badgeEl.className = 'badge-doc-status ' + badgeCls;
-            badgeEl.textContent = docStatus;
-        }
+        let badgeCls = 'badge-doc-no-scan';
+        if (docStatus === 'Updated Scan Uploaded') badgeCls = 'badge-doc-updated';
+        else if (docStatus === 'Scan Uploaded') badgeCls = 'badge-doc-uploaded';
+        badgeEl.className = 'badge-doc-status ' + badgeCls;
+        badgeEl.textContent = docStatus;
     }
 
     const pillEl = document.getElementById('kp7ScanStatusPill');
     if (pillEl) {
-        if (false && isPaanyaya) {
-            pillEl.textContent = 'Held in Pre-Docketing';
-            pillEl.style.background = '#fffbeb';
-            pillEl.style.color = '#b45309';
-        } else if (complaint.current_scan) {
+        if (complaint.current_scan) {
             pillEl.textContent = `v${complaint.current_scan.version_number || 1} Uploaded`;
             pillEl.style.background = '#dcfce7';
             pillEl.style.color = '#15803d';
@@ -7428,19 +8128,11 @@ function renderKp7Overview(complaint) {
             `;
         }
     } else {
-        if (false && isPaanyaya) {
-            contentWrap.innerHTML = `
-                <div style="padding: 12px; background: #fffbeb; border: 1px dashed #fde68a; border-radius: 8px; text-align: center; color: #92400e; font-size: 0.82rem;">
-                    <strong>KP Form 7 is On Hold</strong> during the informal Paanyaya dialogue phase. If the dispute is settled informally, KP Form 7 is never created.
-                </div>
-            `;
-        } else {
-            contentWrap.innerHTML = `
-                <div style="padding: 12px; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #64748b; font-size: 0.82rem;">
-                    No handwritten or scanned KP Form 7 uploaded yet. You can attach a scanned copy anytime.
-                </div>
-            `;
-        }
+        contentWrap.innerHTML = `
+            <div style="padding: 12px; background: #ffffff; border: 1px dashed #cbd5e1; border-radius: 8px; text-align: center; color: #64748b; font-size: 0.82rem;">
+                No handwritten or scanned KP Form 7 uploaded yet. You can attach a scanned copy anytime.
+            </div>
+        `;
         if (actionsWrap) {
             actionsWrap.innerHTML = `
                 <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()">
@@ -7453,18 +8145,6 @@ function renderKp7Overview(complaint) {
 window.renderKp7Overview = renderKp7Overview;
 
 function openKp7DigitalPreviewModal(complaintId) {
-    const activeComp = window.complaintData;
-    const paanyayaStatuses = [
-        'Pre-Docketed (Paanyaya)',
-        '1st Paanyaya Failed (No-Show)',
-        'Paanyaya In Progress',
-        'Resolved at Paanyaya / Closed',
-        'Paanyaya'
-    ];
-    if (activeComp && (paanyayaStatuses.includes(activeComp.status || '') || Boolean(activeComp.resolved_without_docketing) || (typeof activeComp.status === 'string' && activeComp.status.toLowerCase().includes('paanyaya')))) {
-        window.agapNotify?.('KP Form 7 is on hold pending the outcome of the Paanyaya informal dialogue.', 'info');
-        return;
-    }
     const modal = document.getElementById('kp7DigitalPreviewModal');
     const iframe = document.getElementById('kp7PreviewIframe');
     if (!modal || !iframe) return;
@@ -11237,3 +11917,365 @@ function printKpFormModalDirect(caseId, formCode) {
     }
 }
 window.printKpFormModalDirect = printKpFormModalDirect;
+
+function renderLisoVerificationBanner(data) {
+    const banner = document.getElementById('lisoVerificationBanner');
+    if (!banner || !data) return;
+
+    const status = String(data.status || '');
+    const isPrePaanyaya = !data.case_id && ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected'].includes(status);
+    if (!isPrePaanyaya) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    banner.style.display = 'block';
+    const src = String(data.complaint_source || 'Walk-in');
+    const srcBadge = document.getElementById('lisoSourceBadge');
+    if (srcBadge) {
+        srcBadge.textContent = src === 'Online' ? '🌐 Online Portal' : '🏢 Walk-in (BPSO)';
+        srcBadge.style.background = src === 'Online' ? '#dbeafe' : '#dcfce7';
+        srcBadge.style.color = src === 'Online' ? '#1e40af' : '#166534';
+    }
+    const refBadge = document.getElementById('lisoRefBadge');
+    if (refBadge) {
+        refBadge.textContent = data.complaint_number || ('CMP-' + String(data.complaint_id || 0).padStart(4, '0'));
+    }
+    const walkinInfo = document.getElementById('lisoWalkinLinkInfo');
+    if (walkinInfo) {
+        if (data.walkin_verified_at) {
+            walkinInfo.style.display = 'block';
+            walkinInfo.textContent = `Walk-in visit linked on ${data.walkin_verified_at}${data.walkin_notes ? ' — ' + data.walkin_notes : ''}`;
+        } else {
+            walkinInfo.style.display = 'none';
+        }
+    }
+    const notesInput = document.getElementById('lisoScreeningDecisionNotes');
+    if (notesInput && data.review_notes && !notesInput.value) {
+        notesInput.value = data.review_notes;
+    }
+    const btnPaanyaya = document.getElementById('btnProceedMandatoryPaanyaya');
+    const actionWrap = document.getElementById('lisoActionButtonsWrap');
+    const titleEl = document.getElementById('lisoBannerTitle');
+    const subEl = document.getElementById('lisoBannerSubtitle');
+
+    const aiSection = document.getElementById('lisoAiScreeningSection');
+
+    if (status === 'Accepted') {
+        banner.style.borderLeftColor = '#16a34a';
+        if (titleEl) titleEl.textContent = 'Verified by LISO — Mandatory Paanyaya Next';
+        if (subEl) subEl.textContent = 'Preliminary screening is complete. Schedule mandatory Paanyaya before this complaint can advance to formal Mediation.';
+        if (btnPaanyaya) btnPaanyaya.style.display = 'inline-flex';
+        if (actionWrap) actionWrap.style.display = 'none';
+        if (aiSection) aiSection.style.display = 'none';
+    } else if (status === 'Rejected') {
+        banner.style.borderLeftColor = '#dc2626';
+        if (titleEl) titleEl.textContent = 'Complaint Rejected at Preliminary Screening';
+        if (subEl) subEl.textContent = data.review_notes || 'Marked outside Barangay KP jurisdiction or rejected during LISO screening.';
+        if (btnPaanyaya) btnPaanyaya.style.display = 'none';
+        if (actionWrap) actionWrap.style.display = 'none';
+        if (aiSection) aiSection.style.display = 'none';
+    } else {
+        banner.style.borderLeftColor = '#2563eb';
+        if (titleEl) titleEl.textContent = `LISO Preliminary Screening (${status})`;
+        if (subEl) subEl.textContent = 'Check submitted 5Ws, Salaysay, jurisdiction indicators, and advisory category suggestions before endorsing to mandatory Paanyaya.';
+        if (btnPaanyaya) btnPaanyaya.style.display = 'none';
+        if (actionWrap) actionWrap.style.display = window.__agapLuponReadOnly ? 'none' : 'flex';
+        if (aiSection) {
+            aiSection.style.display = 'block';
+            populateLisoAiScreeningPanel(data);
+        }
+    }
+}
+window.renderLisoVerificationBanner = renderLisoVerificationBanner;
+
+let lisoScreeningClassificationDirty = false;
+
+function toggleLisoOtherCategoryInput() {
+    const sel = document.getElementById('lisoCategorySelect');
+    const wrap = document.getElementById('lisoOtherCatWrap');
+    if (sel && wrap) {
+        const text = sel.options[sel.selectedIndex]?.text || '';
+        wrap.style.display = /others|iba pa/i.test(text) ? 'block' : 'none';
+    }
+    const secSel = document.getElementById('lisoSecondaryCategorySelect');
+    const secWrap = document.getElementById('lisoSecondaryOtherCatWrap');
+    if (secSel && secWrap) {
+        const secText = secSel.options[secSel.selectedIndex]?.text || '';
+        secWrap.style.display = /others|iba pa/i.test(secText) ? 'block' : 'none';
+    }
+}
+
+function renderLisoAiSuggestionCard(sug, sourceBadgeText, opts = {}) {
+    if (!sug || !sug.primary || !sug.primary.category_id) return;
+    const primary = sug.primary;
+    const alts = Array.isArray(sug.alternatives) ? sug.alternatives : [];
+    const candidates = [primary, ...alts].filter((c) => c && c.category_id && c.category_name);
+
+    const resCard = document.getElementById('lisoAiResultCard');
+    const badgeEl = document.getElementById('lisoAiSourceBadge');
+    const chipsEl = document.getElementById('lisoAiAltChips');
+    const reasonEl = document.getElementById('lisoAiReasonText');
+    const secEl = document.getElementById('lisoAiSecondaryText');
+    const jurEl = document.getElementById('lisoAiJurisdictionAlert');
+    const confirmChk = document.getElementById('lisoConfirmClassificationCheck');
+
+    if (resCard) resCard.style.display = 'block';
+    if (badgeEl) badgeEl.textContent = sourceBadgeText || 'Advisory Match';
+    if (reasonEl) reasonEl.textContent = `Proposed Reasoning: ${primary.reason || 'Advisory category match based on narrative cues.'}`;
+    if (secEl) {
+        if (sug.secondary && sug.secondary.category_id && sug.secondary.category_name) {
+            secEl.style.display = 'block';
+            secEl.innerHTML = `<span><strong>Suggested 2nd Category:</strong> ${escapeHtml(sug.secondary.category_name)}${sug.secondary.case_type ? ` (${escapeHtml(sug.secondary.case_type)})` : ''} &mdash; ${escapeHtml(sug.secondary.reason || '')}</span>`
+                + (!window.__agapLuponReadOnly
+                    ? ` <button type="button" id="btnLisoApplySecondaryAi" class="btn-secondary btn-sm" style="margin-left:6px; padding:2px 8px; font-size:0.73rem;">+ Apply as Category 2</button>`
+                    : '');
+            const applySecBtn = document.getElementById('btnLisoApplySecondaryAi');
+            applySecBtn?.addEventListener('click', () => {
+                const secSel = document.getElementById('lisoSecondaryCategorySelect');
+                const aiUsedEl = document.getElementById('lisoAiUsed');
+                if (aiUsedEl) aiUsedEl.value = '1';
+                if (secSel) secSel.value = String(sug.secondary.category_id);
+                toggleLisoOtherCategoryInput();
+                lisoScreeningClassificationDirty = true;
+                if (confirmChk) confirmChk.checked = false;
+                window.agapNotify?.('Suggested 2nd category loaded into Category 2. Check Mandatory Human Confirmation to verify before saving.', 'info', 'Human Review Required');
+            });
+        } else {
+            secEl.style.display = 'none';
+            secEl.innerHTML = '';
+        }
+    }
+    if (jurEl) {
+        if (sug.jurisdiction_advisory) {
+            jurEl.style.display = 'block';
+            jurEl.innerHTML = `<strong>Jurisdiction Notice (Advisory Only — Verify Under R.A. 7160):</strong> ${escapeHtml(sug.jurisdiction_advisory)}`;
+        } else {
+            jurEl.style.display = 'none';
+        }
+    }
+
+    const aiUsed = document.getElementById('lisoAiUsed');
+    const aiSugCat = document.getElementById('lisoAiSuggestedCatId');
+    const aiSugTitle = document.getElementById('lisoAiSuggestedTitle');
+    if (aiUsed && opts.markUsed !== false) aiUsed.value = '1';
+    if (aiSugCat && primary.category_id) aiSugCat.value = String(primary.category_id);
+    if (aiSugTitle && sug.suggested_title) aiSugTitle.value = String(sug.suggested_title);
+    if (confirmChk && opts.resetConfirm !== false) confirmChk.checked = false;
+
+    if (chipsEl) {
+        chipsEl.innerHTML = candidates.map((cand, idx) => `
+            <button type="button"
+                    class="btn-secondary btn-sm"
+                    data-liso-pick-cat="${Number(cand.category_id)}"
+                    data-liso-pick-title="${idx === 0 ? escapeHtml(sug.suggested_title || '') : ''}"
+                    data-liso-pick-type="${idx === 0 ? escapeHtml(sug.case_type || 'Civil') : ''}"
+                    data-liso-pick-reason="${escapeHtml(cand.reason || '')}"
+                    ${window.__agapLuponReadOnly ? 'disabled' : ''}
+                    style="font-size: 0.75rem; padding: 4px 9px; ${idx === 0 ? 'border-color:#2563eb; color:#1e40af; background:#eff6ff; font-weight:700;' : ''}">
+                ${idx === 0 ? 'Proposed Primary: ' : 'Alternative: '}${escapeHtml(cand.category_name)} (${escapeHtml(cand.confidence || 'Medium')})
+            </button>
+        `).join('');
+
+        if (!window.__agapLuponReadOnly) {
+            chipsEl.querySelectorAll('[data-liso-pick-cat]').forEach((chipBtn) => {
+                chipBtn.addEventListener('click', () => {
+                    const catId = chipBtn.getAttribute('data-liso-pick-cat') || '';
+                    const pickTitle = chipBtn.getAttribute('data-liso-pick-title') || '';
+                    const pickType = chipBtn.getAttribute('data-liso-pick-type') || '';
+                    const pickReason = chipBtn.getAttribute('data-liso-pick-reason') || '';
+                    const catSel = document.getElementById('lisoCategorySelect');
+                    const typeSel = document.getElementById('lisoCaseTypeSelect');
+                    const titleInp = document.getElementById('lisoComplaintTitleInput');
+                    const aiUsedEl = document.getElementById('lisoAiUsed');
+                    if (aiUsedEl) aiUsedEl.value = '1';
+                    if (catSel && catId) catSel.value = catId;
+                    if (typeSel && (pickType === 'Civil' || pickType === 'Criminal')) typeSel.value = pickType;
+                    if (titleInp && pickTitle) titleInp.value = pickTitle;
+                    toggleLisoOtherCategoryInput();
+                    lisoScreeningClassificationDirty = true;
+                    if (confirmChk) confirmChk.checked = false;
+                    if (reasonEl && pickReason) reasonEl.textContent = `Proposed Reasoning: ${pickReason}`;
+                    window.agapNotify?.('Proposed category loaded into screening fields. Check Mandatory Human Confirmation to verify before saving.', 'info', 'Human Review Required');
+                });
+            });
+        }
+    }
+}
+
+function populateLisoAiScreeningPanel(data) {
+    const origCat = document.getElementById('lisoOrigCategoryPreview');
+    const origNar = document.getElementById('lisoOrigNarrativePreview');
+    const origRes = document.getElementById('lisoOrigResolutionPreview');
+    const catSel = document.getElementById('lisoCategorySelect');
+    const secCatSel = document.getElementById('lisoSecondaryCategorySelect');
+    const typeSel = document.getElementById('lisoCaseTypeSelect');
+    const titleInp = document.getElementById('lisoComplaintTitleInput');
+    const otherInp = document.getElementById('lisoOtherCategorySpec');
+    const secOtherInp = document.getElementById('lisoSecondaryOtherCategorySpec');
+
+    if (origCat) {
+        origCat.textContent = `${data.case_type || 'Civil'} — ${data.category_name_display || data.category_name || 'Uncategorized'} (${data.complaint_title || 'Untitled'})`;
+    }
+    if (origNar) origNar.textContent = data.narrative || '(No narrative provided)';
+    if (origRes) origRes.textContent = data.requested_resolution || '(None specified)';
+
+    if (catSel && data.category_id) catSel.value = String(data.category_id);
+    if (secCatSel) secCatSel.value = data.secondary_category_id ? String(data.secondary_category_id) : '';
+    if (typeSel && (data.case_type === 'Civil' || data.case_type === 'Criminal')) typeSel.value = data.case_type;
+    if (titleInp && data.complaint_title) titleInp.value = data.complaint_title;
+    if (otherInp) otherInp.value = data.other_category_specification || '';
+    if (secOtherInp) secOtherInp.value = data.secondary_other_category_specification || '';
+    toggleLisoOtherCategoryInput();
+
+    lisoScreeningClassificationDirty = false;
+    const aiUsed = document.getElementById('lisoAiUsed');
+    const confirmChk = document.getElementById('lisoConfirmClassificationCheck');
+    const resCard = document.getElementById('lisoAiResultCard');
+    const statusEl = document.getElementById('lisoAiStatusText');
+    if (aiUsed) aiUsed.value = '0';
+    if (confirmChk) confirmChk.checked = false;
+
+    const savedAi = data.ai_suggestion || null;
+    if (savedAi && savedAi.primary && savedAi.primary.category_id) {
+        const badgeLabel = savedAi.source === 'gemini_ai'
+            ? 'Gemini AI Suggestion (On Submit)'
+            : (savedAi.resident_viewed ? 'Local Advisory (Resident Previewed)' : 'Auto-Suggested on Submit (Local Advisory)');
+        renderLisoAiSuggestionCard(savedAi, badgeLabel, { markUsed: false, resetConfirm: false });
+        if (statusEl) {
+            statusEl.textContent = savedAi.suggested_title
+                ? `Saved AI suggestion loaded (${savedAi.suggested_title}) — click Proposed Primary to apply or verify below.`
+                : 'Saved AI suggestion loaded — click Proposed Primary to apply or verify below.';
+        }
+    } else {
+        if (resCard) resCard.style.display = 'none';
+        if (statusEl) statusEl.textContent = '';
+    }
+
+    const markEdited = () => {
+        lisoScreeningClassificationDirty = true;
+        if (confirmChk) confirmChk.checked = false;
+        toggleLisoOtherCategoryInput();
+    };
+    if (!document.getElementById('lisoAiScreeningSection')?.dataset.wired) {
+        document.getElementById('lisoAiScreeningSection').dataset.wired = '1';
+        catSel?.addEventListener('change', markEdited);
+        secCatSel?.addEventListener('change', markEdited);
+        typeSel?.addEventListener('change', markEdited);
+        titleInp?.addEventListener('input', markEdited);
+        otherInp?.addEventListener('input', markEdited);
+        secOtherInp?.addEventListener('input', markEdited);
+        document.getElementById('btnLisoRunAiCheck')?.addEventListener('click', () => runLisoScreeningAiCheck('gemini'));
+        document.getElementById('btnLisoRunLocalCheck')?.addEventListener('click', () => runLisoScreeningAiCheck('local_only'));
+    }
+}
+
+async function runLisoScreeningAiCheck(processingMode = 'gemini') {
+    const data = window.complaintData;
+    const statusEl = document.getElementById('lisoAiStatusText');
+    const consentBox = document.getElementById('lisoAiExternalConsent');
+    const narrative = String(data?.narrative || '').trim();
+    const resolution = String(data?.requested_resolution || '').trim();
+
+    if (narrative.length < 10) {
+        window.agapNotify?.('Narrative must have at least 10 characters for classification analysis.', 'warning', 'LISO Screening');
+        return;
+    }
+    if (processingMode === 'gemini' && !consentBox?.checked) {
+        window.agapNotify?.('Check Data Privacy Act consent before sending anonymized narrative text to Google Gemini, or click Local Rule Check.', 'warning', 'Data Privacy Consent');
+        consentBox?.focus();
+        return;
+    }
+
+    const geminiBtn = document.getElementById('btnLisoRunAiCheck');
+    const localBtn = document.getElementById('btnLisoRunLocalCheck');
+    if (geminiBtn) geminiBtn.disabled = true;
+    if (localBtn) localBtn.disabled = true;
+    if (statusEl) statusEl.textContent = processingMode === 'gemini' ? 'Running advisory Gemini analysis...' : 'Running local keyword matcher...';
+
+    try {
+        const resp = await fetch('../../../backend/api/ai/classify-complaint.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+                complaint_id: Number(data?.complaint_id || 0),
+                context: 'liso_screening',
+                processing_mode: processingMode,
+                external_ai_consent: processingMode === 'gemini' ? '1' : '0',
+                narrative,
+                requested_resolution: resolution
+            })
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.success || !json.suggestion) {
+            window.agapNotify?.(json.message || 'Unable to run advisory classification check.', 'error', 'LISO Screening');
+            if (statusEl) statusEl.textContent = '';
+            return;
+        }
+
+        const badgeLabel = json.source === 'gemini_ai' ? 'Gemini Advisory (Minimized)' : 'Local Rule Match (Offline)';
+        renderLisoAiSuggestionCard(json.suggestion, badgeLabel, { markUsed: true, resetConfirm: true });
+
+        if (statusEl) statusEl.textContent = 'Advisory suggestion loaded — verify and check Mandatory Confirmation before saving.';
+    } catch (_) {
+        if (statusEl) statusEl.textContent = '';
+        window.agapNotify?.('Unable to connect to classification service.', 'error', 'LISO Screening');
+    } finally {
+        if (geminiBtn) geminiBtn.disabled = false;
+        if (localBtn) localBtn.disabled = false;
+    }
+}
+
+async function submitLisoReviewDecision(decision) {
+    const complaintId = new URLSearchParams(window.location.search).get('id');
+    if (!complaintId) return;
+    const notes = document.getElementById('lisoScreeningDecisionNotes')?.value?.trim() || '';
+    const aiUsed = document.getElementById('lisoAiUsed')?.value === '1';
+    const confirmChk = document.getElementById('lisoConfirmClassificationCheck');
+
+    if ((aiUsed || lisoScreeningClassificationDirty) && !confirmChk?.checked) {
+        window.agapNotify?.('Mandatory Human Confirmation required: review the original input and check the confirmation box before saving this classification.', 'warning', 'Human Verification Required');
+        confirmChk?.focus();
+        return;
+    }
+
+    try {
+        const fd = new FormData();
+        fd.append('complaint_id', complaintId);
+        fd.append('status', decision);
+        fd.append('review_notes', notes);
+
+        if (aiUsed || lisoScreeningClassificationDirty) {
+            const catVal = document.getElementById('lisoCategorySelect')?.value || '';
+            const secCatVal = document.getElementById('lisoSecondaryCategorySelect')?.value || '';
+            const typeVal = document.getElementById('lisoCaseTypeSelect')?.value || '';
+            const titleVal = document.getElementById('lisoComplaintTitleInput')?.value?.trim() || '';
+            const otherVal = document.getElementById('lisoOtherCategorySpec')?.value?.trim() || '';
+            const secOtherVal = document.getElementById('lisoSecondaryOtherCategorySpec')?.value?.trim() || '';
+            if (catVal) fd.append('category_id', catVal);
+            fd.append('secondary_category_id', secCatVal);
+            if (secOtherVal) fd.append('secondary_other_category_specification', secOtherVal);
+            if (typeVal) fd.append('case_type', typeVal);
+            if (titleVal) fd.append('complaint_title', titleVal);
+            if (otherVal) fd.append('other_category_specification', otherVal);
+            fd.append('ai_classification_used', aiUsed ? '1' : '0');
+            fd.append('ai_classification_verified', confirmChk?.checked ? '1' : '0');
+            fd.append('ai_suggested_category_id', document.getElementById('lisoAiSuggestedCatId')?.value || '');
+            fd.append('ai_suggested_title', document.getElementById('lisoAiSuggestedTitle')?.value || '');
+        }
+
+        const res = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            window.agapNotify?.(json.message || 'Unable to save review decision.', 'error', 'LISO Verification');
+            return;
+        }
+        window.agapNotify?.(json.message || 'Verification updated.', 'success', 'LISO Verification');
+        if (typeof loadComplaintDetails === 'function') {
+            await loadComplaintDetails();
+        }
+    } catch (err) {
+        window.agapNotify?.('Failed to connect to verification service.', 'error', 'LISO Verification');
+    }
+}
+window.submitLisoReviewDecision = submitLisoReviewDecision;

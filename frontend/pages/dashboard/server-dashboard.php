@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once '../../../backend/services/SecurityBootstrap.php';
+SecurityBootstrap::startSession();
 
 // Enforce access control: Admin (1), Lupon Clerk (2), Summons Server (4)
 if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 4], true)) {
@@ -34,7 +35,7 @@ include '../../layouts/header.php';
             <!-- ── 1. Dispatch Summary KPIs ────────────────────────────────────── -->
             <section class="server-kpis-grid" aria-label="Dispatch Summary KPIs">
                 <!-- Pending Delivery -->
-                <div class="server-kpi-card kpi-pending" id="kpiPendingCard" role="button" tabindex="0" title="Click to filter pending delivery summons">
+                <div class="server-kpi-card kpi-pending" id="kpiPendingCard">
                     <div class="kpi-card-header">
                         <span class="server-kpi-label">Pending Delivery</span>
                         <span class="server-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></span>
@@ -44,7 +45,7 @@ include '../../layouts/header.php';
                 </div>
 
                 <!-- Served Today -->
-                <div class="server-kpi-card kpi-served" id="kpiServedCard" role="button" tabindex="0" title="Click to filter summons served today">
+                <div class="server-kpi-card kpi-served" id="kpiServedCard">
                     <div class="kpi-card-header">
                         <span class="server-kpi-label">Served Today</span>
                         <span class="server-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
@@ -54,7 +55,7 @@ include '../../layouts/header.php';
                 </div>
 
                 <!-- Unserved / Need Follow-up -->
-                <div class="server-kpi-card kpi-unserved" id="kpiUnservedCard" role="button" tabindex="0" title="Click to filter unserved / follow-up summons">
+                <div class="server-kpi-card kpi-unserved" id="kpiUnservedCard">
                     <div class="kpi-card-header">
                         <span class="server-kpi-label">Unserved / Follow-up</span>
                         <span class="server-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></span>

@@ -6,7 +6,7 @@
 
 class I18nManager {
     constructor() {
-        this.currentLang = localStorage.getItem('agap_language') || 'tl';
+        this.currentLang = localStorage.getItem('agap_language') || 'en';
         this.dictionaries = {
             tl: null,
             en: null

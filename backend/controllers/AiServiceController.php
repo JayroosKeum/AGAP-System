@@ -21,7 +21,7 @@ class AiServiceController
      * @param string $mimeType Optional MIME type if passing binary/base64
      * @return array Response payload with success status and transcribed text
      */
-    public function transcribeAudio($audioInput, string $mimeType = ''): array
+    public function transcribeAudio($audioInput, string $mimeType = '', string $languageHint = ''): array
     {
         if (empty($this->gemini->getApiKey())) {
             return [
@@ -50,7 +50,14 @@ class AiServiceController
         $audioData = $media['data'];
         $detectedMime = $media['mime_type'];
 
-        $prompt = "You are an accurate, objective transcription assistant for Katarungang Pambarangay (Philippine Barangay Justice System). Transcribe all spoken dialogue from this audio verbatim into clear, legible text. Support Tagalog, English, Taglish, or Philippine regional dialects. Preserve names, amounts, dates, commitments, and statements accurately. Output ONLY the clean transcribed text without conversational commentary, markdown wrappers, or timestamps.";
+        $langNorm = strtolower(trim($languageHint));
+        $langDirective = in_array($langNorm, ['tl', 'fil', 'fil-ph', 'tagalog'], true)
+            ? ' The speaker chose Tagalog / Filipino: preserve natural Tagalog or Taglish wording accurately without translating it into English.'
+            : (in_array($langNorm, ['en', 'en-ph', 'english'], true)
+                ? ' The speaker chose English: transcribe faithfully in clear English (keeping any proper names or local terms intact).'
+                : '');
+
+        $prompt = "You are an accurate, objective transcription assistant for Katarungang Pambarangay (Philippine Barangay Justice System). Transcribe all spoken dialogue from this audio verbatim into clear, legible text. Support Tagalog, English, Taglish, or Philippine regional dialects.{$langDirective} Preserve names, amounts, dates, commitments, and statements accurately. Output ONLY the clean transcribed text without conversational commentary, markdown wrappers, or timestamps.";
 
         $contents = [
             'parts' => [

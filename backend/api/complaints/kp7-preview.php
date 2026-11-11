@@ -3,15 +3,13 @@
 session_start();
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../services/PDFService.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
-    header('Content-Type: application/json; charset=utf-8');
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Authentication required.']);
-    exit;
-}
+$db = (new Database())->connect();
+$roleName = agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'BPSO', 'LISO', 'Resident'], $db);
+$actorUserId = agapSessionUserId();
 
 $complaintId = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$complaintId) {
@@ -20,8 +18,6 @@ if (!$complaintId) {
     echo json_encode(['success' => false, 'message' => 'Invalid complaint ID.']);
     exit;
 }
-
-$db = (new Database())->connect();
 
 $stmt = $db->prepare("
     SELECT c.*, cat.category_name, cs.case_id, cs.case_number, cs.case_status,
@@ -42,34 +38,38 @@ if (!$complaint) {
     exit;
 }
 
-$isPaanyayaStage = in_array($complaint['status'] ?? '', [
-    'Pre-Docketed (Paanyaya)',
-    '1st Paanyaya Failed (No-Show)',
-    'Paanyaya In Progress',
-    'Resolved at Paanyaya / Closed',
-    'Paanyaya'
-], true) || !empty($complaint['resolved_without_docketing']) || stripos($complaint['status'] ?? '', 'paanyaya') !== false;
-
-if ($isPaanyayaStage) {
-    if (isset($_GET['download']) && (string)$_GET['download'] === '1') {
+if ($roleName === 'Resident') {
+    if (!agapResidentOwnsComplaint($db, (int) $complaintId, $actorUserId)) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(403);
-        echo json_encode([
-            'success' => false,
-            'message' => 'KP Form 7 is on hold pending the outcome of the Paanyaya informal dialogue. If settled, KP Form 7 is not generated.'
-        ]);
+        echo json_encode(['success' => false, 'message' => 'You are only permitted to view KP Form 7 for your own filed complaints.']);
         exit;
     }
+}
 
+$complaintStatus = trim((string) ($complaint['status'] ?? ''));
+$isKp7PendingReview = ((int) ($complaint['is_draft'] ?? 0) === 1)
+    || in_array($complaintStatus, ['Under Review', 'Needs Information', 'Rejected'], true)
+    || (strcasecmp((string) ($complaint['complaint_source'] ?? ''), 'Online') === 0 && strcasecmp($complaintStatus, 'Filed') === 0 && empty($complaint['case_id']) && empty($complaint['generated_kp7_path']));
+
+if ($isKp7PendingReview) {
+    $isJsonReq = (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
+        || (isset($_GET['format']) && $_GET['format'] === 'json');
+    $msg = ($complaintStatus === 'Rejected')
+        ? 'KP Form 7 was not generated because this complaint was declined during review.'
+        : 'KP Form 7 is not generated yet while this complaint is still under review.';
     http_response_code(403);
-    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>KP Form 7: On Hold</title></head><body style="font-family:system-ui,-apple-system,sans-serif;padding:40px 20px;background:#f8fafc;color:#1e293b;text-align:center;">'
-        . '<div style="max-width:520px;margin:30px auto;border:1px solid #fde68a;background:#fffbeb;border-radius:12px;padding:28px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">'
-        
-        . '<h2 style="color:#b45309;margin:0 0 10px;font-size:1.25rem;">KP Form 7: On Hold</h2>'
-        . '<span style="display:inline-block;padding:3px 10px;border-radius:999px;font-size:0.75rem;font-weight:700;background:#fef3c7;color:#92400e;margin-bottom:14px;">Pending Paanyaya Outcome</span>'
-        . '<p style="font-size:0.92rem;line-height:1.6;color:#475569;margin:0 0 16px;">This complaint is currently in the <strong>Pre-Docketing (Paanyaya)</strong> informal stage. Official KP Form 7 (Formal Complaint) is not issued unless the dispute fails informal settlement and is formally escalated to mediation.</p>'
-        . '<p style="font-size:0.85rem;color:#78350f;margin:0;">Please refer to the <strong>Paanyaya (Invitation Letter)</strong> for this dispute.</p>'
-        . '</div></body></html>';
+    if ($isJsonReq) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['success' => false, 'code' => 'KP7_PENDING_REVIEW', 'message' => $msg]);
+    } else {
+        header('Content-Type: text/html; charset=utf-8');
+        echo '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>KP Form 7 Pending Review</title>'
+            . '<style>body{font-family:system-ui,-apple-system,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;}'
+            . '.box{max-width:460px;background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:24px;box-shadow:0 8px 24px rgba(15,23,42,.06);}'
+            . 'h1{margin:0 0 8px;font-size:1.1rem;color:#0f172a;}p{margin:0;font-size:.92rem;line-height:1.5;color:#475569;}</style></head>'
+            . '<body><div class="box"><h1>KP Form 7 Not Yet Generated</h1><p>' . htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') . '</p></div></body></html>';
+    }
     exit;
 }
 

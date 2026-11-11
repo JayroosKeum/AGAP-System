@@ -604,8 +604,12 @@ class HearingController
     {
         $targetDate = !empty($data['target_date']) ? trim((string) $data['target_date']) : (!empty($data['date']) ? trim((string) $data['date']) : date('Y-m-d'));
         $reason = trim((string) ($data['reason'] ?? $data['reschedule_reason'] ?? 'Punong Barangay Unavailable'));
+        $slotScope = strtolower(trim((string) ($data['slot_scope'] ?? $data['period'] ?? 'all')));
+        if (!in_array($slotScope, ['all', 'afternoon'], true)) {
+            $slotScope = 'all';
+        }
 
-        return $this->hearing->batchReschedulePbUnavailable($targetDate, $reason, $userId);
+        return $this->hearing->batchReschedulePbUnavailable($targetDate, $reason, $userId, $slotScope);
     }
 
     public function reorderQueue(array $data, int $userId): array
@@ -1263,8 +1267,6 @@ class HearingController
                 'message' => $serviceGate['message'] ?? 'Attendance check-in is locked until an officer logs an appropriate Summons Return.',
                 'service_gate' => $serviceGate
             ];
-        }
-        if (false) {
         }
 
         $residentId = filter_var($data['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

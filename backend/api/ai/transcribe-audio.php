@@ -6,12 +6,11 @@ require_once __DIR__ . '/../../controllers/AiServiceController.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
 require_once __DIR__ . '/../../services/AiRequestRateLimit.php';
 
-// Verify authentication
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access. Please log in.']);
-    exit;
-}
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
+$db = (new Database())->connect();
+$roleName = agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'BPSO', 'LISO', 'Resident'], $db);
+$userId = agapSessionUserId();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -20,6 +19,22 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 CsrfService::enforceForApiRequest();
+
+$enforceConsentAndQuota = static function (mixed $consent) use ($roleName, $userId): void {
+    if (!in_array($consent, [true, 1, '1', 'true'], true)) {
+        http_response_code(422);
+        echo json_encode(['success' => false, 'message' => 'Confirm that this recording may be sent to Google Gemini for processing.']);
+        exit;
+    }
+    $allowed = ($roleName === 'Resident')
+        ? !empty(AiRequestRateLimit::consumeScoped("resident_transcribe_{$userId}", 5, 600)['allowed'])
+        : AiRequestRateLimit::consume();
+    if (!$allowed) {
+        http_response_code(429);
+        echo json_encode(['success' => false, 'message' => 'Please wait a few minutes before making another AI request.']);
+        exit;
+    }
+};
 
 $maxRequestBytes = (int) (ceil((25 * 1024 * 1024) / 3) * 4) + 4096;
 if ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > $maxRequestBytes) {
@@ -39,19 +54,15 @@ if (!$file || !isset($file['tmp_name']) || empty($file['tmp_name'])) {
     }
     $json = json_decode($rawInput, true);
     if (is_array($json) && !empty($json['audio_base64'])) {
-        $consent = $json['external_ai_consent'] ?? null;
         $mime = $json['mime_type'] ?? 'audio/webm';
-        if (!in_array($consent, [true, 1, '1', 'true'], true)) {
+        if (!is_string($mime)) {
             http_response_code(422);
-            echo json_encode(['success' => false, 'message' => 'Confirm that this recording may be sent to Google Gemini for processing.']);
+            echo json_encode(['success' => false, 'message' => 'Invalid audio MIME type.']);
             exit;
         }
-        if (!is_string($mime) || !AiRequestRateLimit::consume()) {
-            http_response_code(!is_string($mime) ? 422 : 429);
-            echo json_encode(['success' => false, 'message' => !is_string($mime) ? 'Invalid audio MIME type.' : 'Please wait a few minutes before making another AI request.']);
-            exit;
-        }
-        $result = (new AiServiceController())->transcribeAudio($json['audio_base64'], $mime);
+        $enforceConsentAndQuota($json['external_ai_consent'] ?? null);
+        $languageHint = is_string($json['language'] ?? null) ? trim($json['language']) : '';
+        $result = (new AiServiceController())->transcribeAudio($json['audio_base64'], $mime, $languageHint);
         http_response_code($result['success'] ? 200 : 422);
         echo json_encode($result);
         exit;
@@ -62,20 +73,11 @@ if (!$file || !isset($file['tmp_name']) || empty($file['tmp_name'])) {
     exit;
 }
 
-$consent = $_POST['external_ai_consent'] ?? null;
-if (!in_array($consent, [true, 1, '1', 'true'], true)) {
-    http_response_code(422);
-    echo json_encode(['success' => false, 'message' => 'Confirm that this recording may be sent to Google Gemini for processing.']);
-    exit;
-}
-if (!AiRequestRateLimit::consume()) {
-    http_response_code(429);
-    echo json_encode(['success' => false, 'message' => 'Please wait a few minutes before making another AI request.']);
-    exit;
-}
+$enforceConsentAndQuota($_POST['external_ai_consent'] ?? null);
+$languageHint = is_string($_POST['language'] ?? null) ? trim($_POST['language']) : '';
 
 $controller = new AiServiceController();
-$result = $controller->transcribeAudio($file);
+$result = $controller->transcribeAudio($file, '', $languageHint);
 
 http_response_code($result['success'] ? 200 : 422);
 echo json_encode($result);

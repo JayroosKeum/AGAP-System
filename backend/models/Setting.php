@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 class Setting
 {
@@ -129,6 +130,19 @@ class Setting
         $desc = trim((string)($data['description'] ?? ''));
         $isActive = isset($data['is_active']) ? ((int)$data['is_active'] ? 1 : 0) : 1;
 
+        if ($name === '' || !ValidationService::maxLength($name, 150) || !ValidationService::text($name)) {
+            return ['success' => false, 'message' => 'Category name is required (up to 150 characters, no control characters).'];
+        }
+        if ($tagalog !== '' && (!ValidationService::maxLength($tagalog, 150) || !ValidationService::text($tagalog))) {
+            return ['success' => false, 'message' => 'Tagalog name must be 150 characters or fewer.'];
+        }
+        if ($ltiaCode !== '' && (mb_strlen($ltiaCode, 'UTF-8') > 50 || preg_match('/^[A-Za-z0-9._\-\/\s]+$/', $ltiaCode) !== 1)) {
+            return ['success' => false, 'message' => 'LTIA code may contain up to 50 letters, numbers, dots, hyphens, slashes, or spaces.'];
+        }
+        if ($desc !== '' && (!ValidationService::maxLength($desc, 1000) || !ValidationService::text($desc, true))) {
+            return ['success' => false, 'message' => 'Category description must be 1,000 characters or fewer.'];
+        }
+
         if ($name === '') {
             return ['success' => false, 'message' => 'Category name is required.'];
         }
@@ -167,7 +181,7 @@ class Setting
             }
         } catch (Throwable $e) {
             error_log("saveCategory error: " . $e->getMessage());
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Unable to save record due to a system error. Please try again.'];
         }
     }
 
@@ -382,6 +396,33 @@ class Setting
         $audio = isset($data['notification_audio']) ? ((int)$data['notification_audio'] ? 1 : 0) : 1;
         $inbox = isset($data['notification_inbox']) ? ((int)$data['notification_inbox'] ? 1 : 0) : 1;
         $lang = in_array(trim((string)($data['preferred_language'] ?? '')), ['en', 'fil'], true) ? trim((string)$data['preferred_language']) : 'fil';
+        $hasPurok = array_key_exists('purok', $data);
+        $hasAddress = array_key_exists('address', $data);
+        $purok = $hasPurok ? (trim((string)$data['purok']) ?: null) : null;
+        $address = $hasAddress ? (trim((string)$data['address']) ?: null) : null;
+
+        if (!ValidationService::name($fn, 100, true)) {
+            return ['success' => false, 'message' => 'Please enter a valid first name (letters only, up to 100 characters).'];
+        }
+        if ($mn !== null && !ValidationService::name($mn, 100, false)) {
+            return ['success' => false, 'message' => 'Please enter a valid middle name (letters only, up to 100 characters).'];
+        }
+        if (!ValidationService::name($ln, 100, true)) {
+            return ['success' => false, 'message' => 'Please enter a valid last name (letters only, up to 100 characters).'];
+        }
+        if ($contact !== null && (mb_strlen($contact, 'UTF-8') > 20 || !ValidationService::phone($contact))) {
+            return ['success' => false, 'message' => 'Please enter a valid Philippine mobile or telephone number (up to 20 characters).'];
+        }
+        if ($email !== null && !ValidationService::email($email)) {
+            return ['success' => false, 'message' => 'Please enter a valid email address (up to 150 characters).'];
+        }
+
+        if ($purok !== null && (!ValidationService::maxLength($purok, 100) || !ValidationService::address($purok))) {
+            return ['success' => false, 'message' => 'Please enter a valid Purok or area (up to 100 characters).'];
+        }
+        if ($address !== null && (!ValidationService::maxLength($address, 255) || !ValidationService::address($address))) {
+            return ['success' => false, 'message' => 'Please enter a valid street address (up to 255 characters).'];
+        }
 
         if ($fn === '' || $ln === '') {
             return ['success' => false, 'message' => 'First name and last name are required.'];
@@ -409,6 +450,63 @@ class Setting
             ");
             $stmt->execute([$fn, $mn, $ln, $email, $contact, $audio, $inbox, $lang, $userId]);
 
+            if (
+                session_status() === PHP_SESSION_ACTIVE
+                && ($_SESSION['user_id'] ?? 0) === $userId
+                && ($_SESSION['role_name'] ?? '') === 'Resident'
+            ) {
+                $targetResidentId = (int) ($_SESSION['resident_id'] ?? 0);
+                if ($targetResidentId <= 0 && $email !== null) {
+                    $findRes = $this->conn->prepare('SELECT resident_id FROM residents WHERE LOWER(email) = LOWER(?) LIMIT 1');
+                    $findRes->execute([$email]);
+                    $targetResidentId = (int) ($findRes->fetchColumn() ?: 0);
+                }
+                if ($targetResidentId > 0) {
+                    $resSets = [
+                        'first_name = ?',
+                        'middle_name = ?',
+                        'last_name = ?',
+                        'email = ?',
+                        'contact_no = ?',
+                    ];
+                    $resParams = [$fn, $mn, $ln, $email, $contact];
+                    if ($hasPurok) {
+                        $resSets[] = 'purok = ?';
+                        $resParams[] = $purok;
+                    }
+                    if ($hasAddress) {
+                        $resSets[] = 'address = ?';
+                        $resSets[] = 'house_street = ?';
+                        $resParams[] = $address;
+                        $resParams[] = $address;
+                    }
+                    $resSets[] = 'updated_at = CURRENT_TIMESTAMP';
+                    $resParams[] = $targetResidentId;
+                    $resStmt = $this->conn->prepare('UPDATE residents SET ' . implode(', ', $resSets) . ' WHERE resident_id = ?');
+                    $resStmt->execute($resParams);
+                    $_SESSION['resident_id'] = $targetResidentId;
+                } else {
+                    $insRes = $this->conn->prepare("
+                        INSERT INTO residents (
+                            first_name, middle_name, last_name, contact_no, email, preferred_contact,
+                            address, house_street, barangay, city_municipality, purok, is_tenant, residency_verified
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Tumana', 'Marikina City', ?, 0, 0)
+                    ");
+                    $insRes->execute([
+                        $fn,
+                        $mn,
+                        $ln,
+                        $contact,
+                        $email,
+                        $contact ? 'SMS' : 'Email',
+                        $address,
+                        $address,
+                        $purok,
+                    ]);
+                    $_SESSION['resident_id'] = (int) $this->conn->lastInsertId();
+                }
+            }
+
             // Update session cache if current user
             if (session_status() === PHP_SESSION_ACTIVE && ($_SESSION['user_id'] ?? 0) === $userId) {
                 $_SESSION['preferred_language'] = $lang;
@@ -417,7 +515,7 @@ class Setting
             return ['success' => true, 'message' => 'Profile updated successfully.'];
         } catch (Throwable $e) {
             error_log("updateUserProfile error: " . $e->getMessage());
-            return ['success' => false, 'message' => 'Database error: ' . $e->getMessage()];
+            return ['success' => false, 'message' => 'Unable to save record due to a system error. Please try again.'];
         }
     }
 
@@ -426,8 +524,8 @@ class Setting
      */
     public function updateUserPassword(int $userId, string $currentPassword, string $newPassword): array
     {
-        if (strlen($newPassword) < 12 || !preg_match('/[a-z]/', $newPassword) || !preg_match('/[A-Z]/', $newPassword) || !preg_match('/\d/', $newPassword)) {
-            return ['success' => false, 'message' => 'Use at least 12 characters with uppercase, lowercase, and a number.'];
+        if (($pwErr = ValidationService::passwordError($newPassword)) !== null) {
+            return ['success' => false, 'message' => $pwErr];
         }
 
         if ($currentPassword === $newPassword) {

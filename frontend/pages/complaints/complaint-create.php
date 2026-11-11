@@ -2,20 +2,24 @@
 
 session_start();
 
-$roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2], true)) {
-    $redirect = match ($roleId) {
-        3 => '../dashboard/lupon-dashboard.php',
-        4 => '../dashboard/server-dashboard.php',
+require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/../../../backend/middleware/rbac.php';
+require_once __DIR__ . '/partials/ai-classification-ui.php';
+require_once __DIR__ . '/partials/kp-jurisdiction-ui.php';
+
+$db = (new Database())->connect();
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'BPSO'], $db)) {
+    $roleName = agapGetRoleName($db);
+    $redirect = match ($roleName) {
+        'LISO' => '../complaints/complaint-list.php',
+        'Lupon Member' => '../dashboard/lupon-dashboard.php',
+        'Summons Server' => '../dashboard/server-dashboard.php',
+        'Resident' => '../complaints/resident-portal.php',
         default => '../auth/login.php',
     };
     header('Location: ' . $redirect);
     exit;
 }
-
-require_once __DIR__ . '/../../../backend/config/database.php';
-
-$db = (new Database())->connect();
 $categoriesStmt = $db->query("
     SELECT category_id, category_name 
     FROM complaint_categories 
@@ -265,8 +269,24 @@ include '../../layouts/header.php';
                 </div>
             <?php endif; ?>
 
+            <section id="walkinLookupCard" style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:12px; padding:16px 20px; margin-bottom:18px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <strong style="font-size:0.95rem; color:#0f172a;">Walk-in Reference Lookup &amp; Duplicate Link</strong>
+                        <p style="margin:4px 0 0; font-size:0.82rem; color:#475569;">If the complainant filed online or already has an active complaint, search their Reference ID (e.g. <code>CMP-<?php echo date('Y'); ?>-0001</code>), name, or mobile number to link this walk-in visit instead of creating a duplicate.</p>
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+                    <input type="text" id="walkinLookupQuery" placeholder="Enter Reference ID (CMP-...), name, or contact number..." style="flex:1; min-width:240px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.86rem;">
+                    <button type="button" id="btnWalkinLookup" class="btn-outline-sm" style="padding:8px 14px; font-weight:700;">Search Existing Filings</button>
+                    <button type="button" id="btnClearWalkinLookup" class="btn-secondary btn-sm" style="display:none; padding:8px 12px;">Clear</button>
+                </div>
+                <div id="walkinLookupResults" style="display:none; margin-top:12px;"></div>
+            </section>
+
             <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
                 <input type="hidden" name="bypass_office_hours" value="1">
+                <input type="hidden" name="is_draft" id="complaintIsDraftInput" value="0">
                 <input type="hidden" name="escalated_from_paanyaya_id" value="<?php echo htmlspecialchars((string)($old['escalated_from_paanyaya_id'] ?? ($escalatePaanyaya['paanyaya_id'] ?? ''))); ?>">
 
                 <div class="intake-layout-container" id="intakeLayoutContainer">
@@ -291,6 +311,10 @@ include '../../layouts/header.php';
                             
                             <a href="#section-location" id="nav-sec-location" class="quicknav-link">
                                 <span class="quicknav-badge">4</span> Incident Location &amp; Map Pin
+                            </a>
+
+                            <a href="#section-jurisdiction" id="nav-sec-jurisdiction" class="quicknav-link">
+                                <span class="quicknav-badge">KP</span> Jurisdiction Check
                             </a>
 
                             <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
@@ -471,6 +495,10 @@ include '../../layouts/header.php';
 
                                 <div class="form-group">
                                     <label for="caseType">Case Type <span class="required-mark">*</span></label>
+                                    <div class="agap-segmented-group" data-seg-target="caseType" role="group" aria-label="Case Type">
+                                        <button type="button" class="agap-seg-btn <?php echo (($old['case_type'] ?? 'Civil') === 'Civil') ? 'is-active' : ''; ?>" data-seg-value="Civil">Civil</button>
+                                        <button type="button" class="agap-seg-btn <?php echo (($old['case_type'] ?? '') === 'Criminal') ? 'is-active' : ''; ?>" data-seg-value="Criminal">Criminal</button>
+                                    </div>
                                     <select id="caseType" name="case_type" required>
                                         <option value="Civil" <?php echo (($old['case_type'] ?? 'Civil') === 'Civil') ? 'selected' : ''; ?>>Civil</option>
                                         <option value="Criminal" <?php echo (($old['case_type'] ?? '') === 'Criminal') ? 'selected' : ''; ?>>Criminal</option>
@@ -617,6 +645,8 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
+                            <?php renderAiClassificationSectionBanner($old); ?>
+
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
                                 <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
@@ -626,8 +656,8 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <input type="hidden" name="jurisdiction_screened" id="jurisdictionScreened" value="1">
-                            <input type="hidden" name="has_private_offended_party" value="1">
+
+
                         </section>
 
 
@@ -770,6 +800,7 @@ include '../../layouts/header.php';
                             <input type="hidden" id="respContactUnknown" name="respondent_contact_unknown" value="<?php echo !empty($old['respondent_contact_unknown']) ? '1' : '0'; ?>">
                             <input type="hidden" id="respMiddleUnknown" name="respondent_middle_name_unknown" value="<?php echo !empty($old['respondent_middle_name_unknown']) ? '1' : '0'; ?>">
                             <input type="hidden" id="respBirthUnknown" name="respondent_birthdate_unknown" value="<?php echo !empty($old['respondent_birthdate_unknown']) ? '1' : '0'; ?>">
+                            <input type="hidden" id="respondentKpException" name="respondent_kp_jurisdiction_exception" value="<?php echo !empty($old['respondent_kp_jurisdiction_exception']) ? '1' : '0'; ?>">
 
                             <!-- Container for dynamic additional parties hidden inputs -->
                             <div id="additionalPartiesHiddenContainer"></div>
@@ -790,10 +821,18 @@ include '../../layouts/header.php';
 
                             <div class="form-group">
                                 <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
+                                <?php
+                                $narrativeGuideId = 'agapNarrativeGuide';
+                                $narrativeTargetSelector = '#narrative';
+                                include __DIR__ . '/../../layouts/narrative-accoc-guide.php';
+                                ?>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($old['narrative'] ?? ''); ?></textarea>
                                 <div class="ai-narrative-actions">
                                     <div class="ai-narrative-tools">
                                         <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
+                                        <button type="button" class="btn-outline-sm" data-classify-complaint>Suggest Category &amp; Title</button>
+                                        <button type="button" class="btn-outline-sm" id="btnComplaintVoiceRecord" title="Dictate statement into editable draft">&#127908; Record Voice (STT)</button>
+                                        <span id="complaintVoiceStatus" style="display:none; font-size:0.78rem; font-weight:600; color:#0369a1;"></span>
                                         <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
                                     </div>
                                     <label class="ai-consent-checkbox-label">
@@ -810,6 +849,8 @@ include '../../layouts/header.php';
                                     </div>
                                 </div>
                             </div>
+
+                            <?php renderAiClassificationPreviewPanel(); ?>
 
                             <div class="form-group" id="prayerForReliefGroup" style="margin-bottom:0;">
                                 <label for="requestedResolution">Relief / Settlement Desired by Complainant <span class="optional-label">Optional</span></label>
@@ -873,6 +914,13 @@ include '../../layouts/header.php';
                             <div class="location-split-layout">
                                 <!-- Left Column: Address Fields -->
                                 <div>
+                                    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+                                        <span style="font-size:0.76rem; font-weight:700; color:#475569; margin-right:4px;">Quick Fill Location:</span>
+                                        <button type="button" id="btnPresetIncidentComplainant" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">At Complainant's Address</button>
+                                        <button type="button" id="btnPresetIncidentRespondent" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">At Respondent's Address</button>
+                                        <button type="button" id="btnPresetIncidentGps" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">&#128205; Use Current GPS</button>
+                                        <span id="incidentPresetStatus" style="font-size:0.74rem; color:#64748b; margin-left:auto;"></span>
+                                    </div>
                                     <div class="form-group">
                                         <label for="incidentStreet">Street Address / Alley / Landmark <span class="required-mark">*</span></label>
                                         <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="House #, Street, building, or nearby place" value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
@@ -969,6 +1017,8 @@ include '../../layouts/header.php';
                         </section>
 
 
+                        <?php renderKpJurisdictionVerificationPanel($old); ?>
+
                         <!-- SECTION 5: EVIDENCE & ATTACHMENTS -->
                         <section id="section-evidence" class="intake-section-card">
                             <div class="intake-section-header">
@@ -1017,6 +1067,7 @@ include '../../layouts/header.php';
                         <!-- Action Row directly under Section 5 Evidence & Attachments -->
                         <div class="intake-bottom-actions" style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 24px; padding: 20px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
                             <a href="complaint-list.php" class="btn-secondary" style="text-decoration: none; padding: 10px 20px;">Cancel</a>
+                            <button type="submit" form="createComplaintForm" class="btn-secondary" id="btnSaveComplaintDraft" style="padding: 10px 18px; font-weight: 600;">Save as Draft</button>
                             <button type="submit" form="createComplaintForm" class="btn-create" id="btnSubmitComplaint" style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 700; padding: 11px 26px;">
                                 <?php echo !empty($escalatePaanyaya) ? 'File Complaint &amp; Proceed to Mediation →' : 'Save &amp; File Formal Complaint →'; ?>
                             </button>
@@ -1201,7 +1252,7 @@ include '../../layouts/header.php';
                                     <input type="checkbox" id="modalContactUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
                                 </label>
                             </div>
-                            <input type="text" id="modalContactNo" placeholder="e.g. 0917 123 4567" maxlength="50">
+                            <input type="tel" id="modalContactNo" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
                         </div>
                         <div class="party-field-col">
                             <label for="modalEmail">Email Address</label>
@@ -1210,9 +1261,10 @@ include '../../layouts/header.php';
                     </div>
 
                     <!-- Residence & Address -->
-                    <div class="party-section-heading" style="margin-top: 16px;">
+                    <div class="party-section-heading" style="margin-top: 16px; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                        Residence Details <span class="required-mark">*</span>
+                        <span>Residence Details <span class="required-mark">*</span></span>
+                        <button type="button" id="btnModalSameAsComplainant" class="btn-secondary btn-sm" style="display:none; margin-left:auto; padding:2px 8px; font-size:0.72rem; border-radius:4px;">Same Address &amp; Purok as Complainant</button>
                     </div>
                     <div class="party-fields-grid-2">
                         <div class="party-field-col">
@@ -1328,7 +1380,7 @@ include '../../layouts/header.php';
                             <div class="party-fields-grid-2" style="margin-top:8px;">
                                 <div class="party-field-col">
                                     <label for="modalGuardianContact">Guardian Contact Number</label>
-                                    <input type="text" id="modalGuardianContact" placeholder="e.g. 0917 123 4567">
+                                    <input type="tel" id="modalGuardianContact" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
                                 </div>
                                 <div class="party-field-col">
                                     <label for="modalGuardianAddress">Guardian Address</label>
@@ -2043,7 +2095,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
             }
-            if (potentialDuplicatesDetected && !document.getElementById('duplicateAcknowledged')?.checked) {
+            if (document.getElementById('complaintIsDraftInput')?.value !== '1' && potentialDuplicatesDetected && !document.getElementById('duplicateAcknowledged')?.checked) {
                 e.preventDefault();
                 window.agapNotify?.('Review the potential duplicate record(s) and confirm whether this filing should proceed.', 'error');
                 document.getElementById('duplicateAcknowledged')?.focus();
@@ -2251,7 +2303,8 @@ document.addEventListener('DOMContentLoaded', () => {
             guardian_address: document.getElementById('respondentGuardianAddress')?.value?.trim() || '',
             contact_unknown: document.getElementById('respContactUnknown')?.value === '1',
             middle_unknown: document.getElementById('respMiddleUnknown')?.value === '1',
-            birth_unknown: document.getElementById('respBirthUnknown')?.value === '1'
+            birth_unknown: document.getElementById('respBirthUnknown')?.value === '1',
+            kp_jurisdiction_exception: document.getElementById('respondentKpException')?.value === '1' ? 1 : 0
         });
     }
 
@@ -2288,6 +2341,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (wrapMiddle) wrapMiddle.style.display = isComplainant ? 'none' : 'inline-flex';
         if (wrapBirth) wrapBirth.style.display = isComplainant ? 'none' : 'inline-flex';
         if (wrapContact) wrapContact.style.display = isComplainant ? 'none' : 'inline-flex';
+
+        const sameAsCompBtn = document.getElementById('btnModalSameAsComplainant');
+        if (sameAsCompBtn) {
+            sameAsCompBtn.style.display = (!isComplainant && Array.isArray(complainantsList) && complainantsList.length > 0) ? 'inline-flex' : 'none';
+        }
 
         // Reset quick-fill search
         resetModalQuickFill();
@@ -3477,6 +3535,26 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (errors.length > 0) {
+        if (window.AgapFieldValidator) {
+            const modalCheck = window.AgapFieldValidator.collectPartyModalErrors({
+                firstName,
+                middleName: document.getElementById('modalMiddleUnknown')?.checked ? '' : (document.getElementById('modalMiddleName')?.value || ''),
+                lastName,
+                birthDate: document.getElementById('modalBirthUnknown')?.checked ? '' : (document.getElementById('modalBirthdate')?.value || ''),
+                age: document.getElementById('modalAge')?.value || '',
+                contactNo: document.getElementById('modalContactNo')?.value || '',
+                contactUnknown: document.getElementById('modalContactUnknown')?.checked || false,
+                email: document.getElementById('modalEmail')?.value || '',
+                isMinor,
+                guardianName: document.getElementById('modalGuardianName')?.value || '',
+                guardianContact: document.getElementById('modalGuardianContact')?.value || '',
+                allowEntity: document.querySelector('[name="party_is_juridical"]')?.checked || document.querySelector('[name="party_is_government"]')?.checked || false
+            });
+            errors.push(...modalCheck.errors);
+            errorFieldIds.push(...modalCheck.fieldIds);
+        }
+
+        if (errors.length > 0) {
             showModalValidationErrors(errors, errorFieldIds);
             return;
         }
@@ -3641,6 +3719,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setResp('respContactUnknown', resp.contact_unknown ? '1' : '0');
             setResp('respMiddleUnknown', resp.middle_unknown ? '1' : '0');
             setResp('respBirthUnknown', resp.birth_unknown ? '1' : '0');
+            setResp('respondentKpException', resp.kp_jurisdiction_exception ? '1' : '0');
         } else {
             ['respondentResidentId', 'respondentName', 'respondentFirstName', 'respondentMiddleName',
              'respondentLastName', 'respondentSuffix', 'respondentBirthdate', 'respondentAge',
@@ -3650,6 +3729,7 @@ document.addEventListener('DOMContentLoaded', () => {
              'respContactUnknown', 'respMiddleUnknown', 'respBirthUnknown'].forEach(id => setResp(id, ''));
             setResp('respondentIsTenant', '0');
             setResp('respondentIsMinor', '0');
+            setResp('respondentKpException', '0');
         }
 
         // Sync additional parties container
@@ -3695,6 +3775,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
             addContainer.innerHTML = html;
+            document.dispatchEvent(new CustomEvent('agap:parties-updated'));
         }
     }
 
@@ -4790,9 +4871,28 @@ document.addEventListener('DOMContentLoaded', () => {
             floatingScanBtn.textContent = 'Scanning...';
         }
 
+        const aiConsentCheckbox = document.querySelector('[data-ai-external-consent]');
+        let hasAiConsent = Boolean(aiConsentCheckbox?.checked);
+        if (!hasAiConsent) {
+            hasAiConsent = window.confirm('AGAP AI Document Scanner will send this document to Google Gemini to draft editable intake fields. Continue?');
+            if (hasAiConsent && aiConsentCheckbox) {
+                aiConsentCheckbox.checked = true;
+            }
+        }
+        if (!hasAiConsent) {
+            isScanningDocument = false;
+            if (beam) beam.style.display = 'none';
+            if (statusOverlay) statusOverlay.style.display = 'none';
+            if (scanBtn) scanBtn.disabled = false;
+            if (floatingScanBtn) floatingScanBtn.disabled = false;
+            window.agapNotify?.('AI scan cancelled. Confirm external AI consent before scanning.', 'info', 'Document Scanner');
+            return;
+        }
+
         try {
             const formData = new FormData();
             formData.append('document', targetFile, targetFile.name);
+            formData.append('external_ai_consent', '1');
 
             const resp = await fetch('../../../backend/api/ai/scan-kp-document.php', {
                 method: 'POST',
@@ -5317,6 +5417,312 @@ document.addEventListener('DOMContentLoaded', () => {
     categorySelectEl?.addEventListener('change', syncSafeSpacesOffenseUI);
     syncSafeSpacesOffenseUI();
     window.isSafeSpacesCategorySelected = isSafeSpacesCategorySelected;
+
+    // ─── Stage 1 Automation: Draft flag toggle ────────────────────────────────
+    const draftFlagInput = document.getElementById('complaintIsDraftInput');
+    document.getElementById('btnSaveComplaintDraft')?.addEventListener('click', () => {
+        if (draftFlagInput) draftFlagInput.value = '1';
+    });
+    document.getElementById('btnSubmitComplaint')?.addEventListener('click', () => {
+        if (draftFlagInput) draftFlagInput.value = '0';
+    });
+
+    // ─── Stage 1 Automation: Walk-in Lookup & Duplicate Linking ───────────────
+    const lookupQueryInput = document.getElementById('walkinLookupQuery');
+    const lookupBtn = document.getElementById('btnWalkinLookup');
+    const clearLookupBtn = document.getElementById('btnClearWalkinLookup');
+    const lookupResultsEl = document.getElementById('walkinLookupResults');
+
+    function escapeHtmlLocal(val) {
+        return String(val ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+    }
+
+    async function runWalkinLookup() {
+        const q = (lookupQueryInput?.value || '').trim();
+        if (q.length < 2) {
+            window.agapNotify?.('Enter at least 2 characters (Reference ID, name, or contact number).', 'warning', 'Walk-in Lookup');
+            return;
+        }
+        if (lookupBtn) lookupBtn.disabled = true;
+        try {
+            const resp = await fetch(`../../../backend/api/complaints/check-duplicate.php?reference_id=${encodeURIComponent(q)}`, {
+                headers: { Accept: 'application/json' }
+            });
+            const data = await resp.json();
+            const rows = Array.isArray(data.duplicates) ? data.duplicates : [];
+            if (clearLookupBtn) clearLookupBtn.style.display = 'inline-flex';
+            if (!lookupResultsEl) return;
+            lookupResultsEl.style.display = 'block';
+
+            if (!rows.length) {
+                lookupResultsEl.innerHTML = '<div style="padding:10px 12px; background:#fff; border:1px solid #cbd5e1; border-radius:8px; font-size:0.84rem; color:#475569;">No matching active complaint found. Proceed with filing a new Walk-in complaint below.</div>';
+                return;
+            }
+
+            lookupResultsEl.innerHTML = rows.map((row) => {
+                const ref = row.complaint_number || ('CMP-' + row.complaint_id);
+                const src = row.complaint_source === 'Online' ? 'Online' : 'Walk-in';
+                const srcBg = src === 'Online' ? '#dbeafe; color:#1d4ed8' : '#e2e8f0; color:#334155';
+                return `
+                    <div style="padding:12px 14px; background:#fff; border:1.5px solid #93c5fd; border-radius:8px; margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+                            <div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <strong style="color:#0f172a; font-size:0.9rem;">${escapeHtmlLocal(ref)}</strong>
+                                    <span style="padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:700; background:${srcBg};">${escapeHtmlLocal(src)}</span>
+                                    <span style="padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:700; background:#fef3c7; color:#92400e;">${escapeHtmlLocal(row.status || 'Filed')}</span>
+                                </div>
+                                <div style="font-size:0.84rem; color:#1e293b; font-weight:600; margin-top:4px;">${escapeHtmlLocal(row.complaint_title || 'Untitled Complaint')}</div>
+                                <div style="font-size:0.78rem; color:#64748b; margin-top:2px;">Parties: ${escapeHtmlLocal(row.complainant_names || 'Complainant')} vs ${escapeHtmlLocal(row.respondent_names || 'Respondent')}</div>
+                            </div>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <a href="complaint-details.php?id=${Number(row.complaint_id)}" class="btn-secondary btn-sm" style="text-decoration:none;">View Record</a>
+                                <button type="button" class="btn-create btn-sm" data-link-existing-id="${Number(row.complaint_id)}" data-link-existing-ref="${escapeHtmlLocal(ref)}">Link Walk-in Visit</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lookupResultsEl.querySelectorAll('[data-link-existing-id]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const targetId = btn.getAttribute('data-link-existing-id');
+                    const targetRef = btn.getAttribute('data-link-existing-ref');
+                    const walkinNotes = window.prompt(`Optional walk-in verification notes for ${targetRef}:`, 'Complainant appeared in person to confirm/follow up on online submission.');
+                    if (walkinNotes === null) return;
+                    btn.disabled = true;
+                    try {
+                        const fd = new FormData();
+                        fd.append('complaint_id', String(targetId));
+                        fd.append('walkin_notes', walkinNotes);
+                        const linkResp = await fetch('../../../backend/api/complaints/link-duplicate.php', {
+                            method: 'POST',
+                            body: fd
+                        });
+                        const linkRes = await linkResp.json();
+                        if (linkRes.success) {
+                            window.agapNotify?.(linkRes.message || `Linked walk-in visit to ${targetRef}.`, 'success', 'Walk-in Linked');
+                            if (linkRes.redirect_url) {
+                                window.location.href = linkRes.redirect_url;
+                            } else {
+                                window.location.href = `complaint-details.php?id=${encodeURIComponent(String(targetId))}`;
+                            }
+                        } else {
+                            window.agapNotify?.(linkRes.message || 'Unable to link walk-in visit.', 'error', 'Walk-in Lookup');
+                            btn.disabled = false;
+                        }
+                    } catch (_) {
+                        window.agapNotify?.('Connection error while linking walk-in visit.', 'error', 'Walk-in Lookup');
+                        btn.disabled = false;
+                    }
+                });
+            });
+        } catch (_) {
+            window.agapNotify?.('Unable to search existing filings right now.', 'error', 'Walk-in Lookup');
+        } finally {
+            if (lookupBtn) lookupBtn.disabled = false;
+        }
+    }
+
+    lookupBtn?.addEventListener('click', runWalkinLookup);
+    lookupQueryInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            runWalkinLookup();
+        }
+    });
+    clearLookupBtn?.addEventListener('click', () => {
+        if (lookupQueryInput) lookupQueryInput.value = '';
+        if (lookupResultsEl) {
+            lookupResultsEl.innerHTML = '';
+            lookupResultsEl.style.display = 'none';
+        }
+        clearLookupBtn.style.display = 'none';
+    });
+
+    // ─── Stage 1 Automation: Voice-to-Salaysay (STT) ──────────────────────────
+    const voiceBtn = document.getElementById('btnComplaintVoiceRecord');
+    const voiceStatus = document.getElementById('complaintVoiceStatus');
+    const narrativeInput = document.getElementById('narrative');
+    let voiceRecorder = null;
+    let voiceChunks = [];
+    let voiceStream = null;
+    let isVoiceRecording = false;
+
+    function setVoiceUi(recording, statusText = '') {
+        isVoiceRecording = recording;
+        if (voiceBtn) {
+            voiceBtn.innerHTML = recording ? '&#9209; Stop Recording' : '&#127908; Record Voice (STT)';
+            voiceBtn.style.borderColor = recording ? '#dc2626' : '';
+            voiceBtn.style.color = recording ? '#dc2626' : '';
+        }
+        if (voiceStatus) {
+            voiceStatus.textContent = statusText;
+            voiceStatus.style.display = statusText ? 'inline' : 'none';
+        }
+    }
+
+    voiceBtn?.addEventListener('click', async () => {
+        if (isVoiceRecording && voiceRecorder) {
+            voiceRecorder.stop();
+            return;
+        }
+
+        const consentBox = document.querySelector('[data-ai-external-consent]');
+        if (!consentBox?.checked) {
+            const approved = window.confirm('Voice dictation sends audio to Google Gemini to draft an editable narrative. Check consent and start recording?');
+            if (!approved) {
+                window.agapNotify?.('Check external AI consent before recording voice dictation.', 'info', 'Voice Dictation');
+                return;
+            }
+            if (consentBox) consentBox.checked = true;
+        }
+
+        if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+            window.agapNotify?.('Audio recording is not supported in this browser.', 'error', 'Voice Dictation');
+            return;
+        }
+
+        try {
+            voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            voiceChunks = [];
+            voiceRecorder = new MediaRecorder(voiceStream);
+            voiceRecorder.ondataavailable = (ev) => {
+                if (ev.data && ev.data.size > 0) voiceChunks.push(ev.data);
+            };
+            voiceRecorder.onstop = async () => {
+                voiceStream?.getTracks().forEach((t) => t.stop());
+                voiceStream = null;
+                setVoiceUi(false, 'Transcribing recording...');
+                if (voiceBtn) voiceBtn.disabled = true;
+                try {
+                    const mime = voiceRecorder.mimeType || 'audio/webm';
+                    const blob = new Blob(voiceChunks, { type: mime });
+                    const ext = mime.includes('ogg') ? 'ogg' : (mime.includes('mp4') ? 'm4a' : 'webm');
+                    const fd = new FormData();
+                    fd.append('audio', blob, `salaysay.${ext}`);
+                    fd.append('external_ai_consent', '1');
+                    const resp = await fetch('../../../backend/api/ai/transcribe-audio.php', {
+                        method: 'POST',
+                        body: fd
+                    });
+                    const res = await resp.json();
+                    const text = (res.text || res.transcript || '').trim();
+                    if (res.success && text) {
+                        if (narrativeInput) {
+                            const existing = narrativeInput.value.trim();
+                            narrativeInput.value = existing ? `${existing}\n${text}` : text;
+                            narrativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        window.agapNotify?.('Voice transcript inserted as an editable draft. Review before saving.', 'success', 'Voice Dictation');
+                    } else {
+                        window.agapNotify?.(res.message || 'Unable to transcribe audio recording.', 'error', 'Voice Dictation');
+                    }
+                } catch (_) {
+                    window.agapNotify?.('Connection error while transcribing voice recording.', 'error', 'Voice Dictation');
+                } finally {
+                    if (voiceBtn) voiceBtn.disabled = false;
+                    setVoiceUi(false, '');
+                }
+            };
+            voiceRecorder.start();
+            setVoiceUi(true, 'Listening... click Stop Recording when done.');
+        } catch (_) {
+            setVoiceUi(false, '');
+            window.agapNotify?.('Microphone permission denied or unavailable.', 'error', 'Voice Dictation');
+        }
+    });
+
+    // ─── Stage 1 Automation: 1-Click Incident Location & Party Address Presets ─
+    function applyPartyAddressToIncident(partyType) {
+        const streetEl = document.getElementById('incidentStreet');
+        const purokEl = document.getElementById('incidentPurok');
+        const statusEl = document.getElementById('incidentPresetStatus');
+        const list = partyType === 'complainant' ? (typeof complainantsList !== 'undefined' ? complainantsList : []) : (typeof respondentsList !== 'undefined' ? respondentsList : []);
+        const fallbackAddr = document.getElementById(partyType === 'complainant' ? 'complainantAddress' : 'respondentAddress')?.value?.trim() || '';
+        const fallbackPurok = document.getElementById(partyType === 'complainant' ? 'complainantPurok' : 'respondentPurok')?.value?.trim() || '';
+        const party = (Array.isArray(list) && list.length > 0) ? list[0] : { address: fallbackAddr, purok: fallbackPurok };
+        const addr = String(party?.address || fallbackAddr || '').trim();
+        const purok = String(party?.purok || fallbackPurok || '').trim();
+
+        if (!addr && !purok) {
+            window.agapNotify?.(`Enter the ${partyType}'s address first.`, 'info', 'Incident Location');
+            return;
+        }
+        if (streetEl && addr) {
+            streetEl.value = addr;
+            streetEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (purokEl && purok) {
+            const matchOpt = Array.from(purokEl.options).find((opt) => opt.value.toLowerCase() === purok.toLowerCase());
+            if (matchOpt) {
+                purokEl.value = matchOpt.value;
+            } else if (purok.toLowerCase().includes('non-resident') || purok.toLowerCase().includes('outside')) {
+                purokEl.value = 'Outside Tumana';
+            }
+            purokEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (party?.latitude && party?.longitude && window.complaintMaps?.addComplaintMap?.setPoint) {
+            window.complaintMaps.addComplaintMap.setPoint(Number(party.latitude), Number(party.longitude), 'selected', false);
+        }
+        if (statusEl) statusEl.textContent = `Copied from ${partyType}'s address.`;
+    }
+
+    document.getElementById('btnPresetIncidentComplainant')?.addEventListener('click', () => applyPartyAddressToIncident('complainant'));
+    document.getElementById('btnPresetIncidentRespondent')?.addEventListener('click', () => applyPartyAddressToIncident('respondent'));
+    document.getElementById('btnPresetIncidentGps')?.addEventListener('click', () => {
+        const statusEl = document.getElementById('incidentPresetStatus');
+        if (!navigator.geolocation) {
+            window.agapNotify?.('GPS geolocation is not supported on this device.', 'error', 'Location GPS');
+            return;
+        }
+        if (statusEl) statusEl.textContent = 'Detecting GPS location...';
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                document.getElementById('locationMapPinbox')?.classList.add('is-open');
+                const controller = window.complaintMaps?.addComplaintMap;
+                controller?.map?.invalidateSize?.();
+                const ok = controller?.setPoint?.(latitude, longitude, 'selected', true);
+                if (statusEl) {
+                    statusEl.textContent = ok === false
+                        ? 'GPS point is outside Marikina City; adjust manually.'
+                        : 'GPS pinned and address updated.';
+                }
+            },
+            () => {
+                if (statusEl) statusEl.textContent = '';
+                window.agapNotify?.('Unable to retrieve GPS coordinates.', 'warning', 'Location GPS');
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    });
+
+    document.getElementById('btnModalSameAsComplainant')?.addEventListener('click', () => {
+        const comp = (Array.isArray(complainantsList) && complainantsList.length > 0) ? complainantsList[0] : null;
+        if (!comp) {
+            window.agapNotify?.('Add the Complainant first before copying their address.', 'info', 'Party Details');
+            return;
+        }
+        const modalPurokEl = document.getElementById('modalPurok');
+        const modalAddressEl = document.getElementById('modalAddress');
+        const modalLatEl = document.getElementById('modalLatitude');
+        const modalLngEl = document.getElementById('modalLongitude');
+        if (modalPurokEl && comp.purok) {
+            modalPurokEl.value = comp.purok;
+            modalPurokEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (modalAddressEl && comp.address) {
+            modalAddressEl.value = comp.address;
+            modalAddressEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (modalLatEl && comp.latitude) modalLatEl.value = comp.latitude;
+        if (modalLngEl && comp.longitude) modalLngEl.value = comp.longitude;
+        if (comp.latitude && comp.longitude && typeof setPartyAddressMapPoint === 'function') {
+            setPartyAddressMapPoint(Number(comp.latitude), Number(comp.longitude), false);
+        }
+        window.agapNotify?.("Copied complainant's Purok and street address.", 'success', 'Party Details');
+    });
 });
 </script>
 

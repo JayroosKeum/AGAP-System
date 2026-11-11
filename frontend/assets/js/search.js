@@ -527,6 +527,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
+            const reviewCount = rows.filter(r => r.lifecycle_status === 'Under Review').length;
             const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
@@ -535,6 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             cachedGlobalCounts = {
                 all: allCount,
+                review: reviewCount,
                 paanyaya: paanyayaCount,
                 mediation: mediationCount,
                 conciliation: conciliationCount,
@@ -550,6 +552,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         setEl('tabCountAll', counts.all);
+        setEl('tabCountReview', counts.review || 0);
         setEl('tabCountPaanyaya', counts.paanyaya || 0);
         setEl('tabCountMediation', counts.mediation);
         setEl('tabCountConciliation', counts.conciliation);
@@ -687,9 +690,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isPaanyaya = false;
 
-        // 1. Case No.
+        // 1. Case No. / Complaint Reference ID
         let caseNumberHtml;
-        if (isPaanyaya) {
+        if (!row.case_id && row.complaint_number) {
+            caseNumberHtml = `<span class="badge-case-paanyaya-no" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700; padding:2px 8px; border-radius:9999px; font-size:0.75rem;" title="Complaint Reference ID">${escapeHtml(String(row.complaint_number))}</span>`;
+        } else if (isPaanyaya) {
             const formatPaanyayaDisplay = (cNum, compId, dt) => {
                 if (cNum && String(cNum).startsWith('P-')) return String(cNum);
                 const d = dt ? new Date(dt) : new Date();
@@ -729,6 +734,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </a>
                 <div class="complaint-sub-meta">
                     <span class="badge-case-type ${caseTypeClass}">${escapeHtml(caseType)}</span>
+                    <span class="badge-doc-status" style="padding:1px 6px; font-size:0.7rem; font-weight:700; border-radius:4px; background:${String(row.complaint_source || 'Walk-in') === 'Online' ? '#dbeafe' : '#dcfce7'}; color:${String(row.complaint_source || 'Walk-in') === 'Online' ? '#1e40af' : '#166534'};">${String(row.complaint_source || 'Walk-in') === 'Online' ? '🌐 Online' : '🏢 Walk-in'}</span>
                     ${docBadgeHtml}
                 </div>
             </div>
@@ -852,7 +858,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return node.innerHTML;
     }
 
-    // Automatically load initial dataset
+    // Prefill search from global topbar (?q=...) and load initial dataset
+    const initialQuery = new URLSearchParams(window.location.search).get('q');
+    if (initialQuery && searchInput) {
+        searchInput.value = initialQuery;
+        if (clearInputBtn) clearInputBtn.style.display = 'block';
+    }
     if (complaintView) form.requestSubmit();
 });
 

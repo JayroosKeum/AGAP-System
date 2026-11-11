@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../models/Setting.php';
 require_once __DIR__ . '/../services/AuditService.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 class SettingsController
 {
@@ -84,6 +85,33 @@ class SettingsController
             }
         }
 
+        foreach (['barangay_name', 'city_name', 'province_name', 'captain_name'] as $reqKey) {
+            if (array_key_exists($reqKey, $toUpdate) && $toUpdate[$reqKey] === '') {
+                return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $reqKey)) . ' cannot be blank.'];
+            }
+        }
+        foreach ($infoKeys as $k) {
+            if (!isset($toUpdate[$k])) continue;
+            $val = $toUpdate[$k];
+            if ($k === 'barangay_email') {
+                if ($val !== '' && !ValidationService::email($val)) {
+                    return ['success' => false, 'message' => 'Enter a valid Barangay official email address (up to 150 characters).'];
+                }
+            } elseif ($k === 'barangay_contact') {
+                if ($val !== '' && (!ValidationService::maxLength($val, 20) || !ValidationService::phone($val))) {
+                    return ['success' => false, 'message' => 'Enter a valid Philippine Barangay contact number (up to 20 characters).'];
+                }
+            } elseif ($k === 'signature_style') {
+                if (!in_array($val, ['wet', 'digital'], true)) {
+                    return ['success' => false, 'message' => 'Select a valid signature style.'];
+                }
+            } else {
+                if (!ValidationService::maxLength($val, 255) || !ValidationService::text($val)) {
+                    return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $k)) . ' must be 255 characters or fewer without control characters.'];
+                }
+            }
+        }
+
         // 2. Hearing Logistics & KP Rules
         $numericLimits = [
             'daily_hearing_capacity' => [1, 20],
@@ -116,6 +144,9 @@ class SettingsController
 
         foreach ($numericLimits as $k => $range) {
             if (isset($data[$k])) {
+                if (!is_numeric($data[$k])) {
+                    return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $k)) . ' must be a valid number.'];
+                }
                 $val = (int)$data[$k];
                 if ($val < $range[0]) $val = $range[0];
                 if ($val > $range[1]) $val = $range[1];
@@ -157,6 +188,41 @@ class SettingsController
         foreach ($miscKeys as $k) {
             if (isset($data[$k])) {
                 $toUpdate[$k] = trim((string)$data[$k]);
+            }
+        }
+
+        foreach (['working_hours_start', 'working_hours_end', 'mediation_hours_start', 'mediation_hours_end'] as $timeKey) {
+            if (isset($toUpdate[$timeKey]) && $toUpdate[$timeKey] !== '' && !ValidationService::time($toUpdate[$timeKey])) {
+                return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $timeKey)) . ' must be a valid time (HH:MM).'];
+            }
+        }
+        if (!empty($toUpdate['working_hours_start']) && !empty($toUpdate['working_hours_end']) && $toUpdate['working_hours_end'] <= $toUpdate['working_hours_start']) {
+            return ['success' => false, 'message' => 'Working hours end time must be after the start time.'];
+        }
+        if (!empty($toUpdate['mediation_hours_start']) && !empty($toUpdate['mediation_hours_end']) && $toUpdate['mediation_hours_end'] <= $toUpdate['mediation_hours_start']) {
+            return ['success' => false, 'message' => 'Mediation hours end time must be after the start time.'];
+        }
+        if (isset($toUpdate['default_map_latitude']) || isset($toUpdate['default_map_longitude'])) {
+            $latCheck = $toUpdate['default_map_latitude'] ?? $this->model->get('default_map_latitude', '14.6644');
+            $lngCheck = $toUpdate['default_map_longitude'] ?? $this->model->get('default_map_longitude', '121.0967');
+            if (ValidationService::coordinates($latCheck, $lngCheck, false) === null) {
+                return ['success' => false, 'message' => 'Default map coordinates must be valid latitude (-90..90) and longitude (-180..180) values.'];
+            }
+        }
+        if (isset($toUpdate['default_map_zoom']) && ValidationService::positiveInt($toUpdate['default_map_zoom'], 1, 22) === null) {
+            return ['success' => false, 'message' => 'Default map zoom must be a whole number between 1 and 22.'];
+        }
+        if (isset($toUpdate['sms_sender_name']) && $toUpdate['sms_sender_name'] !== '' && preg_match('/^[A-Za-z0-9_ -]{1,20}$/', $toUpdate['sms_sender_name']) !== 1) {
+            return ['success' => false, 'message' => 'SMS Sender Name may use up to 20 letters, numbers, spaces, underscores, or hyphens.'];
+        }
+        foreach (['mediation_venue', 'kp_header_title', 'kp_lgu_header'] as $headerKey) {
+            if (isset($toUpdate[$headerKey]) && (!ValidationService::maxLength($toUpdate[$headerKey], 255) || !ValidationService::text($toUpdate[$headerKey]))) {
+                return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $headerKey)) . ' must be 255 characters or fewer without control characters.'];
+            }
+        }
+        foreach (['sms_paanyaya_template', 'sms_hearing_template'] as $tplKey) {
+            if (isset($toUpdate[$tplKey]) && (!ValidationService::maxLength($toUpdate[$tplKey], 1000) || !ValidationService::text($toUpdate[$tplKey], true))) {
+                return ['success' => false, 'message' => ucwords(str_replace('_', ' ', $tplKey)) . ' must be 1,000 characters or fewer.'];
             }
         }
 
@@ -381,8 +447,9 @@ class SettingsController
         }
 
         $recipient = trim($recipient);
-        if ($recipient === '') {
-            return ['success' => false, 'message' => 'Recipient mobile number is required.'];
+        if ($recipient === '' || mb_strlen($recipient, 'UTF-8') > 20 || !ValidationService::phone($recipient)) {
+
+            return ['success' => false, 'message' => 'Provide a valid Philippine recipient mobile number (e.g. 09XXXXXXXXX).'];
         }
 
         if ($provider === 'Disabled') {

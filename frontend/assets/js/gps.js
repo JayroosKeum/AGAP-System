@@ -2103,63 +2103,6 @@ async function renderCaseServiceTimeline(caseId) {
                         </details>
                     `;
                 }
-                if (false) {
-                items.forEach((item, idx) => {
-                    let pillBg = '#f1f5f9';
-                    let pillColor = '#475569';
-                    let pillIcon = '⚪';
-                    if (item.status_pill === 'served-personal') {
-                        pillBg = '#dcfce7'; pillColor = '#15803d'; pillIcon = '🟢';
-                    } else if (item.status_pill === 'served-substituted') {
-                        pillBg = '#e0f2fe'; pillColor = '#0369a1'; pillIcon = '🔵';
-                    } else if (item.status_pill === 'refused') {
-                        pillBg = '#fef3c7'; pillColor = '#b45309'; pillIcon = '🟡';
-                    } else if (item.status_pill === 'unserved') {
-                        pillBg = '#fee2e2'; pillColor = '#b91c1c'; pillIcon = '🔴';
-                    }
-
-                    const formattedDate = item.service_datetime ? formatDateTime(item.service_datetime) : 'Pending / Not Recorded';
-
-                    html += `
-                        <div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; background: #fafafa; border: 1px solid #eef2f6; border-radius: 8px;">
-                            <div style="flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; background: #fff; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
-                                ${item.document_code.includes('10') ? '👥' : (item.document_code.includes('11') ? '📜' : (item.document_code.includes('12') ? '⚖️' : (item.document_code.includes('9') ? '📩' : (item.document_code.includes('8') ? '📋' : '✉️'))))}
-                            </div>
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;">
-                                    <div>
-                                        <strong style="color: #0f172a; font-size: 0.9rem;">${escapeGpsHtml(item.document_code)}</strong>
-                                        <span style="font-size: 0.8rem; color: #475569; margin-left: 6px;">${escapeGpsHtml(item.document_title)}</span>
-                                        ${item.attempt_label ? `<span style="margin-left: 6px; background: #f1f5f9; color: #334155; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${escapeGpsHtml(item.attempt_label)}</span>` : ''}
-                                    </div>
-                                    <span style="background: ${pillBg}; color: ${pillColor}; font-size: 0.74rem; font-weight: 700; padding: 2px 9px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 4px;">
-                                        ${pillIcon} ${escapeGpsHtml(item.delivery_status)}
-                                    </span>
-                                </div>
-                                <div style="font-size: 0.82rem; color: #475569; margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 14px;">
-                                    <span>Recipient: <strong>${escapeGpsHtml(item.recipient_name)}</strong> (${escapeGpsHtml(item.party_type)})</span>
-                                    <span>Server: <strong>${escapeGpsHtml(item.served_by_name)}</strong></span>
-                                    <span>Timestamp: <strong>${escapeGpsHtml(formattedDate)}</strong></span>
-                                    ${item.unserved_reason ? `<span style="color: #dc2626;">Reason: <strong>${escapeGpsHtml(item.unserved_reason)}</strong></span>` : ''}
-                                </div>
-                                ${item.remarks ? `<div style="font-size: 0.78rem; color: #64748b; font-style: italic; margin-bottom: 6px;">Notes: ${escapeGpsHtml(item.remarks)}</div>` : ''}
-                                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.8rem;">
-                                    ${item.preview_url ? `
-                                        <a href="${item.preview_url}" target="_blank" style="color: #0284c7; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-                                            📄 View Document
-                                        </a>
-                                    ` : ''}
-                                    ${item.proof_file_path ? `
-                                        <a href="../../${escapeGpsHtml(item.proof_file_path)}" target="_blank" style="color: #16a34a; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-                                            📷 View Photo Proof
-                                        </a>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-                }
                 html += `</div>`;
             }
 

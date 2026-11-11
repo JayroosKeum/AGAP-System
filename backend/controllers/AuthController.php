@@ -3,11 +3,27 @@
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/PasswordResetService.php';
+require_once __DIR__ . '/../services/SingleSessionService.php';
+require_once __DIR__ . '/../services/ValidationService.php';
+require_once __DIR__ . '/../services/LoginThrottleService.php';
+require_once __DIR__ . '/../services/SecurityBootstrap.php';
 
 class AuthController {
 
     private $userModel;
     private AuditService $audit;
+    private string $lastLoginError = 'invalid_credentials';
+    private int $lockoutMinutes = 15;
+
+    public function getLastLoginError(): string
+    {
+        return $this->lastLoginError;
+    }
+
+    public function getLockoutMinutes(): int
+    {
+        return $this->lockoutMinutes;
+    }
 
     public function __construct()
     {
@@ -20,8 +36,31 @@ class AuthController {
         $password
     )
     {
+        $this->lastLoginError = 'invalid_credentials';
+        $this->lockoutMinutes = 15;
+        $identifier = trim((string) $username);
+        $db = $this->userModel->getConnection();
+
+        $blocked = LoginThrottleService::checkBlocked($db, $identifier);
+        if ($blocked !== null) {
+            $this->lastLoginError = 'account_locked';
+            $this->lockoutMinutes = (int) $blocked['retry_after_minutes'];
+            $this->audit->log(null, 'Blocked login attempt during lockout for login identifier: ' . mb_substr($identifier, 0, 100), 'Authentication', null);
+            return false;
+        }
+
         $user = $this->userModel
-            ->findByUsername($username);
+            ->findByUsernameOrEmail($identifier);
+        $canonicalUsername = $user ? trim((string) ($user['username'] ?? '')) : '';
+        if ($canonicalUsername !== '' && strcasecmp($canonicalUsername, $identifier) !== 0) {
+            $canonicalBlocked = LoginThrottleService::checkBlocked($db, $canonicalUsername);
+            if ($canonicalBlocked !== null) {
+                $this->lastLoginError = 'account_locked';
+                $this->lockoutMinutes = (int) $canonicalBlocked['retry_after_minutes'];
+                $this->audit->log((int) $user['user_id'], 'Blocked login attempt during lockout for login identifier: ' . mb_substr($identifier, 0, 100), 'Authentication', (int) $user['user_id']);
+                return false;
+            }
+        }
 
         if(
             $user &&
@@ -32,7 +71,17 @@ class AuthController {
             )
         )
         {
-            if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) session_start();
+            LoginThrottleService::clearFailures($db, $identifier);
+            if ($canonicalUsername !== '' && strcasecmp($canonicalUsername, $identifier) !== 0) {
+                LoginThrottleService::clearFailures($db, $canonicalUsername);
+            }
+            SecurityBootstrap::startSession();
+            $sessionToken = SingleSessionService::acquireSessionLock($db, (int) $user['user_id']);
+            if ($sessionToken === null) {
+                $this->lastLoginError = 'already_logged_in';
+                $this->audit->log((int) $user['user_id'], 'Blocked concurrent login while active on another device', 'Authentication', (int) $user['user_id']);
+                return false;
+            }
             if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
 
             $_SESSION['user_id']
@@ -41,10 +90,27 @@ class AuthController {
             $_SESSION['role_id']
                 = $user['role_id'];
 
+            $_SESSION['role_name'] = $user['role_name'] ?? '';
             $_SESSION['username']
                 = $user['username'];
+            $_SESSION['session_token'] = $sessionToken;
 
             return true;
+        }
+
+        $lockState = LoginThrottleService::recordFailure($db, $identifier);
+        if ($canonicalUsername !== '' && strcasecmp($canonicalUsername, $identifier) !== 0) {
+            $canonicalLockState = LoginThrottleService::recordFailure($db, $canonicalUsername);
+            if ($lockState === null && $canonicalLockState !== null) {
+                $lockState = $canonicalLockState;
+            }
+        }
+        if ($lockState !== null) {
+            $this->lastLoginError = 'account_locked';
+            $this->lockoutMinutes = (int) $lockState['retry_after_minutes'];
+            $this->audit->log($user ? (int) $user['user_id'] : null, 'Locked login access after repeated failed attempts for login identifier: ' . mb_substr($identifier, 0, 100), 'Authentication', $user ? (int) $user['user_id'] : null);
+        } else {
+            $this->audit->log($user ? (int) $user['user_id'] : null, 'Failed login attempt for login identifier: ' . mb_substr($identifier, 0, 100), 'Authentication', $user ? (int) $user['user_id'] : null);
         }
 
         return false;
@@ -164,13 +230,7 @@ class AuthController {
 
     private function passwordError(string $password, string $confirm): ?string
     {
-        if ($password !== $confirm) {
-            return 'Password confirmation does not match.';
-        }
-        if (strlen($password) < 12 || !preg_match('/[a-z]/', $password) || !preg_match('/[A-Z]/', $password) || !preg_match('/\d/', $password)) {
-            return 'Use at least 12 characters with uppercase, lowercase, and a number.';
-        }
-        return null;
+        return ValidationService::passwordError($password, $confirm);
     }
 
     private function maskEmail(string $email): string
@@ -194,7 +254,7 @@ class AuthController {
             session_start();
         }
 
-        $_SESSION = [];
-        session_destroy();
+        SingleSessionService::releaseCurrentSession($this->userModel->getConnection());
+        SingleSessionService::destroyPhpSession();
     }
 }

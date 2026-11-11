@@ -1,4 +1,4 @@
-﻿/**
+/**
  * AGAP System — Settings Module Frontend Controller
  */
 
@@ -128,6 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
             saveBtn.innerHTML = 'Saving...';
         }
 
+        if (window.AgapFieldValidator && !window.AgapFieldValidator.validateForm(settingsForm)) {
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = 'Save Settings'; }
+            return;
+        }
         const formData = new FormData(settingsForm);
         const payload = {};
 
@@ -323,6 +327,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const message = document.getElementById('testSmsMessage')?.value || '';
         const provider = document.getElementById('selectSmsProvider')?.value || 'Semaphore';
         const apiKey = document.getElementById('inputSmsApiKey')?.value || '';
+        if (recipient.trim() && window.AgapFieldValidator && !window.AgapFieldValidator.isValidPhone(recipient)) {
+            alert('Enter a valid Philippine mobile number (e.g. 09171234567).');
+            document.getElementById('testSmsRecipient')?.focus();
+            return;
+        }
 
         if (!recipient) {
             alert('Please enter a recipient mobile number.');
@@ -390,6 +399,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const ltia = document.getElementById('catModalLtia')?.value;
         const desc = document.getElementById('catModalDesc')?.value;
         const active = document.getElementById('catModalActive')?.checked ? 1 : 0;
+        if (name && name.trim().length > 150) {
+            alert('Category name must be 150 characters or fewer.');
+            return;
+        }
+        if (ltia && ltia.trim().length > 50) {
+            alert('LTIA code must be 50 characters or fewer.');
+            return;
+        }
+        if (desc && desc.length > 1000) {
+            alert('Description must be 1,000 characters or fewer.');
+            return;
+        }
 
         if (!name.trim()) {
             alert('Category name is required.');
@@ -567,6 +588,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     preferred_language: lang
                 })
             });
+
+            const kpLang = document.getElementById('kpFormLangSelect')?.value || 'fil';
+            if (typeof window.setKpFormLanguage === 'function') window.setKpFormLanguage(kpLang);
+            if (typeof window.setAppLanguage === 'function') window.setAppLanguage(lang === 'fil' ? 'tl' : 'en');
 
             const data = await res.json();
             if (data.success) {

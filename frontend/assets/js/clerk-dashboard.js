@@ -146,14 +146,41 @@
         setText('clerkPendingForms', data.pending_forms ?? 0);
     };
 
-    // Render System Metrics Grid
+    // Render System Metrics Grid & Bento Stage Visuals
     const renderSystemMetrics = (data) => {
-        setText('sysMetricTotalCases', data.total_cases ?? 0);
-        setText('sysMetricMediation', data.mediation_cases ?? data.active_mediations ?? 0);
-        setText('sysMetricConciliation', data.pangkat_conciliations ?? 0);
-        setText('sysMetricSettled', data.settled_cases ?? 0);
+        const total = Number(data.total_cases ?? 0);
+        const med = Number(data.mediation_cases ?? data.active_mediations ?? 0);
+        const con = Number(data.pangkat_conciliations ?? 0);
+        const settled = Number(data.settled_cases ?? 0);
+        const other = Math.max(0, total - (med + con + settled));
+        const denom = Math.max(1, total);
+
+        setText('sysMetricTotalCases', total);
+        setText('sysMetricMediation', med);
+        setText('sysMetricConciliation', con);
+        setText('sysMetricSettled', settled);
         setText('sysMetricArchived', data.archived_cases ?? 0);
         setText('sysMetricActiveUsers', data.active_users ?? 0);
+
+        setText('bentoClerkTotal', total.toLocaleString());
+        setText('bentoClerkMed', med);
+        setText('bentoClerkCon', con);
+        setText('bentoClerkSet', settled);
+        setText('bentoClerkOther', other);
+
+        const setW = (id, pct) => { const el = document.getElementById(id); if (el) el.style.width = `${pct}%`; };
+        setW('bentoClerkSegMed', Math.round((med / denom) * 100));
+        setW('bentoClerkSegCon', Math.round((con / denom) * 100));
+        setW('bentoClerkSegSet', Math.round((settled / denom) * 100));
+        setW('bentoClerkSegCfa', Math.round((other / denom) * 100));
+
+        const rate = total > 0 ? Math.round((settled / total) * 100) : 0;
+        setText('bentoClerkGaugePct', `${rate}%`);
+        setText('bentoClerkGaugeSub', `${settled} of ${total} cases settled`);
+        const arc = document.getElementById('bentoClerkGaugeArc');
+        if (arc) {
+            arc.setAttribute('stroke-dashoffset', String(Math.round(126 - (126 * Math.min(100, rate) / 100))));
+        }
     };
 
     // Asynchronous Queue Order Persistence
@@ -232,28 +259,70 @@
         }
     };
 
-    // Global Punong Barangay Unavailable Batch Rescheduler
-    window.triggerPbUnavailableBatch = async () => {
+    // Global Punong Barangay Unavailable Batch Rescheduler (Afternoon 1-5 PM or Entire Day)
+    window.triggerPbUnavailableBatch = () => {
         const hearings = (state.stats?.today_hearings || []).filter(isActiveQueueSession);
-        const count = hearings.length;
-        const confirmMsg = count > 0
-            ? `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nMayroong ${count} aktibong nakatakdang hearing ngayong araw.\n\nNais mo bang awtomatikong i-reschedule ang lahat ng hearing na ito patungo sa susunod na Martes?\n\n• Awtomatikong mag-iisyu ng bagong Notice (KP Form 8) at Summon (KP Form 9).\n• Itatala sa dispatch para sa Summons Server nang walang multa sa mga partido.`
-            : `PUNONG BARANGAY UNAVAILABLE BATCH ACTION:\n\nNais mo bang simulan ang batch rescheduling para sa araw na ito patungo sa susunod na Martes?`;
+        const totalCount = hearings.length;
+        const afternoonCount = hearings.filter(h => {
+            const m = String(h.hearing_date || '').match(/\s(\d{2}):/);
+            return m ? parseInt(m[1], 10) >= 12 : true;
+        }).length;
 
-        if (!confirm(confirmMsg)) return;
-
-        try {
-            showToast('Ipinoproseso ang batch reschedule...', false);
-            const res = await postQuickAction({
-                action: 'batch_reschedule_pb_unavailable',
-                target_date: getLocalDate(),
-                reason: 'Punong Barangay Unavailable'
-            });
-            showToast(res.message || 'Matagumpay na nai-reschedule ang mga hearing!');
-            await fetchDashboardData();
-        } catch (err) {
-            showToast(err.message || 'Nabigong i-reschedule ang mga hearing.', true);
+        let modal = document.getElementById('agapClerkPbChoiceModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'agapClerkPbChoiceModal';
+            modal.className = 'pb-choice-modal-overlay';
+            modal.setAttribute('role', 'dialog');
+            modal.setAttribute('aria-modal', 'true');
+            modal.innerHTML = `
+                <div class="pb-choice-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                        <h3 style="margin:0; font-size:1.05rem; color:#102b2d;">Punong Barangay Unavailable</h3>
+                        <button type="button" id="clerkPbCloseBtn" style="border:none;background:transparent;font-size:22px;cursor:pointer;color:#64748b;">&times;</button>
+                    </div>
+                    <p id="clerkPbSummary" style="margin:0 0 14px; font-size:0.86rem; color:#475569; line-height:1.45;"></p>
+                    <button type="button" class="pb-choice-option" id="clerkPbAfternoonBtn">
+                        <strong style="display:block; color:#102b2d; font-size:0.9rem;">Reschedule Whole Afternoon Only (1:00–5:00 PM)</strong>
+                        <span style="display:block; font-size:0.78rem; color:#64748b; margin-top:2px;">Pinananatili ang morning sessions; ililipat ang pang-hapon sa susunod na Martes + KP Form 8 &amp; 9.</span>
+                    </button>
+                    <button type="button" class="pb-choice-option" id="clerkPbWholeDayBtn">
+                        <strong style="display:block; color:#102b2d; font-size:0.9rem;">Reschedule Entire Day (All Today's Hearings)</strong>
+                        <span style="display:block; font-size:0.78rem; color:#64748b; margin-top:2px;">Ililipat ang lahat ng aktibong hearing ngayong araw patungo sa susunod na Martes + KP Form 8 &amp; 9.</span>
+                    </button>
+                    <div style="text-align:right; margin-top:8px;">
+                        <button type="button" class="btn-secondary" id="clerkPbCancelBtn">Cancel</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+            modal.querySelector('#clerkPbCloseBtn').onclick = () => { modal.style.display = 'none'; };
+            modal.querySelector('#clerkPbCancelBtn').onclick = () => { modal.style.display = 'none'; };
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
         }
+
+        modal.querySelector('#clerkPbSummary').textContent = `Mayroong ${totalCount} aktibong hearing ngayong araw (${afternoonCount} sa hapon 1:00–5:00 PM). Piliin ang saklaw ng paglipat sa susunod na Martes (mag-iisyu rin ng Batch KP Form 8 at 9):`;
+
+        const runBatch = async (slotScope) => {
+            modal.style.display = 'none';
+            try {
+                showToast('Ipinoproseso ang batch reschedule at KP Form 8/9...', false);
+                const res = await postQuickAction({
+                    action: 'batch_reschedule_pb_unavailable',
+                    target_date: getLocalDate(),
+                    slot_scope: slotScope,
+                    reason: 'Punong Barangay Unavailable'
+                });
+                showToast(res.message || 'Matagumpay na nai-reschedule ang mga hearing!');
+                await fetchDashboardData();
+            } catch (err) {
+                showToast(err.message || 'Nabigong i-reschedule ang mga hearing.', true);
+            }
+        };
+
+        modal.querySelector('#clerkPbAfternoonBtn').onclick = () => runBatch('afternoon');
+        modal.querySelector('#clerkPbWholeDayBtn').onclick = () => runBatch('all');
+        modal.style.display = 'flex';
     };
 
     // Render Agenda Stream (Hearings + Paanyaya)
@@ -989,65 +1058,6 @@
             });
         });
 
-        // Docket Queue Cards click handlers
-        document.querySelectorAll('.docket-queue-card[data-clerk-card]').forEach(card => {
-            const handleCardClick = (e) => {
-                if (e.target.closest('a, button')) return;
-                const cardType = card.dataset.clerkCard;
-                if (cardType === 'paanyaya') {
-                    if (card.classList.contains('is-active') && state.activeAgendaFilter === 'paanyaya') {
-                        setClerkAgendaFilter('all');
-                    } else {
-                        setClerkAgendaFilter('paanyaya', card);
-                    }
-                } else if (cardType === 'walkin') {
-                    const btn = card.querySelector('a');
-                    if (btn && btn.href) window.location.href = btn.href;
-                } else if (cardType === 'forms') {
-                    if (card.classList.contains('is-active') && state.activeAgendaFilter === 'hearings') {
-                        setClerkAgendaFilter('all');
-                    } else {
-                        setClerkAgendaFilter('hearings', card);
-                    }
-                }
-            };
-            card.addEventListener('click', handleCardClick);
-            card.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleCardClick(e);
-                }
-            });
-        });
-
-        // System Metric Pills click handlers
-        document.querySelectorAll('.system-metric-pill[data-clerk-metric]').forEach(pill => {
-            const handlePillClick = () => {
-                const metric = pill.dataset.clerkMetric;
-                if (metric === 'total') {
-                    setClerkAgendaFilter('all', pill);
-                } else if (metric === 'mediation' || metric === 'conciliation') {
-                    if (pill.classList.contains('is-active') && state.activeAgendaFilter === 'hearings') {
-                        setClerkAgendaFilter('all');
-                    } else {
-                        setClerkAgendaFilter('hearings', pill);
-                    }
-                } else if (metric === 'settled') {
-                    window.location.href = '../cases/case-list.php?status=Settled';
-                } else if (metric === 'archived') {
-                    window.location.href = '../cases/case-list.php?status=Archived';
-                } else if (metric === 'users') {
-                    showToast('Tanging Administrator lamang ang may pahintulot na mamahala ng user accounts.');
-                }
-            };
-            pill.addEventListener('click', handlePillClick);
-            pill.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handlePillClick();
-                }
-            });
-        });
 
         // Period filter tabs
         document.querySelectorAll('.period-tab').forEach(tab => {

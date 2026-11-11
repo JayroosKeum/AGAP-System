@@ -850,6 +850,18 @@ class Hearing
             }
 
             $seq = ($expectedType === 'Arbitration') ? ($scheduled['Arbitration'] + 1) : (($expectedType === 'Mediation') ? ($mediationAttempt ?: ($scheduled['Mediation'] + 1)) : ($scheduled['Conciliation'] + 1));
+
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                (new KpFormService($this->conn))->autoGenerateForEvent('hearing_scheduled', (int) $data['case_id'], $userId, [
+                    'hearing_id' => $hearingId,
+                    'hearing_type' => $expectedType,
+                    'sequence' => $seq,
+                ]);
+            } catch (Throwable $kpEx) {
+                error_log("Automated KP form generation for hearing {$hearingId} warning: " . $kpEx->getMessage());
+            }
+
             return ['success' => true, 'hearing_id' => $hearingId, 'sequence' => $seq, 'hearing_type' => $expectedType];
         } catch (Throwable $exception) {
             if ($this->conn->inTransaction()) {
@@ -1462,7 +1474,8 @@ class Hearing
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
-            return ['success' => false, 'message' => 'Failed to cancel hearing: ' . $e->getMessage()];
+            error_log('Hearing::cancelHearing error: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Failed to cancel hearing. Please try again.'];
         }
     }
 
@@ -1757,12 +1770,13 @@ class Hearing
      * to the next available hearing day (default: next Tuesday) due to Punong Barangay Unavailability.
      * Generates KP Form 8 and KP Form 9 document and summons records in a single database transaction.
      */
-    public function batchReschedulePbUnavailable(?string $targetDate, string $reason, int $userId): array
+    public function batchReschedulePbUnavailable(?string $targetDate, string $reason, int $userId, string $slotScope = 'all'): array
     {
         $targetDate = !empty($targetDate) ? trim($targetDate) : date('Y-m-d');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $targetDate)) {
             $targetDate = date('Y-m-d');
         }
+        $slotScope = strtolower(trim($slotScope)) === 'afternoon' ? 'afternoon' : 'all';
 
         $reason = trim($reason);
         if ($reason === '') {
@@ -1799,12 +1813,13 @@ class Hearing
 
             // Lock the source docket first. This prevents two clerks from
             // cancelling and cloning the same hearing concurrently.
+            $slotClause = $slotScope === 'afternoon' ? " AND TIME(h.hearing_date) >= '12:00:00'" : "";
             $stmt = $this->conn->prepare("
                 SELECT h.*, c.case_number, c.case_status, co.complaint_id, co.complaint_title
                 FROM hearings h
                 INNER JOIN cases c ON c.case_id = h.case_id
                 INNER JOIN complaints co ON co.complaint_id = c.complaint_id
-                WHERE DATE(h.hearing_date) = ?
+                WHERE DATE(h.hearing_date) = ?{$slotClause}
                   AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
                   AND NOT EXISTS (
                       SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
@@ -1818,9 +1833,10 @@ class Hearing
 
             if (empty($activeHearings)) {
                 $this->conn->rollBack();
+                $scopeText = $slotScope === 'afternoon' ? 'hapon (1:00–5:00 PM) para sa ' : 'para sa ';
                 return [
                     'success' => false,
-                    'message' => "Walang aktibong nakatakdang hearing para sa {$targetDate} na kailangang i-reschedule."
+                    'message' => "Walang aktibong nakatakdang hearing sa {$scopeText}{$targetDate} na kailangang i-reschedule."
                 ];
             }
 
@@ -2066,7 +2082,9 @@ class Hearing
                     'case_id' => $cId,
                     'case_number' => $hearing['case_number'],
                     'new_date' => $newStartTime,
-                    'formatted_date' => $formattedNewDate
+                    'formatted_date' => $formattedNewDate,
+                    'kp8_document_id' => $doc8Id,
+                    'kp9_document_id' => $doc9Id
                 ];
             }
 
@@ -2078,15 +2096,17 @@ class Hearing
             ");
             $auditStmt->execute([
                 $userId,
-                "Punong Barangay Unavailable: Batch rescheduled " . count($activeHearings) . " hearing(s) from {$targetDate} to {$nextHearingDay} ({$formattedTuesday}).",
+                "Punong Barangay Unavailable ({$slotScope}): Batch rescheduled " . count($activeHearings) . " hearing(s) from {$targetDate} to {$nextHearingDay} ({$formattedTuesday}).",
                 $activeHearings[0]['hearing_id']
             ]);
 
             $this->conn->commit();
 
+            $scopeNotice = $slotScope === 'afternoon' ? 'pang-hapon (1:00–5:00 PM) na ' : '';
             return [
                 'success' => true,
-                'message' => "Matagumpay na nai-reschedule ang " . count($activeHearings) . " hearing patungo sa susunod na Martes, {$formattedTuesday}.",
+                'message' => "Matagumpay na nai-reschedule ang " . count($activeHearings) . " {$scopeNotice}hearing patungo sa susunod na Martes, {$formattedTuesday}. Na-issue rin ang KP Form 8 at 9.",
+                'slot_scope' => $slotScope,
                 'rescheduled_count' => count($activeHearings),
                 'target_date' => $targetDate,
                 'next_hearing_day' => $nextHearingDay,

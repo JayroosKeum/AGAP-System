@@ -5,7 +5,10 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     header('Location: ../auth/login.php?error=login_required');
     exit;
 }
-if (!in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
+require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/../../../backend/middleware/rbac.php';
+$rbacDb = (new Database())->connect();
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'], $rbacDb)) {
     http_response_code(403);
     exit('Access denied for this role.');
 }
@@ -63,6 +66,7 @@ $medHoursEnd = $sysSettings['mediation_hours_end'] ?? '16:30';
 $medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
 
 $paanyayaModel = new Paanyaya();
+$paanyayaCarryover = $paanyayaModel->getCarryoverContext($complaintId, $stageType);
 $servingOfficers = $paanyayaModel->getServingOfficers();
 $summonsServers = $paanyayaModel->getSummonsServers();
 $eligiblePresiders = $paanyayaModel->getEligiblePresiders();
@@ -232,7 +236,10 @@ include '../../layouts/header.php';
                             Record Dialogue Minutes &amp; Result (<?= htmlspecialchars($stageType) ?>)
                         </h1>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" onclick="window.open('print-blank-minutes.php?id=<?= $complaintId ?>&stage=' + encodeURIComponent(<?= json_encode($stageType) ?>), '_blank')" style="font-size: 0.82rem; padding: 6px 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600;" title="Print pre-filled Smart Paper Sheet for pen-and-paper Lupon members">
+                            🖨️ Print Smart Paper Sheet
+                        </button>
                         <span class="paanyaya-stage-tag" style="font-size: 0.82rem; padding: 4px 12px; border-radius: 9999px; background: #e0f2fe; color: #0369a1; font-weight: 700;">
                             <?= htmlspecialchars($stageType) ?>
                         </span>
@@ -432,21 +439,71 @@ include '../../layouts/header.php';
                             <span class="required-mark sec3-required-mark" style="color: #dc2626;">*</span>
                         </div>
 
-                        <!-- Summary Textarea -->
-                        <div class="form-group" style="margin-bottom: 18px;">
-                            <label for="minutesDiscussionSummary" style="font-weight: 600; font-size: 0.86rem; color: #0f172a; display: block; margin-bottom: 5px;">
+                        <?php if (!empty($paanyayaCarryover['prior_summary']) || !empty($paanyayaCarryover['unresolved_issues'])): ?>
+                            <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-left: 4px solid #2563eb; border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; font-size: 0.82rem; color: #334155;">
+                                <strong style="display: block; color: #1e3a8a; margin-bottom: 4px;">Carryover Context (<?= htmlspecialchars($paanyayaCarryover['carried_from_stage'] ?? 'Prior Record') ?>)</strong>
+                                <?php if (!empty($paanyayaCarryover['prior_summary'])): ?>
+                                    <div style="margin-bottom: 4px;"><strong>Buod / Salaysay:</strong> <?= htmlspecialchars(mb_strimwidth((string) $paanyayaCarryover['prior_summary'], 0, 320, '…')) ?></div>
+                                <?php endif; ?>
+                                <?php if (!empty($paanyayaCarryover['unresolved_issues'])): ?>
+                                    <div><strong>Unresolved / Relief Sought:</strong> <?= htmlspecialchars(mb_strimwidth((string) $paanyayaCarryover['unresolved_issues'], 0, 220, '…')) ?></div>
+                                <?php endif; ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Main Dispute Identified (carried to Mediation if unresolved) -->
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label for="minutesMainDispute" style="font-weight: 600; font-size: 0.84rem; color: #0f172a; display: block; margin-bottom: 4px;">
+                                Pangunahing Usapin (Main Issue / Dispute Focus)
+                            </label>
+                            <input type="text" id="minutesMainDispute" name="main_dispute_identified" maxlength="1000" value="<?= htmlspecialchars((string) ($paanyayaCarryover['main_dispute_identified'] ?? $caseTitle)) ?>" style="padding: 8px 12px; font-size: 0.86rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
+                        </div>
+
+                        <!-- AI Voice & 1-Step Handwritten Scan Toolbar -->
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                            <label for="minutesDiscussionSummary" style="font-weight: 600; font-size: 0.86rem; color: #0f172a; margin: 0;">
                                 Buod ng Usapan / Tala ng Pagharap <span class="required-mark sec3-required-mark" style="color: #dc2626;">*</span>
                             </label>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <label style="font-size: 0.75rem; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="paanyayaAiConsentCheckbox" style="accent-color: #2563eb;">
+                                    <span>I consent to send notes/audio to Gemini AI</span>
+                                </label>
+                                <button type="button" id="btnPaanyayaVoice" class="btn-secondary" onclick="togglePaanyayaVoiceRecording()" style="font-size: 0.76rem; padding: 5px 10px;">
+                                    <span id="paanyayaVoiceText">🎙️ Record Voice (STT)</span>
+                                </button>
+                                <button type="button" id="btnPaanyayaOneStepScan" class="btn-secondary" onclick="document.getElementById('paanyayaOneStepScanInput').click()" style="font-size: 0.76rem; padding: 5px 10px; border-color: #2563eb; color: #1d4ed8; background: #eff6ff;">
+                                    📄 1-Step Scan Sheet (Archive + OCR + AI Draft)
+                                </button>
+                                <button type="button" id="btnPaanyayaAiDraft" class="btn-secondary" onclick="generatePaanyayaAiDraft()" style="font-size: 0.76rem; padding: 5px 10px; border-color: #8b5cf6; color: #6d28d9; background: #f5f3ff;">
+                                    ✨ AI Draft Minutes
+                                </button>
+                                <input type="file" id="paanyayaOneStepScanInput" accept=".jpg,.jpeg,.png,.pdf,.webp" style="display: none;" onchange="handlePaanyayaOneStepScan(this)">
+                            </div>
+                        </div>
+                        <div id="paanyayaAiStatusBanner" style="display: none; padding: 8px 12px; margin-bottom: 10px; border-radius: 6px; font-size: 0.82rem; background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;"></div>
+                        <div id="paanyayaAiDraftPreview" style="display: none; margin-bottom: 12px;"></div>
+
+                        <!-- Summary Textarea -->
+                        <div class="form-group" style="margin-bottom: 14px;">
                             <textarea id="minutesDiscussionSummary" name="discussion_summary" rows="5" required placeholder="Ibuod ang mga pahayag, sagot, at mga puntong napag-usapan ng magkabilang panig habang isinasagawa ang dialogue..." style="padding: 10px 12px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;"></textarea>
                         </div>
 
-                        <!-- Scanned Minutes Upload -->
+                        <!-- Unresolved Issues (auto-carried into Paanyaya 2 or 1st Mediation) -->
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label for="minutesUnresolvedIssues" style="font-weight: 600; font-size: 0.84rem; color: #991b1b; display: block; margin-bottom: 4px;">
+                                Mga Usaping Hindi Pa Nalutas (Carried over if unresolved)
+                            </label>
+                            <textarea id="minutesUnresolvedIssues" name="unresolved_issues" rows="2" placeholder="Mga natitirang usapin kung hindi magkasundo sa Paanyaya..." style="padding: 8px 12px; font-size: 0.85rem; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 7px; width: 100%; box-sizing: border-box;"><?= htmlspecialchars((string) ($paanyayaCarryover['unresolved_issues'] ?? '')) ?></textarea>
+                        </div>
+
+                        <!-- Scanned Minutes Upload (auto-populated by 1-Step Scan or manual attach) -->
                         <div class="form-group" style="margin-bottom: 0;">
                             <label for="minutesScannedFile" style="font-weight: 600; font-size: 0.86rem; color: #0f172a; display: block; margin-bottom: 5px;">
-                                Kopya ng Isinulat-Kamay na Katitikan / Minutes (Optional Photo or Scan)
+                                Kopya ng Isinulat-Kamay na Katitikan / Minutes (Primary Handwritten Proof)
                             </label>
                             <input type="file" id="minutesScannedFile" name="scanned_minutes" accept=".jpg,.jpeg,.png,.pdf,.webp" style="padding: 8px 10px; font-size: 0.84rem; border: 1px solid #cbd5e1; border-radius: 7px; width: 100%; box-sizing: border-box;">
-                            <span style="font-size: 0.76rem; color: #64748b; margin-top: 4px; display: block;">Maaaring mag-attach ng litrato o scan ng sulat-kamay na katitikan na may lagda ng mga panig (JPG, PNG, PDF hanggang 10MB).</span>
+                            <span id="paanyayaScanStatusHint" style="font-size: 0.76rem; color: #64748b; margin-top: 4px; display: block;">Maaaring mag-attach ng litrato o scan ng sulat-kamay na katitikan na may lagda ng mga panig (JPG, PNG, PDF hanggang 10MB).</span>
                         </div>
                     </div>
 
@@ -1772,6 +1829,171 @@ window.onSummonsPreviewClosed = function() {
         window.location.href = `complaint-details.php?id=${encodeURIComponent(window.pendingEscalationData.complaint_id)}&tab=mediation`;
     }
 };
+
+// === Paanyaya Voice STT + 1-Step Handwritten Scan (Archive + OCR + AI Draft) ===
+let paanyayaMediaRecorder = null;
+let paanyayaAudioChunks = [];
+let paanyayaPendingDraft = null;
+
+function setPaanyayaAiStatus(html, isError = false) {
+    const el = document.getElementById('paanyayaAiStatusBanner');
+    if (!el) return;
+    if (!html) { el.style.display = 'none'; el.innerHTML = ''; return; }
+    el.style.display = 'block';
+    el.style.background = isError ? '#fef2f2' : '#eff6ff';
+    el.style.borderColor = isError ? '#fecaca' : '#bfdbfe';
+    el.style.color = isError ? '#991b1b' : '#1e40af';
+    el.innerHTML = html;
+}
+
+async function togglePaanyayaVoiceRecording() {
+    const consent = document.getElementById('paanyayaAiConsentCheckbox');
+    const btnText = document.getElementById('paanyayaVoiceText');
+    if (!consent?.checked) {
+        window.agapNotify?.('Please check the Gemini AI consent box before recording audio.', 'warning', 'Consent Required');
+        return;
+    }
+    if (paanyayaMediaRecorder && paanyayaMediaRecorder.state === 'recording') {
+        paanyayaMediaRecorder.stop();
+        if (btnText) btnText.textContent = '⏳ Transcribing...';
+        return;
+    }
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        paanyayaAudioChunks = [];
+        paanyayaMediaRecorder = new MediaRecorder(stream);
+        paanyayaMediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) paanyayaAudioChunks.push(e.data); };
+        paanyayaMediaRecorder.onstop = async () => {
+            stream.getTracks().forEach(t => t.stop());
+            const blob = new Blob(paanyayaAudioChunks, { type: 'audio/webm' });
+            setPaanyayaAiStatus('<strong>Transcribing dialogue audio with Gemini AI...</strong>');
+            try {
+                const fd = new FormData();
+                fd.append('audio', blob, 'paanyaya_session.webm');
+                fd.append('external_ai_consent', '1');
+                const res = await fetch('../../../backend/api/ai/transcribe-audio.php', { method: 'POST', body: fd });
+                const json = await res.json();
+                if (json.success && json.text) {
+                    const ta = document.getElementById('minutesDiscussionSummary');
+                    if (ta) {
+                        ta.value = ta.value.trim() ? (ta.value.trim() + '\n\n[Audio Transcript]:\n' + json.text.trim()) : json.text.trim();
+                        ta.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                    setPaanyayaAiStatus('<strong>Audio transcribed and added to Discussion Summary.</strong>');
+                } else {
+                    setPaanyayaAiStatus(json.message || 'Unable to transcribe audio.', true);
+                }
+            } catch (err) {
+                setPaanyayaAiStatus('Audio transcription failed.', true);
+            } finally {
+                if (btnText) btnText.textContent = '🎙️ Record Voice (STT)';
+            }
+        };
+        paanyayaMediaRecorder.start();
+        if (btnText) btnText.textContent = '⏹ Stop Recording';
+        setPaanyayaAiStatus('<strong>Recording session audio...</strong> Click Stop Recording when finished.');
+    } catch (err) {
+        window.agapNotify?.('Microphone access is unavailable or blocked.', 'error', 'Voice Recording');
+    }
+}
+
+async function handlePaanyayaOneStepScan(input) {
+    const file = input?.files?.[0];
+    if (!file) return;
+    const consent = document.getElementById('paanyayaAiConsentCheckbox');
+    // Attach the handwritten sheet immediately to #minutesScannedFile so it archives on Save
+    const mainFileInput = document.getElementById('minutesScannedFile');
+    if (mainFileInput && typeof DataTransfer !== 'undefined') {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        mainFileInput.files = dt.files;
+        const hint = document.getElementById('paanyayaScanStatusHint');
+        if (hint) hint.innerHTML = '<strong style="color:#15803d;">✓ Handwritten sheet attached for permanent archive:</strong> ' + file.name;
+    }
+    if (!consent?.checked) {
+        setPaanyayaAiStatus('Handwritten file attached for archiving. Check the Gemini AI consent box and click ✨ AI Draft Minutes if you also want OCR + AI drafting.');
+        input.value = '';
+        return;
+    }
+    setPaanyayaAiStatus('<strong>Step 1/2:</strong> Reading handwritten notes via OCR...');
+    try {
+        const fd = new FormData();
+        fd.append('image', file);
+        fd.append('external_ai_consent', '1');
+        const ocrRes = await fetch('../../../backend/api/ai/ocr-notes.php', { method: 'POST', body: fd });
+        const ocrJson = await ocrRes.json();
+        if (!ocrJson.success || !ocrJson.text) {
+            setPaanyayaAiStatus('Scan archived to form, but OCR failed: ' + (ocrJson.message || 'Unknown error'), true);
+            return;
+        }
+        const ta = document.getElementById('minutesDiscussionSummary');
+        if (ta) {
+            ta.value = ta.value.trim() ? (ta.value.trim() + '\n\n[Handwritten Sheet OCR]:\n' + ocrJson.text.trim()) : ocrJson.text.trim();
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        setPaanyayaAiStatus('<strong>Step 2/2:</strong> Structuring editable Paanyaya minutes draft...');
+        await generatePaanyayaAiDraft();
+    } catch (err) {
+        setPaanyayaAiStatus('Scan attached for archive, but OCR request failed.', true);
+    } finally {
+        input.value = '';
+    }
+}
+
+async function generatePaanyayaAiDraft() {
+    const consent = document.getElementById('paanyayaAiConsentCheckbox');
+    const ta = document.getElementById('minutesDiscussionSummary');
+    const text = (ta?.value || '').trim();
+    if (!consent?.checked) {
+        window.agapNotify?.('Check the Gemini AI consent box first.', 'warning', 'Consent Required');
+        return;
+    }
+    if (text.length < 20) {
+        window.agapNotify?.('Enter or scan at least 20 characters of notes first.', 'warning', 'AI Draft');
+        return;
+    }
+    setPaanyayaAiStatus('<strong>Gemini AI is preparing an editable Paanyaya draft...</strong>');
+    try {
+        const res = await fetch('../../../backend/api/ai/draft-hearing-minutes.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                complaint_id: Number(complaintId),
+                stage_type: document.getElementById('stageTypeInput')?.value || 'Paanyaya 1',
+                source_text: text,
+                external_ai_consent: true
+            })
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success || !json.draft) {
+            setPaanyayaAiStatus(json.message || 'Unable to generate AI draft.', true);
+            return;
+        }
+        paanyayaPendingDraft = json.draft;
+        const box = document.getElementById('paanyayaAiDraftPreview');
+        if (box) {
+            const esc = (v) => String(v || '—').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+            box.style.display = 'block';
+            box.innerHTML = `<div style="padding:12px 14px; border:1px solid #c4b5fd; border-radius:8px; background:#faf5ff; color:#3b0764; font-size:0.82rem;"><div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px;"><strong>✨ AI Draft — Review Required</strong><div style="display:flex; gap:6px;"><button type="button" class="btn-secondary" onclick="applyPaanyayaAiDraft()" style="font-size:0.76rem; padding:4px 10px; border-color:#8b5cf6; color:#6d28d9; background:#fff;">Apply to Fields</button><button type="button" class="btn-secondary" onclick="document.getElementById('paanyayaAiDraftPreview').style.display='none'" style="font-size:0.76rem; padding:4px 10px;">Dismiss</button></div></div><div><strong>Main issue:</strong> ${esc(json.draft.main_dispute_identified)}</div><div style="margin-top:4px;"><strong>Summary:</strong> ${esc(json.draft.discussion_summary)}</div><div style="margin-top:4px;"><strong>Agreed terms:</strong> ${esc(json.draft.agreements_action_items)}</div><div style="margin-top:4px;"><strong>Unresolved:</strong> ${esc(json.draft.unresolved_issues)}</div><div style="margin-top:6px; font-size:0.76rem; color:#6b21a8;">${esc(json.draft.review_note)}</div></div>`;
+        }
+        setPaanyayaAiStatus('<strong>AI draft ready for review.</strong> Verify against the handwritten/audio record before applying.');
+    } catch (err) {
+        setPaanyayaAiStatus('Failed to generate AI draft.', true);
+    }
+}
+
+function applyPaanyayaAiDraft() {
+    if (!paanyayaPendingDraft) return;
+    const d = paanyayaPendingDraft;
+    if (d.main_dispute_identified && document.getElementById('minutesMainDispute')) document.getElementById('minutesMainDispute').value = d.main_dispute_identified;
+    if (d.discussion_summary && document.getElementById('minutesDiscussionSummary')) document.getElementById('minutesDiscussionSummary').value = d.discussion_summary;
+    if (d.agreements_action_items && document.getElementById('minutesAgreedTerms')) document.getElementById('minutesAgreedTerms').value = d.agreements_action_items;
+    if (d.unresolved_issues && document.getElementById('minutesUnresolvedIssues')) document.getElementById('minutesUnresolvedIssues').value = d.unresolved_issues;
+    if (d.outcome_remarks && document.getElementById('minutesSessionRemarks')) document.getElementById('minutesSessionRemarks').value = d.outcome_remarks;
+    const box = document.getElementById('paanyayaAiDraftPreview');
+    if (box) box.style.display = 'none';
+    window.agapNotify?.('AI draft applied. Verify accuracy and outcome before saving.', 'success', 'Draft Applied');
+}
 </script>
 
 <!-- Step 1: Paanyaya Dialogue Minutes Preview Modal -->

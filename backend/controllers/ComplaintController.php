@@ -29,12 +29,12 @@ class ComplaintController
         $this->attachment = new Attachment();
         $this->location = new Location();
         $this->scannedDoc = new ComplaintScannedDocument();
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->conn);
     }
 
-    public function index(): array
+    public function index(?array $viewerScope = null): array
     {
-        return $this->complaint->getAll();
+        return $this->complaint->getAll($viewerScope);
     }
 
     public function show(int $id): array|false
@@ -52,8 +52,15 @@ class ComplaintController
         require_once __DIR__ . '/../models/Paanyaya.php';
         $paaModel = new Paanyaya();
         $complaint['paanyaya'] = $paaModel->getByComplaintId($id);
+        $complaint['paanyaya_sessions'] = $paaModel->getSessions($id);
         $complaint['paanyaya_workspace'] = $paaModel->getWorkspaceData($id);
         $complaint['paanyaya_stages'] = $paaModel->getTwoStagesData($id);
+        $cfaRecord = null;
+        if (!empty($complaint['case_id'])) {
+            require_once __DIR__ . '/../models/CFA.php';
+            $cfaRecord = (new CFA($this->conn))->getByCase((int) $complaint['case_id']) ?: null;
+        }
+        $complaint['cfa'] = $cfaRecord;
         require_once __DIR__ . '/../models/PartyModel.php';
         $partyModel = new PartyModel();
         $complaint['concurrent_disputes'] = $partyModel->checkConcurrentDisputesForComplaint($id);
@@ -64,6 +71,9 @@ class ComplaintController
             try {
                 require_once __DIR__ . '/../models/CaseModel.php';
                 $complaint['case_workspace'] = (new CaseModel())->getWorkspace((int) $complaint['case_id']);
+                if (is_array($complaint['case_workspace'])) {
+                    $complaint['case_workspace']['cfa'] = $cfaRecord;
+                }
             } catch (Throwable $exception) {
                 error_log(sprintf(
                     'Unable to load case workspace for complaint %d (case %d): %s',
@@ -186,17 +196,38 @@ class ComplaintController
             }
         }
 
+        $this->prepareAiSuggestionForIntake($data);
         $result = $this->complaint->create($data);
 
         if ($result['success']) {
             $complaintId = (int) ($result['complaint_id'] ?? 0);
 
-            $this->audit->log(
-                $_SESSION['user_id'] ?? 1,
-                'Created Complaint',
-                'Complaints',
-                $complaintId ?: null
-            );
+            $actorId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : (PHP_SAPI === 'cli' ? 1 : 0);
+            if ($actorId > 0) {
+                $this->audit->log(
+                    $actorId,
+                    !empty($data['is_draft']) ? 'Saved Complaint Draft' : 'Created Complaint (' . ($result['complaint_source'] ?? 'Walk-in') . ')',
+                    'Complaints',
+                    $complaintId ?: null
+                );
+            }
+
+            if ($complaintId > 0) {
+                $this->logAiClassificationVerification($complaintId, $data);
+                if (empty($data['is_draft']) && ($result['status'] ?? '') !== 'Under Review') {
+                    try {
+                        require_once __DIR__ . '/../services/KpFormService.php';
+                        $kpRes = (new KpFormService($this->conn))->autoGenerateForEvent('complaint_filed', $complaintId, $actorId ?: 1);
+                        if (!empty($kpRes['generated'][0]['file_path'])) {
+                            $result['kp7_file_path'] = $kpRes['generated'][0]['file_path'];
+                        }
+                        $result['kp7_preview_url'] = '../../backend/api/complaints/kp7-preview.php?id=' . $complaintId;
+                        $result['kp7_download_url'] = '../../backend/api/complaints/kp7-preview.php?id=' . $complaintId . '&download=1';
+                    } catch (Throwable $kpErr) {
+                        error_log('Pre-docket KP Form 7 generation warning: ' . $kpErr->getMessage());
+                    }
+                }
+            }
 
             // Handle evidence attachments
             if (!empty($evidenceFiles) && $complaintId > 0) {
@@ -227,29 +258,6 @@ class ComplaintController
                 }
             }
 
-            // Optional: If Paanyaya schedule details were provided, schedule an independent Paanyaya referencing this dispute
-            $isDraft = !empty($data['is_draft']);
-            if (false && $complaintId > 0 && !$isDraft && !empty($data['paanyaya_date']) && !empty($data['paanyaya_time'])) {
-                require_once __DIR__ . '/../models/Paanyaya.php';
-                $paanyayaModel = new Paanyaya();
-                $paaDate = trim((string)$data['paanyaya_date']);
-                $paaTime = trim((string)$data['paanyaya_time']);
-                $paaVenue = !empty($data['paanyaya_venue']) ? trim((string)$data['paanyaya_venue']) : 'Tanggapan ng Barangay Tumana';
-                $paaInvitee = !empty($data['invitee_name']) ? trim((string)$data['invitee_name']) : (!empty($data['paanyaya_invitee_name']) ? trim((string)$data['paanyaya_invitee_name']) : '');
-
-                $paaResult = $paanyayaModel->schedule([
-                    'complaint_id' => $complaintId,
-                    'invitee_name' => $paaInvitee,
-                    'scheduled_date' => $paaDate,
-                    'scheduled_time' => $paaTime,
-                    'venue' => $paaVenue,
-                ], (int) ($_SESSION['user_id'] ?? 1));
-
-                if ($paaResult['success']) {
-                    $result['message'] .= ' (Paanyaya invitation scheduled.)';
-                    $result['paanyaya_id'] = $paaResult['paanyaya_id'] ?? null;
-                }
-            }
 
             // A complaint created from Paanyaya must immediately become a formal docket.
             // Linking the Paanyaya alone left the newly-created complaint in its old
@@ -296,7 +304,7 @@ class ComplaintController
             }
 
             if (empty($result['redirect_url'])) {
-                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=mediation';
+                $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=overview';
             }
         }
 
@@ -341,10 +349,14 @@ class ComplaintController
             }
         }
 
+        $this->prepareAiSuggestionForIntake($data);
         $result = $this->complaint->update($id, $data);
 
         if ($result['success']) {
             $complaintId = (int) $id;
+            if ($complaintId > 0) {
+                $this->logAiClassificationVerification($complaintId, $data);
+            }
 
             if (!empty($evidenceFiles) && $complaintId > 0) {
                 $uploadedCount = 0;
@@ -375,14 +387,187 @@ class ComplaintController
                 }
             }
 
+            $auditAction = !empty($result['is_draft'])
+                ? 'Saved Complaint Draft'
+                : ((($result['complaint_source'] ?? '') === 'Online' && ($result['status'] ?? '') === 'Under Review')
+                    ? 'Submitted Online Complaint'
+                    : 'Updated Complaint');
             $this->audit->log(
                 $_SESSION['user_id'] ?? 1,
-                'Updated Complaint',
+                $auditAction,
                 'Complaints',
                 $id
             );
         }
 
+        return $result;
+    }
+
+    private function prepareAiSuggestionForIntake(array &$data): void
+    {
+        if (!empty($data['is_draft']) && empty($data['ai_suggestion_payload'])) {
+            return;
+        }
+        $narrative = trim((string) ($data['narrative'] ?? $data['complaint_description'] ?? ''));
+        if (mb_strlen($narrative) < 10) {
+            return;
+        }
+        $requestedResolution = trim((string) ($data['requested_resolution'] ?? ''));
+
+        $payloadRaw = trim((string) ($data['ai_suggestion_payload'] ?? ''));
+        if ($payloadRaw !== '') {
+            $decoded = json_decode($payloadRaw, true);
+            if (is_array($decoded) && !empty($decoded['primary']['category_id'])) {
+                $catId = filter_var($decoded['primary']['category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                if ($catId) {
+                    try {
+                        $catStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_id = ? AND COALESCE(is_active, 1) = 1 LIMIT 1');
+                        $catStmt->execute([$catId]);
+                        $catRow = $catStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($catRow) {
+                            $decoded['primary'] = [
+                                'category_id' => (int) $catRow['category_id'],
+                                'category_name' => (string) $catRow['category_name'],
+                                'confidence' => mb_substr(trim((string) ($decoded['primary']['confidence'] ?? 'Medium')), 0, 32),
+                                'reason' => mb_substr(trim((string) ($decoded['primary']['reason'] ?? '')), 0, 500),
+                            ];
+                            $secClean = null;
+                            if (!empty($decoded['secondary']) && is_array($decoded['secondary']) && !empty($decoded['secondary']['category_id'])) {
+                                $secCatId = filter_var($decoded['secondary']['category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+                                if ($secCatId && $secCatId !== (int) $catRow['category_id']) {
+                                    $catStmt->execute([$secCatId]);
+                                    $secCatRow = $catStmt->fetch(PDO::FETCH_ASSOC);
+                                    if ($secCatRow) {
+                                        $secType = trim((string) ($decoded['secondary']['case_type'] ?? ''));
+                                        $secClean = [
+                                            'category_id' => (int) $secCatRow['category_id'],
+                                            'category_name' => (string) $secCatRow['category_name'],
+                                            'confidence' => mb_substr(trim((string) ($decoded['secondary']['confidence'] ?? 'Medium')), 0, 32),
+                                            'case_type' => in_array($secType, ['Civil', 'Criminal'], true) ? $secType : null,
+                                            'reason' => mb_substr(trim((string) ($decoded['secondary']['reason'] ?? '')), 0, 500),
+                                        ];
+                                    }
+                                }
+                            }
+                            $decoded['secondary'] = $secClean;
+                            $caseType = trim((string) ($decoded['case_type'] ?? 'Civil'));
+                            $decoded['case_type'] = in_array($caseType, ['Civil', 'Criminal'], true) ? $caseType : 'Civil';
+                            $decoded['suggested_title'] = mb_substr(trim((string) ($decoded['suggested_title'] ?? '')), 0, 255);
+                            $decoded['jurisdiction_advisory'] = mb_substr(trim((string) ($decoded['jurisdiction_advisory'] ?? '')), 0, 600);
+                            $decoded['source'] = trim((string) ($decoded['source'] ?? 'keyword_fallback'));
+                            $decoded['resident_viewed'] = true;
+                            $decoded['auto_generated_on_submit'] = false;
+                            $decoded['generated_at'] = date('Y-m-d H:i:s');
+                            $data['ai_suggestion_json'] = json_encode($decoded, JSON_UNESCAPED_UNICODE);
+                            return;
+                        }
+                    } catch (Throwable $e) {
+                        error_log('Resident AI suggestion validation notice: ' . $e->getMessage());
+                    }
+                }
+            }
+        }
+
+        try {
+            require_once __DIR__ . '/AIController.php';
+            $catStmt = $this->conn->query("
+                SELECT category_id, category_name, tagalog_name, description
+                FROM complaint_categories
+                WHERE COALESCE(is_active, 1) = 1
+                ORDER BY CASE WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 ELSE 0 END ASC, category_name ASC
+            ");
+            $categories = $catStmt ? $catStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+            if ($categories === []) {
+                return;
+            }
+            $res = (new AIController())->suggestComplaintClassification($narrative, $categories, $requestedResolution, false);
+            if (!empty($res['success']) && !empty($res['suggestion']['primary']['category_id'])) {
+                $sug = $res['suggestion'];
+                $sug['source'] = (string) ($res['source'] ?? 'keyword_fallback');
+                $sug['resident_viewed'] = false;
+                $sug['auto_generated_on_submit'] = true;
+                $sug['generated_at'] = date('Y-m-d H:i:s');
+                $data['ai_suggestion_json'] = json_encode($sug, JSON_UNESCAPED_UNICODE);
+            }
+        } catch (Throwable $e) {
+            error_log('Intake auto AI suggestion warning: ' . $e->getMessage());
+        }
+    }
+
+    private function logAiClassificationVerification(int $complaintId, array $data): void
+    {
+        if (!in_array($data['ai_classification_used'] ?? null, [true, 1, '1', 'true'], true)) {
+            return;
+        }
+        if (!in_array($data['ai_classification_verified'] ?? null, [true, 1, '1', 'true'], true)) {
+            return;
+        }
+
+        $suggestedCatId = filter_var($data['ai_suggested_category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+        $finalCatId = filter_var($data['category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+        if ($finalCatId <= 0) {
+            try {
+                $stmt = $this->conn->prepare('SELECT category_id FROM complaints WHERE complaint_id = ? LIMIT 1');
+                $stmt->execute([$complaintId]);
+                $finalCatId = (int) ($stmt->fetchColumn() ?: 0);
+            } catch (Throwable) {
+                $finalCatId = 0;
+            }
+        }
+
+        if ($suggestedCatId > 0 && $finalCatId > 0) {
+            $action = ($suggestedCatId === $finalCatId)
+                ? "Verified AI complaint classification (accepted category #{$finalCatId})"
+                : "Verified AI complaint classification (overrode #{$suggestedCatId} to #{$finalCatId})";
+        } else {
+            $action = 'Verified AI complaint classification';
+        }
+
+        $this->audit->log(
+            $_SESSION['user_id'] ?? 1,
+            $action,
+            'Complaints',
+            $complaintId
+        );
+    }
+
+    public function linkWalkin(int $complaintId, array $data, array $files = []): array
+    {
+        $staffUserId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
+        if ($staffUserId < 1) {
+            return ['success' => false, 'message' => 'Authentication required.'];
+        }
+
+        $evidenceFiles = [];
+        if (!empty($files['evidence'])) {
+            $evidenceFiles = $this->normalizeFilesArray($files['evidence']);
+        } elseif (!empty($files['attachments'])) {
+            $evidenceFiles = $this->normalizeFilesArray($files['attachments']);
+        }
+        foreach ($evidenceFiles as $file) {
+            $validationError = $this->validateAttachmentFile($file);
+            if ($validationError !== null) {
+                return ['success' => false, 'message' => $validationError];
+            }
+        }
+
+        $result = $this->complaint->linkWalkinToExisting($complaintId, $staffUserId, $data);
+        if (empty($result['success'])) {
+            return $result;
+        }
+
+        $uploadedCount = 0;
+        foreach ($evidenceFiles as $file) {
+            $attachRes = $this->addAttachment($complaintId, $file);
+            if (!empty($attachRes['success'])) {
+                $uploadedCount++;
+            }
+        }
+        if ($uploadedCount > 0) {
+            $result['message'] .= " ({$uploadedCount} walk-in attachment(s) added.)";
+        }
+
+        $this->audit->log($staffUserId, 'Linked Walk-in Visit to Existing Complaint', 'Complaints', $complaintId);
         return $result;
     }
 
@@ -393,9 +578,19 @@ class ComplaintController
         if ($id < 1 || mb_strlen($notes) > 2000) {
             return ['success' => false, 'message' => 'Provide valid review notes of 2,000 characters or fewer.'];
         }
-        $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null);
+        $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $data);
         if ($result['success']) {
-            $this->audit->log((int) $_SESSION['user_id'], 'Reviewed Complaint: ' . $status, 'Complaints', $id);
+            $actorId = (int) ($_SESSION['user_id'] ?? 1);
+            $this->audit->log($actorId, 'Reviewed Complaint: ' . $status, 'Complaints', $id);
+            $this->logAiClassificationVerification($id, $data);
+            if ($status === 'Accepted') {
+                try {
+                    require_once __DIR__ . '/../services/KpFormService.php';
+                    (new KpFormService($this->conn))->autoGenerateForEvent('complaint_filed', $id, $actorId);
+                } catch (Throwable $kpErr) {
+                    error_log('Review KP Form 7 generation warning: ' . $kpErr->getMessage());
+                }
+            }
         }
         return $result;
     }

@@ -2,16 +2,14 @@
 
 session_start();
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
-    http_response_code(403);
-    exit('Unauthorized access.');
-}
-
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../services/PDFService.php';
 require_once __DIR__ . '/../../services/KpFormService.php';
 
 $conn = (new Database())->connect();
+$roleName = agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'BPSO', 'LISO', 'Resident'], $conn);
+$actorUserId = agapSessionUserId();
 $documentId = filter_input(INPUT_GET, 'document_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['document_id']) ? (int) $_GET['document_id'] : null);
 $caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['case_id']) ? (int) $_GET['case_id'] : null);
 $complaintId = filter_input(INPUT_GET, 'complaint_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['complaint_id']) ? (int) $_GET['complaint_id'] : null);
@@ -78,6 +76,22 @@ if (!$caseId && $complaintId) {
 if (!$caseId) {
     http_response_code(404);
     exit('Valid case ID or document ID required.');
+}
+
+if ($roleName === 'Resident') {
+    $ownStmt = $conn->prepare("
+        SELECT co.complaint_id
+        FROM complaints co
+        LEFT JOIN cases c ON c.complaint_id = co.complaint_id
+        WHERE c.case_id = ? OR co.complaint_id = ?
+        LIMIT 1
+    ");
+    $ownStmt->execute([$caseId, $caseId]);
+    $ownComplaintId = (int) ($ownStmt->fetchColumn() ?: 0);
+    if (!agapResidentOwnsComplaint($conn, $ownComplaintId, $actorUserId)) {
+        http_response_code(403);
+        exit('Access restricted to your own filed cases.');
+    }
 }
 
 // For KP Forms 10, 11, and 12, ensure 1st Conciliation hearing is linked if hearingId is not yet specified

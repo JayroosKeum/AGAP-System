@@ -6,12 +6,10 @@ require_once __DIR__ . '/../../controllers/AiServiceController.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
 require_once __DIR__ . '/../../services/AiRequestRateLimit.php';
 
-// Verify authentication
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access. Please log in.']);
-    exit;
-}
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
+$db = (new Database())->connect();
+agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'BPSO', 'LISO'], $db);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

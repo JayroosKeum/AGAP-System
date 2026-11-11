@@ -4,15 +4,11 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 require_once __DIR__ . '/../../config/database.php';
-
-if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Authentication required.']);
-    exit;
-}
+require_once __DIR__ . '/../../middleware/rbac.php';
 
 $db = (new Database())->connect();
-$userId = (int) $_SESSION['user_id'];
+agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member'], $db);
+$userId = agapSessionUserId();
 
 function isConcludedWorkspaceRecord(PDO $db, int $caseId, ?int $hearingId = null): bool {
     $stmt = $db->prepare('SELECT c.case_status, h.status, h.queue_status FROM cases c LEFT JOIN hearings h ON h.hearing_id = ? AND h.case_id = c.case_id WHERE c.case_id = ? LIMIT 1');

@@ -14,6 +14,8 @@ $caseId = filter_var($_GET['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' =
 $complaintId = filter_var($_GET['complaint_id'] ?? $_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
 $db = (new Database())->connect();
+require_once __DIR__ . '/../../../backend/services/SingleSessionService.php';
+SingleSessionService::enforceForPage($db);
 
 if (!$caseId && $complaintId) {
     $cStmt = $db->prepare("SELECT case_id FROM cases WHERE complaint_id = ? ORDER BY case_id DESC LIMIT 1");

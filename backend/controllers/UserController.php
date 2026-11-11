@@ -75,6 +75,24 @@ class UserController {
         return $result + ['message' => $result['success'] ? 'User account updated.' : ($result['message'] ?? 'Unable to update the user account.')];
     }
 
+    public function setStatus(int $id, string $status, int $actorId): array
+    {
+        if ($id < 1) {
+            return ['success' => false, 'message' => 'A valid user is required.'];
+        }
+        $normalizedStatus = trim($status);
+        if ($id === $actorId && $normalizedStatus === 'Inactive') {
+            return ['success' => false, 'message' => 'You cannot disable your own account.'];
+        }
+        $result = $this->user->setStatus($id, $normalizedStatus);
+        if (!empty($result['success'])) {
+            $action = $normalizedStatus === 'Inactive' ? 'Disabled user account' : 'Enabled user account';
+            $this->audit->log($actorId, $action, 'User Management', $id);
+        }
+        $defaultMsg = $normalizedStatus === 'Inactive' ? 'User account disabled.' : 'User account enabled.';
+        return $result + ['message' => !empty($result['success']) ? $defaultMsg : ($result['message'] ?? 'Unable to update user status.')];
+    }
+
     public function delete(int $id, int $actorId): array
     {
         if ($id < 1) return ['success' => false, 'message' => 'A valid user is required.'];
@@ -110,7 +128,7 @@ class UserController {
 
         if (!ValidationService::name($firstName)) return ['success' => false, 'message' => 'Please enter a valid first name (up to 100 characters).'];
         if (!ValidationService::name($lastName)) return ['success' => false, 'message' => 'Please enter a valid last name (up to 100 characters).'];
-        if (!preg_match('/^[A-Za-z0-9_.-]{3,100}$/', $username)) return ['success' => false, 'message' => 'Username must be 3 to 100 letters, numbers, dots, underscores, or hyphens.'];
+        if (!ValidationService::username($username, 3, 100)) return ['success' => false, 'message' => 'Username must be 3 to 100 letters, numbers, dots, underscores, or hyphens.'];
         if ($this->user->usernameInUse($username, $exceptUserId)) return ['success' => false, 'message' => 'That username is already in use. Please choose another.'];
         if ($email === '' || mb_strlen($email) > 150 || !ValidationService::email($email)) return ['success' => false, 'message' => 'Please enter a valid email address (up to 150 characters).'];
         if ($this->user->emailInUse($email, $exceptUserId)) return ['success' => false, 'message' => 'That email address is already in use. Please enter another.'];
@@ -118,7 +136,7 @@ class UserController {
         if (!ValidationService::phone($contactNo) || mb_strlen($contactNo) > 20) return ['success' => false, 'message' => 'Please enter a valid Philippine mobile or telephone number (up to 20 characters).'];
         if (!$roleId || !$this->user->roleExists((int) $roleId)) return ['success' => false, 'message' => 'Choose a valid role.'];
         if ($passwordRequired && trim($password) === '') return ['success' => false, 'message' => 'Please enter a password for the new user account.'];
-        if ($password !== '' && (strlen($password) < 12 || !preg_match('/[a-z]/', $password) || !preg_match('/[A-Z]/', $password) || !preg_match('/\\d/', $password))) return ['success' => false, 'message' => 'Use at least 12 characters with uppercase, lowercase, and a number for the password.'];
+        if ($password !== '' && ($pwErr = ValidationService::passwordError($password, $passwordConfirmation)) !== null) return ['success' => false, 'message' => $pwErr];
         if ($password !== '' && !hash_equals($password, $passwordConfirmation)) return ['success' => false, 'message' => 'Password confirmation does not match the password.'];
         if ($password === '' && $passwordConfirmation !== '') return ['success' => false, 'message' => 'Enter a password before confirming it.'];
 

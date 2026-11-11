@@ -1,6 +1,8 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/SingleSessionService.php';
+require_once __DIR__ . '/../services/LoginThrottleService.php';
 
 class User {
 
@@ -12,15 +14,66 @@ class User {
         $this->db = $database->connect();
     }
 
+    public function getConnection(): PDO
+    {
+        return $this->db;
+    }
+
     public function findByUsername(string $username): array|false
     {
         $stmt = $this->db->prepare(
-            "SELECT * FROM users WHERE username = ?"
+            "SELECT u.*, r.role_name
+             FROM users u
+             LEFT JOIN roles r ON r.role_id = u.role_id
+             WHERE u.username = ?"
         );
 
         $stmt->execute([$username]);
 
         return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function findByUsernameOrEmail(string $identifier): array|false
+    {
+        $identifier = trim($identifier);
+        if ($identifier === '') {
+            return false;
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT u.*, r.role_name
+             FROM users u
+             LEFT JOIN roles r ON r.role_id = u.role_id
+             WHERE u.username = ?
+                OR (u.email IS NOT NULL AND u.email <> '' AND LOWER(u.email) = LOWER(?))
+             ORDER BY CASE WHEN u.username = ? THEN 0 ELSE 1 END ASC
+             LIMIT 1"
+        );
+
+        $stmt->execute([$identifier, $identifier, $identifier]);
+
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function findRoleIdByName(string $roleName): ?int
+    {
+        $stmt = $this->db->prepare('SELECT role_id FROM roles WHERE role_name = ? LIMIT 1');
+        $stmt->execute([$roleName]);
+        $id = $stmt->fetchColumn();
+        if ($id) {
+            return (int) $id;
+        }
+
+        try {
+            $ins = $this->db->prepare('INSERT INTO roles (role_name) VALUES (?) ON DUPLICATE KEY UPDATE role_name = VALUES(role_name)');
+            $ins->execute([$roleName]);
+            $stmt->execute([$roleName]);
+            $id = $stmt->fetchColumn();
+            return $id ? (int) $id : null;
+        } catch (Throwable $e) {
+            error_log('User::findRoleIdByName warning: ' . $e->getMessage());
+            return null;
+        }
     }
 
     public function create(array $data): array
@@ -178,11 +231,18 @@ class User {
             $stmt->execute([$tokenHash]);
             $token = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$token) { $this->db->rollBack(); return ['success' => false, 'message' => 'This reset link is invalid or has expired.']; }
-            $update = $this->db->prepare('UPDATE users SET password_hash = ? WHERE user_id = ? AND status = \'Active\'');
+            SingleSessionService::ensureSchema($this->db);
+            $update = $this->db->prepare('UPDATE users SET password_hash = ?, active_session_token = NULL, active_session_last_seen = NULL WHERE user_id = ? AND status = \'Active\'');
             $update->execute([password_hash($password, PASSWORD_DEFAULT), $token['user_id']]);
             if ($update->rowCount() !== 1) { $this->db->rollBack(); return ['success' => false, 'message' => 'This account is no longer active.']; }
             $this->db->prepare('UPDATE password_reset_tokens SET used_at = NOW() WHERE reset_id = ?')->execute([$token['reset_id']]);
             $this->db->commit();
+            $uStmt = $this->db->prepare('SELECT username FROM users WHERE user_id = ? LIMIT 1');
+            $uStmt->execute([$token['user_id']]);
+            $uName = (string) ($uStmt->fetchColumn() ?: '');
+            if ($uName !== '') {
+                LoginThrottleService::clearFailures($this->db, $uName);
+            }
             return ['success' => true, 'user_id' => (int) $token['user_id']];
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) $this->db->rollBack(); error_log($exception->getMessage());
@@ -202,7 +262,15 @@ class User {
 
     public function getAll(): array
     {
-        $stmt = $this->db->query('SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no, u.role_id, u.status, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id ORDER BY u.last_name, u.first_name');
+        $stmt = $this->db->query(
+            "SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no,
+                    u.role_id, u.status, r.role_name,
+                    CASE WHEN u.email_verification_token IS NOT NULL AND u.status = 'Inactive' THEN 1 ELSE 0 END AS pending_verification,
+                    CASE WHEN u.password_hash IS NOT NULL AND u.password_hash <> '' THEN 1 ELSE 0 END AS has_password
+             FROM users u
+             INNER JOIN roles r ON r.role_id = u.role_id
+             ORDER BY u.last_name, u.first_name"
+        );
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -245,7 +313,8 @@ class User {
             $sql = 'UPDATE users SET first_name=?, last_name=?, username=?, email=?, contact_no=?, role_id=?';
             $values = [$data['first_name'], $data['last_name'], $data['username'], $data['email'], $data['contact_no'], $data['role_id']];
             if ($data['password'] !== '') {
-                $sql .= ', password_hash=?, status=\'Active\', email_verification_token=NULL, email_verification_expires_at=NULL';
+                SingleSessionService::ensureSchema($this->db);
+                $sql .= ', password_hash=?, status=\'Active\', email_verification_token=NULL, email_verification_expires_at=NULL, active_session_token=NULL, active_session_last_seen=NULL';
                 $values[] = password_hash($data['password'], PASSWORD_DEFAULT);
             }
             $sql .= ' WHERE user_id=?';
@@ -260,6 +329,56 @@ class User {
                     : ['success' => false, 'message' => 'User was not found.'];
             }
             return ['success' => true];
+        } catch (PDOException $exception) {
+            return $this->databaseError($exception);
+        }
+    }
+
+    public function setStatus(int $id, string $status): array
+    {
+        if (!in_array($status, ['Active', 'Inactive'], true)) {
+            return ['success' => false, 'message' => 'Select a valid account status (Active or Inactive).'];
+        }
+
+        try {
+            $stmt = $this->db->prepare('SELECT user_id, role_id, status, password_hash FROM users WHERE user_id = ? LIMIT 1');
+            $stmt->execute([$id]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$user) {
+                return ['success' => false, 'message' => 'User was not found.'];
+            }
+
+            if ((int) $user['role_id'] === 1 && $status === 'Inactive') {
+                $adminCountStmt = $this->db->prepare("SELECT COUNT(*) FROM users WHERE role_id = 1 AND status = 'Active' AND user_id <> ?");
+                $adminCountStmt->execute([$id]);
+                if ((int) $adminCountStmt->fetchColumn() < 1) {
+                    return ['success' => false, 'message' => 'At least one active Administrator account is required.'];
+                }
+            }
+
+            if ($status === 'Active' && trim((string) ($user['password_hash'] ?? '')) === '') {
+                return ['success' => false, 'message' => 'This account has not set a password yet. Edit the user to set an initial password or resend the verification email.'];
+            }
+
+            if ($user['status'] === $status) {
+                return ['success' => true, 'status' => $status];
+            }
+
+            SingleSessionService::ensureSchema($this->db);
+            $upd = $status === 'Inactive'
+                ? $this->db->prepare('UPDATE users SET status = ?, active_session_token = NULL, active_session_last_seen = NULL WHERE user_id = ?')
+                : $this->db->prepare('UPDATE users SET status = ? WHERE user_id = ?');
+            $upd->execute([$status, $id]);
+            if ($status === 'Active') {
+                $uNameStmt = $this->db->prepare('SELECT username FROM users WHERE user_id = ? LIMIT 1');
+                $uNameStmt->execute([$id]);
+                $uName = (string) ($uNameStmt->fetchColumn() ?: '');
+                if ($uName !== '') {
+                    LoginThrottleService::clearFailures($this->db, $uName);
+                }
+            }
+
+            return ['success' => true, 'status' => $status];
         } catch (PDOException $exception) {
             return $this->databaseError($exception);
         }

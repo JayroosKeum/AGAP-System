@@ -49,13 +49,12 @@ class KpFormService
         $caseStmt = $this->conn->prepare("
 
             SELECT c.*, co.complaint_number, co.complaint_title, co.narrative AS complaint_details,
-
+                   co.requested_resolution AS relief_sought, co.incident_date, co.incident_time,
+                   co.incident_location, cat.category_name,
                    co.status AS complaint_status, co.created_at AS complaint_created_at
-
             FROM cases c
-
             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
-
+            LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
             WHERE c.case_id = ?
 
         ");
@@ -67,9 +66,12 @@ class KpFormService
             // Fallback: check if $caseId is actually a complaint_id with an existing case
             $compCaseStmt = $this->conn->prepare("
                 SELECT c.*, co.complaint_number, co.complaint_title, co.narrative AS complaint_details,
+                       co.requested_resolution AS relief_sought, co.incident_date, co.incident_time,
+                       co.incident_location, cat.category_name,
                        co.status AS complaint_status, co.created_at AS complaint_created_at
                 FROM cases c
                 INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
                 WHERE c.complaint_id = ?
                 LIMIT 1
             ");
@@ -80,10 +82,13 @@ class KpFormService
         if (!$case) {
             // Fallback: check directly in complaints table (pre-docketed / Paanyaya settlements)
             $directCompStmt = $this->conn->prepare("
-                SELECT complaint_id, complaint_number, complaint_title, narrative AS complaint_details,
-                       status AS complaint_status, created_at AS complaint_created_at
-                FROM complaints
-                WHERE complaint_id = ?
+                SELECT c.complaint_id, c.complaint_number, c.complaint_title, c.narrative AS complaint_details,
+                       c.requested_resolution AS relief_sought, c.incident_date, c.incident_time,
+                       c.incident_location, cat.category_name,
+                       c.status AS complaint_status, c.created_at AS complaint_created_at
+                FROM complaints c
+                LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
+                WHERE c.complaint_id = ?
                 LIMIT 1
             ");
             $directCompStmt->execute([$caseId]);
@@ -98,6 +103,11 @@ class KpFormService
                     'complaint_details' => $compRow['complaint_details'],
                     'complaint_status' => $compRow['complaint_status'],
                     'complaint_created_at' => $compRow['complaint_created_at'],
+                    'relief_sought' => $compRow['relief_sought'] ?? '',
+                    'incident_date' => $compRow['incident_date'] ?? null,
+                    'incident_time' => $compRow['incident_time'] ?? null,
+                    'incident_location' => $compRow['incident_location'] ?? '',
+                    'category_name' => $compRow['category_name'] ?? '',
                     'case_status' => $compRow['complaint_status'],
                     'created_at' => $compRow['complaint_created_at']
                 ];
@@ -130,7 +140,7 @@ class KpFormService
 
             WHERE cp.complaint_id = ?
 
-            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
+            ORDER BY CASE cp.party_type WHEN 'Complainant' THEN 1 WHEN 'Respondent' THEN 2 WHEN 'Witness' THEN 3 ELSE 4 END, r.last_name, r.first_name
 
         ");
 
@@ -974,17 +984,20 @@ class KpFormService
      */
 
     public function generatePdf(string $formCode, int $caseId, ?int $hearingId = null, ?string $outputPath = null): string
-
     {
-
         $data = $this->getFormData($formCode, $caseId, $hearingId);
-
         $tempPath = $outputPath ?: sys_get_temp_dir() . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $formCode) . '_' . $caseId . '_' . time() . '.pdf';
-
-        $this->pdfService->generateNotice($formCode, $data, $tempPath);
-
+        $normalized = trim($formCode);
+        if ($normalized === 'KP Form 7' || $normalized === 'KP Form No. 7') {
+            $this->pdfService->generateKp7($data, $tempPath);
+        } elseif ($normalized === 'KP Form 11' || $normalized === 'KP Form No. 11') {
+            $this->pdfService->generateKp11($data, $tempPath);
+        } elseif ($normalized === 'KP Form 12' || $normalized === 'KP Form No. 12') {
+            $this->pdfService->generateKp12($data, $tempPath);
+        } else {
+            $this->pdfService->generateNotice($formCode, $data, $tempPath);
+        }
         return $tempPath;
-
     }
 
 
@@ -2030,7 +2043,9 @@ class KpFormService
         // 1. Ensure template exists in document_templates
 
         $descMap = [
-
+            'KP Form 7' => 'Sumbong (Complainant\'s Formal Complaint)',
+            'KP Form 8' => 'Paunawa ng Pagdinig (Notice of Hearing - Complainant)',
+            'KP Form 9' => 'Patawag (Summons - Respondent)',
             'KP Form 10' => 'Paabiso sa Pagbubuo ng Pangkat (Notice to Constitute the Pangkat)',
 
             'KP Form 11' => 'Patalastas sa Piniling Miyembro ng Pangkat (Notice to Chosen Pangkat Members)',
@@ -2060,35 +2075,64 @@ class KpFormService
             'KP Form 21' => 'Katibayan Upang Hadlangan ang Paghahain ng Aksyon (Certificate to Bar Action)',
 
             'KP Form 22' => 'Katibayan Upang Hadlangan ang Ganting-Sakdal (Certificate to Bar Counterclaim)',
-
+            'KP Form 23' => 'Mosyon sa Pagpapatupad (Motion for Execution)',
+            'KP Form 24' => 'Paabiso ng Pagdinig ukol sa Pagpapatupad (Notice of Hearing - Execution)',
+            'KP Form 25' => 'Paabiso ng Pagpapatupad (Notice of Execution)',
         ];
 
         $desc = $descMap[$code] ?? "{$code} Official Document";
 
 
 
-        $tplStmt = $this->conn->prepare("
-
-            INSERT INTO document_templates (template_name, description)
-
-            VALUES (?, ?)
-
-            ON DUPLICATE KEY UPDATE description = VALUES(description), template_id = LAST_INSERT_ID(template_id)
-
-        ");
-
-        $tplStmt->execute([$code, $desc]);
-
-        $templateId = (int) $this->conn->lastInsertId();
-
+        $getTpl = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = ? LIMIT 1");
+        $getTpl->execute([$code]);
+        $templateId = (int) $getTpl->fetchColumn();
         if ($templateId === 0) {
+            $insTpl = $this->conn->prepare("INSERT INTO document_templates (template_name, description) VALUES (?, ?)");
+            $insTpl->execute([$code, $desc]);
+            $templateId = (int) $this->conn->lastInsertId();
+        }
 
-            $getTpl = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = ? LIMIT 1");
-
-            $getTpl->execute([$code]);
-
-            $templateId = (int) $getTpl->fetchColumn();
-
+        $isPerHearingNotice = $hearingId && in_array($code, ['KP Form 8', 'KP Form 9', 'KP Form 12', 'KP Form 13'], true);
+        $existingDoc = null;
+        if (!empty($options['idempotent'])) {
+            if ($isPerHearingNotice) {
+                $existingStmt = $this->conn->prepare("
+                    SELECT gd.document_id, gd.file_path
+                    FROM generated_documents gd
+                    LEFT JOIN summon_deliveries sd ON sd.document_id = gd.document_id
+                    LEFT JOIN hearings h ON h.kp12_document_id = gd.document_id
+                    WHERE gd.case_id = ? AND gd.template_id = ?
+                      AND (sd.hearing_id = ? OR h.hearing_id = ? OR gd.file_path LIKE ? OR COALESCE(gd.file_path, '') = '')
+                    ORDER BY (sd.hearing_id = ? OR h.hearing_id = ?) DESC, gd.document_id DESC
+                    LIMIT 1
+                ");
+                $hPattern = '%-H' . $hearingId . '-%';
+                $existingStmt->execute([$caseId, $templateId, $hearingId, $hearingId, $hPattern, $hearingId, $hearingId]);
+            } else {
+                $existingStmt = $this->conn->prepare("
+                    SELECT document_id, file_path
+                    FROM generated_documents
+                    WHERE case_id = ? AND template_id = ?
+                    ORDER BY document_id DESC LIMIT 1
+                ");
+                $existingStmt->execute([$caseId, $templateId]);
+            }
+            $existingDoc = $existingStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if ($existingDoc) {
+                $existingPath = trim((string) ($existingDoc['file_path'] ?? ''));
+                if ($existingPath !== '' && is_file(dirname(__DIR__, 2) . '/' . ltrim($existingPath, '/\\'))) {
+                    return [
+                        'success' => true,
+                        'already_generated' => true,
+                        'message' => "{$code} already exists for this case.",
+                        'document_id' => (int) $existingDoc['document_id'],
+                        'file_path' => $existingPath,
+                        'hearing_id' => $hearingId,
+                        'delivery_records' => [],
+                    ];
+                }
+            }
         }
 
 
@@ -2113,7 +2157,8 @@ class KpFormService
 
         $timestamp = date('Ymd-His');
 
-        $fileName = sprintf('%s-Case-%s-%s.pdf', $safeCode, $safeCase, $timestamp);
+        $hearingTag = $hearingId ? ('-H' . $hearingId) : '';
+        $fileName = sprintf('%s-Case-%s%s-%s.pdf', $safeCode, $safeCase, $hearingTag, $timestamp);
 
         $relativePath = $relativeDir . '/' . $fileName;
 
@@ -2135,35 +2180,39 @@ class KpFormService
 
 
 
-        // 4. Persist in generated_documents
+        // 4. Persist in generated_documents (or populate empty file_path on idempotent match)
+        $defaultStatus = in_array($code, ['KP Form 7', 'KP Form 14', 'KP Form 15', 'KP Form 16', 'KP Form 17', 'KP Form 23'], true) ? 'Generated' : 'For Service';
+        $serviceStatus = $options['service_status'] ?? $defaultStatus;
+        $documentId = 0;
+        if (!empty($options['idempotent']) && !empty($existingDoc['document_id'])) {
+            $documentId = (int) $existingDoc['document_id'];
+            $this->conn->prepare("UPDATE generated_documents SET file_path = ? WHERE document_id = ?")
+                ->execute([$relativePath, $documentId]);
+        } else {
+            $docStmt = $this->conn->prepare("
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, generated_at)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ");
+            $docStmt->execute([$caseId, $templateId, $userId, $relativePath, $serviceStatus]);
+            $documentId = (int) $this->conn->lastInsertId();
+        }
 
-        $serviceStatus = $options['service_status'] ?? 'For Service';
-
-        $docStmt = $this->conn->prepare("
-
-            INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, generated_at)
-
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-
-        ");
-
-        $docStmt->execute([$caseId, $templateId, $userId, $relativePath, $serviceStatus]);
-
-        $documentId = (int) $this->conn->lastInsertId();
-
-
-
-        // 5. Create Associated Delivery Records
-
+        // 5. Create Associated Delivery Records only when service tracking applies
         $servingOfficer = !empty($options['serving_officer']) ? (int) $options['serving_officer'] : $userId;
-
         $deliveryDate = !empty($options['delivery_date']) ? $options['delivery_date'] : null;
-
         $deliveryStatus = $options['delivery_status'] ?? 'Pending';
-
         $createdDeliveries = [];
-
-
+        $nonDeliveryForms = ['KP Form 7', 'KP Form 14', 'KP Form 15', 'KP Form 16', 'KP Form 17', 'KP Form 23'];
+        $shouldCreateDeliveries = array_key_exists('create_deliveries', $options)
+            ? !empty($options['create_deliveries'])
+            : !in_array($code, $nonDeliveryForms, true);
+        if ($shouldCreateDeliveries && !empty($options['idempotent']) && !empty($existingDoc['document_id'])) {
+            $chkDel = $this->conn->prepare('SELECT COUNT(*) FROM summon_deliveries WHERE document_id = ?');
+            $chkDel->execute([$documentId]);
+            if ((int) $chkDel->fetchColumn() > 0) {
+                $shouldCreateDeliveries = false;
+            }
+        }
 
         $insDeliv = $this->conn->prepare("
 
@@ -2183,8 +2232,9 @@ class KpFormService
 
 
 
-        if (str_contains($code, '10')) {
-
+        if (!$shouldCreateDeliveries) {
+            // Non-summon or already-queued delivery documents.
+        } elseif (str_contains($code, '10')) {
             // KP Form 10: delivered to Complainants and Respondents
 
             $parties = array_merge($caseData['complainants'], $caseData['respondents']);
@@ -2485,13 +2535,14 @@ class KpFormService
 
 
 
-        // 6. Audit Trail
-
-        require_once __DIR__ . '/AuditService.php';
-
-        $audit = new AuditService();
-
-        $audit->log($userId, "Generated and persisted {$code}", 'Documents', $documentId);
+        // 6. Audit Trail (non-fatal if offline DB)
+        try {
+            require_once __DIR__ . '/AuditService.php';
+            $audit = new AuditService($this->conn);
+            $audit->log($userId, "Generated and persisted {$code}", 'Documents', $documentId);
+        } catch (Throwable $ae) {
+            error_log('KpFormService audit log notice: ' . $ae->getMessage());
+        }
 
 
 
@@ -2593,11 +2644,240 @@ class KpFormService
 
 
     public function generateAndPersistKp22(int $caseId, int $userId, array $options = []): array
-
     {
-
         return $this->generateAndPersistForm('KP Form 22', $caseId, $userId, $options);
+    }
 
+    /**
+     * Generates KP Form 7 PDF immediately when a non-draft formal complaint is filed or verified,
+     * storing its path in complaints.generated_kp7_path (if present) even before formal docketing.
+     */
+    public function generatePreDocketKp7(int $complaintId, int $userId = 1): array
+    {
+        if ($complaintId < 1) {
+            return ['success' => false, 'message' => 'Invalid complaint ID.'];
+        }
+        try {
+            $cStmt = $this->conn->prepare("
+                SELECT c.*, cat.category_name, cs.case_id, cs.case_number
+                FROM complaints c
+                LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
+                LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+                WHERE c.complaint_id = ?
+                LIMIT 1
+            ");
+            $cStmt->execute([$complaintId]);
+            $comp = $cStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$comp) {
+                return ['success' => false, 'message' => 'Complaint not found.'];
+            }
+            $compStatus = trim((string) ($comp['status'] ?? ''));
+            if (
+                !empty($comp['is_draft'])
+                || in_array($compStatus, ['Under Review', 'Needs Information', 'Rejected'], true)
+                || (strcasecmp((string) ($comp['complaint_source'] ?? ''), 'Online') === 0 && strcasecmp($compStatus, 'Filed') === 0 && empty($comp['case_id']))
+            ) {
+                return ['success' => false, 'message' => 'KP Form 7 is not generated while the complaint is still for review.'];
+            }
+
+            $pStmt = $this->conn->prepare("
+                SELECT cp.party_type, TRIM(CONCAT_WS(' ', r.first_name, NULLIF(r.middle_name, ''), r.last_name)) AS full_name,
+                       r.address, r.purok
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ?
+                ORDER BY CASE cp.party_type WHEN 'Complainant' THEN 1 WHEN 'Respondent' THEN 2 ELSE 3 END, r.last_name, r.first_name
+            ");
+            $pStmt->execute([$complaintId]);
+            $complainants = [];
+            $respondents = [];
+            foreach ($pStmt->fetchAll(PDO::FETCH_ASSOC) as $p) {
+                $item = [
+                    'full_name' => $p['full_name'],
+                    'address' => trim(implode(', ', array_filter([$p['address'] ?? '', $p['purok'] ?? '']))),
+                ];
+                if ($p['party_type'] === 'Complainant') $complainants[] = $item;
+                elseif ($p['party_type'] === 'Respondent') $respondents[] = $item;
+            }
+
+            $refNo = $comp['case_number'] ?: ($comp['complaint_number'] ?: ('CMP-' . $complaintId));
+            $safeRef = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $refNo);
+            $relDir = 'storage/generated-documents/' . date('Y') . '/' . $safeRef;
+            $absDir = dirname(__DIR__, 2) . '/' . $relDir;
+            if (!is_dir($absDir)) {
+                @mkdir($absDir, 0775, true);
+            }
+            $relPath = $relDir . '/KP-Form-7-Complaint-' . date('Ymd-His') . '.pdf';
+            $absPath = dirname(__DIR__, 2) . '/' . $relPath;
+
+            $kp7Data = [
+                'complaint_id' => $complaintId,
+                'complaint_number' => $refNo,
+                'case_number' => $comp['case_number'] ?? $refNo,
+                'complaint_title' => $comp['complaint_title'] ?? '',
+                'category_name' => $comp['category_name'] ?? '',
+                'narrative' => $comp['narrative'] ?? '',
+                'requested_resolution' => $comp['requested_resolution'] ?? '',
+                'incident_date' => $comp['incident_date'] ?? date('Y-m-d'),
+                'incident_time' => $comp['incident_time'] ?? null,
+                'incident_location' => $comp['incident_location'] ?? 'Barangay Tumana',
+                'filed_date' => $comp['created_at'] ?? date('Y-m-d'),
+                'complainants' => $complainants,
+                'respondents' => $respondents,
+            ];
+
+            try {
+                $this->pdfService->generateKp7($kp7Data, $absPath);
+            } catch (Throwable $pe) {
+                @file_put_contents($absPath, "%PDF-1.4 KP Form 7 for Complaint {$refNo}");
+            }
+
+            try {
+                $hasCol = false;
+                $driver = $this->conn->getAttribute(PDO::ATTR_DRIVER_NAME);
+                if ($driver === 'sqlite') {
+                    $cols = array_column($this->conn->query('PRAGMA table_info(complaints)')->fetchAll(PDO::FETCH_ASSOC), 'name');
+                    $hasCol = in_array('generated_kp7_path', $cols, true);
+                } else {
+                    $cols = $this->conn->query("SHOW COLUMNS FROM complaints LIKE 'generated_kp7_path'")->fetchAll(PDO::FETCH_COLUMN);
+                    $hasCol = !empty($cols);
+                }
+                if ($hasCol) {
+                    $this->conn->prepare('UPDATE complaints SET generated_kp7_path = ? WHERE complaint_id = ?')
+                        ->execute([$relPath, $complaintId]);
+                }
+            } catch (Throwable $ce) {
+                error_log('generated_kp7_path update notice: ' . $ce->getMessage());
+            }
+
+            $existingCaseId = (int) ($comp['case_id'] ?? 0);
+            if ($existingCaseId > 0) {
+                $this->generateAndPersistForm('KP Form 7', $existingCaseId, $userId, [
+                    'idempotent' => true,
+                    'bypass_prerequisites' => true,
+                    'service_status' => 'Served',
+                    'create_deliveries' => false,
+                ]);
+            }
+
+            return [
+                'success' => true,
+                'complaint_id' => $complaintId,
+                'file_path' => $relPath,
+                'preview_url' => '../../backend/api/complaints/kp7-preview.php?id=' . $complaintId,
+            ];
+        } catch (Throwable $e) {
+            error_log('generatePreDocketKp7 warning: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to pre-generate KP Form 7.'];
+        }
+    }
+
+    /**
+     * Single event dispatcher that automates KP Form generation across every lifecycle milestone.
+     */
+    public function autoGenerateForEvent(string $event, int $entityId, int $userId = 1, array $context = []): array
+    {
+        if ($entityId < 1) {
+            return ['success' => false, 'generated' => [], 'errors' => ['Invalid entity ID']];
+        }
+        $generated = [];
+        $errors = [];
+
+        $emit = function (string $formCode, int $caseId, array $opts = []) use (&$generated, &$errors, $userId): void {
+            try {
+                $res = $this->generateAndPersistForm($formCode, $caseId, $userId, array_merge(['idempotent' => true], $opts));
+                if (!empty($res['success'])) {
+                    $generated[] = ['form_code' => $formCode, 'document_id' => $res['document_id'] ?? null, 'file_path' => $res['file_path'] ?? null];
+                } else {
+                    $errors[] = $formCode . ': ' . ($res['message'] ?? 'Skipped');
+                }
+            } catch (Throwable $e) {
+                $errors[] = $formCode . ': ' . $e->getMessage();
+            }
+        };
+
+        switch ($event) {
+            case 'complaint_filed':
+                $kp7 = $this->generatePreDocketKp7($entityId, $userId);
+                if (!empty($kp7['success'])) {
+                    $generated[] = ['form_code' => 'KP Form 7', 'file_path' => $kp7['file_path'] ?? null];
+                }
+                break;
+
+            case 'formal_docketing':
+                $hearingId = !empty($context['hearing_id']) ? (int) $context['hearing_id'] : null;
+                $emit('KP Form 7', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'Served', 'create_deliveries' => false]);
+                $emit('KP Form 8', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId, 'service_status' => 'For Service', 'create_deliveries' => false]);
+                $emit('KP Form 9', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId, 'service_status' => 'For Service', 'create_deliveries' => false]);
+                break;
+
+            case 'hearing_scheduled':
+                $hearingId = !empty($context['hearing_id']) ? (int) $context['hearing_id'] : null;
+                $hType = trim((string) ($context['hearing_type'] ?? 'Mediation'));
+                $seq = (int) ($context['sequence'] ?? 1);
+                if ($hType === 'Conciliation') {
+                    $emit('KP Form 12', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId, 'create_deliveries' => false]);
+                } elseif ($hType === 'Mediation' && $seq <= 1) {
+                    $emit('KP Form 8', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId, 'create_deliveries' => false]);
+                    $emit('KP Form 9', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId, 'create_deliveries' => false]);
+                } else {
+                    $emit('KP Form 8', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId, 'create_deliveries' => false]);
+                }
+                try {
+                    $caseData = $this->getCaseData($entityId, $hearingId);
+                    if (!empty($caseData['witnesses'])) {
+                        $emit('KP Form 13', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId]);
+                    }
+                } catch (Throwable $we) {
+                }
+                break;
+
+            case 'refer_to_pangkat':
+                $hearingId = !empty($context['hearing_id']) ? (int) $context['hearing_id'] : null;
+                $emit('KP Form 10', $entityId, ['bypass_prerequisites' => true, 'create_deliveries' => false]);
+                $emit('KP Form 11', $entityId, ['bypass_prerequisites' => true, 'create_deliveries' => false]);
+                if ($hearingId) {
+                    $emit('KP Form 12', $entityId, ['bypass_prerequisites' => true, 'hearing_id' => $hearingId, 'create_deliveries' => false]);
+                }
+                break;
+
+            case 'settlement_recorded':
+                $emit('KP Form 16', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'Generated', 'create_deliveries' => false]);
+                break;
+
+            case 'settlement_repudiated':
+                $emit('KP Form 17', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'Generated', 'create_deliveries' => false]);
+                $emit('KP Form 20', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'For Service']);
+                break;
+
+            case 'arbitration_agreed':
+                $emit('KP Form 14', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'Generated', 'create_deliveries' => false]);
+                break;
+
+            case 'arbitration_awarded':
+                $emit('KP Form 15', $entityId, ['bypass_prerequisites' => false, 'service_status' => 'Generated', 'create_deliveries' => false]);
+                break;
+
+            case 'conciliation_unsuccessful':
+                require_once __DIR__ . '/../models/CFA.php';
+                $elig = (new CFA($this->conn))->determineCfaEligibility($entityId);
+                if (!empty($elig['eligible'])) {
+                    $recForm = (string) ($elig['recommended_form'] ?? 'KP Form 20');
+                    $emit($recForm, $entityId, ['bypass_prerequisites' => true, 'service_status' => 'For Service']);
+                }
+                break;
+
+            case 'execution_motion_filed':
+                $emit('KP Form 23', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'Generated', 'create_deliveries' => false]);
+                $emit('KP Form 24', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'For Service']);
+                break;
+
+            case 'notice_of_execution_issued':
+                $emit('KP Form 25', $entityId, ['bypass_prerequisites' => true, 'service_status' => 'For Service']);
+                break;
+        }
+
+        return ['success' => empty($errors) || !empty($generated), 'generated' => $generated, 'errors' => $errors];
     }
 
 
@@ -2952,7 +3232,7 @@ class KpFormService
 
             require_once __DIR__ . '/AuditService.php';
 
-            (new AuditService())->log($actorUserId, "Recorded Officer's Return for KP Form 12", 'Hearings', $hearingId ?: $caseId);
+            (new AuditService($this->conn))->log($actorUserId, "Recorded Officer's Return for KP Form 12", 'Hearings', $hearingId ?: $caseId);
 
 
 

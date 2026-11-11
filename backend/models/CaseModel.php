@@ -343,7 +343,7 @@ class CaseModel
                 'UPDATE cases SET case_number = ? WHERE case_id = ?'
             );
             $numberStatement->execute([$caseNumber, $caseId]);
-            $statusStatement = $this->conn->prepare("UPDATE complaints SET status = 'Mediation', complaint_number = ? WHERE complaint_id = ? AND status IN ('Accepted', 'Filed', 'Mediation', 'Docketed', 'Pre-Docketed (Paanyaya)')");
+            $statusStatement = $this->conn->prepare("UPDATE complaints SET status = 'Mediation', complaint_number = COALESCE(NULLIF(complaint_number, ''), ?) WHERE complaint_id = ? AND status IN ('Accepted', 'Pre-Docketed (Paanyaya)', 'Paanyaya In Progress', '1st Paanyaya Failed (No-Show)', 'Mediation', 'Docketed')");
             $statusStatement->execute([$caseNumber, $data['complaint_id']]);
             if ($statusStatement->rowCount() !== 1) {
                 throw new RuntimeException('Complaint approval changed before docketing.');
@@ -365,6 +365,17 @@ class CaseModel
 
             if (!$isNested) {
                 $this->conn->commit();
+            }
+            try {
+                require_once __DIR__ . '/../services/KpFormService.php';
+                (new KpFormService($this->conn))->generateAndPersistForm('KP Form 7', $caseId, (int) ($_SESSION['user_id'] ?? 1), [
+                    'idempotent' => true,
+                    'bypass_prerequisites' => true,
+                    'service_status' => 'Served',
+                    'create_deliveries' => false,
+                ]);
+            } catch (Throwable $kpErr) {
+                error_log('CaseModel::create KP Form 7 notice: ' . $kpErr->getMessage());
             }
             return true;
         } catch (Exception $e) {
@@ -541,11 +552,17 @@ class CaseModel
             }
         }
 
-        require_once __DIR__ . '/CaseTransmittal.php';
-        $transmittalModel = new CaseTransmittal($this->conn);
-        $transmittal = $transmittalModel->getByCaseId($id);
-        if (!$transmittal && ($settlement || ($case['case_status'] ?? '') === 'Settled')) {
-            $transmittal = $transmittalModel->createOrGetTransmittal($id);
+        $transmittal = null;
+        try {
+            require_once __DIR__ . '/CaseTransmittal.php';
+            $transmittalModel = new CaseTransmittal($this->conn);
+            $transmittal = $transmittalModel->getByCaseId($id);
+            if (!$transmittal && ($settlement || ($case['case_status'] ?? '') === 'Settled')) {
+                $transmittal = $transmittalModel->createOrGetTransmittal($id);
+            }
+        } catch (Throwable $transErr) {
+            error_log('CaseModel::getWorkspace transmittal notice for case ' . $id . ': ' . $transErr->getMessage());
+            $transmittal = null;
         }
 
         require_once __DIR__ . '/Arbitration.php';
@@ -588,8 +605,52 @@ class CaseModel
         if (!$complaintRecord) {
             return 'invalid_complaint';
         }
-        if (!in_array($complaintRecord['status'], ['Accepted', 'Filed', 'Mediation', 'Docketed', 'Pre-Docketed (Paanyaya)'], true)) {
+        if (!in_array($complaintRecord['status'], ['Accepted', 'Pre-Docketed (Paanyaya)', 'Paanyaya In Progress', '1st Paanyaya Failed (No-Show)', 'Mediation', 'Docketed'], true)) {
             return 'complaint_not_accepted';
+        }
+
+        // Mandatory Paanyaya gate: a complaint must go through Paanyaya before formal case docketing.
+        $hasPaanyaya = false;
+        try {
+            $pmStmt = $this->conn->prepare(
+                "SELECT 1 FROM paanyaya_minutes WHERE complaint_id = ? AND outcome IN ('No_Agreement', 'Party_Absent') LIMIT 1"
+            );
+            $pmStmt->execute([$complaintId]);
+            if ($pmStmt->fetchColumn()) {
+                $hasPaanyaya = true;
+            }
+            if (!$hasPaanyaya) {
+                $psStmt = $this->conn->prepare(
+                    "SELECT 1 FROM paanyaya_sessions WHERE complaint_id = ? AND (session_outcome IN ('Impasse_Escalate', 'Max_Failed_Escalate', 'Absent_Retry', 'Continued_Dialogue') OR escalated_at IS NOT NULL) LIMIT 1"
+                );
+                $psStmt->execute([$complaintId]);
+                if ($psStmt->fetchColumn()) {
+                    $hasPaanyaya = true;
+                }
+            }
+            if (!$hasPaanyaya) {
+                $pstStmt = $this->conn->prepare(
+                    "SELECT 1 FROM paanyaya_stages WHERE complaint_id = ? AND (review_status = 'Approved for Summons' OR status = 'Completed') LIMIT 1"
+                );
+                $pstStmt->execute([$complaintId]);
+                if ($pstStmt->fetchColumn()) {
+                    $hasPaanyaya = true;
+                }
+            }
+            if (!$hasPaanyaya) {
+                $pLegacy = $this->conn->prepare(
+                    "SELECT 1 FROM paanyayas WHERE (complaint_id = ? OR escalated_to_complaint_id = ?) AND status IN ('Unresolved', 'Escalated', 'Completed') LIMIT 1"
+                );
+                $pLegacy->execute([$complaintId, $complaintId]);
+                if ($pLegacy->fetchColumn()) {
+                    $hasPaanyaya = true;
+                }
+            }
+        } catch (Throwable $pe) {
+            error_log('getDocketingError paanyaya gate check warning: ' . $pe->getMessage());
+        }
+        if (!$hasPaanyaya) {
+            return 'paanyaya_required';
         }
 
         $case = $this->conn->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
