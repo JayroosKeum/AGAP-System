@@ -177,7 +177,7 @@ declare(strict_types=1);
                 </span>
             </a>
 
-            <!-- Header Actions: Language Switcher & Staff Sign-in -->
+            <!-- Header Action: Language Switcher -->
             <div class="landing-nav-actions">
                 <!-- Accessible Language Switcher Group -->
                 <div class="lang-switcher" role="group" aria-label="Pumili ng Wika / Select Language">
@@ -197,11 +197,6 @@ declare(strict_types=1);
                     </button>
                 </div>
 
-                <!-- Staff Sign In Link -->
-                <a href="../auth/login.php" class="landing-login" data-i18n="nav.staff_login">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path><polyline points="10 17 15 12 10 7"></polyline><line x1="15" y1="12" x2="3" y2="12"></line></svg>
-                    <span>Mag-sign in (Kawani)</span>
-                </a>
             </div>
         </nav>
     </header>
@@ -223,7 +218,8 @@ declare(strict_types=1);
                     Isang malinaw at maasahang pampublikong plataporma para sa pamamahala ng mga idinudulog na sumbong, paunang paanyaya, pagdinig ng Lupon, at mapayapang pagkakasundo sa Barangay Tumana.
                 </p>
                 <div class="hero-actions">
-                    <a href="../auth/login.php" class="landing-cta" data-i18n="hero.cta_login">Pag-login ng Kawani</a>
+                    <a href="../resident/login.php" class="landing-cta landing-cta-resident" data-i18n="hero.cta_resident">Resident Login or Register</a>
+                    <a href="../auth/login.php" class="landing-cta landing-cta-staff" data-i18n="hero.cta_login">Pag-login ng Kawani</a>
                     <span class="hero-note" data-i18n="hero.for_residents">Para sa mga mamamayan ng Barangay Tumana</span>
                 </div>
             </div>

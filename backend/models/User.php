@@ -241,6 +241,67 @@ class User {
         }
     }
 
+    /**
+     * Create the public resident account, its matching resident record, and the
+     * profile link as one transaction.  A resident must never be able to sign in
+     * without a corresponding resident profile.
+     */
+    public function createResidentAccount(array $data): array
+    {
+        try {
+            $this->db->beginTransaction();
+
+            $role = $this->db->prepare("SELECT role_id FROM roles WHERE role_name = 'Resident' LIMIT 1");
+            $role->execute();
+            $residentRoleId = $role->fetchColumn();
+            if ($residentRoleId === false) {
+                throw new RuntimeException('The Resident role has not been configured.');
+            }
+
+            $user = $this->db->prepare(
+                "INSERT INTO users (first_name, last_name, username, email, contact_no, password_hash, role_id, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')"
+            );
+            $user->execute([
+                $data['first_name'],
+                $data['last_name'],
+                $data['username'],
+                $data['email'],
+                $data['contact_no'] ?: null,
+                password_hash($data['password'], PASSWORD_DEFAULT),
+                $residentRoleId,
+            ]);
+            $userId = (int) $this->db->lastInsertId();
+
+            $resident = $this->db->prepare(
+                "INSERT INTO residents (first_name, last_name, contact_no, email, barangay, city_municipality, residency_verified)
+                 VALUES (?, ?, ?, ?, 'Tumana', 'Marikina City', 0)"
+            );
+            $resident->execute([
+                $data['first_name'],
+                $data['last_name'],
+                $data['contact_no'] ?: null,
+                $data['email'],
+            ]);
+            $residentId = (int) $this->db->lastInsertId();
+
+            $profile = $this->db->prepare('INSERT INTO resident_user_profiles (user_id, resident_id) VALUES (?, ?)');
+            $profile->execute([$userId, $residentId]);
+
+            $this->db->commit();
+            return ['success' => true, 'user_id' => $userId, 'resident_id' => $residentId];
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            if ($exception instanceof PDOException && $exception->getCode() === '23000') {
+                return ['success' => false, 'code' => 'duplicate', 'message' => 'That username or email address is already registered.'];
+            }
+            error_log($exception->getMessage());
+            return ['success' => false, 'code' => 'unavailable', 'message' => 'Unable to create your account at this time.'];
+        }
+    }
+
     public function usernameInUse(string $username, ?int $exceptUserId = null): bool
     {
         $sql = 'SELECT 1 FROM users WHERE username = ?';

@@ -7,6 +7,7 @@
     "process": "Grievance Process",
     "features": "Lupon System",
     "staff_login": "Staff Sign In",
+    "resident_login": "Resident Portal",
     "toggle_tl": "Tagalog",
     "toggle_en": "English"
   },
@@ -17,7 +18,8 @@
     "description": "A clear, connected public platform for managing community grievances, preliminary invitations, Lupon hearings, and amicable case resolutions in Barangay Tumana.",
     "cta_guide": "Grievance Guide",
     "cta_login": "Staff Sign In",
-    "for_residents": "For the residents of Barangay Tumana",
+    "cta_resident": "Resident Login or Register",
+    "for_residents": "Have an account? Sign in. New to AGAP? Register as a resident.",
     "overview_eyebrow": "Barangay Tumana",
     "overview_title": "Community Justice Services",
     "overview_caption": "One Connected Process",

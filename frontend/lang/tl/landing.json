@@ -7,6 +7,7 @@
     "process": "Hakbang sa Pagdulog",
     "features": "Sistema ng Lupon",
     "staff_login": "Mag-sign in (Kawani)",
+    "resident_login": "Portal ng Residente",
     "toggle_tl": "Tagalog",
     "toggle_en": "English"
   },
@@ -17,7 +18,8 @@
     "description": "Isang malinaw at maasahang pampublikong plataporma para sa pamamahala ng mga idinudulog na sumbong, paunang paanyaya, pagdinig ng Lupon, at mapayapang pagkakasundo sa Barangay Tumana.",
     "cta_guide": "Gabay sa Pagdulog",
     "cta_login": "Pag-login ng Kawani",
-    "for_residents": "Para sa mga mamamayan ng Barangay Tumana",
+    "cta_resident": "Mag-login o Magparehistro",
+    "for_residents": "May account na? Mag-login; bago sa AGAP? Magparehistro bilang residente.",
     "overview_eyebrow": "Barangay Tumana",
     "overview_title": "Serbisyo sa Katarungang Pambarangay",
     "overview_caption": "Tuloy-tuloy at Maayos na Proseso",

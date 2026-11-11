@@ -20,37 +20,66 @@ class AuthController {
         $password
     )
     {
-        $user = $this->userModel
-            ->findByUsername($username);
+        return $this->attemptLogin((string) $username, (string) $password);
+    }
 
-        if(
-            $user &&
-            $user['status'] === 'Active' &&
-            password_verify(
-                $password,
-                $user['password_hash']
-            )
-        )
-        {
-            if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) session_start();
-            if (session_status() === PHP_SESSION_ACTIVE) session_regenerate_id(true);
+    /** Authenticate only an authorized personnel account. */
+    public function loginStaff(string $username, string $password): bool
+    {
+        return $this->attemptLogin($username, $password, false);
+    }
 
-            $_SESSION['user_id']
-                = $user['user_id'];
+    /** Authenticate only a public resident account. */
+    public function loginResident(string $username, string $password): bool
+    {
+        return $this->attemptLogin($username, $password, true);
+    }
 
-            $_SESSION['role_id']
-                = $user['role_id'];
+    public function registerResident(array $data): array
+    {
+        $firstName = trim((string) ($data['first_name'] ?? ''));
+        $lastName = trim((string) ($data['last_name'] ?? ''));
+        $username = trim((string) ($data['username'] ?? ''));
+        $email = strtolower(trim((string) ($data['email'] ?? '')));
+        $contactNo = trim((string) ($data['contact_no'] ?? ''));
+        $password = (string) ($data['password'] ?? '');
+        $confirmation = (string) ($data['password_confirmation'] ?? '');
 
-            $_SESSION['role_name']
-                = $user['role_name'];
-
-            $_SESSION['username']
-                = $user['username'];
-
-            return true;
+        if (($data['terms_agreed'] ?? '') !== '1') {
+            return ['success' => false, 'code' => 'validation', 'message' => 'You must agree to the Resident Portal User Agreement.'];
         }
 
-        return false;
+        if ($firstName === '' || $lastName === '' || mb_strlen($firstName) > 100 || mb_strlen($lastName) > 100) {
+            return ['success' => false, 'code' => 'validation', 'message' => 'Enter your first and last name.'];
+        }
+        if (!preg_match('/^[A-Za-z0-9._-]{3,100}$/', $username)) {
+            return ['success' => false, 'code' => 'validation', 'message' => 'Choose a username with 3 to 100 letters, numbers, periods, underscores, or hyphens.'];
+        }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 150) {
+            return ['success' => false, 'code' => 'validation', 'message' => 'Enter a valid email address.'];
+        }
+        if ($contactNo !== '' && (!preg_match('/^[0-9+() -]{7,20}$/', $contactNo))) {
+            return ['success' => false, 'code' => 'validation', 'message' => 'Enter a valid contact number.'];
+        }
+        if (($error = $this->passwordError($password, $confirmation)) !== null) {
+            return ['success' => false, 'code' => 'validation', 'message' => $error];
+        }
+        if ($this->userModel->usernameInUse($username) || $this->userModel->emailInUse($email)) {
+            return ['success' => false, 'code' => 'duplicate', 'message' => 'That username or email address is already registered.'];
+        }
+
+        $result = $this->userModel->createResidentAccount([
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'username' => $username,
+            'email' => $email,
+            'contact_no' => $contactNo,
+            'password' => $password,
+        ]);
+        if ($result['success']) {
+            $this->audit->log((int) $result['user_id'], 'Registered resident portal account and accepted User Agreement', 'Resident Portal', (int) $result['resident_id']);
+        }
+        return $result;
     }
 
     public function requestPasswordReset(array $data): array
@@ -174,6 +203,34 @@ class AuthController {
             return 'Use at least 12 characters with uppercase, lowercase, and a number.';
         }
         return null;
+    }
+
+    private function attemptLogin(string $username, string $password, ?bool $residentOnly = null): bool
+    {
+        $user = $this->userModel->findByUsername($username);
+        $isResident = ($user['role_name'] ?? '') === 'Resident';
+        if (
+            !$user ||
+            $user['status'] !== 'Active' ||
+            !is_string($user['password_hash'] ?? null) ||
+            !password_verify($password, $user['password_hash']) ||
+            ($residentOnly !== null && $residentOnly !== $isResident)
+        ) {
+            return false;
+        }
+
+        if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
+            session_start();
+        }
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            return false;
+        }
+        session_regenerate_id(true);
+        $_SESSION['user_id'] = $user['user_id'];
+        $_SESSION['role_id'] = $user['role_id'];
+        $_SESSION['role_name'] = $user['role_name'];
+        $_SESSION['username'] = $user['username'];
+        return true;
     }
 
     private function maskEmail(string $email): string

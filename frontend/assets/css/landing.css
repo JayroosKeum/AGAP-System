@@ -162,6 +162,21 @@
     transform: translateY(-1px);
 }
 
+.landing-cta-resident {
+    background: #fff;
+    border-color: var(--landing-green);
+    color: var(--landing-green);
+}
+
+.landing-cta-resident:hover {
+    background: #f3f8f4;
+    color: var(--landing-deep);
+}
+
+.landing-cta-staff {
+    gap: 13px;
+}
+
 .hero-note {
     color: #647a75;
     font-size: 11px;
@@ -492,6 +507,10 @@
 }
 
 @media (max-width: 900px) {
+    .landing-resident-login {
+        display: none;
+    }
+
     .landing-hero {
         gap: 42px;
         grid-template-columns: minmax(0, 1fr) minmax(290px, .85fr);
@@ -557,6 +576,19 @@
         flex-direction: column;
         gap: 5px;
         padding: 15px 22px;
+    }
+}
+
+@media (max-width: 520px) {
+    .landing-nav {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .landing-nav-actions {
+        justify-content: space-between;
+        width: 100%;
     }
 }
 

@@ -11,7 +11,7 @@ $username = trim((string) ($_POST['username'] ?? ''));
 $password = (string) ($_POST['password'] ?? '');
 $auth = new AuthController();
 
-if ($username === '' || $password === '' || !$auth->login($username, $password)) {
+if ($username === '' || $password === '' || !$auth->loginStaff($username, $password)) {
     header('Location: ../../../frontend/pages/auth/login.php?error=invalid_credentials', true, 303);
     exit;
 }
