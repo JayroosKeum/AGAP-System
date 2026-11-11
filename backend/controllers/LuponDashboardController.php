@@ -40,6 +40,9 @@ class LuponDashboardController
         // 3. Duty Day Hearings (defaults to member's duty day or active assigned pangkat sessions)
         $dutyHearings = $this->getDutyHearings($userId, $dutyDay);
 
+        // 4. Walk-in intakes personally assigned while the member was on LISO duty.
+        $pendingScreenings = $this->getPendingWalkInScreenings($userId);
+
         // 4. KPIs for Senior-Friendly Top Cards
         $totalAssigned = count($assignedCases);
         $chairpersonCount = count(array_filter($assignedCases, fn($c) => ($c['my_role'] ?? '') === 'Chairman'));
@@ -66,8 +69,38 @@ class LuponDashboardController
                 'pending_conciliations' => $pendingConciliations
             ],
             'duty_hearings' => $dutyHearings,
-            'assigned_cases' => $assignedCases
+            'assigned_cases' => $assignedCases,
+            'pending_screenings' => $pendingScreenings
         ];
+    }
+
+    /**
+     * Walk-in records remain in the intake workflow until their assigned LISO
+     * records a preliminary screening decision. They are not duplicate cases.
+     */
+    private function getPendingWalkInScreenings(int $userId): array
+    {
+        $statement = $this->conn->prepare(
+            "SELECT c.complaint_id, c.intake_reference, c.complaint_title, c.created_at,
+                    c.liso_assigned_at, cat.category_name,
+                    TRIM(CONCAT_WS(' ', encoder.first_name, encoder.last_name)) AS encoded_by_name,
+                    COALESCE((
+                        SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                        FROM complaint_parties cp
+                        INNER JOIN residents r ON r.resident_id = cp.resident_id
+                        WHERE cp.complaint_id = c.complaint_id AND cp.party_type = 'Complainant'
+                    ), '') AS complainant_names
+             FROM complaints c
+             LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
+             LEFT JOIN users encoder ON encoder.user_id = c.encoded_by
+             WHERE c.liso_assigned_to = ?
+               AND c.intake_source = 'Walk-in'
+               AND c.screening_decision = 'Pending'
+               AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
+             ORDER BY COALESCE(c.liso_assigned_at, c.created_at) ASC, c.complaint_id ASC"
+        );
+        $statement->execute([$userId]);
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**

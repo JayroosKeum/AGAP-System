@@ -86,6 +86,16 @@
         <?php endif; ?>
     </div>
 
+    <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
+        <section class="liso-availability-card" aria-labelledby="activeLisoTitle">
+            <div>
+                <p class="liso-availability-eyebrow">Walk-in intake screening</p>
+                <h2 id="activeLisoTitle">LISOs on duty</h2>
+            </div>
+            <div id="activeLisoList" class="active-liso-list" aria-live="polite">Checking available Lupon Members…</div>
+        </section>
+    <?php endif; ?>
+
     <!-- Top KPI Highlights Grid -->
     <div class="stats-grid" id="statsGrid" aria-live="polite">
         <article class="stat-card" data-target-stat="all-cases" role="button" tabindex="0" title="Click to view all cases in Case Register">

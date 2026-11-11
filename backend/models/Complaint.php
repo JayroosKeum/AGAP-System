@@ -172,6 +172,34 @@ class Complaint
                 }
             }
 
+            $assignedLisoId = null;
+            $assignedDutySessionId = null;
+            // A complaint escalated from the existing Paanyaya workflow is not
+            // a new walk-in, so it must not be sent back through LISO intake.
+            $requiresLisoAssignment = !$isResidentPortal && empty($data['escalated_from_paanyaya_id']);
+            if ($requiresLisoAssignment) {
+                $assignedLisoId = filter_var($data['liso_assigned_to'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+                if ($assignedLisoId === null) {
+                    return ['success' => false, 'message' => 'Select the Lupon Member who is currently on LISO duty for this walk-in.'];
+                }
+
+                $activeDuty = $this->conn->prepare(
+                    "SELECT d.duty_session_id
+                     FROM liso_duty_sessions d
+                     INNER JOIN users u ON u.user_id = d.user_id
+                     INNER JOIN roles r ON r.role_id = u.role_id
+                     WHERE d.user_id = ? AND d.active_marker = 1 AND d.ended_at IS NULL
+                       AND DATE(d.started_at) = CURDATE() AND u.status = 'Active'
+                       AND r.role_name = 'Lupon Member'
+                     LIMIT 1"
+                );
+                $activeDuty->execute([$assignedLisoId]);
+                $assignedDutySessionId = (int) $activeDuty->fetchColumn();
+                if ($assignedDutySessionId < 1) {
+                    return ['success' => false, 'message' => 'The selected Lupon Member is no longer timed in for LISO duty. Refresh the form and select an available LISO.'];
+                }
+            }
+
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
                 return $validation;
@@ -239,11 +267,16 @@ class Complaint
                     status,
                     document_status,
                     is_draft,
-                    encoded_by
+                    encoded_by,
+                    liso_assigned_to,
+                    liso_assigned_duty_session_id,
+                    liso_assigned_at
                 )
                 VALUES
                 (
-                    ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
                 )
             ");
 
@@ -277,7 +310,9 @@ class Complaint
                 'Submitted',
                 'No Scan Uploaded',
                 0,
-                $isResidentPortal ? null : ($actorId ?: ($data['clerk_id'] ?? $data['encoded_by'] ?? 1))
+                $isResidentPortal ? null : ($actorId ?: ($data['clerk_id'] ?? $data['encoded_by'] ?? 1)),
+                $assignedLisoId,
+                $assignedDutySessionId
             ]);
 
             $complaintId = (int) $this->conn->lastInsertId();
@@ -292,14 +327,33 @@ class Complaint
                 $notifService = new NotificationService();
                 $cNum = $intakeReference;
                 $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
-                $notifService->notifyRoles(
-                    ['Administrator', 'Lupon Member'],
-                    'New Complaint Intake',
-                    "New {$data['intake_source']} intake {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") is ready for preliminary screening.",
-                    $actorId ?: null,
-                    'info',
-                    $actionUrl
-                );
+                if ($assignedLisoId !== null) {
+                    $notifService->notifyUser(
+                        $assignedLisoId,
+                        'Walk-in screening assigned',
+                        "Walk-in intake {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ') is assigned to you for preliminary screening.',
+                        $actorId ?: null,
+                        'info',
+                        $actionUrl
+                    );
+                    $notifService->notifyRoles(
+                        ['Administrator', 'Lupon Clerk'],
+                        'Walk-in intake recorded',
+                        "Walk-in intake {$cNum} is assigned to a LISO for preliminary screening.",
+                        $actorId ?: null,
+                        'info',
+                        $actionUrl
+                    );
+                } else {
+                    $notifService->notifyRoles(
+                        ['Administrator', 'Lupon Member'],
+                        'New Complaint Intake',
+                        "New {$data['intake_source']} intake {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") is ready for preliminary screening.",
+                        $actorId ?: null,
+                        'info',
+                        $actionUrl
+                    );
+                }
             } catch (Throwable $ne) {
                 error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
             }
@@ -506,14 +560,22 @@ class Complaint
         }
     }
 
-    public function review(int $id, string $status, ?string $notes): array
+    public function review(int $id, string $status, ?string $notes, ?int $reviewerId = null, bool $mustBeAssignedLiso = false): array
     {
         $allowed = ['Under Review', 'Needs Information', 'Accepted', 'Rejected'];
         if (!in_array($status, $allowed, true)) {
             return ['success' => false, 'message' => 'Select a valid review decision.'];
         }
-        $exists = $this->conn->prepare("SELECT c.complaint_id FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status <> 'Archived'");
-        $exists->execute([$id]);
+        $existsSql = "SELECT c.complaint_id FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status <> 'Archived'";
+        $existsParams = [$id];
+        if ($mustBeAssignedLiso) {
+            // Keep existing online-intake handling intact. For a walk-in with
+            // an explicit LISO handoff, only the assigned member may decide it.
+            $existsSql .= ' AND (c.liso_assigned_to IS NULL OR c.liso_assigned_to = ?)';
+            $existsParams[] = $reviewerId;
+        }
+        $exists = $this->conn->prepare($existsSql);
+        $exists->execute($existsParams);
         if (!$exists->fetchColumn()) return ['success' => false, 'message' => 'This complaint cannot be reviewed in its current status.'];
         $decision = match ($status) {
             'Needs Information' => 'Needs Information',
@@ -521,8 +583,11 @@ class Complaint
             'Rejected' => 'Rejected',
             default => 'Pending',
         };
+        $reviewerId ??= (int) ($_SESSION['user_id'] ?? 0);
         $stmt = $this->conn->prepare('UPDATE complaints SET status = ?, screening_decision = ?, review_notes = ?, liso_reviewed_by = ?, liso_reviewed_at = NOW() WHERE complaint_id = ?');
-        $stmt->execute([$status, $decision, $notes, $_SESSION['user_id'] ?? null, $id]);
+        $stmt->execute([$status, $decision, $notes, $reviewerId ?: null, $id]);
+        $screening = $this->conn->prepare('UPDATE complaint_intake_screenings SET screened_by = ?, screened_at = NOW() WHERE complaint_id = ?');
+        $screening->execute([$reviewerId ?: null, $id]);
         return ['success' => true, 'message' => 'Complaint review saved.'];
     }
 

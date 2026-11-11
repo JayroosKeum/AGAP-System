@@ -17,6 +17,17 @@ if (!in_array($roleId, [1, 2], true) && !$isResidentPortal) {
 require_once __DIR__ . '/../../../backend/config/database.php';
 
 $db = (new Database())->connect();
+$activeLisos = [];
+if (!$isResidentPortal) {
+    require_once __DIR__ . '/../../../backend/services/LisoDutyService.php';
+    try {
+        $activeLisos = (new LisoDutyService())->activeMembers();
+    } catch (Throwable $exception) {
+        // The form remains protected by the server-side assignment validation.
+        // This can occur before the LISO duty migration is applied.
+        error_log('Unable to load active LISOs for walk-in intake: ' . $exception->getMessage());
+    }
+}
 $categoriesStmt = $db->query("
     SELECT category_id, category_name 
     FROM complaint_categories 
@@ -430,6 +441,26 @@ include '../../layouts/header.php';
 
                             <!-- Filing Method Hidden: Default to Digital Intake -->
                             <input type="hidden" name="filing_method" id="filingMethod" value="digital">
+
+                            <?php if (!$isResidentPortal && empty($escalatePaanyaya)): ?>
+                                <div class="form-group" style="margin: 10px 0 18px; padding: 14px 16px; background: #eef7f0; border: 1px solid #c7dfcd; border-radius: 8px;">
+                                    <label for="lisoAssignedTo" style="color: #1f5138; font-weight: 750;">LISO assigned to screen this walk-in <span class="required-mark">*</span></label>
+                                    <select id="lisoAssignedTo" name="liso_assigned_to" required style="margin-top: 7px; width: 100%;">
+                                        <option value="">Select a Lupon Member currently on LISO duty</option>
+                                        <?php foreach ($activeLisos as $liso): ?>
+                                            <?php $lisoName = trim(($liso['first_name'] ?? '') . ' ' . ($liso['last_name'] ?? '')); ?>
+                                            <option value="<?= (int) $liso['user_id'] ?>" <?= ((string) ($old['liso_assigned_to'] ?? '') === (string) $liso['user_id']) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($lisoName !== '' ? $lisoName : 'Lupon Member') ?> · timed in <?= htmlspecialchars(date('g:i A', strtotime((string) $liso['started_at']))) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <?php if (!$activeLisos): ?>
+                                        <p style="color: #9a5a10; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">No LISO is timed in. Ask a Lupon Member to start LISO duty before recording this walk-in.</p>
+                                    <?php else: ?>
+                                        <p style="color: #4d6e59; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">Only members currently timed in are listed. The assigned LISO will receive this intake in My Walk-in Screenings.</p>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
 
                             <!-- Dispute Classification Grid -->
                             <div class="form-row-2" style="margin-top: 10px;">

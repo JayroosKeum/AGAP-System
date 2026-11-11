@@ -30,6 +30,14 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 }
 
 $complaintId = (int)$_GET['id'];
+$canScreenSelectedIntake = true;
+if ($roleId === 3) {
+    require_once __DIR__ . '/../../../backend/config/database.php';
+    $assignmentStatement = (new Database())->connect()->prepare('SELECT liso_assigned_to FROM complaints WHERE complaint_id = ? LIMIT 1');
+    $assignmentStatement->execute([$complaintId]);
+    $assignedLisoId = (int) $assignmentStatement->fetchColumn();
+    $canScreenSelectedIntake = $assignedLisoId < 1 || $assignedLisoId === (int) $_SESSION['user_id'];
+}
 $rawTab = trim((string)($_GET['tab'] ?? 'tab-overview'));
 if (!str_starts_with($rawTab, 'tab-')) {
     $rawTab = 'tab-' . $rawTab;
@@ -148,9 +156,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <div class="case-bar-right">
-                <?php if ($roleId === 3): ?>
+                <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
                     <button type="button" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')"><span>Mark Intake Eligible</span></button>
                     <button type="button" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
+                <?php elseif ($roleId === 3): ?>
+                    <span style="color:#64748b; font-size:.82rem; font-weight:700;">Assigned to another LISO</span>
                 <?php endif; ?>
                 <?php if (in_array($roleId, [1, 2], true)): ?>
                     <button type="button" class="btn-case-primary" onclick="docketEligibleIntake(<?php echo $complaintId; ?>)">

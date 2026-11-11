@@ -7,6 +7,8 @@ if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0),
     exit;
 }
 
+$roleId = (int) ($_SESSION['role_id'] ?? 0);
+
 include '../../layouts/header.php';
 ?>
 
@@ -48,6 +50,33 @@ include '../../layouts/header.php';
         </div>
 
         <section class="dashboard-overview" aria-label="Lupon Member Dashboard Overview">
+
+            <?php if ($roleId === 3): ?>
+                <section class="liso-duty-card" aria-labelledby="lisoDutyTitle">
+                    <div>
+                        <p class="liso-duty-eyebrow">Walk-in intake screening</p>
+                        <h2 id="lisoDutyTitle">LISO Duty</h2>
+                        <p id="lisoDutyStatus" class="liso-duty-status" aria-live="polite">Checking your duty availability…</p>
+                    </div>
+                    <div class="liso-duty-actions">
+                        <button type="button" class="btn-liso-duty" id="btnLisoDutyStart">Start LISO Duty</button>
+                        <button type="button" class="btn-liso-duty btn-liso-duty-end" id="btnLisoDutyEnd" hidden>End LISO Duty</button>
+                    </div>
+                </section>
+
+                <section class="liso-screenings-panel" aria-labelledby="lisoScreeningsTitle">
+                    <div class="liso-screenings-header">
+                        <div>
+                            <p class="liso-duty-eyebrow">Walk-in intake screening</p>
+                            <h2 id="lisoScreeningsTitle">My Walk-in Screenings</h2>
+                        </div>
+                        <span class="liso-screenings-count" id="lisoScreeningsCount">0 pending</span>
+                    </div>
+                    <div id="lisoScreeningsList" class="liso-screenings-list" aria-live="polite">
+                        Loading your assigned walk-in screenings…
+                    </div>
+                </section>
+            <?php endif; ?>
 
             <!-- ── Top KPIs Summary Cards (Senior-Friendly, High Contrast) ─────── -->
             <section class="lupon-kpis-grid" aria-label="Lupon Member KPIs">
@@ -183,5 +212,8 @@ include '../../layouts/header.php';
 </div>
 
 <script src="../../assets/js/lupon-dashboard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/lupon-dashboard.js'); ?>"></script>
+<?php if ($roleId === 3): ?>
+    <script src="../../assets/js/liso-duty.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/liso-duty.js'); ?>"></script>
+<?php endif; ?>
 
 <?php include '../../layouts/footer.php'; ?>

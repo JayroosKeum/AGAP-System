@@ -32,6 +32,14 @@ include '../../layouts/header.php';
             </div>
         </div>
 
+        <section class="liso-availability-card" aria-labelledby="activeLisoTitle">
+            <div>
+                <p class="liso-availability-eyebrow">Walk-in intake screening</p>
+                <h2 id="activeLisoTitle">LISOs on duty</h2>
+            </div>
+            <div id="activeLisoList" class="active-liso-list" aria-live="polite">Checking available Lupon Members…</div>
+        </section>
+
         <section class="dashboard-overview" aria-label="Lupon Clerk Front-Desk Overview">
 
         <!-- ── Period Filter Tabs Bar ────────────────────────────────────────── -->
@@ -423,5 +431,6 @@ include '../../layouts/header.php';
 </div>
 
 <script src="../../assets/js/clerk-dashboard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/clerk-dashboard.js'); ?>"></script>
+<script src="../../assets/js/liso-duty.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/liso-duty.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

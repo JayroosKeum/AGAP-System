@@ -393,7 +393,9 @@ class ComplaintController
         if ($id < 1 || mb_strlen($notes) > 2000) {
             return ['success' => false, 'message' => 'Provide valid review notes of 2,000 characters or fewer.'];
         }
-        $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null);
+        $reviewerId = (int) ($_SESSION['user_id'] ?? 0);
+        $isAssignedLisoReview = (int) ($_SESSION['role_id'] ?? 0) === 3;
+        $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $reviewerId, $isAssignedLisoReview);
         if ($result['success']) {
             $this->audit->log((int) $_SESSION['user_id'], 'Reviewed Complaint: ' . $status, 'Complaints', $id);
         }

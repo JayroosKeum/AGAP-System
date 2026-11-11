@@ -112,6 +112,41 @@
         }
     };
 
+    const renderPendingScreenings = (screenings) => {
+        const container = document.getElementById('lisoScreeningsList');
+        const count = document.getElementById('lisoScreeningsCount');
+        if (!container) return;
+
+        const items = screenings || [];
+        if (count) count.textContent = `${items.length} pending`;
+        container.replaceChildren();
+
+        if (!items.length) {
+            const empty = document.createElement('div');
+            empty.className = 'liso-screenings-empty';
+            empty.textContent = 'No walk-in screenings are assigned to you right now.';
+            container.appendChild(empty);
+            return;
+        }
+
+        items.forEach((item) => {
+            const card = document.createElement('article');
+            card.className = 'liso-screening-item';
+            const reference = item.intake_reference || `Intake #${item.complaint_id}`;
+            const encodedBy = item.encoded_by_name ? `Encoded by ${item.encoded_by_name}` : 'Walk-in intake';
+            const complainant = item.complainant_names ? `Complainant: ${item.complainant_names}` : '';
+            card.innerHTML = `
+                <div>
+                    <div class="liso-screening-ref">${escapeHtml(reference)}</div>
+                    <h3>${escapeHtml(item.complaint_title || 'Walk-in concern')}</h3>
+                    <p class="liso-screening-meta">${escapeHtml(item.category_name || 'Community concern')} · ${escapeHtml(encodedBy)}${complainant ? ` · ${escapeHtml(complainant)}` : ''}</p>
+                </div>
+                <a class="btn-open-screening" href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}">Open screening</a>
+            `;
+            container.appendChild(card);
+        });
+    };
+
     // Render Duty Day Hearing Calendar & Schedule
     const renderDutyHearings = (hearings, dutyDay) => {
         const container = document.getElementById('luponDutyHearingsContainer');
@@ -462,6 +497,7 @@
 
             // Render all UI components
             renderKpis(data.kpis, data.duty_day);
+            renderPendingScreenings(data.pending_screenings);
             renderDutyHearings(data.duty_hearings, data.duty_day);
             renderAssignedCases(data.assigned_cases);
 

@@ -106,6 +106,26 @@ CREATE TABLE IF NOT EXISTS audit_trails (
         FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
+-- LISO is a Lupon Member operational duty. This table records who is currently
+-- available to screen walk-in intakes without introducing a duplicate role.
+CREATE TABLE IF NOT EXISTS liso_duty_sessions (
+    duty_session_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME NULL,
+    active_marker TINYINT UNSIGNED NULL DEFAULT 1,
+    started_by INT UNSIGNED NOT NULL,
+    ended_by INT UNSIGNED NULL,
+    end_reason VARCHAR(255) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_liso_duty_one_active_session (user_id, active_marker),
+    KEY idx_liso_duty_active_started (active_marker, started_at),
+    CONSTRAINT fk_liso_duty_user FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_liso_duty_started_by FOREIGN KEY (started_by) REFERENCES users (user_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_liso_duty_ended_by FOREIGN KEY (ended_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS system_settings (
     setting_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     setting_key VARCHAR(64) NOT NULL UNIQUE,
@@ -198,6 +218,9 @@ CREATE TABLE IF NOT EXISTS complaints (
     submitted_by INT UNSIGNED NULL,
     liso_reviewed_by INT UNSIGNED NULL,
     liso_reviewed_at DATETIME NULL,
+    liso_assigned_to INT UNSIGNED NULL,
+    liso_assigned_duty_session_id BIGINT UNSIGNED NULL,
+    liso_assigned_at DATETIME NULL,
     screening_decision ENUM('Pending', 'Needs Information', 'Eligible', 'Referred', 'Rejected', 'Duplicate') NOT NULL DEFAULT 'Pending',
     duplicate_of_complaint_id INT UNSIGNED NULL,
     docketed_by INT UNSIGNED NULL,
@@ -217,6 +240,7 @@ CREATE TABLE IF NOT EXISTS complaints (
     UNIQUE KEY uq_complaints_number (complaint_number),
     UNIQUE KEY uq_complaints_intake_reference (intake_reference),
     KEY idx_complaints_intake_queue (screening_decision, intake_source, created_at),
+    KEY idx_complaints_liso_assignment_queue (liso_assigned_to, screening_decision, intake_source),
     KEY idx_complaints_submitted_by (submitted_by),
     KEY idx_complaints_category_id (category_id),
     KEY idx_complaints_secondary_category_id (secondary_category_id),
@@ -231,6 +255,10 @@ CREATE TABLE IF NOT EXISTS complaints (
         FOREIGN KEY (submitted_by) REFERENCES users (user_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_liso_reviewed_by
         FOREIGN KEY (liso_reviewed_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_liso_assigned_to
+        FOREIGN KEY (liso_assigned_to) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_liso_assigned_duty_session
+        FOREIGN KEY (liso_assigned_duty_session_id) REFERENCES liso_duty_sessions (duty_session_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_duplicate_of
         FOREIGN KEY (duplicate_of_complaint_id) REFERENCES complaints (complaint_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_docketed_by
