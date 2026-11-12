@@ -18,10 +18,14 @@ class ReportController
     public function dashboard(array $params = []): array
     {
         $resolved = $this->resolvePeriod($params);
+        $form6Year = isset($params['form6_year']) && preg_match('/^\d{4}$/', (string) $params['form6_year'])
+            ? (int) $params['form6_year']
+            : null;
         $stats = $this->getReportModel()->dashboardStats(
             $resolved['period'],
             $resolved['start_date'],
-            $resolved['end_date']
+            $resolved['end_date'],
+            $form6Year
         );
         return array_merge($resolved, $stats);
     }

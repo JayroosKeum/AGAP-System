@@ -1,35 +1,66 @@
 <section class="dashboard-overview pb-dashboard-overview" aria-label="Punong Barangay Executive Overview">
-    <!-- Period Tabs & Captain Quick Shortcuts -->
+    <!-- Period Tabs & Inline Selector + Captain Quick Shortcuts -->
     <div class="pb-subtoolbar">
-        <div class="period-tabs-wrapper">
-            <nav class="period-tabs pb-period-tabs" role="tablist" aria-label="Dashboard timeframe">
-                <button type="button" role="tab" class="period-tab active" data-period="all" aria-selected="true" id="tab-all">All Time</button>
-                <button type="button" role="tab" class="period-tab" data-period="weekly" aria-selected="false" id="tab-weekly">Weekly</button>
-                <button type="button" role="tab" class="period-tab" data-period="monthly" aria-selected="false" id="tab-monthly">Monthly</button>
-                <button type="button" role="tab" class="period-tab" data-period="quarterly" aria-selected="false" id="tab-quarterly">Quarterly</button>
-                <button type="button" role="tab" class="period-tab" data-period="annual" aria-selected="false" id="tab-annual">Annual</button>
-            </nav>
-        </div>
+        <div class="pb-timeframe-unified" role="region" aria-label="Dashboard timeframe selector">
+            <div class="period-tabs-wrapper">
+                <nav class="period-tabs pb-period-tabs" role="tablist" aria-label="Dashboard timeframe">
+                    <button type="button" role="tab" class="period-tab active" data-period="all" aria-selected="true" id="tab-all">All Time</button>
+                    <button type="button" role="tab" class="period-tab" data-period="weekly" aria-selected="false" id="tab-weekly">Weekly</button>
+                    <button type="button" role="tab" class="period-tab" data-period="monthly" aria-selected="false" id="tab-monthly">Monthly</button>
+                    <button type="button" role="tab" class="period-tab" data-period="quarterly" aria-selected="false" id="tab-quarterly">Quarterly</button>
+                    <button type="button" role="tab" class="period-tab" data-period="annual" aria-selected="false" id="tab-annual">Annual</button>
+                </nav>
+            </div>
 
-        <div class="pb-quick-shortcuts" aria-label="Captain quick actions">
-            <a href="../complaints/complaint-create.php" class="pb-shortcut-pill is-primary">+ File Complaint</a>
-            <a href="../users/user-list.php?tab=residents" class="pb-shortcut-pill">
-                <span>Verify Residents</span>
-                <span class="pb-pill-badge" id="shortcutVerifyBadge" style="display:none;">0</span>
-            </a>
-            <a href="../paanyaya/index.php" class="pb-shortcut-pill">Paanyaya Stage 0</a>
-            <a href="../users/user-list.php" class="pb-shortcut-pill">Lupon &amp; Staff</a>
-            <button type="button" class="pb-shortcut-pill is-warning" id="btnPbUnavailableTop" onclick="triggerPbUnavailableBatch()" title="Batch reschedule today's hearings if Punong Barangay is unavailable">
-                PB Unavailable
-            </button>
+            <div class="pb-period-inline-picker" id="periodNavButtons" style="display:none;">
+                <button type="button" id="prevPeriodBtn" class="pb-period-step-btn" title="Previous period" aria-label="Previous period">&lsaquo;</button>
+                <select id="periodPresetSelect" class="pb-period-select" aria-label="Choose specific period"></select>
+                <button type="button" id="nextPeriodBtn" class="pb-period-step-btn" title="Next period" aria-label="Next period">&rsaquo;</button>
+                <button type="button" id="currentPeriodBtn" class="pb-period-today-btn" title="Jump to current period" style="display:none;">
+                    <span id="currentPeriodText">This Period</span>
+                </button>
+            </div>
+
+            <span class="pb-period-summary-chip" id="periodDateRangeDisplay">All recorded data</span>
         </div>
     </div>
 
     <p id="dashboardMessage" class="dashboard-message" role="status"></p>
 
-    <!-- Row 1: 4 Executive KPI Cards -->
-    <div class="pb-kpi-grid" id="statsGrid" aria-live="polite">
-        <article class="pb-kpi-card" data-target-stat="all-cases" role="button" tabindex="0" title="Click to view all cases in Case Register">
+    <!-- Legacy hidden metric spans kept in sync for compatibility -->
+    <span id="totalCases" hidden aria-hidden="true">0</span>
+    <span id="pendingReview" hidden aria-hidden="true">0</span>
+    <span id="hearingsToday" hidden aria-hidden="true">0</span>
+    <span id="hearingsThisWeek" hidden aria-hidden="true">0</span>
+    <span id="paanyayaComplaints" hidden aria-hidden="true">0</span>
+    <span id="activeMediations" hidden aria-hidden="true">0</span>
+    <span id="settledCases" hidden aria-hidden="true">0</span>
+    <span id="archivedCases" hidden aria-hidden="true">0</span>
+    <span id="cfaCases" hidden aria-hidden="true">0</span>
+    <span id="deadlinesDue" hidden aria-hidden="true">0</span>
+
+    <div class="pb-customize-banner" id="pbCustomizeBanner" role="region" aria-label="Widget customization mode" hidden>
+        <div class="pb-customize-banner-text">
+            <strong>Customize Dashboard Widgets</strong>
+            <span>Drag any widget's <b>right, bottom, or corner handle</b> to resize freely, drag the top bar to <b>reorder</b>, use <b>&uarr; / &darr;</b> for quick moves, or click <b>&times;</b> to hide.</span>
+        </div>
+        <div class="pb-customize-banner-actions">
+            <button type="button" class="pb-btn-outline-sm" id="btnBannerAddWidget">+ Add widget</button>
+            <button type="button" class="pb-btn-outline-sm" id="btnResetLayoutBanner">Reset layout</button>
+            <button type="button" class="pb-btn-primary-sm" id="btnDoneCustomizeLayout">Done</button>
+        </div>
+    </div>
+
+    <!-- All Dashboard Widgets (Unified Customizable Grid) -->
+    <div class="pb-widgets-grid" id="captainModularWidgets">
+        <!-- Widget 0: 4 Executive KPI Cards -->
+        <section class="pb-card pb-widget-card pb-kpi-widget-card pb-widget-span-12" data-widget-id="widget-kpis" id="dashboardKpisPanel" aria-label="Executive KPI Summary">
+            <div class="pb-kpi-widget-topbar">
+                <span class="pb-kpi-widget-title">Executive KPI Summary</span>
+                <button type="button" class="pb-widget-hide-btn" data-hide-widget="widget-kpis" title="Hide widget">&times;</button>
+            </div>
+            <div class="pb-kpi-grid" id="statsGrid" aria-live="polite">
+                <article class="pb-kpi-card" data-target-stat="all-cases" role="button" tabindex="0" title="Click to view all cases in Case Register">
             <div class="pb-kpi-head">
                 <span class="pb-kpi-label" id="totalDisputesLabel">Total Disputes</span>
                 <span class="pb-kpi-icon is-blue" aria-hidden="true">
@@ -84,133 +115,227 @@
             </div>
             <p class="pb-kpi-sub" id="kpiResolvedSub">Formal settled + Paanyaya resolved</p>
         </article>
-    </div>
+            </div>
+        </section>
 
-    <!-- Legacy hidden metric spans kept in sync for compatibility -->
-    <span id="totalCases" hidden aria-hidden="true">0</span>
-    <span id="pendingReview" hidden aria-hidden="true">0</span>
-    <span id="hearingsToday" hidden aria-hidden="true">0</span>
-    <span id="hearingsThisWeek" hidden aria-hidden="true">0</span>
-    <span id="paanyayaComplaints" hidden aria-hidden="true">0</span>
-    <span id="activeMediations" hidden aria-hidden="true">0</span>
-    <span id="settledCases" hidden aria-hidden="true">0</span>
-    <span id="archivedCases" hidden aria-hidden="true">0</span>
-    <span id="cfaCases" hidden aria-hidden="true">0</span>
-    <span id="deadlinesDue" hidden aria-hidden="true">0</span>
+        <!-- Widget 1: Case Intake & Resolution Overview + LTIA Form 06 Carousel -->
+        <section class="pb-card pb-widget-card pb-overview-card pb-overview-carousel-card pb-widget-span-6" data-widget-id="widget-overview" id="dashboardOverviewCarouselPanel" aria-label="Case Intake, Resolution Overview, and LTIA Form 06 Carousel">
+            <div class="pb-overview-carousel-topbar">
+                <div class="pb-overview-carousel-tabs" role="tablist" aria-label="Executive overview views">
+                    <button type="button" role="tab" class="pb-carousel-tab is-active" id="btnOverviewSlide0" data-overview-slide="0" aria-selected="true" aria-controls="overviewCarouselSlide0">
+                        Case Intake &amp; Resolution Overview
+                    </button>
+                    <button type="button" role="tab" class="pb-carousel-tab" id="btnOverviewSlide1" data-overview-slide="1" aria-selected="false" aria-controls="overviewCarouselSlide1">
+                        LTIA Form 06 &mdash; Summary of Cases
+                    </button>
+                </div>
+                <div class="pb-overview-carousel-nav" aria-label="Carousel navigation">
+                    <span class="pb-carousel-counter" id="overviewCarouselCounter">1 / 2</span>
+                    <button type="button" class="pb-carousel-arrow" id="overviewCarouselPrev" title="Previous slide" aria-label="Previous slide">&lsaquo;</button>
+                    <button type="button" class="pb-carousel-arrow" id="overviewCarouselNext" title="Next slide" aria-label="Next slide">&rsaquo;</button>
+                    <button type="button" class="pb-widget-hide-btn" data-hide-widget="widget-overview" title="Hide widget">&times;</button>
+                </div>
+            </div>
 
-    <!-- Row 2: Main Two-Column Executive Bento (Mirrors Reference Layout) -->
-    <div class="pb-main-bento-grid">
-        <!-- LEFT COLUMN (~65%): Hero Trend + Stage Breakdown Card, then Priority Docket & Case Register Table -->
-        <div class="pb-bento-left">
-            <!-- Hero Card: Case Intake & Resolution Overview -->
-            <section class="pb-card pb-overview-card" aria-label="Case Intake and Resolution Overview">
-                <div class="pb-card-head">
-                    <div>
-                        <h2 class="pb-card-title">Case Intake &amp; Resolution Overview</h2>
-                        <p class="pb-card-sub" id="totalCasesSub">Filed complaints, resolutions, and LTIA court-fee savings</p>
-                    </div>
-                    <div class="pb-chart-legend" aria-label="Chart legend">
-                        <span class="pb-legend-item"><i class="pb-legend-line is-solid"></i>Filed</span>
-                        <span class="pb-legend-item"><i class="pb-legend-line is-green"></i>Resolved</span>
-                        <span class="pb-legend-item"><i class="pb-legend-line is-dashed"></i>Prior period</span>
+                <div class="pb-overview-carousel-viewport" id="overviewCarouselViewport">
+                    <div class="pb-overview-carousel-track" id="overviewCarouselTrack">
+                        <!-- Slide 1: Case Intake & Resolution Overview -->
+                        <div class="pb-overview-carousel-slide is-active" id="overviewCarouselSlide0" role="tabpanel" aria-labelledby="btnOverviewSlide0">
+                            <div class="pb-card-head">
+                                <div>
+                                    <h2 class="pb-card-title">Case Intake &amp; Resolution Overview</h2>
+                                    <p class="pb-card-sub" id="totalCasesSub">Filed complaints, resolutions, and LTIA court-fee savings</p>
+                                </div>
+                                <div class="pb-chart-legend" aria-label="Chart legend">
+                                    <span class="pb-legend-item"><i class="pb-legend-line is-solid"></i>Filed</span>
+                                    <span class="pb-legend-item"><i class="pb-legend-line is-green"></i>Resolved</span>
+                                    <span class="pb-legend-item"><i class="pb-legend-line is-dashed"></i>Prior period</span>
+                                </div>
+                            </div>
+
+                            <div class="pb-overview-hero-split">
+                                <div class="pb-overview-stat-col">
+                                    <div class="pb-overview-big-value" id="overviewLtiaHeadline">₱0</div>
+                                    <div class="pb-overview-delta-row">
+                                        <span class="pb-delta-pill is-neutral" id="overviewDeltaBadge">—</span>
+                                        <span class="pb-overview-delta-label">vs. last period</span>
+                                    </div>
+                                    <div class="pb-overview-mini-metrics">
+                                        <div>
+                                            <small>Hearings Today</small>
+                                            <strong id="overviewHearingsToday">0</strong>
+                                        </div>
+                                        <div>
+                                            <small>Next 7 Days</small>
+                                            <strong id="overviewHearingsWeek">0</strong>
+                                        </div>
+                                        <div>
+                                            <small>Summons SLA</small>
+                                            <strong id="overviewSummonsSla">100%</strong>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="pb-trend-chart-wrap" id="captainTrendChartWrap">
+                                    <svg id="captainTrendChartSvg" class="pb-trend-svg" viewBox="0 0 540 168" role="img" aria-label="Dispute intake and resolution trend chart"></svg>
+                                    <div class="pb-trend-tooltip" id="captainTrendTooltip" style="display:none;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Bottom Segmented Stage Breakdown -->
+                            <div class="pb-stage-strip-head">
+                                <span>Case Pipeline Stages</span>
+                                <span class="pb-stage-extra-chip" id="overviewExtraOutcomesChip">0 CFA · 0 Archived</span>
+                            </div>
+                            <div class="pb-stage-strip">
+                                <div class="pb-stage-col">
+                                    <div class="pb-stage-top">
+                                        <span class="pb-stage-icon is-indigo" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                                        </span>
+                                        <strong id="stageCountPaanyaya">0</strong>
+                                    </div>
+                                    <span class="pb-stage-name">Paanyaya Stage 0</span>
+                                    <div class="pb-stage-bar-track"><div class="pb-stage-bar is-indigo" id="stageBarPaanyaya" style="width:20%;"></div></div>
+                                </div>
+
+                                <div class="pb-stage-col">
+                                    <div class="pb-stage-top">
+                                        <span class="pb-stage-icon is-blue" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                        </span>
+                                        <strong id="stageCountMediation">0</strong>
+                                    </div>
+                                    <span class="pb-stage-name">PB Mediation</span>
+                                    <div class="pb-stage-bar-track"><div class="pb-stage-bar is-blue" id="stageBarMediation" style="width:30%;"></div></div>
+                                </div>
+
+                                <div class="pb-stage-col">
+                                    <div class="pb-stage-top">
+                                        <span class="pb-stage-icon is-teal" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                                        </span>
+                                        <strong id="stageCountConciliation">0</strong>
+                                    </div>
+                                    <span class="pb-stage-name">Pangkat Conciliation</span>
+                                    <div class="pb-stage-bar-track"><div class="pb-stage-bar is-teal" id="stageBarConciliation" style="width:20%;"></div></div>
+                                </div>
+
+                                <div class="pb-stage-col">
+                                    <div class="pb-stage-top">
+                                        <span class="pb-stage-icon is-green" aria-hidden="true">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                        </span>
+                                        <strong id="stageCountSettled">0</strong>
+                                    </div>
+                                    <span class="pb-stage-name">Settled &amp; Resolved</span>
+                                    <div class="pb-stage-bar-track"><div class="pb-stage-bar is-green" id="stageBarSettled" style="width:30%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Slide 2: LTIA Form 06 - Summary of Cases -->
+                        <div class="pb-overview-carousel-slide" id="overviewCarouselSlide1" role="tabpanel" aria-labelledby="btnOverviewSlide1">
+                            <div class="pb-card-head pb-ltia-slide-head">
+                                <div>
+                                    <h2 class="pb-card-title">LTIA Form 06 &mdash; Summary of Cases</h2>
+                                    <p class="pb-card-sub">Monthly Lupong Tagapamayapa case nature, settlements, and pending dispositions</p>
+                                </div>
+                                <div class="pb-widget-actions">
+                                    <label class="pb-ltia-year-label" for="ltiaForm6YearSelect">
+                                        <span>CY</span>
+                                        <select id="ltiaForm6YearSelect" class="pb-ltia-year-select" aria-label="Select LTIA Form 06 Calendar Year"></select>
+                                    </label>
+                                    <a href="../../../backend/api/reports/official.php?type=form6" target="_blank" rel="noopener" id="ltiaForm6PrintLink" class="mini-cal-link" style="font-size: 0.82rem; font-weight: 700;">Print Form 06 &rarr;</a>
+                                </div>
+                            </div>
+
+                            <div class="pb-ltia-form6-sheet">
+                                <div class="pb-ltia-sheet-header">
+                                    <h4 class="pb-ltia-sheet-title" id="ltiaForm6Heading">Barangay Tumana Lupong Tagapamayapa CY —</h4>
+                                    <p class="pb-ltia-sheet-subtitle" id="ltiaForm6Subheading">Brgy. Tumana, Marikina City, Metro Manila NCR</p>
+                                    <div class="pb-ltia-sheet-formline">LTIA &nbsp;&nbsp; Form 06 - SUMMARY OF CASES</div>
+                                </div>
+
+                                <div class="pb-ltia-meta-grid">
+                                    <div class="pb-ltia-meta-col">
+                                        <div class="pb-ltia-meta-row"><span class="pb-ltia-meta-key">Punong Barangay:</span><span class="pb-ltia-meta-val" id="ltiaMetaCaptain">—</span></div>
+                                        <div class="pb-ltia-meta-row"><span class="pb-ltia-meta-key">City Mayor:</span><span class="pb-ltia-meta-val" id="ltiaMetaMayor">—</span></div>
+                                        <div class="pb-ltia-meta-row"><span class="pb-ltia-meta-key">Brgy. Tumana IRA:</span><span class="pb-ltia-meta-val" id="ltiaMetaIra">—</span></div>
+                                    </div>
+                                    <div class="pb-ltia-meta-col">
+                                        <div class="pb-ltia-meta-row"><span class="pb-ltia-meta-key">Population:</span><span class="pb-ltia-meta-val" id="ltiaMetaPopulation">—</span></div>
+                                        <div class="pb-ltia-meta-row"><span class="pb-ltia-meta-key">Land Area:</span><span class="pb-ltia-meta-val" id="ltiaMetaLandArea">—</span></div>
+                                        <div class="pb-ltia-meta-row"><span class="pb-ltia-meta-key">Total No. of Cases:</span><span class="pb-ltia-meta-val is-strong" id="ltiaMetaTotalCases">0</span></div>
+                                    </div>
+                                </div>
+
+                                <div class="pb-ltia-table-wrap">
+                                    <table class="pb-ltia-table" aria-label="LTIA Form 06 Summary of Cases">
+                                        <thead>
+                                            <tr>
+                                                <th rowspan="3" class="col-month">MONTH</th>
+                                                <th colspan="4" rowspan="2" class="hdr-group">NATURE OF CASES (1)</th>
+                                                <th colspan="10" class="hdr-group">ACTION TAKEN</th>
+                                                <th rowspan="3" class="col-total-filed">TOTAL<br>CASES<br>FILED</th>
+                                            </tr>
+                                            <tr>
+                                                <th colspan="4" class="hdr-subgroup">SETTLED (2)</th>
+                                                <th colspan="6" class="hdr-subgroup">NOT SETTLED (3)</th>
+                                            </tr>
+                                            <tr class="hdr-cols">
+                                                <th class="shade-nature-crim" title="Criminal Cases (1a)">CRIM.<br>(1a)</th>
+                                                <th class="shade-nature-civ" title="Civil Cases (1b)">CIVIL<br>(1b)</th>
+                                                <th title="Other Cases (1c)">OTHERS<br>(1c)</th>
+                                                <th class="shade-nature-tot" title="Total Nature of Cases (1D)">TOTAL<br>(1D)</th>
+                                                <th class="shade-settled" title="Settled via Mediation (2a)">MED.<br>(2a)</th>
+                                                <th class="shade-settled" title="Settled via Conciliation (2b)">CONCIL.<br>(2b)</th>
+                                                <th title="Settled via Arbitration (2c)">ARBIT.<br>(2c)</th>
+                                                <th class="shade-settled-tot" title="Total Settled Cases (2D)">TOTAL<br>(2D)</th>
+                                                <th class="shade-unsettled" title="Pending Cases (3a)">PEND.<br>(3a)</th>
+                                                <th class="shade-unsettled" title="Dismissed Cases (3b)">DISM.<br>(3b)</th>
+                                                <th title="Repudiated Settlements (3c)">REPUD.<br>(3c)</th>
+                                                <th class="shade-cfa" title="Certified to File Action in Court (3d)">CFA<br>(3d)</th>
+                                                <th title="Dropped / Withdrawn / Referred (3e)">DROP/<br>WITHDR<br>(3e)</th>
+                                                <th class="shade-unsettled-tot" title="Total Not Settled (3F)">TOTAL<br>(3F)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="ltiaForm6TableBody">
+                                            <tr><td colspan="16" class="pb-table-empty">Loading LTIA Form 06 summary...</td></tr>
+                                        </tbody>
+                                        <tfoot id="ltiaForm6TableFoot"></tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="pb-overview-hero-split">
-                    <div class="pb-overview-stat-col">
-                        <div class="pb-overview-big-value" id="overviewLtiaHeadline">₱0</div>
-                        <div class="pb-overview-delta-row">
-                            <span class="pb-delta-pill is-neutral" id="overviewDeltaBadge">—</span>
-                            <span class="pb-overview-delta-label">vs. last period</span>
-                        </div>
-                        <div class="pb-overview-mini-metrics">
-                            <div>
-                                <small>Hearings Today</small>
-                                <strong id="overviewHearingsToday">0</strong>
-                            </div>
-                            <div>
-                                <small>Next 7 Days</small>
-                                <strong id="overviewHearingsWeek">0</strong>
-                            </div>
-                            <div>
-                                <small>Summons SLA</small>
-                                <strong id="overviewSummonsSla">100%</strong>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="pb-trend-chart-wrap" id="captainTrendChartWrap">
-                        <svg id="captainTrendChartSvg" class="pb-trend-svg" viewBox="0 0 540 168" preserveAspectRatio="none" role="img" aria-label="Dispute intake and resolution trend chart"></svg>
-                        <div class="pb-trend-tooltip" id="captainTrendTooltip" style="display:none;"></div>
-                    </div>
-                </div>
-
-                <!-- Bottom Segmented Stage Breakdown (Modeled on Reference "Customers" 3+ column strip) -->
-                <div class="pb-stage-strip-head">
-                    <span>Case Pipeline Stages</span>
-                    <span class="pb-stage-extra-chip" id="overviewExtraOutcomesChip">0 CFA · 0 Archived</span>
-                </div>
-                <div class="pb-stage-strip">
-                    <div class="pb-stage-col">
-                        <div class="pb-stage-top">
-                            <span class="pb-stage-icon is-indigo" aria-hidden="true">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                            </span>
-                            <strong id="stageCountPaanyaya">0</strong>
-                        </div>
-                        <span class="pb-stage-name">Paanyaya Stage 0</span>
-                        <div class="pb-stage-bar-track"><div class="pb-stage-bar is-indigo" id="stageBarPaanyaya" style="width:20%;"></div></div>
-                    </div>
-
-                    <div class="pb-stage-col">
-                        <div class="pb-stage-top">
-                            <span class="pb-stage-icon is-blue" aria-hidden="true">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                            </span>
-                            <strong id="stageCountMediation">0</strong>
-                        </div>
-                        <span class="pb-stage-name">PB Mediation</span>
-                        <div class="pb-stage-bar-track"><div class="pb-stage-bar is-blue" id="stageBarMediation" style="width:30%;"></div></div>
-                    </div>
-
-                    <div class="pb-stage-col">
-                        <div class="pb-stage-top">
-                            <span class="pb-stage-icon is-teal" aria-hidden="true">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-                            </span>
-                            <strong id="stageCountConciliation">0</strong>
-                        </div>
-                        <span class="pb-stage-name">Pangkat Conciliation</span>
-                        <div class="pb-stage-bar-track"><div class="pb-stage-bar is-teal" id="stageBarConciliation" style="width:20%;"></div></div>
-                    </div>
-
-                    <div class="pb-stage-col">
-                        <div class="pb-stage-top">
-                            <span class="pb-stage-icon is-green" aria-hidden="true">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            </span>
-                            <strong id="stageCountSettled">0</strong>
-                        </div>
-                        <span class="pb-stage-name">Settled &amp; Resolved</span>
-                        <div class="pb-stage-bar-track"><div class="pb-stage-bar is-green" id="stageBarSettled" style="width:30%;"></div></div>
-                    </div>
+                <div class="pb-overview-carousel-dots" aria-label="Slide indicators">
+                    <button type="button" class="pb-carousel-dot is-active" data-overview-slide="0" aria-label="View Case Intake and Resolution Overview"></button>
+                    <button type="button" class="pb-carousel-dot" data-overview-slide="1" aria-label="View LTIA Form 06 Summary of Cases"></button>
                 </div>
             </section>
 
-            <!-- Data Table Card: Captain's Action Queue & Case Register -->
-            <section class="pb-card pb-table-card" id="dashboardCasesPanel" aria-label="Barangay Docket and Priority Action Table">
+            <!-- Widget 2: Captain's Docket & Oversight Queue -->
+            <section class="pb-card pb-widget-card pb-table-card pb-widget-span-6" data-widget-id="widget-docket" id="dashboardCasesPanel" aria-label="Barangay Docket and Priority Action Table">
                 <div class="pb-table-card-header">
                     <div>
                         <h2 class="pb-card-title" id="casesPanelHeaderTitle">Captain's Docket &amp; Oversight Queue</h2>
+                        
                         <p class="pb-card-sub" id="casesPeriodDescription">Priority approvals, 15-day clocks, and full case register</p>
                     </div>
                     <div class="pb-table-controls">
+                        
                         <div class="pb-table-search">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
                             <input type="search" id="captainDocketSearchInput" placeholder="Search case #, party, purok..." aria-label="Filter docket table">
                         </div>
-                        <span class="panel-count-badge" id="periodCaseCountBadge">0 items</span>
+                        <button type="button" class="pb-shortcut-pill is-warning" id="btnPbUnavailableTop" onclick="triggerPbUnavailableBatch()" title="Batch reschedule today's hearings if Punong Barangay is unavailable">
+                            PB Unavailable
+                        </button>
                         <button type="button" id="btnResetCaseFilter" class="pb-btn-reset-filter" style="display:none;">Show All</button>
+                        <button type="button" class="pb-widget-hide-btn" data-hide-widget="widget-docket" title="Hide widget">&times;</button>
                     </div>
                 </div>
 
@@ -258,90 +383,9 @@
                     </div>
                 </div>
             </section>
-        </div>
 
-        <!-- RIGHT COLUMN (~35%): Most Active Days, Amicable Settlement Rate Gauge, Captain AI Assistant -->
-        <aside class="pb-bento-right">
-            <!-- Card 1: Most Active Days -->
-            <section class="pb-card pb-active-days-card" aria-label="Most Active Days">
-                <div class="pb-card-head">
-                    <div>
-                        <h2 class="pb-card-title">Most Active Days</h2>
-                        <p class="pb-card-sub" id="weekdayActivitySub">Hearings &amp; complaints by weekday</p>
-                    </div>
-                    <span class="pb-soft-tag" id="peakDaySummaryTag">Peak: Tue</span>
-                </div>
-                <div class="pb-weekday-chart" id="captainWeekdayBars" aria-live="polite">
-                    <!-- Rendered dynamically by dashboard.js -->
-                </div>
-            </section>
-
-            <!-- Card 2: Amicable Settlement Rate (Segmented Tick-Arc Gauge) -->
-            <section class="pb-card pb-gauge-card" aria-label="Amicable Settlement Rate">
-                <div class="pb-card-head">
-                    <div>
-                        <h2 class="pb-card-title">Amicable Settlement Rate</h2>
-                        <p class="pb-card-sub" id="bentoAdminGaugeSub">Live resolution tracking</p>
-                    </div>
-                    <span class="pb-soft-tag">LTIA Target 80%</span>
-                </div>
-                <div class="pb-tick-gauge-wrap">
-                    <svg id="captainGaugeSvg" width="210" height="116" viewBox="0 0 210 116" aria-hidden="true">
-                        <g id="captainGaugeTicks"></g>
-                    </svg>
-                    <div class="pb-tick-gauge-center">
-                        <div class="pb-tick-gauge-pct" id="bentoAdminGaugePct">0%</div>
-                        <div class="pb-tick-gauge-note" id="captainGaugeTargetNote">On track for LTIA excellence</div>
-                    </div>
-                </div>
-                <div class="pb-gauge-footer">
-                    <button type="button" class="pb-btn-outline-sm" id="btnShowSettlementDetails">Show details</button>
-                </div>
-            </section>
-
-            <!-- Card 3: Captain's AGAP AI Assistant -->
-            <section class="pb-card pb-ai-card" aria-label="Captain AGAP Assistant">
-                <div class="pb-card-head">
-                    <div>
-                        <h2 class="pb-card-title">Captain's AI Assistant</h2>
-                        <p class="pb-card-sub">Instant executive briefs &amp; R.A. 7160 guidance</p>
-                    </div>
-                    <button type="button" class="pb-ai-clear-btn" id="btnCaptainAiReset" title="Reset assistant conversation" aria-label="Reset assistant">&circlearrowleft;</button>
-                </div>
-
-                <div class="pb-ai-stage">
-                    <div class="pb-ai-orb-wrap" id="captainAiOrbWrap">
-                        <div class="pb-ai-orb" aria-hidden="true"></div>
-                    </div>
-                    <div class="pb-ai-response-box" id="captainAiResponseBox" style="display:none;"></div>
-                </div>
-
-                <div class="pb-ai-quick-chips" aria-label="Quick executive prompts">
-                    <button type="button" class="pb-ai-chip" data-ai-prompt="brief">Today's Brief</button>
-                    <button type="button" class="pb-ai-chip" data-ai-prompt="risks">SLA &amp; Deadlines</button>
-                    <button type="button" class="pb-ai-chip" data-ai-prompt="hotspots">Purok Hotspots</button>
-                    <button type="button" class="pb-ai-chip" data-ai-prompt="council">Council Points</button>
-                </div>
-
-                <label class="pb-ai-consent-row">
-                    <input type="checkbox" id="captainAiGeminiConsent">
-                    <span>Allow sending custom legal/KP questions to Google Gemini AI</span>
-                </label>
-
-                <form class="pb-ai-input-bar" id="captainAiForm">
-                    <input type="text" id="captainAiInput" placeholder="Ask about KP rules or barangay stats..." autocomplete="off">
-                    <button type="submit" id="captainAiSendBtn" class="pb-ai-send-btn" title="Send prompt" aria-label="Send prompt">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
-                    </button>
-                </form>
-            </section>
-        </aside>
-    </div>
-
-    <!-- Row 3: Customizable Operational & Analytics Widgets (Toggled via "Add Widget" Drawer) -->
-    <div class="pb-widgets-grid" id="captainModularWidgets">
-        <!-- Widget 1: Today's Hearings & Mediation Queue -->
-        <section class="pb-card pb-widget-card pb-widget-span-2" data-widget-id="widget-hearings" id="dashboardHearingsPanel">
+        <!-- Widget 3: Today's Hearings & Mediation Queue -->
+        <section class="pb-card pb-widget-card pb-widget-span-8" data-widget-id="widget-hearings" id="dashboardHearingsPanel">
             <div class="pb-widget-head">
                 <div class="pb-widget-title-group">
                     <span class="pb-widget-icon is-blue" aria-hidden="true">
@@ -375,7 +419,7 @@
         </section>
 
         <!-- Widget 2: Hearing Calendar -->
-        <section class="pb-card pb-widget-card" data-widget-id="widget-calendar" id="dashboardCalendarCard">
+        <section class="pb-card pb-widget-card pb-widget-span-4" data-widget-id="widget-calendar" id="dashboardCalendarCard">
             <div class="pb-widget-head">
                 <div class="pb-widget-title-group">
                     <span class="pb-widget-icon is-teal" aria-hidden="true">
@@ -405,7 +449,7 @@
         </section>
 
         <!-- Widget 3: Most Complained Issues & Purok Hotspots -->
-        <section class="pb-card pb-widget-card pb-widget-span-2" data-widget-id="widget-analytics">
+        <section class="pb-card pb-widget-card pb-widget-span-8" data-widget-id="widget-analytics">
             <div class="pb-widget-head">
                 <div class="pb-widget-title-group">
                     <span class="pb-widget-icon is-amber" aria-hidden="true">
@@ -435,7 +479,7 @@
         </section>
 
         <!-- Widget 4: Participant Demographics -->
-        <section class="pb-card pb-widget-card" data-widget-id="widget-demographics">
+        <section class="pb-card pb-widget-card pb-widget-span-4" data-widget-id="widget-demographics">
             <div class="pb-widget-head">
                 <div class="pb-widget-title-group">
                     <span class="pb-widget-icon is-indigo" aria-hidden="true">
@@ -465,7 +509,7 @@
         </section>
 
         <!-- Widget 5: Paanyaya Stage 0 Invitations -->
-        <section class="pb-card pb-widget-card pb-widget-span-2" data-widget-id="widget-paanyaya" id="dashboardPaanyayaPanel">
+        <section class="pb-card pb-widget-card pb-widget-span-8" data-widget-id="widget-paanyaya" id="dashboardPaanyayaPanel">
             <div class="pb-widget-head">
                 <div class="pb-widget-title-group">
                     <span class="pb-widget-icon is-indigo" aria-hidden="true">
@@ -487,7 +531,7 @@
         </section>
 
         <!-- Widget 6: Announcements & Barangay Bulletin -->
-        <section class="pb-card pb-widget-card" data-widget-id="widget-bulletin">
+        <section class="pb-card pb-widget-card pb-widget-span-4" data-widget-id="widget-bulletin">
             <div class="pb-widget-head">
                 <div class="pb-widget-title-group">
                     <span class="pb-widget-icon is-emerald" aria-hidden="true">
@@ -515,7 +559,7 @@
         </section>
 
         <!-- Widget 7: Security & Governance Audit Trail -->
-        <section class="pb-card pb-widget-card pb-widget-span-3" data-widget-id="widget-audit">
+        <section class="pb-card pb-widget-card pb-widget-span-12" data-widget-id="widget-audit">
             <div class="pb-widget-head">
                 <div class="pb-widget-title-group">
                     <span class="pb-widget-icon is-slate" aria-hidden="true">

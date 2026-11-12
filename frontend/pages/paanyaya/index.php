@@ -60,6 +60,7 @@ include '../../layouts/header.php';
 
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/complaints.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/complaints.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/agap-list-layout.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/agap-list-layout.css'); ?>">
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -621,76 +622,76 @@ include '../../layouts/header.php';
     <div class="main-content">
         <?php include '../../layouts/navbar.php'; ?>
 
-        <div class="paanyaya-container">
-            <!-- Header Section -->
-            <div class="paanyaya-header">
-                <div class="paanyaya-header-title">
-                    <h1>
-                        <span>✉️ Paanyaya Management</span>
-                        <span class="paanyaya-badge-stage0">Stage 0 · Informal Dialogue</span>
-                    </h1>
-                    <p>Pre-docketed amicable dispute invitations pursuant to Barangay Tumana KP process</p>
-                </div>
-                <div>
-                    <button type="button" class="btn-new-paanyaya" id="btnOpenScheduleModal">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <div class="agap-list-shell">
+            <div class="agap-list-card">
+                <!-- Header Section -->
+                <div class="agap-list-header">
+                    <div class="agap-list-title-wrap">
+                        <div class="agap-list-title-row">
+                            <h1>Paanyaya</h1>
+                            <span class="agap-stage-pill">Stage 0 &middot; Informal Dialogue</span>
+                        </div>
+                        <p class="agap-list-subtitle">Pre-docketed amicable dispute invitations pursuant to Barangay Tumana KP process.</p>
+                    </div>
+                    <button type="button" class="agap-list-primary-btn" id="btnOpenScheduleModal">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         <span>Schedule New Paanyaya</span>
                     </button>
                 </div>
-            </div>
 
-            <!-- Summary KPI Grid -->
-            <div class="paanyaya-stats-grid" id="paanyayaStatsGrid" role="region" aria-label="Paanyaya Summary Metrics">
-                <a href="index.php<?php echo $searchFilter !== '' ? '?search=' . urlencode($searchFilter) : ''; ?>" 
-                   class="paanyaya-stat-card card-all <?php echo $statusFilter === '' ? 'is-active' : ''; ?>" 
-                   data-status="" 
-                   id="paanyayaCardAll"
-                   title="Click to view all Paanyayas (Ipakita ang lahat ng Paanyaya)">
-                    <div class="stat-label">Total Paanyayas</div>
-                    <div class="stat-value"><?php echo $countTotal; ?></div>
-                </a>
-                <a href="index.php?status=Scheduled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" 
-                   class="paanyaya-stat-card card-scheduled <?php echo $statusFilter === 'Scheduled' ? 'is-active' : ''; ?>" 
-                   data-status="Scheduled" 
-                   id="paanyayaCardScheduled"
-                   title="Click to filter scheduled / pending Paanyayas">
-                    <div class="stat-label">Scheduled / Pending</div>
-                    <div class="stat-value" style="color: #2563eb;"><?php echo $countScheduled; ?></div>
-                </a>
-                <a href="index.php?status=Resolved<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" 
-                   class="paanyaya-stat-card card-settled <?php echo in_array($statusFilter, ['Resolved', 'Completed', 'Settled']) ? 'is-active' : ''; ?>" 
-                   data-status="Resolved" 
-                   id="paanyayaCardSettled"
-                   title="Click to filter settled / closed Paanyayas">
-                    <div class="stat-label">Settled / Closed</div>
-                    <div class="stat-value" style="color: #16a34a;"><?php echo $countCompleted; ?></div>
-                </a>
-                <a href="index.php?status=Cancelled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>" 
-                   class="paanyaya-stat-card card-cancelled <?php echo in_array($statusFilter, ['Cancelled', 'Escalated', 'Failed']) ? 'is-active' : ''; ?>" 
-                   data-status="Cancelled" 
-                   id="paanyayaCardCancelled"
-                   title="Click to filter cancelled / escalated Paanyayas">
-                    <div class="stat-label">Cancelled / Escalated</div>
-                    <div class="stat-value" style="color: #64748b;"><?php echo $countCancelled; ?></div>
-                </a>
-            </div>
+                <!-- Underlined Tabs + Inline Search -->
+                <div class="agap-list-subbar">
+                    <nav class="agap-underline-tabs" aria-label="Paanyaya status filter">
+                        <a href="index.php<?php echo $searchFilter !== '' ? '?search=' . urlencode($searchFilter) : ''; ?>"
+                           class="agap-tab-item <?php echo $statusFilter === '' ? 'active' : ''; ?>"
+                           data-status=""
+                           id="paanyayaCardAll">
+                            <span>All</span>
+                            <span class="agap-tab-count"><?php echo $countTotal; ?></span>
+                        </a>
+                        <a href="index.php?status=Scheduled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>"
+                           class="agap-tab-item <?php echo $statusFilter === 'Scheduled' ? 'active' : ''; ?>"
+                           data-status="Scheduled"
+                           id="paanyayaCardScheduled">
+                            <span>Scheduled</span>
+                            <span class="agap-tab-count"><?php echo $countScheduled; ?></span>
+                        </a>
+                        <a href="index.php?status=Resolved<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>"
+                           class="agap-tab-item <?php echo in_array($statusFilter, ['Resolved', 'Completed', 'Settled'], true) ? 'active' : ''; ?>"
+                           data-status="Resolved"
+                           id="paanyayaCardSettled">
+                            <span>Settled</span>
+                            <span class="agap-tab-count"><?php echo $countCompleted; ?></span>
+                        </a>
+                        <a href="index.php?status=Cancelled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>"
+                           class="agap-tab-item <?php echo in_array($statusFilter, ['Cancelled', 'Escalated', 'Failed'], true) ? 'active' : ''; ?>"
+                           data-status="Cancelled"
+                           id="paanyayaCardCancelled">
+                            <span>Cancelled / Escalated</span>
+                            <span class="agap-tab-count"><?php echo $countCancelled; ?></span>
+                        </a>
+                    </nav>
 
-            <!-- Main Table Card (Venue and Reference Complaint columns removed per user spec) -->
-            <div class="paanyaya-table-card">
-                <div class="paanyaya-toolbar">
-                    <form method="GET" action="index.php" class="paanyaya-search-form">
-                        <input type="text" name="search" class="paanyaya-search-input" placeholder="Search by invitee or complainant name..." value="<?php echo htmlspecialchars($searchFilter); ?>">
+                    <form method="GET" action="index.php" class="agap-inline-controls" id="paanyayaSearchForm">
                         <?php if ($statusFilter !== ''): ?>
                             <input type="hidden" name="status" value="<?php echo htmlspecialchars($statusFilter); ?>">
                         <?php endif; ?>
-                        <button type="submit" class="btn-action-view">Search</button>
+                        <div class="agap-inline-search">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input type="text" name="search" id="paanyayaSearchInput" placeholder="Search invitee or complainant..." value="<?php echo htmlspecialchars($searchFilter); ?>" autocomplete="off">
+                            <button type="button" id="paanyayaClearSearchBtn" class="search-clear-btn" title="Clear search" aria-label="Clear search">&times;</button>
+                        </div>
                         <?php if ($searchFilter !== ''): ?>
-                            <a href="index.php<?php echo $statusFilter !== '' ? '?status=' . urlencode($statusFilter) : ''; ?>" class="btn-action-view">Clear</a>
+                            <a href="index.php<?php echo $statusFilter !== '' ? '?status=' . urlencode($statusFilter) : ''; ?>" class="agap-reset-link-btn" style="display:inline-flex; align-items:center; text-decoration:none;">Clear</a>
                         <?php endif; ?>
                     </form>
                 </div>
 
-                <div class="table-responsive">
+                <!-- Bordered Table Card -->
+                <div class="agap-list-table-wrap">
                     <table class="paanyaya-table">
                         <thead>
                             <tr>
@@ -701,110 +702,119 @@ include '../../layouts/header.php';
                                 <th style="text-align: right;">Actions</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="paanyayaTbody">
                             <?php if (empty($paanyayas)): ?>
-                                <tr>
-                                    <td colspan="5" style="text-align: center; color: #64748b; padding: 36px 20px;">
-                                        <div style="font-size: 2rem; margin-bottom: 8px;">✉️</div>
-                                        <div style="font-size: 0.95rem; font-weight: 600;">No Paanyaya invitations found.</div>
-                                        <p style="font-size: 0.85rem; margin-top: 4px; color: #94a3b8;">Click "Schedule New Paanyaya" above to issue an informal invitation.</p>
+                                <tr id="paanyayaServerEmptyRow">
+                                    <td colspan="5" style="text-align: center; color: #64748b; padding: 40px 20px;">
+                                        <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a;">No Paanyaya invitations found</div>
+                                        <p style="font-size: 0.84rem; margin: 4px 0 0; color: #64748b;">Click "Schedule New Paanyaya" above to issue an informal invitation.</p>
                                     </td>
                                 </tr>
                             <?php else: ?>
                                 <?php foreach ($paanyayas as $p): ?>
-                                    <?php 
+                                    <?php
                                         $d = !empty($p['scheduled_date']) ? date('M j, Y', strtotime($p['scheduled_date'])) : '—';
                                         $t = !empty($p['scheduled_time']) ? date('g:i A', strtotime($p['scheduled_time'])) : '';
                                         $st = $p['current_workflow_status'] ?? $p['status'] ?? 'Scheduled';
                                         $workflowStage = $p['current_workflow_stage'] ?? 'Stage 0 · Informal Dialogue';
-                                        $statusClass = 'status-pill-scheduled';
-                                        if (in_array($st, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived', 'CFA Issued', 'RESPONDENT_DEFAULT'])) $statusClass = 'status-pill-resolved';
-                                        elseif (in_array($st, ['Escalated', 'DISMISSED_BARRED', 'Repudiated'])) $statusClass = 'status-pill-escalated';
-                                        elseif (in_array($st, ['Cancelled', 'Failed'])) $statusClass = 'status-pill-cancelled';
+                                        $badgeVariant = 'is-blue';
+                                        if (in_array($st, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived', 'CFA Issued', 'RESPONDENT_DEFAULT'], true)) $badgeVariant = 'is-green';
+                                        elseif (in_array($st, ['Escalated', 'DISMISSED_BARRED', 'Repudiated'], true)) $badgeVariant = 'is-purple';
+                                        elseif (in_array($st, ['Cancelled', 'Failed'], true)) $badgeVariant = 'is-red';
+
+                                        $invName = trim((string) ($p['invitee_name'] ?: 'Inanyayahan'));
+                                        $invParts = preg_split('/\s+/', $invName) ?: ['I'];
+                                        $invInitials = strtoupper(mb_substr($invParts[0] ?? 'I', 0, 1, 'UTF-8') . (isset($invParts[1]) ? mb_substr($invParts[1], 0, 1, 'UTF-8') : ''));
+
+                                        $compName = trim((string) (!empty($p['complainant_name']) ? $p['complainant_name'] : 'Nagpaanyaya'));
+                                        $compParts = preg_split('/\s+/', $compName) ?: ['C'];
+                                        $compInitials = strtoupper(mb_substr($compParts[0] ?? 'C', 0, 1, 'UTF-8') . (isset($compParts[1]) ? mb_substr($compParts[1], 0, 1, 'UTF-8') : ''));
+
+                                        $invAddrLine = trim(implode(', ', array_filter([$p['invitee_address'] ?? '', $p['invitee_purok'] ?? ''])));
+                                        $invContactLine = trim((string)($p['invitee_contact_no'] ?? ''));
+                                        $compAddrLine = trim(implode(', ', array_filter([$p['complainant_address'] ?? '', $p['complainant_purok'] ?? ''])));
+                                        $compContactLine = trim((string)($p['complainant_contact_no'] ?? ''));
+                                        $searchBlob = strtolower(implode(' ', [$invName, $compName, $invAddrLine, $invContactLine, $compAddrLine, $st, (string)($p['complaint_number'] ?? '')]));
                                     ?>
-                                    <tr>
+                                    <tr data-paanyaya-row="1" data-search="<?php echo htmlspecialchars($searchBlob, ENT_QUOTES); ?>">
                                         <td>
-                                            <div style="display: flex; align-items: center; gap: 6px;">
-                                                <strong style="color: #0f172a; font-size: 0.92rem;"><?php echo htmlspecialchars($p['invitee_name'] ?: 'Inanyayahan'); ?></strong>
-                                                <?php if ((int)($p['attempt_number'] ?? 1) === 2): ?>
-                                                    <span style="font-size: 0.68rem; font-weight: 700; color: #1d4ed8; background: #eff6ff; border: 1px solid #bfdbfe; padding: 1px 6px; border-radius: 4px;" title="Ikalawang Paanyaya">2nd</span>
-                                                <?php endif; ?>
+                                            <div class="agap-person-cell">
+                                                <span class="agap-person-avatar is-respondent" aria-hidden="true"><?php echo htmlspecialchars($invInitials); ?></span>
+                                                <div class="agap-person-meta">
+                                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                        <span class="agap-person-name"><?php echo htmlspecialchars($invName); ?></span>
+                                                        <?php if ((int)($p['attempt_number'] ?? 1) === 2): ?>
+                                                            <span class="agap-pill-badge is-blue" style="padding:1px 6px; font-size:0.68rem;" title="Ikalawang Paanyaya">2nd</span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <?php if ($invAddrLine !== '' || $invContactLine !== ''): ?>
+                                                        <span class="agap-person-sub"><?php echo htmlspecialchars(trim(implode(' · ', array_filter([$invAddrLine, $invContactLine])))); ?></span>
+                                                    <?php elseif (!empty($p['scheduled_by_name'])): ?>
+                                                        <span class="agap-person-sub">Issued by <?php echo htmlspecialchars($p['scheduled_by_name']); ?></span>
+                                                    <?php endif; ?>
+                                                </div>
                                             </div>
-                                            <?php
-                                                $invAddrLine = trim(implode(', ', array_filter([$p['invitee_address'] ?? '', $p['invitee_purok'] ?? ''])));
-                                                $invContactLine = trim((string)($p['invitee_contact_no'] ?? ''));
-                                            ?>
-                                            <?php if ($invAddrLine !== ''): ?>
-                                                <div style="font-size: 0.76rem; color: #475569; margin-top: 2px;">📍 <?php echo htmlspecialchars($invAddrLine); ?></div>
-                                            <?php endif; ?>
-                                            <?php if ($invContactLine !== ''): ?>
-                                                <div style="font-size: 0.74rem; color: #64748b; margin-top: 1px;">📞 <?php echo htmlspecialchars($invContactLine); ?></div>
-                                            <?php endif; ?>
-                                            <?php if (!empty($p['scheduled_by_name'])): ?>
-                                                <div style="font-size: 0.74rem; color: #64748b; margin-top: 2px;">Issued by <?php echo htmlspecialchars($p['scheduled_by_name']); ?></div>
-                                            <?php endif; ?>
                                         </td>
                                         <td>
-                                            <strong style="color: #166534; font-size: 0.88rem;"><?php echo htmlspecialchars(!empty($p['complainant_name']) ? $p['complainant_name'] : 'Nagpaanyaya'); ?></strong>
-                                            <?php
-                                                $compAddrLine = trim(implode(', ', array_filter([$p['complainant_address'] ?? '', $p['complainant_purok'] ?? ''])));
-                                                $compContactLine = trim((string)($p['complainant_contact_no'] ?? ''));
-                                            ?>
-                                            <?php if ($compAddrLine !== ''): ?>
-                                                <div style="font-size: 0.76rem; color: #475569; margin-top: 2px;">📍 <?php echo htmlspecialchars($compAddrLine); ?></div>
-                                            <?php endif; ?>
-                                            <?php if ($compContactLine !== ''): ?>
-                                                <div style="font-size: 0.74rem; color: #64748b; margin-top: 1px;">📞 <?php echo htmlspecialchars($compContactLine); ?></div>
-                                            <?php endif; ?>
+                                            <div class="agap-person-cell">
+                                                <span class="agap-person-avatar" aria-hidden="true"><?php echo htmlspecialchars($compInitials); ?></span>
+                                                <div class="agap-person-meta">
+                                                    <span class="agap-person-name"><?php echo htmlspecialchars($compName); ?></span>
+                                                    <?php if ($compAddrLine !== '' || $compContactLine !== ''): ?>
+                                                        <span class="agap-person-sub"><?php echo htmlspecialchars(trim(implode(' · ', array_filter([$compAddrLine, $compContactLine])))); ?></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
                                         </td>
                                         <td>
                                             <div style="font-weight: 600; color: #0f172a;"><?php echo $d; ?></div>
-                                            <div style="font-size: 0.78rem; color: #64748b;"><?php echo $t; ?></div>
+                                            <?php if ($t !== ''): ?>
+                                                <div style="font-size: 0.76rem; color: #64748b;"><?php echo $t; ?></div>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
-                                            <span class="<?php echo $statusClass; ?>"><?php echo htmlspecialchars($st); ?></span>
+                                            <span class="agap-pill-badge <?php echo $badgeVariant; ?>"><?php echo htmlspecialchars($st); ?></span>
                                             <?php if (!empty($p['has_linked_case_workflow'])): ?>
                                                 <div style="font-size: 0.72rem; color: #475569; margin-top: 4px; font-weight: 600;">
                                                     <?php echo htmlspecialchars($workflowStage); ?>
                                                 </div>
                                             <?php endif; ?>
                                             <?php if (!empty($p['complainant_attended']) || !empty($p['invitee_attended'])): ?>
-                                                <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">
+                                                <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">
                                                     Att: <?php echo htmlspecialchars(substr($p['complainant_attended'] ?? '?', 0, 1)); ?>/<?php echo htmlspecialchars(substr($p['invitee_attended'] ?? '?', 0, 1)); ?>
                                                 </div>
                                             <?php endif; ?>
                                         </td>
                                         <td style="text-align: right;">
-                                            <div style="display: inline-flex; align-items: center; gap: 6px;">
-                                                <!-- Preview Action: Opens in Modal without redirecting -->
-                                                <button type="button" class="btn-action-print btn-preview-modal" 
-                                                        data-paanyaya-id="<?php echo (int)$p['paanyaya_id']; ?>" 
-                                                        data-complaint-id="<?php echo (int)($p['complaint_id'] ?? 0); ?>" 
-                                                        data-name="<?php echo htmlspecialchars($p['invitee_name'] ?: 'Inanyayahan'); ?>"
+                                            <div class="agap-row-actions">
+                                                <button type="button" class="agap-btn-act is-primary-soft btn-preview-modal"
+                                                        data-paanyaya-id="<?php echo (int)$p['paanyaya_id']; ?>"
+                                                        data-complaint-id="<?php echo (int)($p['complaint_id'] ?? 0); ?>"
+                                                        data-name="<?php echo htmlspecialchars($invName); ?>"
                                                         title="Preview Paanyaya Official Letter">
-                                                    📄 Letter
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                                    <span>Letter</span>
                                                 </button>
 
                                                 <?php $linkedComplaintId = (int)($p['complaint_id'] ?: ($p['escalated_to_complaint_id'] ?? 0)); ?>
                                                 <?php if ($linkedComplaintId > 0): ?>
-                                                    <a href="stage.php?complaint_id=<?php echo $linkedComplaintId; ?>" class="btn-action-view" title="Open the full Paanyaya stage workspace">
-                                                        📂 Stage Details
+                                                    <a href="stage.php?complaint_id=<?php echo $linkedComplaintId; ?>" class="agap-btn-act" title="Open the full Paanyaya stage workspace">
+                                                        <span>Stage</span>
                                                     </a>
                                                 <?php endif; ?>
 
-                                                <!-- Paanyaya stage management stays in the Paanyaya module. -->
-                                                <button type="button" class="btn-action-view btn-open-attendance" 
-                                                        data-paanyaya-id="<?php echo (int)$p['paanyaya_id']; ?>" 
-                                                        data-complaint-id="<?php echo (int)($p['complaint_id'] ?: ($p['escalated_to_complaint_id'] ?? 0)); ?>" 
-                                                        data-invitee="<?php echo htmlspecialchars($p['invitee_name'] ?: 'Inanyayahan'); ?>"
-                                                        data-complainant="<?php echo htmlspecialchars($p['complainant_name'] ?: 'Nagpaanyaya'); ?>"
+                                                <button type="button" class="agap-btn-act btn-open-attendance"
+                                                        data-paanyaya-id="<?php echo (int)$p['paanyaya_id']; ?>"
+                                                        data-complaint-id="<?php echo (int)$linkedComplaintId; ?>"
+                                                        data-invitee="<?php echo htmlspecialchars($invName); ?>"
+                                                        data-complainant="<?php echo htmlspecialchars($compName); ?>"
                                                         data-date="<?php echo htmlspecialchars($d); ?>"
                                                         data-time="<?php echo htmlspecialchars($t); ?>"
                                                         data-status="<?php echo htmlspecialchars($st); ?>"
                                                         data-attempt="<?php echo (int)($p['attempt_number'] ?? 1); ?>"
                                                         data-complaint-number="<?php echo htmlspecialchars($p['complaint_number'] ?? ''); ?>"
                                                         title="Manage the Paanyaya stage, attendance, outcome, and escalation">
-                                                    📋 Manage Stage
+                                                    <span>Manage</span>
                                                 </button>
                                             </div>
                                         </td>
@@ -813,6 +823,21 @@ include '../../layouts/header.php';
                             <?php endif; ?>
                         </tbody>
                     </table>
+                </div>
+
+                <!-- Pagination & Items Per Page Footer -->
+                <div class="agap-list-footer" id="paanyayaListFooter" <?php echo empty($paanyayas) ? 'hidden' : ''; ?>>
+                    <div class="agap-page-size-wrap">
+                        <span>Items Per Page</span>
+                        <select id="paanyayaPageSize" class="agap-page-size-select" aria-label="Items per page">
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span class="agap-page-summary" id="paanyayaPaginationSummary">Showing 0 records</span>
+                    </div>
+                    <div class="agap-pagination-controls" id="paanyayaPaginationControls"></div>
                 </div>
             </div>
         </div>
@@ -2672,16 +2697,146 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Summary Cards toggle & click handling
-    document.querySelectorAll('.paanyaya-stat-card').forEach(card => {
-        card.addEventListener('click', function(e) {
-            if (this.classList.contains('is-active') && this.dataset.status !== '') {
+    // Tab toggle & client-side live filtering + pagination
+    document.querySelectorAll('.agap-tab-item[data-status]').forEach(tab => {
+        tab.addEventListener('click', function(e) {
+            if (this.classList.contains('active') && this.dataset.status !== '') {
                 e.preventDefault();
                 const searchParam = new URLSearchParams(window.location.search).get('search');
                 window.location.href = 'index.php' + (searchParam ? '?search=' + encodeURIComponent(searchParam) : '');
             }
         });
     });
+
+    const paanyayaTbody = document.getElementById('paanyayaTbody');
+    const paanyayaRows = paanyayaTbody ? Array.from(paanyayaTbody.querySelectorAll('tr[data-paanyaya-row="1"]')) : [];
+    const paanyayaSearchInput = document.getElementById('paanyayaSearchInput');
+    const paanyayaClearBtn = document.getElementById('paanyayaClearSearchBtn');
+    const paanyayaPageSizeEl = document.getElementById('paanyayaPageSize');
+    const paanyayaFooter = document.getElementById('paanyayaListFooter');
+    const paanyayaSummary = document.getElementById('paanyayaPaginationSummary');
+    const paanyayaControls = document.getElementById('paanyayaPaginationControls');
+    let paanyayaCurrentPage = 1;
+    let paanyayaPageSize = Number(paanyayaPageSizeEl?.value || 10) || 10;
+
+    function syncPaanyayaEmptyRow(showEmpty) {
+        if (!paanyayaTbody) return;
+        let emptyRow = document.getElementById('paanyayaFilterEmptyRow');
+        if (showEmpty) {
+            if (!emptyRow) {
+                emptyRow = document.createElement('tr');
+                emptyRow.id = 'paanyayaFilterEmptyRow';
+                emptyRow.innerHTML = '<td colspan="5" style="text-align:center; color:#64748b; padding:36px 20px;"><div style="font-weight:700; color:#0f172a;">No matching Paanyaya invitations</div><p style="margin:4px 0 0; font-size:0.84rem;">Try clearing your search keyword.</p></td>';
+                paanyayaTbody.appendChild(emptyRow);
+            }
+            emptyRow.style.display = '';
+        } else if (emptyRow) {
+            emptyRow.style.display = 'none';
+        }
+    }
+
+    function renderPaanyayaPagination(total, totalPages, startIdx, endIdx) {
+        if (!paanyayaFooter || !paanyayaSummary || !paanyayaControls) return;
+        if (total === 0) {
+            paanyayaFooter.hidden = true;
+            return;
+        }
+        paanyayaFooter.hidden = false;
+        paanyayaSummary.textContent = `Showing ${startIdx + 1}–${endIdx} of ${total} record${total === 1 ? '' : 's'}`;
+        paanyayaControls.replaceChildren();
+        if (totalPages <= 1) return;
+
+        const addPageBtn = (label, pageNum, disabled = false, active = false) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = `agap-page-btn${active ? ' is-active' : ''}`;
+            btn.textContent = label;
+            btn.disabled = disabled;
+            if (active) btn.setAttribute('aria-current', 'page');
+            btn.addEventListener('click', () => {
+                if (!disabled && paanyayaCurrentPage !== pageNum) {
+                    paanyayaCurrentPage = pageNum;
+                    renderPaanyayaPage();
+                }
+            });
+            paanyayaControls.appendChild(btn);
+        };
+
+        addPageBtn('‹', paanyayaCurrentPage - 1, paanyayaCurrentPage <= 1);
+        const maxButtons = 5;
+        let startPage = Math.max(1, paanyayaCurrentPage - Math.floor(maxButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+        if (endPage - startPage < maxButtons - 1) startPage = Math.max(1, endPage - maxButtons + 1);
+        if (startPage > 1) {
+            addPageBtn('1', 1, false, paanyayaCurrentPage === 1);
+            if (startPage > 2) {
+                const ell = document.createElement('span');
+                ell.className = 'agap-page-ellipsis';
+                ell.textContent = '…';
+                paanyayaControls.appendChild(ell);
+            }
+        }
+        for (let i = startPage; i <= endPage; i++) {
+            addPageBtn(String(i), i, false, i === paanyayaCurrentPage);
+        }
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                const ell = document.createElement('span');
+                ell.className = 'agap-page-ellipsis';
+                ell.textContent = '…';
+                paanyayaControls.appendChild(ell);
+            }
+            addPageBtn(String(totalPages), totalPages, false, paanyayaCurrentPage === totalPages);
+        }
+        addPageBtn('›', paanyayaCurrentPage + 1, paanyayaCurrentPage >= totalPages);
+    }
+
+    function renderPaanyayaPage() {
+        if (!paanyayaRows.length) return;
+        const q = (paanyayaSearchInput?.value || '').trim().toLowerCase();
+        if (paanyayaClearBtn) {
+            paanyayaClearBtn.style.display = q ? 'block' : 'none';
+        }
+        const matched = q
+            ? paanyayaRows.filter(tr => (tr.dataset.search || '').includes(q))
+            : paanyayaRows;
+
+        const total = matched.length;
+        const totalPages = Math.max(1, Math.ceil(total / paanyayaPageSize));
+        if (paanyayaCurrentPage > totalPages) paanyayaCurrentPage = totalPages;
+        if (paanyayaCurrentPage < 1) paanyayaCurrentPage = 1;
+
+        const startIdx = (paanyayaCurrentPage - 1) * paanyayaPageSize;
+        const endIdx = Math.min(startIdx + paanyayaPageSize, total);
+        const visibleSet = new Set(matched.slice(startIdx, endIdx));
+
+        paanyayaRows.forEach(tr => {
+            tr.style.display = visibleSet.has(tr) ? '' : 'none';
+        });
+        syncPaanyayaEmptyRow(total === 0);
+        renderPaanyayaPagination(total, totalPages, startIdx, endIdx);
+    }
+
+    paanyayaSearchInput?.addEventListener('input', () => {
+        paanyayaCurrentPage = 1;
+        renderPaanyayaPage();
+    });
+
+    paanyayaClearBtn?.addEventListener('click', () => {
+        if (paanyayaSearchInput) paanyayaSearchInput.value = '';
+        paanyayaCurrentPage = 1;
+        renderPaanyayaPage();
+    });
+
+    paanyayaPageSizeEl?.addEventListener('change', () => {
+        paanyayaPageSize = Number(paanyayaPageSizeEl.value || 10) || 10;
+        paanyayaCurrentPage = 1;
+        renderPaanyayaPage();
+    });
+
+    if (paanyayaRows.length) {
+        renderPaanyayaPage();
+    }
 });
 </script>
 

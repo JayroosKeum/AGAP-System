@@ -1,6 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
     const WIDGET_STORAGE_KEY = 'agap_pb_enabled_widgets_v1';
+    const WIDGET_LAYOUT_KEY = 'agap_pb_widget_layout_v3';
+    const WIDGET_ALL_CUSTOM_MIGRATION_KEY = 'agap_pb_migrated_all_widgets_v1';
+    const MIN_WIDGET_COLS = 3;
+    const MAX_WIDGET_COLS = 12;
+    const MIN_WIDGET_HEIGHT = 200;
+    const MAX_WIDGET_HEIGHT = 1200;
     const DEFAULT_WIDGETS = [
+        'widget-kpis',
+        'widget-overview',
+        'widget-docket',
         'widget-hearings',
         'widget-calendar',
         'widget-analytics',
@@ -12,63 +21,181 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const WIDGET_CATALOG = [
         {
+            id: 'widget-kpis',
+            title: 'Executive KPI Summary',
+            description: 'Top summary cards for Total Disputes, PB Mediation Docket, Needs Captain\'s Action, and Amicable Resolutions.',
+            tag: '#ExecutiveKPIs',
+            thumbType: 'kpis',
+            defaultCols: 12,
+            defaultHeight: null
+        },
+        {
+            id: 'widget-overview',
+            title: 'Case Intake & LTIA Form 06 Carousel',
+            description: 'Swipeable executive overview with court-fee savings trend, case pipeline stages, and DILG LTIA Form 06 summary.',
+            tag: '#LTIAForm06',
+            thumbType: 'overview',
+            defaultCols: 6,
+            defaultHeight: null
+        },
+        {
+            id: 'widget-docket',
+            title: 'Captain\'s Docket & Oversight Queue',
+            description: 'Priority approvals, 15-day statutory clocks, resident verifications, and full searchable case register.',
+            tag: '#OversightDocket',
+            thumbType: 'table',
+            defaultCols: 6,
+            defaultHeight: null
+        },
+        {
             id: 'widget-hearings',
             title: "Today's Mediation & Hearing Queue",
             description: 'Manage live court room docket, Quick Attendance, Standby, and PB Unavailable rescheduling.',
             tag: '#Mediation',
-            thumbType: 'queue'
+            thumbType: 'queue',
+            defaultCols: 8,
+            defaultHeight: null
         },
         {
             id: 'widget-calendar',
             title: 'Session & Hearing Calendar',
             description: 'Interactive month calendar highlighting formal hearings and Paanyaya sessions.',
             tag: '#Schedule',
-            thumbType: 'calendar'
+            thumbType: 'calendar',
+            defaultCols: 4,
+            defaultHeight: null
         },
         {
             id: 'widget-analytics',
             title: 'Dispute Categories & Purok Hotspots',
             description: 'Identify recurring community grievances and Puroks needing peace & order focus.',
             tag: '#PeaceAndOrder',
-            thumbType: 'bars'
+            thumbType: 'bars',
+            defaultCols: 8,
+            defaultHeight: null
         },
         {
             id: 'widget-demographics',
             title: 'Participant Demographics',
             description: 'Review Complainant and Respondent breakdown by gender and age bracket.',
             tag: '#Demographics',
-            thumbType: 'donut'
+            thumbType: 'donut',
+            defaultCols: 4,
+            defaultHeight: null
         },
         {
             id: 'widget-paanyaya',
             title: 'Paanyaya Stage 0 Invitations',
             description: 'Track pre-docketing informal dialogues that boost LTIA settlement efficiency.',
             tag: '#Diversion',
-            thumbType: 'mail'
+            thumbType: 'mail',
+            defaultCols: 8,
+            defaultHeight: null
         },
         {
             id: 'widget-bulletin',
             title: 'Barangay News & Announcements',
             description: 'Publish and manage public bulletins shown across staff and resident portals.',
             tag: '#Bulletin',
-            thumbType: 'news'
+            thumbType: 'news',
+            defaultCols: 4,
+            defaultHeight: null
         },
         {
             id: 'widget-audit',
             title: 'Security & Governance Audit Trail',
             description: 'Monitor staff sign-ins, resident verifications, and case status changes.',
             tag: '#Audit',
-            thumbType: 'shield'
+            thumbType: 'shield',
+            defaultCols: 12,
+            defaultHeight: null
         }
     ];
+
+    const clampWidgetCols = (val, fallback = 6) => {
+        const n = parseInt(val, 10);
+        if (!Number.isFinite(n)) return fallback;
+        return Math.max(MIN_WIDGET_COLS, Math.min(MAX_WIDGET_COLS, n));
+    };
+
+    const clampWidgetHeight = (val) => {
+        if (val === null || val === undefined || val === '') return null;
+        const n = Math.round(Number(val));
+        if (!Number.isFinite(n)) return null;
+        return Math.max(MIN_WIDGET_HEIGHT, Math.min(MAX_WIDGET_HEIGHT, n));
+    };
+
+    const formatWidgetSizeLabel = (size) => {
+        const cols = clampWidgetCols(size?.cols, 6);
+        const h = clampWidgetHeight(size?.height);
+        return `${cols}/12 cols · ${h !== null ? `${h}px` : 'Auto'}`;
+    };
+
+    const getDefaultWidgetLayout = () => {
+        const sizes = {};
+        WIDGET_CATALOG.forEach((w) => {
+            sizes[w.id] = { cols: w.defaultCols || 6, height: null };
+        });
+        return {
+            order: WIDGET_CATALOG.map((w) => w.id),
+            sizes
+        };
+    };
+
+    const loadSavedWidgetLayout = () => {
+        const defaults = getDefaultWidgetLayout();
+        try {
+            const raw = localStorage.getItem(WIDGET_LAYOUT_KEY);
+            if (!raw) return defaults;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return defaults;
+
+            const validIds = new Set(WIDGET_CATALOG.map((w) => w.id));
+            const order = [];
+            if (Array.isArray(parsed.order)) {
+                parsed.order.forEach((id) => {
+                    if (validIds.has(id) && !order.includes(id)) order.push(id);
+                });
+            }
+            defaults.order.forEach((id) => {
+                if (!order.includes(id)) order.push(id);
+            });
+
+            const legacyWidthMap = { S: 4, M: 6, L: 8, F: 12 };
+            const sizes = { ...defaults.sizes };
+            if (parsed.sizes && typeof parsed.sizes === 'object') {
+                WIDGET_CATALOG.forEach((w) => {
+                    const entry = parsed.sizes[w.id];
+                    if (entry && typeof entry === 'object') {
+                        const cols = Number.isFinite(Number(entry.cols))
+                            ? clampWidgetCols(entry.cols, sizes[w.id].cols)
+                            : (legacyWidthMap[entry.w] || sizes[w.id].cols);
+                        const height = clampWidgetHeight(entry.height);
+                        sizes[w.id] = { cols, height };
+                    }
+                });
+            }
+            return { order, sizes };
+        } catch (e) {}
+        return defaults;
+    };
 
     const loadSavedWidgets = () => {
         try {
             const raw = localStorage.getItem(WIDGET_STORAGE_KEY);
-            if (!raw) return new Set(DEFAULT_WIDGETS);
+            if (!raw) {
+                localStorage.setItem(WIDGET_ALL_CUSTOM_MIGRATION_KEY, '1');
+                return new Set(DEFAULT_WIDGETS);
+            }
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
-                return new Set(parsed.filter((id) => WIDGET_CATALOG.some((w) => w.id === id)));
+                const nextSet = new Set(parsed.filter((id) => WIDGET_CATALOG.some((w) => w.id === id)));
+                if (!localStorage.getItem(WIDGET_ALL_CUSTOM_MIGRATION_KEY)) {
+                    ['widget-kpis', 'widget-overview', 'widget-docket'].forEach((id) => nextSet.add(id));
+                    localStorage.setItem(WIDGET_ALL_CUSTOM_MIGRATION_KEY, '1');
+                    localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify([...nextSet]));
+                }
+                return nextSet;
             }
         } catch (e) {}
         return new Set(DEFAULT_WIDGETS);
@@ -77,6 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const state = {
         period: 'all',
         offset: 0,
+        form6Year: null,
         isLoading: false,
         dashboardData: null,
         activePeriodData: null,
@@ -94,7 +222,9 @@ document.addEventListener('DOMContentLoaded', () => {
         calendarHearings: [],
         selectedDate: null,
         isSavingQueue: false,
+        isCustomizing: false,
         enabledWidgets: loadSavedWidgets(),
+        widgetLayout: loadSavedWidgetLayout(),
         activeQuickAttHearing: null,
         activeQuickAttHearingId: null,
         activeQuickAttData: null
@@ -245,9 +375,141 @@ document.addEventListener('DOMContentLoaded', () => {
                 return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="8" y="9" width="28" height="26" rx="4" stroke="#059669" stroke-width="2.2"/><path d="M14 17h16M14 23h16M14 29h10" stroke="#059669" stroke-width="2.2" stroke-linecap="round"/></svg>';
             case 'shield':
                 return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><path d="M22 7l12 5v9c0 8.5-5.2 14.2-12 16-6.8-1.8-12-7.5-12-16v-9l12-5z" stroke="#334155" stroke-width="2.2"/><path d="M17 22l3.5 3.5L27 19" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            case 'kpis':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="5" y="13" width="15" height="8" rx="2.5" fill="#2563eb" opacity=".88"/><rect x="24" y="13" width="15" height="8" rx="2.5" fill="#4f46e5" opacity=".75"/><rect x="5" y="24" width="15" height="8" rx="2.5" fill="#d97706" opacity=".8"/><rect x="24" y="24" width="15" height="8" rx="2.5" fill="#16a34a" opacity=".82"/></svg>';
+            case 'overview':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="6" y="9" width="32" height="26" rx="4" stroke="#1b6553" stroke-width="2" fill="#f0fdf4"/><path d="M11 28l6-7 6 4 9-10" stroke="#16a34a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            case 'table':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="6" y="9" width="32" height="26" rx="4" stroke="#b45309" stroke-width="2.2" fill="#fffbeb"/><path d="M6 17h32M6 23h32M6 29h32M14 17v18M24 17v18M31 17v18" stroke="#d97706" stroke-width="1.6"/></svg>';
             default:
                 return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="7" y="10" width="30" height="7" rx="3" fill="#2563eb"/><rect x="7" y="20" width="30" height="6" rx="3" fill="#cbd5e1"/><rect x="7" y="29" width="22" height="6" rx="3" fill="#e2e8f0"/></svg>';
         }
+    };
+
+    const saveWidgetLayout = () => {
+        try {
+            localStorage.setItem(WIDGET_LAYOUT_KEY, JSON.stringify(state.widgetLayout));
+        } catch (e) {}
+    };
+
+    const setWidgetSize = (widgetId, patch) => {
+        const defaults = getDefaultWidgetLayout().sizes[widgetId] || { cols: 6, height: null };
+        const current = state.widgetLayout.sizes[widgetId] || defaults;
+        const nextCols = patch.cols !== undefined
+            ? clampWidgetCols(patch.cols, current.cols)
+            : clampWidgetCols(current.cols, defaults.cols);
+        const nextHeight = patch.height !== undefined
+            ? clampWidgetHeight(patch.height)
+            : clampWidgetHeight(current.height);
+
+        state.widgetLayout.sizes[widgetId] = { cols: nextCols, height: nextHeight };
+        saveWidgetLayout();
+        applyWidgetLayout();
+        if (document.getElementById('addWidgetDrawerOverlay')?.style.display === 'flex') {
+            renderWidgetDrawerCatalog();
+        }
+    };
+
+    const moveWidgetRelative = (widgetId, direction, visibleOnly = true) => {
+        const order = [...state.widgetLayout.order];
+        const idx = order.indexOf(widgetId);
+        if (idx === -1) return;
+
+        const step = direction === 'up' ? -1 : 1;
+        let targetIdx = idx + step;
+        if (visibleOnly) {
+            while (targetIdx >= 0 && targetIdx < order.length && !state.enabledWidgets.has(order[targetIdx])) {
+                targetIdx += step;
+            }
+        }
+        if (targetIdx < 0 || targetIdx >= order.length) return;
+
+        [order[idx], order[targetIdx]] = [order[targetIdx], order[idx]];
+        state.widgetLayout.order = order;
+        saveWidgetLayout();
+        applyWidgetLayout();
+        if (document.getElementById('addWidgetDrawerOverlay')?.style.display === 'flex') {
+            renderWidgetDrawerCatalog();
+        }
+    };
+
+    const reorderWidgetByDrop = (draggedId, targetId, insertAfter) => {
+        if (!draggedId || !targetId || draggedId === targetId) return;
+        const order = state.widgetLayout.order.filter((id) => id !== draggedId);
+        const targetIdx = order.indexOf(targetId);
+        if (targetIdx === -1) return;
+        order.splice(insertAfter ? targetIdx + 1 : targetIdx, 0, draggedId);
+        state.widgetLayout.order = order;
+        saveWidgetLayout();
+        applyWidgetLayout();
+        if (document.getElementById('addWidgetDrawerOverlay')?.style.display === 'flex') {
+            renderWidgetDrawerCatalog();
+        }
+    };
+
+    const resetWidgetPreferences = () => {
+        state.enabledWidgets = new Set(DEFAULT_WIDGETS);
+        state.widgetLayout = getDefaultWidgetLayout();
+        saveEnabledWidgets();
+        saveWidgetLayout();
+        applyWidgetLayout();
+        renderWidgetDrawerCatalog();
+    };
+
+    const ensureWidgetCustomizeBar = (card, widgetId) => {
+        let bar = card.querySelector('.pb-widget-customize-bar');
+        if (!bar) {
+            bar = document.createElement('div');
+            bar.className = 'pb-widget-customize-bar';
+            bar.setAttribute('aria-label', 'Widget layout controls');
+            bar.innerHTML = `
+                <div class="pb-widget-customize-left">
+                    <button type="button" class="pb-widget-drag-handle" title="Drag anywhere on bar to reorder widget" aria-label="Drag to reorder widget">&#x22EE;&#x22EE; Drag to reorder</button>
+                    <span class="pb-widget-size-badge" title="Width (12-col grid) and height">6/12 cols &middot; Auto</span>
+                </div>
+                <div class="pb-widget-customize-right">
+                    <button type="button" class="pb-auto-height-btn" data-reset-height title="Reset custom height to automatic" disabled>Auto H</button>
+                    <button type="button" class="pb-move-btn" data-move-widget="up" title="Move widget earlier" aria-label="Move widget up">&uarr;</button>
+                    <button type="button" class="pb-move-btn" data-move-widget="down" title="Move widget later" aria-label="Move widget down">&darr;</button>
+                </div>
+            `;
+
+            bar.querySelector('[data-reset-height]')?.addEventListener('click', () => {
+                setWidgetSize(widgetId, { height: null });
+            });
+            bar.querySelectorAll('[data-move-widget]').forEach((btn) => {
+                btn.addEventListener('click', () => moveWidgetRelative(widgetId, btn.getAttribute('data-move-widget'), true));
+            });
+
+            bar.addEventListener('pointerdown', (e) => {
+                if (!state.isCustomizing) return;
+                if (e.target.closest('button:not(.pb-widget-drag-handle)')) return;
+                card.setAttribute('draggable', 'true');
+            });
+            bar.addEventListener('pointerup', () => {
+                card.removeAttribute('draggable');
+            });
+
+            card.insertBefore(bar, card.firstChild);
+        }
+
+        if (!card.querySelector('.pb-resize-handle-se')) {
+            [
+                { dir: 'e', cls: 'pb-resize-handle pb-resize-handle-e', title: 'Drag right edge to resize width' },
+                { dir: 's', cls: 'pb-resize-handle pb-resize-handle-s', title: 'Drag bottom edge to resize height' },
+                { dir: 'se', cls: 'pb-resize-handle pb-resize-handle-se', title: 'Drag corner to resize width & height' }
+            ].forEach(({ dir, cls, title }) => {
+                const handle = document.createElement('div');
+                handle.className = cls;
+                handle.setAttribute('data-resize-dir', dir);
+                handle.setAttribute('data-widget-id', widgetId);
+                handle.setAttribute('title', title);
+                handle.setAttribute('aria-label', title);
+                card.appendChild(handle);
+            });
+        }
+
+        return bar;
     };
 
     const applyWidgetVisibility = () => {
@@ -257,17 +519,124 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    let overviewCarousel = null;
+
+    const applyWidgetLayout = () => {
+        const grid = document.getElementById('captainModularWidgets');
+        if (!grid) return;
+
+        const cardsById = new Map();
+        grid.querySelectorAll('.pb-widget-card[data-widget-id]').forEach((card) => {
+            const id = card.getAttribute('data-widget-id');
+            if (id) {
+                cardsById.set(id, card);
+                ensureWidgetCustomizeBar(card, id);
+            }
+        });
+
+        state.widgetLayout.order.forEach((id) => {
+            const card = cardsById.get(id);
+            if (card) grid.appendChild(card);
+        });
+
+        const visibleOrder = state.widgetLayout.order.filter((id) => state.enabledWidgets.has(id));
+
+        cardsById.forEach((card, id) => {
+            const size = state.widgetLayout.sizes[id] || getDefaultWidgetLayout().sizes[id] || { cols: 6, height: null };
+            const cols = clampWidgetCols(size.cols, 6);
+            const customH = clampWidgetHeight(size.height);
+
+            card.classList.remove('pb-widget-span-2', 'pb-widget-span-3', 'pb-widget-span-4', 'pb-widget-span-6', 'pb-widget-span-8', 'pb-widget-span-12', 'pb-widget-h-sm', 'pb-widget-h-lg');
+            card.style.gridColumn = cols >= MAX_WIDGET_COLS ? '1 / -1' : `span ${cols}`;
+            card.setAttribute('data-cols', String(cols));
+
+            if (customH !== null) {
+                card.style.height = `${customH}px`;
+                card.classList.add('has-custom-height');
+                if (id === 'widget-overview') {
+                    const vp = document.getElementById('overviewCarouselViewport');
+                    if (vp) vp.style.height = '';
+                }
+            } else {
+                card.style.height = '';
+                card.classList.remove('has-custom-height');
+                if (id === 'widget-overview') {
+                    overviewCarousel?.syncHeight?.();
+                }
+            }
+
+            const bar = card.querySelector('.pb-widget-customize-bar');
+            if (bar) {
+                const badge = bar.querySelector('.pb-widget-size-badge');
+                if (badge) badge.textContent = formatWidgetSizeLabel({ cols, height: customH });
+                const autoHBtn = bar.querySelector('[data-reset-height]');
+                if (autoHBtn) autoHBtn.disabled = customH === null;
+
+                const visIdx = visibleOrder.indexOf(id);
+                const upBtn = bar.querySelector('[data-move-widget="up"]');
+                const downBtn = bar.querySelector('[data-move-widget="down"]');
+                if (upBtn) upBtn.disabled = visIdx <= 0;
+                if (downBtn) downBtn.disabled = visIdx === -1 || visIdx >= visibleOrder.length - 1;
+            }
+        });
+
+        applyWidgetVisibility();
+    };
+
+    const setCustomizeMode = (enabled) => {
+        state.isCustomizing = !!enabled;
+        const overview = document.querySelector('.dashboard-overview');
+        const toggleBtn = document.getElementById('btnToggleCustomizeLayout');
+        const banner = document.getElementById('pbCustomizeBanner');
+
+        if (overview) overview.classList.toggle('is-customizing', state.isCustomizing);
+        if (banner) banner.hidden = !state.isCustomizing;
+        if (toggleBtn) {
+            toggleBtn.classList.toggle('is-active', state.isCustomizing);
+            toggleBtn.setAttribute('aria-pressed', state.isCustomizing ? 'true' : 'false');
+            const labelEl = toggleBtn.querySelector('span');
+            if (labelEl) labelEl.textContent = state.isCustomizing ? 'Done customizing' : 'Customize';
+        }
+        if (!state.isCustomizing) {
+            document.querySelectorAll('.pb-widget-card[data-widget-id]').forEach((card) => {
+                card.removeAttribute('draggable');
+                card.classList.remove('is-dragging-widget', 'is-drag-target');
+            });
+        }
+    };
+
     const renderWidgetDrawerCatalog = () => {
         const list = document.getElementById('addWidgetCatalogList');
         if (!list) return;
-        list.innerHTML = WIDGET_CATALOG.map((w) => {
+        const catalogById = new Map(WIDGET_CATALOG.map((w) => [w.id, w]));
+        const orderedItems = state.widgetLayout.order
+            .map((id) => catalogById.get(id))
+            .filter(Boolean);
+
+        list.innerHTML = orderedItems.map((w, idx) => {
             const isSelected = state.enabledWidgets.has(w.id);
+            const size = state.widgetLayout.sizes[w.id] || { cols: w.defaultCols || 6, height: null };
+            const cols = clampWidgetCols(size.cols, w.defaultCols || 6);
+            const customH = clampWidgetHeight(size.height);
             return `
                 <article class="pb-drawer-card">
                     <div class="pb-drawer-thumb">${getWidgetThumbSvg(w.thumbType)}</div>
                     <div class="pb-drawer-card-info">
                         <h3>${escapeHtml(w.title)}</h3>
                         <p>${escapeHtml(w.description)}</p>
+                        <div class="pb-drawer-layout-row">
+                            <div class="pb-widget-preset-group" role="group" aria-label="Grid columns for ${escapeHtml(w.title)}">
+                                <span class="pb-preset-label">W</span>
+                                <button type="button" class="pb-preset-pill" data-drawer-col-step="-1" data-widget-id="${escapeHtml(w.id)}" ${cols <= MIN_WIDGET_COLS ? 'disabled' : ''} title="Narrower (-1 col)">&minus;</button>
+                                <span class="pb-drawer-size-readout">${cols}/12</span>
+                                <button type="button" class="pb-preset-pill" data-drawer-col-step="1" data-widget-id="${escapeHtml(w.id)}" ${cols >= MAX_WIDGET_COLS ? 'disabled' : ''} title="Wider (+1 col)">+</button>
+                            </div>
+                            <button type="button" class="pb-auto-height-btn" data-drawer-reset-height="${escapeHtml(w.id)}" ${customH === null ? 'disabled' : ''} title="Reset height to Auto">${customH !== null ? `${customH}px · Auto` : 'Auto H'}</button>
+                            <div class="pb-drawer-move-group">
+                                <button type="button" class="pb-move-btn" data-drawer-move="up" data-widget-id="${escapeHtml(w.id)}" ${idx === 0 ? 'disabled' : ''} title="Move earlier">&uarr;</button>
+                                <button type="button" class="pb-move-btn" data-drawer-move="down" data-widget-id="${escapeHtml(w.id)}" ${idx === orderedItems.length - 1 ? 'disabled' : ''} title="Move later">&darr;</button>
+                            </div>
+                        </div>
                         <div class="pb-drawer-card-foot">
                             <span class="pb-drawer-tag">${escapeHtml(w.tag)}</span>
                             <button type="button" class="pb-drawer-select-btn ${isSelected ? 'is-selected' : ''}" data-toggle-widget="${escapeHtml(w.id)}">
@@ -288,8 +657,198 @@ document.addEventListener('DOMContentLoaded', () => {
                     state.enabledWidgets.add(id);
                 }
                 saveEnabledWidgets();
-                applyWidgetVisibility();
+                applyWidgetLayout();
                 renderWidgetDrawerCatalog();
+            });
+        });
+
+        list.querySelectorAll('[data-drawer-col-step]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-widget-id');
+                const delta = parseInt(btn.getAttribute('data-drawer-col-step'), 10) || 0;
+                const currentCols = clampWidgetCols(state.widgetLayout.sizes[id]?.cols, 6);
+                setWidgetSize(id, { cols: currentCols + delta });
+            });
+        });
+
+        list.querySelectorAll('[data-drawer-reset-height]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                setWidgetSize(btn.getAttribute('data-drawer-reset-height'), { height: null });
+            });
+        });
+
+        list.querySelectorAll('[data-drawer-move]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                moveWidgetRelative(btn.getAttribute('data-widget-id'), btn.getAttribute('data-drawer-move'), false);
+            });
+        });
+    };
+
+    const initWidgetDragResize = () => {
+        const grid = document.getElementById('captainModularWidgets');
+        if (!grid) return;
+
+        let activeResize = null;
+
+        const removeLivePill = (card) => {
+            card?.querySelector('.pb-resize-live-pill')?.remove();
+        };
+
+        const finishResize = () => {
+            if (!activeResize) return;
+            const { card, widgetId, currentCols, currentHeight } = activeResize;
+            card.classList.remove('is-resizing-widget');
+            document.body.classList.remove('pb-is-resizing');
+            removeLivePill(card);
+            activeResize = null;
+            setWidgetSize(widgetId, { cols: currentCols, height: currentHeight });
+        };
+
+        grid.addEventListener('pointerdown', (e) => {
+            if (!state.isCustomizing || e.button !== 0) return;
+            const handle = e.target.closest('.pb-resize-handle[data-resize-dir]');
+            if (!handle) return;
+            const card = handle.closest('.pb-widget-card[data-widget-id]');
+            if (!card) return;
+
+            e.preventDefault();
+            e.stopPropagation();
+            card.removeAttribute('draggable');
+
+            const dir = handle.getAttribute('data-resize-dir') || 'se';
+            const widgetId = card.getAttribute('data-widget-id');
+            const gridRect = grid.getBoundingClientRect();
+            const colGap = parseFloat(getComputedStyle(grid).columnGap) || 18;
+            const colPitch = (gridRect.width + colGap) / MAX_WIDGET_COLS;
+            const cardRect = card.getBoundingClientRect();
+            const saved = state.widgetLayout.sizes[widgetId] || { cols: 6, height: null };
+
+            let livePill = card.querySelector('.pb-resize-live-pill');
+            if (!livePill) {
+                livePill = document.createElement('div');
+                livePill.className = 'pb-resize-live-pill';
+                card.appendChild(livePill);
+            }
+
+            activeResize = {
+                handle,
+                card,
+                widgetId,
+                dir,
+                startX: e.clientX,
+                startY: e.clientY,
+                startWidth: cardRect.width,
+                startHeight: cardRect.height,
+                colGap,
+                colPitch,
+                currentCols: clampWidgetCols(saved.cols, 6),
+                currentHeight: clampWidgetHeight(saved.height)
+            };
+
+            livePill.textContent = formatWidgetSizeLabel({ cols: activeResize.currentCols, height: activeResize.currentHeight });
+            card.classList.add('is-resizing-widget');
+            document.body.classList.add('pb-is-resizing');
+            if (typeof handle.setPointerCapture === 'function') {
+                try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+            }
+        });
+
+        window.addEventListener('pointermove', (e) => {
+            if (!activeResize) return;
+            const { card, dir, startX, startY, startWidth, startHeight, colGap, colPitch } = activeResize;
+
+            if (dir.includes('e')) {
+                const targetWidth = startWidth + (e.clientX - startX);
+                const nextCols = clampWidgetCols(Math.round((targetWidth + colGap) / colPitch), activeResize.currentCols);
+                activeResize.currentCols = nextCols;
+                card.style.gridColumn = nextCols >= MAX_WIDGET_COLS ? '1 / -1' : `span ${nextCols}`;
+                card.setAttribute('data-cols', String(nextCols));
+            }
+            if (dir.includes('s')) {
+                const nextHeight = clampWidgetHeight(startHeight + (e.clientY - startY));
+                activeResize.currentHeight = nextHeight;
+                card.style.height = `${nextHeight}px`;
+                card.classList.add('has-custom-height');
+                if (activeResize.widgetId === 'widget-overview') {
+                    const vp = document.getElementById('overviewCarouselViewport');
+                    if (vp) vp.style.height = '';
+                }
+            }
+
+            const label = formatWidgetSizeLabel({ cols: activeResize.currentCols, height: activeResize.currentHeight });
+            const badge = card.querySelector('.pb-widget-size-badge');
+            if (badge) badge.textContent = label;
+            const pill = card.querySelector('.pb-resize-live-pill');
+            if (pill) pill.textContent = label;
+        });
+
+        window.addEventListener('pointerup', finishResize);
+        window.addEventListener('pointercancel', finishResize);
+    };
+
+    const initWidgetDragReorder = () => {
+        const grid = document.getElementById('captainModularWidgets');
+        if (!grid) return;
+
+        let draggedWidgetId = null;
+
+        const clearDragClasses = () => {
+            grid.querySelectorAll('.pb-widget-card[data-widget-id]').forEach((el) => {
+                el.classList.remove('is-drag-target', 'is-drag-before', 'is-drag-after');
+            });
+        };
+
+        const computeInsertAfter = (e, targetCard) => {
+            const rect = targetCard.getBoundingClientRect();
+            const cols = parseInt(targetCard.getAttribute('data-cols') || '6', 10);
+            if (cols < 10) {
+                return (e.clientX - rect.left) > (rect.width / 2);
+            }
+            return (e.clientY - rect.top) > (rect.height / 2);
+        };
+
+        grid.addEventListener('dragstart', (e) => {
+            if (!state.isCustomizing) return;
+            if (e.target.closest('.dashboard-list-item') || e.target.closest('.pb-resize-handle')) return;
+            const card = e.target.closest('.pb-widget-card[data-widget-id]');
+            if (!card) return;
+            draggedWidgetId = card.getAttribute('data-widget-id');
+            card.classList.add('is-dragging-widget');
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', draggedWidgetId);
+            }
+        });
+
+        grid.addEventListener('dragover', (e) => {
+            if (!state.isCustomizing || !draggedWidgetId) return;
+            const targetCard = e.target.closest('.pb-widget-card[data-widget-id]');
+            if (!targetCard) return;
+            const targetId = targetCard.getAttribute('data-widget-id');
+            if (!targetId || targetId === draggedWidgetId) return;
+            e.preventDefault();
+            clearDragClasses();
+            const insertAfter = computeInsertAfter(e, targetCard);
+            targetCard.classList.add('is-drag-target', insertAfter ? 'is-drag-after' : 'is-drag-before');
+        });
+
+        grid.addEventListener('drop', (e) => {
+            if (!state.isCustomizing || !draggedWidgetId) return;
+            const targetCard = e.target.closest('.pb-widget-card[data-widget-id]');
+            if (!targetCard) return;
+            const targetId = targetCard.getAttribute('data-widget-id');
+            if (!targetId || targetId === draggedWidgetId) return;
+            e.preventDefault();
+            const insertAfter = computeInsertAfter(e, targetCard);
+            clearDragClasses();
+            reorderWidgetByDrop(draggedWidgetId, targetId, insertAfter);
+        });
+
+        grid.addEventListener('dragend', () => {
+            draggedWidgetId = null;
+            grid.querySelectorAll('.pb-widget-card[data-widget-id]').forEach((card) => {
+                card.removeAttribute('draggable');
+                card.classList.remove('is-dragging-widget', 'is-drag-target', 'is-drag-before', 'is-drag-after');
             });
         });
     };
@@ -297,9 +856,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const initWidgetDrawer = () => {
         const overlay = document.getElementById('addWidgetDrawerOverlay');
         const openBtn = document.getElementById('btnOpenWidgetDrawer');
+        const bannerAddBtn = document.getElementById('btnBannerAddWidget');
         const closeBtn = document.getElementById('btnCloseWidgetDrawer');
         const doneBtn = document.getElementById('btnDoneWidgetDrawer');
         const resetBtn = document.getElementById('btnResetWidgetsDefault');
+        const customizeBtn = document.getElementById('btnToggleCustomizeLayout');
+        const doneCustomizeBtn = document.getElementById('btnDoneCustomizeLayout');
+        const resetLayoutBannerBtn = document.getElementById('btnResetLayoutBanner');
 
         const openDrawer = () => {
             renderWidgetDrawerCatalog();
@@ -316,28 +879,30 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         openBtn?.addEventListener('click', openDrawer);
+        bannerAddBtn?.addEventListener('click', openDrawer);
         closeBtn?.addEventListener('click', closeDrawer);
         doneBtn?.addEventListener('click', closeDrawer);
         overlay?.addEventListener('click', (e) => {
             if (e.target === overlay) closeDrawer();
         });
-        resetBtn?.addEventListener('click', () => {
-            state.enabledWidgets = new Set(DEFAULT_WIDGETS);
-            saveEnabledWidgets();
-            applyWidgetVisibility();
-            renderWidgetDrawerCatalog();
-        });
+        resetBtn?.addEventListener('click', resetWidgetPreferences);
+        resetLayoutBannerBtn?.addEventListener('click', resetWidgetPreferences);
+
+        customizeBtn?.addEventListener('click', () => setCustomizeMode(!state.isCustomizing));
+        doneCustomizeBtn?.addEventListener('click', () => setCustomizeMode(false));
 
         document.querySelectorAll('[data-hide-widget]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const id = btn.getAttribute('data-hide-widget');
                 state.enabledWidgets.delete(id);
                 saveEnabledWidgets();
-                applyWidgetVisibility();
+                applyWidgetLayout();
             });
         });
 
-        applyWidgetVisibility();
+        initWidgetDragReorder();
+        initWidgetDragResize();
+        applyWidgetLayout();
     };
 
     // =========================================================================
@@ -349,12 +914,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const tooltip = document.getElementById('captainTrendTooltip');
         if (!svg || !wrap) return;
 
-        const points = Array.isArray(series) && series.length > 0
-            ? series
+        if (Array.isArray(series)) {
+            state.trendSeries = series;
+        }
+        const effectiveSeries = Array.isArray(state.trendSeries) ? state.trendSeries : series;
+
+        if (!wrap.dataset.roBound && typeof ResizeObserver !== 'undefined') {
+            wrap.dataset.roBound = '1';
+            let prevW = 0;
+            let prevH = 0;
+            const ro = new ResizeObserver((entries) => {
+                const cr = entries[0]?.contentRect;
+                if (!cr) return;
+                const nw = Math.round(cr.width);
+                const nh = Math.round(cr.height);
+                if (nw > 40 && nh > 40 && (Math.abs(nw - prevW) > 2 || Math.abs(nh - prevH) > 2)) {
+                    prevW = nw;
+                    prevH = nh;
+                    renderTrendChart(state.trendSeries);
+                }
+            });
+            ro.observe(wrap);
+        }
+
+        const points = Array.isArray(effectiveSeries) && effectiveSeries.length > 0
+            ? effectiveSeries
             : [{ label: 'Current', filed: 0, resolved: 0, previous_filed: 0 }];
 
-        const W = 540;
-        const H = 168;
+        const wrapRect = wrap.getBoundingClientRect();
+        const cs = getComputedStyle(wrap);
+        const horizPad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+        const vertPad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+        const W = Math.max(240, Math.round((wrapRect.width || 540) - horizPad));
+        const H = Math.max(140, Math.round((wrapRect.height || 168) - vertPad));
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
         const padL = 32;
         const padR = 14;
         const padT = 14;
@@ -509,6 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const renderSettlementGauge = (data) => {
+        if (!document.getElementById('captainGaugeTicks')) return;
         const cap = data.captain_summary || {};
         const totalCases = Number(data.total_cases || 0);
         const settledFormal = Number(data.settled_cases || 0);
@@ -963,6 +1558,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const initCaptainAiAssistant = () => {
         const form = document.getElementById('captainAiForm');
+        if (!form) return;
         const input = document.getElementById('captainAiInput');
         const resetBtn = document.getElementById('btnCaptainAiReset');
         const consentCheck = document.getElementById('captainAiGeminiConsent');
@@ -1161,6 +1757,113 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         `).join('');
+    };
+
+    const renderLtiaForm6Widget = (form6) => {
+        const tbody = document.getElementById('ltiaForm6TableBody');
+        const tfoot = document.getElementById('ltiaForm6TableFoot');
+        if (!tbody || !tfoot) return;
+
+        if (!form6 || !Array.isArray(form6.months)) {
+            tbody.innerHTML = '<tr><td colspan="16" class="pb-table-empty">No LTIA Form 06 summary data available.</td></tr>';
+            tfoot.innerHTML = '';
+            return;
+        }
+
+        const year = Number(form6.year || new Date().getFullYear());
+        state.form6Year = year;
+
+        const yearSelect = document.getElementById('ltiaForm6YearSelect');
+        if (yearSelect) {
+            const years = Array.isArray(form6.available_years) && form6.available_years.length
+                ? form6.available_years
+                : [year];
+            yearSelect.innerHTML = years
+                .map((y) => `<option value="${Number(y)}"${Number(y) === year ? ' selected' : ''}>${Number(y)}</option>`)
+                .join('');
+        }
+
+        const printLink = document.getElementById('ltiaForm6PrintLink');
+        if (printLink) {
+            printLink.href = `../../../backend/api/reports/official.php?type=form6&year=${encodeURIComponent(String(year))}`;
+        }
+
+        const meta = form6.meta || {};
+        const barangay = String(meta.barangay_name || 'Barangay Tumana').trim();
+        const city = String(meta.city_name || 'Marikina City').trim();
+        const province = String(meta.province_name || 'Metro Manila NCR').trim();
+        const shortBarangay = barangay.replace(/^Barangay\b/i, 'Brgy.');
+
+        setElText('ltiaForm6Heading', `${barangay} Lupong Tagapamayapa CY ${year}`);
+        setElText('ltiaForm6Subheading', `${shortBarangay}, ${city}, ${province}`);
+        setElText('ltiaMetaCaptain', meta.captain_name || 'Not configured');
+        setElText('ltiaMetaMayor', meta.mayor_name || 'Not configured');
+        setElText('ltiaMetaIra', meta.barangay_ira || 'Not configured');
+        setElText('ltiaMetaPopulation', meta.population || 'Not configured');
+        setElText('ltiaMetaLandArea', meta.land_area || 'Not configured');
+        setNumericText('ltiaMetaTotalCases', meta.total_cases || 0);
+
+        const formatCell = (val, showZero = false) => {
+            const num = Number(val || 0);
+            if (num === 0 && !showZero) return '<span class="is-dash">-</span>';
+            return escapeHtml(num.toLocaleString());
+        };
+
+        const formatDroppedCell = (row) => {
+            const dropped = Number(row.dropped || 0);
+            const referred = Number(row.referred_other_agency || 0);
+            if (dropped === 0 && referred === 0) return '<span class="is-dash">-</span>';
+            if (referred > 0 && dropped > 0) {
+                return `${escapeHtml(String(dropped))}<br><small class="pb-ltia-agency-note">${escapeHtml(String(referred))} OTHER AGENCY/DEPT.</small>`;
+            }
+            if (referred > 0) {
+                return `<span class="pb-ltia-agency-note">${escapeHtml(String(referred))} OTHER AGENCY/DEPT.</span>`;
+            }
+            return escapeHtml(dropped.toLocaleString());
+        };
+
+        tbody.innerHTML = form6.months.map((row) => `
+            <tr>
+                <td class="col-month">${escapeHtml(row.label || '')}</td>
+                <td class="shade-nature-crim">${formatCell(row.criminal)}</td>
+                <td class="shade-nature-civ">${formatCell(row.civil)}</td>
+                <td>${formatCell(row.others)}</td>
+                <td class="shade-nature-tot">${formatCell(row.nature_total, true)}</td>
+                <td class="shade-settled">${formatCell(row.mediation)}</td>
+                <td class="shade-settled">${formatCell(row.conciliation)}</td>
+                <td>${formatCell(row.arbitration)}</td>
+                <td class="shade-settled-tot">${formatCell(row.settled_total, true)}</td>
+                <td class="shade-unsettled">${formatCell(row.pending)}</td>
+                <td class="shade-unsettled">${formatCell(row.dismissed)}</td>
+                <td>${formatCell(row.repudiated)}</td>
+                <td class="shade-cfa">${formatCell(row.certified)}</td>
+                <td>${formatDroppedCell(row)}</td>
+                <td class="shade-unsettled-tot">${formatCell(row.not_settled_total, true)}</td>
+                <td class="col-total-filed">${formatCell(row.total_filed, true)}</td>
+            </tr>
+        `).join('');
+
+        const tot = form6.totals || {};
+        tfoot.innerHTML = `
+            <tr class="pb-ltia-total-row">
+                <td class="col-month">${escapeHtml(tot.label || 'TOTAL=')}</td>
+                <td class="shade-nature-crim">${formatCell(tot.criminal, true)}</td>
+                <td class="shade-nature-civ">${formatCell(tot.civil, true)}</td>
+                <td>${formatCell(tot.others)}</td>
+                <td class="shade-nature-tot">${formatCell(tot.nature_total, true)}</td>
+                <td class="shade-settled">${formatCell(tot.mediation, true)}</td>
+                <td class="shade-settled">${formatCell(tot.conciliation, true)}</td>
+                <td>${formatCell(tot.arbitration)}</td>
+                <td class="shade-settled-tot">${formatCell(tot.settled_total, true)}</td>
+                <td class="shade-unsettled">${formatCell(tot.pending, true)}</td>
+                <td class="shade-unsettled">${formatCell(tot.dismissed, true)}</td>
+                <td>${formatCell(tot.repudiated)}</td>
+                <td class="shade-cfa">${formatCell(tot.certified, true)}</td>
+                <td>${formatDroppedCell(tot)}</td>
+                <td class="shade-unsettled-tot">${formatCell(tot.not_settled_total, true)}</td>
+                <td class="col-total-filed">${formatCell(tot.total_filed, true)}</td>
+            </tr>
+        `;
     };
 
     let draggedHearingCard = null;
@@ -2048,23 +2751,82 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     // Main Fetch & Period Controls
     // =========================================================================
+    const buildPeriodOptions = (period, data) => {
+        if (period === 'all') return [];
+        const baseStart = data?.start_date ? new Date(String(data.start_date).slice(0, 10) + 'T00:00:00') : new Date();
+        const curOffset = Number(state.offset || 0);
+
+        const monthShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const options = [];
+        const range = period === 'weekly'
+            ? { min: -12, max: 1 }
+            : period === 'monthly'
+                ? { min: -15, max: 1 }
+                : period === 'quarterly'
+                    ? { min: -8, max: 1 }
+                    : { min: -5, max: 1 };
+
+        const minOff = Math.min(range.min, curOffset);
+        const maxOff = Math.max(range.max, curOffset);
+
+        for (let off = maxOff; off >= minOff; off--) {
+            let label = '';
+            if (period === 'weekly') {
+                const start = new Date(baseStart);
+                start.setDate(start.getDate() + (off - curOffset) * 7);
+                const end = new Date(start);
+                end.setDate(start.getDate() + 6);
+                const span = `${monthShort[start.getMonth()]} ${start.getDate()} – ${monthShort[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+                label = off === 0 ? `This Week (${span})` : off === -1 ? `Last Week (${span})` : span;
+            } else if (period === 'monthly') {
+                const ref = new Date(baseStart.getFullYear(), baseStart.getMonth() + (off - curOffset), 1);
+                const name = ref.toLocaleDateString([], { month: 'long', year: 'numeric' });
+                label = off === 0 ? `${name} · Current` : name;
+            } else if (period === 'quarterly') {
+                const ref = new Date(baseStart.getFullYear(), baseStart.getMonth() + (off - curOffset) * 3, 1);
+                const q = Math.floor(ref.getMonth() / 3) + 1;
+                const sm = (q - 1) * 3;
+                const span = `${monthShort[sm]}–${monthShort[sm + 2]}`;
+                label = off === 0 ? `Q${q} ${ref.getFullYear()} (${span}) · Current` : `Q${q} ${ref.getFullYear()} (${span})`;
+            } else if (period === 'annual') {
+                const yr = baseStart.getFullYear() + (off - curOffset);
+                label = off === 0 ? `${yr} · Current` : String(yr);
+            }
+            options.push({ offset: off, label });
+        }
+        return options;
+    };
+
     const updateControls = (period, data) => {
         const navButtons = document.getElementById('periodNavButtons');
-        const labelDisplay = document.getElementById('periodLabelDisplay');
+        const presetSelect = document.getElementById('periodPresetSelect');
         const rangeDisplay = document.getElementById('periodDateRangeDisplay');
+        const currentBtn = document.getElementById('currentPeriodBtn');
         const currentBtnText = document.getElementById('currentPeriodText');
 
-        if (labelDisplay) labelDisplay.textContent = data.period_label || 'All Time';
-        if (rangeDisplay) {
-            rangeDisplay.textContent = (data.start_date && data.end_date)
-                ? `${formatDateOnly(data.start_date)} – ${formatDateOnly(data.end_date)}`
-                : (data.period_sublabel || 'All recorded data in the system');
-        }
         if (navButtons) navButtons.style.display = period === 'all' ? 'none' : 'inline-flex';
+        if (presetSelect && period !== 'all') {
+            const opts = buildPeriodOptions(period, data);
+            presetSelect.innerHTML = opts
+                .map((o) => `<option value="${o.offset}"${o.offset === state.offset ? ' selected' : ''}>${escapeHtml(o.label)}</option>`)
+                .join('');
+        }
+        if (rangeDisplay) {
+            if (period === 'all') {
+                rangeDisplay.textContent = 'All recorded data';
+            } else if (data?.start_date && data?.end_date) {
+                rangeDisplay.textContent = `${formatDateOnly(data.start_date)} – ${formatDateOnly(data.end_date)}`;
+            } else {
+                rangeDisplay.textContent = data?.period_sublabel || 'Filtered range';
+            }
+        }
         if (currentBtnText) {
             currentBtnText.textContent = { weekly: 'This Week', monthly: 'This Month', quarterly: 'This Quarter', annual: 'This Year' }[period] || 'Current';
         }
-        document.getElementById('currentPeriodBtn')?.classList.toggle('is-current-active', state.offset === 0);
+        if (currentBtn) {
+            currentBtn.style.display = (period !== 'all' && state.offset !== 0) ? 'inline-flex' : 'none';
+            currentBtn.classList.toggle('is-current-active', state.offset === 0);
+        }
     };
 
     const updateUrl = () => {
@@ -2089,6 +2851,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (overviewEl) overviewEl.classList.add('is-loading');
 
         const params = new URLSearchParams({ period: state.period, offset: String(state.offset) });
+        if (state.form6Year) {
+            params.set('form6_year', String(state.form6Year));
+        }
         setMessage('');
 
         fetch(`../../../backend/api/dashboard/statistics.php?${params.toString()}`, {
@@ -2127,6 +2892,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderCaptainDocketTable();
                 renderAnalytics(data.analytics);
                 renderAuditFeed(data.audit_feed || []);
+                renderLtiaForm6Widget(data.ltia_form6 || null);
+                overviewCarousel?.syncHeight();
 
                 state.calendarHearings = data.calendar_hearings || [];
                 renderHearings(data.today_hearings || [], periodLabel);
@@ -2173,6 +2940,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('prevPeriodBtn')?.addEventListener('click', () => { state.offset -= 1; fetchDashboardData(); });
     document.getElementById('nextPeriodBtn')?.addEventListener('click', () => { state.offset += 1; fetchDashboardData(); });
+    document.getElementById('periodPresetSelect')?.addEventListener('change', (e) => {
+        const nextOffset = parseInt(e.target.value, 10);
+        if (!Number.isNaN(nextOffset) && nextOffset !== state.offset) {
+            state.offset = nextOffset;
+            fetchDashboardData();
+        }
+    });
     document.getElementById('currentPeriodBtn')?.addEventListener('click', () => {
         if (state.offset === 0) return;
         state.offset = 0;
@@ -2327,7 +3101,90 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const initOverviewCarousel = () => {
+        const viewport = document.getElementById('overviewCarouselViewport');
+        const track = document.getElementById('overviewCarouselTrack');
+        if (!viewport || !track) return { syncHeight: () => {} };
+
+        const slides = [...track.querySelectorAll('.pb-overview-carousel-slide')];
+        const tabs = [...document.querySelectorAll('[role="tab"][data-overview-slide]')];
+        const dots = [...document.querySelectorAll('.pb-carousel-dot[data-overview-slide]')];
+        const prevBtn = document.getElementById('overviewCarouselPrev');
+        const nextBtn = document.getElementById('overviewCarouselNext');
+        const counterEl = document.getElementById('overviewCarouselCounter');
+        let currentIndex = 0;
+
+        const syncHeight = () => {
+            const card = viewport.closest('.pb-overview-carousel-card');
+            if (card?.classList.contains('has-custom-height')) {
+                viewport.style.height = '';
+                return;
+            }
+            const activeSlide = slides[currentIndex];
+            if (!activeSlide) return;
+            viewport.style.height = `${activeSlide.scrollHeight}px`;
+        };
+
+        const goToSlide = (nextIdx) => {
+            const total = slides.length;
+            if (!total) return;
+            currentIndex = ((nextIdx % total) + total) % total;
+            track.style.transform = `translateX(-${currentIndex * 100}%)`;
+
+            slides.forEach((slide, idx) => {
+                slide.classList.toggle('is-active', idx === currentIndex);
+                slide.setAttribute('aria-hidden', idx === currentIndex ? 'false' : 'true');
+            });
+            tabs.forEach((tab) => {
+                const idx = parseInt(tab.getAttribute('data-overview-slide'), 10);
+                const active = idx === currentIndex;
+                tab.classList.toggle('is-active', active);
+                tab.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+            dots.forEach((dot) => {
+                const idx = parseInt(dot.getAttribute('data-overview-slide'), 10);
+                dot.classList.toggle('is-active', idx === currentIndex);
+            });
+            if (counterEl) counterEl.textContent = `${currentIndex + 1} / ${total}`;
+            requestAnimationFrame(syncHeight);
+        };
+
+        tabs.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                const idx = parseInt(tab.getAttribute('data-overview-slide'), 10);
+                if (!Number.isNaN(idx)) goToSlide(idx);
+            });
+        });
+        dots.forEach((dot) => {
+            dot.addEventListener('click', () => {
+                const idx = parseInt(dot.getAttribute('data-overview-slide'), 10);
+                if (!Number.isNaN(idx)) goToSlide(idx);
+            });
+        });
+        prevBtn?.addEventListener('click', () => goToSlide(currentIndex - 1));
+        nextBtn?.addEventListener('click', () => goToSlide(currentIndex + 1));
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(() => syncHeight());
+            slides.forEach((s) => ro.observe(s));
+        } else {
+            window.addEventListener('resize', syncHeight);
+        }
+
+        goToSlide(0);
+        return { goToSlide, syncHeight };
+    };
+
+    overviewCarousel = initOverviewCarousel();
+
     initWidgetDrawer();
+    document.getElementById('ltiaForm6YearSelect')?.addEventListener('change', (e) => {
+        const nextYear = parseInt(e.target.value, 10);
+        if (!Number.isNaN(nextYear)) {
+            state.form6Year = nextYear;
+            fetchDashboardData();
+        }
+    });
     initCaptainAiAssistant();
     initQuickAttendanceModal();
 

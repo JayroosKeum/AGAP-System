@@ -4,7 +4,7 @@ let complaintsForDocket = [];
 let allLoadedCases = [];
 let filteredCases = [];
 let activeSelectedCaseId = null;
-const casesPageSize = 10;
+let casesPageSize = 10;
 let casesCurrentPage = 1;
 let caseSearchDebounceTimer = null;
 
@@ -222,6 +222,37 @@ function initCaseSearchToolbar() {
     const statusSelect = document.getElementById('caseSearchStatus');
     const sortSelect = document.getElementById('caseSearchSort');
     const clearFiltersBtn = document.getElementById('clearCaseFilters');
+    const drawerToggle = document.getElementById('toggleCaseFilterDrawer');
+    const drawerPanel = document.getElementById('caseFilterDrawerPanel');
+    const statusTabs = document.querySelectorAll('.agap-tab-item[data-case-status]');
+    const pageSizeSelect = document.getElementById('casePageSize');
+
+    if (pageSizeSelect) {
+        casesPageSize = Math.max(1, Number(pageSizeSelect.value || 10) || 10);
+        pageSizeSelect.addEventListener('change', () => {
+            casesPageSize = Math.max(1, Number(pageSizeSelect.value || 10) || 10);
+            casesCurrentPage = 1;
+            const table = document.getElementById('caseTable');
+            if (table) renderCurrentCasesPage(table);
+        });
+    }
+
+    if (drawerToggle && drawerPanel) {
+        drawerToggle.addEventListener('click', () => {
+            const isOpen = drawerPanel.classList.toggle('open');
+            drawerToggle.classList.toggle('active', isOpen);
+        });
+    }
+
+    statusTabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+            const val = tab.dataset.caseStatus ?? '';
+            if (statusSelect) statusSelect.value = val;
+            syncCaseTabs(val);
+            casesCurrentPage = 1;
+            applyCaseFiltersAndRender();
+        });
+    });
 
     if (!form && !queryInput) return;
 
@@ -253,6 +284,9 @@ function initCaseSearchToolbar() {
 
     [typeSelect, statusSelect, sortSelect].forEach((sel) => {
         sel?.addEventListener('change', () => {
+            if (sel === statusSelect) {
+                syncCaseTabs(statusSelect.value);
+            }
             casesCurrentPage = 1;
             applyCaseFiltersAndRender();
         });
@@ -265,15 +299,51 @@ function initCaseSearchToolbar() {
             if (typeSelect) typeSelect.value = '';
             if (statusSelect) statusSelect.value = '';
             if (sortSelect) sortSelect.value = 'case_number_desc';
+            if (drawerPanel) drawerPanel.classList.remove('open');
+            if (drawerToggle) drawerToggle.classList.remove('active');
+            syncCaseTabs('');
             casesCurrentPage = 1;
             applyCaseFiltersAndRender();
         });
     }
 }
 
+function syncCaseTabs(activeStatus) {
+    document.querySelectorAll('.agap-tab-item[data-case-status]').forEach((tab) => {
+        const isMatch = (tab.dataset.caseStatus ?? '') === activeStatus;
+        tab.classList.toggle('is-active', isMatch);
+    });
+}
+
+function updateCaseTabCounts() {
+    const counts = {
+        all: allLoadedCases.length,
+        Docketed: 0,
+        Mediation: 0,
+        Conciliation: 0,
+        Arbitration: 0
+    };
+    allLoadedCases.forEach((item) => {
+        if (Object.prototype.hasOwnProperty.call(counts, item.case_status)) {
+            counts[item.case_status] += 1;
+        }
+    });
+    const setCnt = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(val);
+    };
+    setCnt('caseTabCountAll', counts.all);
+    setCnt('caseTabCountDocketed', counts.Docketed);
+    setCnt('caseTabCountMediation', counts.Mediation);
+    setCnt('caseTabCountConciliation', counts.Conciliation);
+    setCnt('caseTabCountArbitration', counts.Arbitration);
+}
+
 function applyCaseFiltersAndRender() {
     const table = document.getElementById('caseTable');
     if (!table) return;
+
+    updateCaseTabCounts();
 
     const query = (document.getElementById('caseSearchQuery')?.value || '').trim().toLowerCase();
     const type = document.getElementById('caseSearchType')?.value || '';
@@ -281,6 +351,7 @@ function applyCaseFiltersAndRender() {
     const sortBy = document.getElementById('caseSearchSort')?.value || 'case_number_desc';
     const clearFiltersBtn = document.getElementById('clearCaseFilters');
     const clearInputBtn = document.getElementById('clearCaseSearchInput');
+    const activeDot = document.getElementById('caseFilterActiveDot');
 
     if (clearInputBtn) {
         clearInputBtn.style.display = query ? 'block' : 'none';
@@ -289,6 +360,9 @@ function applyCaseFiltersAndRender() {
     const hasActiveFilters = Boolean(query || type || status);
     if (clearFiltersBtn) {
         clearFiltersBtn.style.display = hasActiveFilters ? 'inline-block' : 'none';
+    }
+    if (activeDot) {
+        activeDot.style.display = (type || (sortBy && sortBy !== 'case_number_desc')) ? 'inline-block' : 'none';
     }
 
     filteredCases = allLoadedCases.filter((item) => {
@@ -391,21 +465,25 @@ function renderClientCasePagination(totalRecords, totalPages) {
     const controls = document.getElementById('casePaginationControls');
     if (!container || !summary || !controls) return;
 
-    if (totalPages <= 1) {
+    if (totalRecords <= 0) {
         container.hidden = true;
         return;
     }
 
     container.hidden = false;
-    summary.textContent = `Page ${casesCurrentPage} of ${totalPages} (${totalRecords} cases)`;
+    const startNum = (casesCurrentPage - 1) * casesPageSize + 1;
+    const endNum = Math.min(casesCurrentPage * casesPageSize, totalRecords);
+    summary.textContent = `Showing ${startNum}–${endNum} of ${totalRecords} case${totalRecords === 1 ? '' : 's'}`;
     controls.replaceChildren();
 
-    const addBtn = (label, pageNum, disabled = false, isCurrent = false) => {
+    const addBtn = (label, pageNum, disabled = false, isCurrent = false, ariaLabel = '') => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = isCurrent ? 'btn-create case-page-current' : 'btn-secondary';
+        btn.className = `agap-page-btn${isCurrent ? ' is-active' : ''}`;
         btn.textContent = label;
         btn.disabled = disabled;
+        if (ariaLabel) btn.setAttribute('aria-label', ariaLabel);
+        if (isCurrent) btn.setAttribute('aria-current', 'page');
         btn.addEventListener('click', () => {
             casesCurrentPage = pageNum;
             const table = document.getElementById('caseTable');
@@ -414,13 +492,20 @@ function renderClientCasePagination(totalRecords, totalPages) {
         controls.appendChild(btn);
     };
 
-    addBtn('Previous', casesCurrentPage - 1, casesCurrentPage <= 1);
+    if (totalPages <= 1) {
+        addBtn('‹', 1, true, false, 'Previous page');
+        addBtn('1', 1, false, true);
+        addBtn('›', 1, true, false, 'Next page');
+        return;
+    }
+
+    addBtn('‹', casesCurrentPage - 1, casesCurrentPage <= 1, false, 'Previous page');
     const startPage = Math.max(1, Math.min(casesCurrentPage - 2, totalPages - 4));
     const endPage = Math.min(totalPages, startPage + 4);
     for (let p = startPage; p <= endPage; p++) {
         addBtn(String(p), p, p === casesCurrentPage, p === casesCurrentPage);
     }
-    addBtn('Next', casesCurrentPage + 1, casesCurrentPage >= totalPages);
+    addBtn('›', casesCurrentPage + 1, casesCurrentPage >= totalPages, false, 'Next page');
 }
 
 window.highlightActiveCaseRow = (caseId) => {
@@ -472,55 +557,82 @@ function renderCaseRow(item, isSelected = false) {
         : `
             <a
                 href="${stageWorkspaceUrl}"
-                class="btn-table-action"
-                style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; text-decoration: none; font-size: 0.78rem; font-weight: 600; margin-left: 4px;"
+                class="agap-btn-act is-primary-soft"
                 title="Open ${stageWorkspaceLabel} Workspace"
             >
                 ${stageWorkspaceLabel} &rarr;
             </a>
         `;
 
+    const caseInitials = (rawName) => {
+        const words = String(rawName || '').trim().split(/[\s,]+/).filter(Boolean);
+        if (!words.length) return 'N';
+        if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+        return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+    };
+
+    const complainantName = item.complainant_names || 'Not recorded';
+    const respondentName = item.respondent_names || 'Not recorded';
+    const caseType = item.case_type || 'Not recorded';
+    const caseTypePillClass = String(caseType).toLowerCase() === 'criminal'
+        ? 'is-red'
+        : (String(caseType).toLowerCase() === 'civil' ? 'is-blue' : 'is-slate');
+    const caseStatusLabel = item.case_status || 'Unknown';
+    const statusPillMap = {
+        Docketed: 'is-blue',
+        Mediation: 'is-amber',
+        Conciliation: 'is-purple',
+        Arbitration: 'is-emerald',
+        Settled: 'is-green',
+        Dismissed: 'is-red'
+    };
+    const statusPillClass = statusPillMap[caseStatusLabel] || 'is-slate';
+
     return `
         <tr id="case-row-${caseId}" class="${selectedClass}">
             <td>
-                <a
-                    href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}"
-                    style="color: #2563eb; font-weight: 700; text-decoration: none;"
-                    onmouseover="this.style.textDecoration='underline'"
-                    onmouseout="this.style.textDecoration='none'"
-                    title="View complaint details for ${escapeHtml(item.case_number || '')}"
-                >
-                    ${escapeHtml(item.case_number || 'Case #' + item.case_id)}
-                </a>
+                <div class="agap-rec-id-wrap">
+                    <span class="agap-rec-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </span>
+                    <div>
+                        <a
+                            href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}"
+                            class="agap-rec-id-text"
+                            title="View complaint details for ${escapeHtml(item.case_number || '')}"
+                        >
+                            ${escapeHtml(item.case_number || 'Case #' + item.case_id)}
+                        </a>
+                        ${item.complaint_title ? `<span class="agap-person-sub" style="max-width: 210px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(item.complaint_title)}">${escapeHtml(item.complaint_title)}</span>` : ''}
+                    </div>
+                </div>
             </td>
 
             <td>
-                ${escapeHtml(
-                    item.complainant_names ||
-                    'Not recorded'
-                )}
+                <div class="agap-person-cell">
+                    <span class="agap-person-avatar">${escapeHtml(caseInitials(complainantName))}</span>
+                    <div class="agap-person-meta">
+                        <span class="agap-person-name">${escapeHtml(complainantName)}</span>
+                    </div>
+                </div>
             </td>
 
             <td>
-                ${escapeHtml(
-                    item.respondent_names ||
-                    'Not recorded'
-                )}
+                <div class="agap-person-cell">
+                    <span class="agap-person-avatar is-respondent">${escapeHtml(caseInitials(respondentName))}</span>
+                    <div class="agap-person-meta">
+                        <span class="agap-person-name">${escapeHtml(respondentName)}</span>
+                    </div>
+                </div>
             </td>
 
             <td>
-                ${escapeHtml(
-                    item.case_type ||
-                    'Not recorded'
-                )}
+                <span class="agap-pill-badge ${caseTypePillClass}">${escapeHtml(caseType)}</span>
             </td>
 
             <td>
-                <span class="status status-${escapeHtml(statusClass)}">
-                    ${escapeHtml(
-                        item.case_status ||
-                        'Unknown'
-                    )}
+                <span class="agap-pill-badge ${statusPillClass}">
+                    ${escapeHtml(caseStatusLabel)}
                 </span>
                 ${item.case_status === 'Mediation' && item.mediation_timer?.badge_label ? `
                     <div style="margin-top: 4px;">
@@ -531,17 +643,18 @@ function renderCaseRow(item, isSelected = false) {
                 ` : ''}
             </td>
 
-            <td class="action-buttons">
-                <a
-                    href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}"
-                    class="btn-table-action"
-                    style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; text-decoration: none; font-size: 0.78rem; font-weight: 600;"
-                    title="View complete complaint and case workspace"
-                >
-                    View Details
-                </a>
-
-                ${activeCaseActions}
+            <td style="text-align: right;">
+                <div class="agap-row-actions">
+                    <a
+                        href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}"
+                        class="agap-btn-act"
+                        title="View complete complaint and case workspace"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        View
+                    </a>
+                    ${activeCaseActions}
+                </div>
             </td>
         </tr>
     `;

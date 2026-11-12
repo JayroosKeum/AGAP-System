@@ -532,6 +532,7 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                         <input type="hidden" id="portalRespFirst" name="respondent_first_name" value="">
                         <input type="hidden" id="portalRespMiddle" name="respondent_middle_name" value="">
                         <input type="hidden" id="portalRespLast" name="respondent_last_name" value="">
+                        <div id="portalExtraPartiesHiddenInputs" hidden></div>
 
                         <div class="rd-wizard-layout">
                             <!-- Left Stepper Sidebar -->
@@ -549,14 +550,14 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                         <span class="rd-wizard-step-num" data-step-badge="1">1</span>
                                         <span class="rd-wizard-step-text">
                                             <strong>Complainant Details</strong>
-                                            <small>Your residency &amp; contact info</small>
+                                            <small>Your info &amp; co-complainants</small>
                                         </span>
                                     </button>
                                     <button type="button" class="rd-wizard-step" data-wizard-step-btn="2">
                                         <span class="rd-wizard-step-num" data-step-badge="2">2</span>
                                         <span class="rd-wizard-step-text">
                                             <strong>Respondent Details</strong>
-                                            <small>Full name &amp; summons address</small>
+                                            <small>Respondents &amp; summons address</small>
                                         </span>
                                     </button>
                                     <button type="button" class="rd-wizard-step" data-wizard-step-btn="3">
@@ -626,6 +627,19 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                             <label for="portalCompAddress">Your Complete Address <span class="req">*</span></label>
                                             <input type="text" id="portalCompAddress" name="complainant_address" required maxlength="255" value="<?php echo htmlspecialchars($residentProfile['address']); ?>" placeholder="House #, Street, Barangay Tumana">
                                         </div>
+
+                                        <div class="rd-extra-parties-block">
+                                            <div class="rd-extra-parties-head">
+                                                <div class="rd-extra-parties-title-wrap">
+                                                    <strong>Co-Complainants / Additional Complainants (Optional)</strong>
+                                                    <small>Add other complainants filing this same complaint with you.</small>
+                                                </div>
+                                                <button type="button" class="rd-add-party-btn" id="btnAddExtraComplainant">
+                                                    <span aria-hidden="true">+</span> Add Co-Complainant
+                                                </button>
+                                            </div>
+                                            <div class="rd-extra-parties-list" id="portalExtraComplainantsList" aria-live="polite"></div>
+                                        </div>
                                     </div>
 
                                     <!-- STEP 2: Respondent Details -->
@@ -636,7 +650,7 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                         </div>
 
                                         <div class="form-group">
-                                            <label for="portalRespFullName">Respondent Full Name (First &amp; Last Name) <span class="req">*</span></label>
+                                            <label for="portalRespFullName">Primary Respondent Full Name (First &amp; Last Name) <span class="req">*</span></label>
                                             <input type="text" id="portalRespFullName" name="respondent_name" required maxlength="150" data-validate="name" placeholder="e.g. Maria Santos">
                                             <span class="hint">Include both first name and last name so summons can be addressed properly.</span>
                                         </div>
@@ -661,6 +675,19 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                                 <label for="portalRespContact">Mobile Number (Optional)</label>
                                                 <input type="tel" id="portalRespContact" name="respondent_contact_no" maxlength="20" data-validate="phone" placeholder="09XXXXXXXXX">
                                             </div>
+                                        </div>
+
+                                        <div class="rd-extra-parties-block">
+                                            <div class="rd-extra-parties-head">
+                                                <div class="rd-extra-parties-title-wrap">
+                                                    <strong>Additional Respondents (Optional)</strong>
+                                                    <small>Add any other persons involved as respondents so each receives a separate summons.</small>
+                                                </div>
+                                                <button type="button" class="rd-add-party-btn" id="btnAddExtraRespondent">
+                                                    <span aria-hidden="true">+</span> Add Another Respondent
+                                                </button>
+                                            </div>
+                                            <div class="rd-extra-parties-list" id="portalExtraRespondentsList" aria-live="polite"></div>
                                         </div>
                                     </div>
 
@@ -877,130 +904,274 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
 
                 <!-- VIEW 4: PROFILE & SECURITY -->
                 <div id="residentViewProfile" class="rd-view-pane">
-                    <div class="rd-profile-grid">
-                        <section class="agap-form-card" aria-label="My Resident Profile">
-                            <div class="agap-form-card-head">
-                                <div class="agap-form-card-title">
-                                    <span class="agap-form-card-icon" aria-hidden="true">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <?php
+                        $displayAddressSummary = trim(implode(' · ', array_filter([
+                            $residentProfile['purok'],
+                            $residentProfile['address'],
+                        ]))) ?: 'Barangay Tumana address not yet set';
+                        $hasVerEmail = trim($residentProfile['email']) !== '';
+                        $hasVerPhone = trim($residentProfile['contact_no']) !== '';
+                        $hasVerAddress = (trim($residentProfile['purok']) !== '' || trim($residentProfile['address']) !== '');
+                    ?>
+                    <div class="rd-settings-header">
+                        <h2>Profile Settings</h2>
+                        <p>Manage your resident account details, verification status, security, and privacy preferences.</p>
+                    </div>
+
+                    <div class="rd-settings-shell">
+                        <nav class="rd-settings-nav" aria-label="Profile settings sections">
+                            <button type="button" class="rd-settings-nav-btn is-active" data-rd-prof-tab="profile" aria-current="page">
+                                Profile
+                            </button>
+                            <button type="button" class="rd-settings-nav-btn" data-rd-prof-tab="verification">
+                                Verification
+                            </button>
+                            <button type="button" class="rd-settings-nav-btn" data-rd-prof-tab="security">
+                                Security
+                            </button>
+                            <button type="button" class="rd-settings-nav-btn" data-rd-prof-tab="terms">
+                                Terms &amp; Privacy
+                            </button>
+                        </nav>
+
+                        <div class="rd-settings-content">
+                            <!-- Sub-pane 1: My Profile -->
+                            <section class="rd-settings-pane is-active" data-rd-prof-pane="profile" aria-label="My Resident Profile">
+                                <div class="rd-settings-pane-head">
+                                    <h3>My Profile</h3>
+                                    <span class="rd-settings-status-pill <?php echo $isVerifiedResident ? 'is-verified' : 'is-pending'; ?>" id="rdVerificationPill">
+                                        <?php echo $isVerifiedResident ? 'Verified' : 'Pending Verification'; ?>
                                     </span>
-                                    <div>
-                                        <h2>My Profile</h2>
-                                    </div>
                                 </div>
-                                <span style="background:#eef6f2; color:#1b6553; border:1px solid #cde2d6; font-size:0.75rem; font-weight:700; padding:3px 10px; border-radius:9999px;" id="rdVerificationPill">
-                                    <?php echo $isVerifiedResident ? 'Verified' : 'Pending Verification'; ?>
-                                </span>
-                            </div>
 
-                            <div id="residentProfileAlert" class="alert" style="display:none;"></div>
+                                <div id="residentProfileAlert" class="alert" style="display:none; margin-bottom:16px;"></div>
 
-                            <div class="alert <?php echo $isVerifiedResident ? 'alert-success' : 'alert-info'; ?>" id="rdVerificationGuide" style="display:block; margin-bottom:14px; font-size:0.82rem; line-height:1.45;">
-                                <?php if ($isVerifiedResident): ?>
-                                    <strong>Verified Resident Account:</strong> Your Email Address, Mobile Number, and Barangay Tumana Address have been verified by Barangay officials.
-                                <?php else: ?>
-                                    <strong>Verification Status: Pending Review</strong> &mdash; Complete your <strong>Email Address</strong>, <strong>Mobile Number</strong>, <strong>Purok / Area in Tumana</strong>, and <strong>Complete Street Address</strong> below. Barangay Administrator or Secretary will review these details to verify your account.
-                                <?php endif; ?>
-                            </div>
-
-                            <form id="residentProfileForm">
-                                <div class="agap-field-row-2">
-                                    <div class="form-group">
-                                        <label for="profUsername">Username</label>
-                                        <input type="text" id="profUsername" disabled value="<?php echo htmlspecialchars($residentProfile['username']); ?>">
+                                <!-- Card 1: Identity Summary -->
+                                <div class="rd-settings-subcard rd-settings-summary">
+                                    <div class="rd-settings-summary-main">
+                                        <div class="rd-settings-avatar" id="rdProfSummaryAvatar" aria-hidden="true">
+                                            <?php echo htmlspecialchars($displayInitials); ?>
+                                        </div>
+                                        <div class="rd-settings-summary-meta">
+                                            <h4 id="rdProfSummaryName"><?php echo htmlspecialchars($displayFullName); ?></h4>
+                                            <p id="rdProfSummaryEmail"><?php echo htmlspecialchars($displaySubIdentity); ?></p>
+                                            <p class="rd-settings-summary-addr" id="rdProfSummaryAddress"><?php echo htmlspecialchars($displayAddressSummary); ?></p>
+                                        </div>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="profLang">Preferred Language</label>
-                                        <select id="profLang" name="preferred_language">
-                                            <option value="fil" <?php echo ($residentProfile['preferred_language'] !== 'en') ? 'selected' : ''; ?>>Filipino / Tagalog</option>
-                                            <option value="en" <?php echo ($residentProfile['preferred_language'] === 'en') ? 'selected' : ''; ?>>English</option>
-                                        </select>
-                                        <div class="agap-segmented-group" data-seg-target="profLang" role="group" aria-label="Preferred Language">
-                                            <button type="button" class="agap-seg-btn <?php echo ($residentProfile['preferred_language'] !== 'en') ? 'is-active' : ''; ?>" data-seg-value="fil">Tagalog</button>
-                                            <button type="button" class="agap-seg-btn <?php echo ($residentProfile['preferred_language'] === 'en') ? 'is-active' : ''; ?>" data-seg-value="en">English</button>
+                                    <button type="button" class="rd-settings-edit-btn" data-rd-prof-edit="profFirstName">
+                                        <span>Edit</span>
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                    </button>
+                                </div>
+
+                                <form id="residentProfileForm" class="rd-settings-form" data-editing="false">
+                                    <!-- Card 2: Personal Information -->
+                                    <div class="rd-settings-subcard">
+                                        <div class="rd-settings-subcard-head">
+                                            <h4>Personal Information</h4>
+                                            <button type="button" class="rd-settings-edit-btn" data-rd-prof-edit="profFirstName">
+                                                <span>Edit</span>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                            </button>
+                                        </div>
+
+                                        <div class="rd-settings-fields-2">
+                                            <div class="form-group">
+                                                <label for="profFirstName">First Name <span class="req">*</span></label>
+                                                <input type="text" id="profFirstName" name="first_name" required maxlength="100" data-validate="name" readonly value="<?php echo htmlspecialchars($residentProfile['first_name']); ?>">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="profLastName">Last Name <span class="req">*</span></label>
+                                                <input type="text" id="profLastName" name="last_name" required maxlength="100" data-validate="name" readonly value="<?php echo htmlspecialchars($residentProfile['last_name']); ?>">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="profMiddleName">Middle Name</label>
+                                                <input type="text" id="profMiddleName" name="middle_name" maxlength="100" data-validate="name" readonly value="<?php echo htmlspecialchars($residentProfile['middle_name']); ?>">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="profUsername">Username</label>
+                                                <input type="text" id="profUsername" disabled value="<?php echo htmlspecialchars($residentProfile['username']); ?>">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="profEmail">Email Address <span class="req">*</span></label>
+                                                <input type="email" id="profEmail" name="email" required maxlength="150" data-validate="email" readonly value="<?php echo htmlspecialchars($residentProfile['email']); ?>">
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="profContactNo">Mobile Number <small style="font-weight:500; color:#64748b;">(For Verification)</small></label>
+                                                <input type="tel" id="profContactNo" name="contact_no" maxlength="20" data-validate="phone" readonly placeholder="09XXXXXXXXX or +639XXXXXXXXX" value="<?php echo htmlspecialchars($residentProfile['contact_no']); ?>">
+                                            </div>
+                                            <div class="form-group rd-settings-span-full">
+                                                <label for="profLang">Preferred Language</label>
+                                                <select id="profLang" name="preferred_language" disabled>
+                                                    <option value="fil" <?php echo ($residentProfile['preferred_language'] !== 'en') ? 'selected' : ''; ?>>Filipino / Tagalog</option>
+                                                    <option value="en" <?php echo ($residentProfile['preferred_language'] === 'en') ? 'selected' : ''; ?>>English</option>
+                                                </select>
+                                                <div class="agap-segmented-group" data-seg-target="profLang" role="group" aria-label="Preferred Language">
+                                                    <button type="button" class="agap-seg-btn <?php echo ($residentProfile['preferred_language'] !== 'en') ? 'is-active' : ''; ?>" data-seg-value="fil" disabled>Tagalog</button>
+                                                    <button type="button" class="agap-seg-btn <?php echo ($residentProfile['preferred_language'] === 'en') ? 'is-active' : ''; ?>" data-seg-value="en" disabled>English</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Card 3: Barangay Tumana Residency -->
+                                    <div class="rd-settings-subcard">
+                                        <div class="rd-settings-subcard-head">
+                                            <h4>Barangay Tumana Residency</h4>
+                                            <button type="button" class="rd-settings-edit-btn" data-rd-prof-edit="profPurok">
+                                                <span>Edit</span>
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                            </button>
+                                        </div>
+
+                                        <div class="rd-settings-fields-2">
+                                            <div class="form-group">
+                                                <label for="profPurok">Purok / Area in Tumana</label>
+                                                <select id="profPurok" name="purok" disabled>
+                                                    <option value="">Select Purok...</option>
+                                                    <?php foreach ($purokOptions as $p): ?>
+                                                        <option value="<?php echo htmlspecialchars($p); ?>" <?php echo ($residentProfile['purok'] === $p) ? 'selected' : ''; ?>><?php echo htmlspecialchars($p); ?></option>
+                                                    <?php endforeach; ?>
+                                                    <option value="Non-Resident" <?php echo ($residentProfile['purok'] === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="profAddress">Complete Street Address</label>
+                                                <input type="text" id="profAddress" name="address" maxlength="255" readonly value="<?php echo htmlspecialchars($residentProfile['address']); ?>" placeholder="House #, Street, Barangay Tumana">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="rd-settings-edit-actions" id="rdProfileEditActions" hidden>
+                                        <button type="button" class="btn-secondary" id="btnCancelResidentProfile">Cancel</button>
+                                        <button type="submit" class="agap-btn-submit" id="btnSaveResidentProfile">Save Changes</button>
+                                    </div>
+                                </form>
+                            </section>
+
+                            <!-- Sub-pane 2: Residency Verification -->
+                            <section class="rd-settings-pane" data-rd-prof-pane="verification" aria-label="Residency Verification" hidden>
+                                <div class="rd-settings-pane-head">
+                                    <h3>Residency Verification</h3>
+                                    <span class="rd-settings-status-pill <?php echo $isVerifiedResident ? 'is-verified' : 'is-pending'; ?>" id="rdVerificationTabPill">
+                                        <?php echo $isVerifiedResident ? 'Verified' : 'Pending Verification'; ?>
+                                    </span>
+                                </div>
+
+                                <div class="alert <?php echo $isVerifiedResident ? 'alert-success' : 'alert-info'; ?>" id="rdVerificationGuide" style="display:block; margin-bottom:16px; font-size:0.84rem; line-height:1.5;">
+                                    <?php if ($isVerifiedResident): ?>
+                                        <strong>Verified Resident Account:</strong> Your Email Address, Mobile Number, and Barangay Tumana Address have been verified by Barangay officials.
+                                    <?php else: ?>
+                                        <strong>Verification Status: Pending Review</strong> &mdash; Complete your <strong>Email Address</strong>, <strong>Mobile Number</strong>, <strong>Purok / Area in Tumana</strong>, and <strong>Complete Street Address</strong> under Profile. Barangay Administrator or Secretary will review these details to verify your account.
+                                    <?php endif; ?>
+                                </div>
+
+                                <div class="rd-settings-subcard">
+                                    <div class="rd-settings-subcard-head">
+                                        <h4>Verification Requirements</h4>
+                                        <button type="button" class="rd-settings-edit-btn" id="btnJumpEditVerification">
+                                            <span>Update Details</span>
+                                        </button>
+                                    </div>
+                                    <ul class="rd-ver-checklist" id="rdVerChecklist">
+                                        <li class="<?php echo $hasVerEmail ? 'is-done' : ''; ?>" data-ver-check="email">
+                                            <span class="rd-ver-dot" aria-hidden="true"></span>
+                                            <div>
+                                                <strong>Active Email Address</strong>
+                                                <p>Used for filing confirmations, hearing notices, and account recovery.</p>
+                                            </div>
+                                        </li>
+                                        <li class="<?php echo $hasVerPhone ? 'is-done' : ''; ?>" data-ver-check="phone">
+                                            <span class="rd-ver-dot" aria-hidden="true"></span>
+                                            <div>
+                                                <strong>Mobile Number (PH Format)</strong>
+                                                <p>Allows Lupon staff to contact you for Paanyaya and conciliation updates.</p>
+                                            </div>
+                                        </li>
+                                        <li class="<?php echo $hasVerAddress ? 'is-done' : ''; ?>" data-ver-check="address">
+                                            <span class="rd-ver-dot" aria-hidden="true"></span>
+                                            <div>
+                                                <strong>Barangay Tumana Purok &amp; Street Address</strong>
+                                                <p>Confirms territorial jurisdiction under Republic Act No. 7160 (KP Law).</p>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </section>
+
+                            <!-- Sub-pane 3: Security (Change Password) -->
+                            <section class="rd-settings-pane" data-rd-prof-pane="security" aria-label="Account Security" hidden>
+                                <div class="rd-settings-pane-head">
+                                    <h3>Account Security</h3>
+                                </div>
+
+                                <div class="rd-settings-subcard">
+                                    <div class="rd-settings-subcard-head">
+                                        <div>
+                                            <h4>Change Password</h4>
+                                            <p class="rd-settings-subnote">Keep your resident portal account protected with a strong password.</p>
+                                        </div>
+                                    </div>
+
+                                    <div id="residentPasswordAlert" class="alert" style="display:none; margin-bottom:14px;"></div>
+
+                                    <form id="residentPasswordForm">
+                                        <div class="form-group">
+                                            <label for="profCurrentPassword">Current Password <span class="req">*</span></label>
+                                            <input type="password" id="profCurrentPassword" name="current_password" required autocomplete="current-password">
+                                        </div>
+                                        <div class="rd-settings-fields-2">
+                                            <div class="form-group">
+                                                <label for="profNewPassword">New Password <span class="req">*</span></label>
+                                                <input type="password" id="profNewPassword" name="new_password" required minlength="12" maxlength="128" data-validate="password" autocomplete="new-password">
+                                                <span class="hint">At least 12 characters with uppercase, lowercase, and a number.</span>
+                                            </div>
+                                            <div class="form-group">
+                                                <label for="profConfirmPassword">Confirm New Password <span class="req">*</span></label>
+                                                <input type="password" id="profConfirmPassword" name="confirm_password" required minlength="12" maxlength="128" data-validate="password-confirm" data-match="profNewPassword" autocomplete="new-password">
+                                            </div>
+                                        </div>
+                                        <div class="rd-settings-pw-actions">
+                                            <button type="submit" class="agap-btn-submit" id="btnSaveResidentPassword">Update Password</button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </section>
+
+                            <!-- Sub-pane 4: Terms & Privacy -->
+                            <section class="rd-settings-pane" data-rd-prof-pane="terms" aria-label="Terms and Data Privacy" hidden>
+                                <div class="rd-settings-pane-head">
+                                    <h3>Terms &amp; Data Privacy</h3>
+                                </div>
+
+                                <div class="rd-legal-badges">
+                                    <span class="rd-legal-badge">RA 10173 &middot; Data Privacy Act of 2012</span>
+                                    <span class="rd-legal-badge">RA 7160 &middot; Local Government Code (KP Law)</span>
+                                    <span class="rd-legal-badge">NPC Circular No. 16-01 &middot; Government Data Security</span>
+                                </div>
+
+                                <div class="rd-settings-subcard">
+                                    <div class="rd-legal-list">
+                                        <div class="rd-legal-item">
+                                            <h4>1. Official Katarungang Pambarangay Mandate</h4>
+                                            <p>AGAP is the official platform of Barangay Tumana, Marikina City for complaint intake, <em>Paanyaya</em>, mediation, conciliation proceedings, and KP statutory forms under Republic Act No. 7160.</p>
+                                        </div>
+                                        <div class="rd-legal-item">
+                                            <h4>2. Account Confidentiality &amp; Audit Trail</h4>
+                                            <p>Resident accounts are protected with Role-Based Access Control (RBAC). Profile updates, complaint filings, and document views are logged in the barangay system audit trail for public accountability.</p>
+                                        </div>
+                                        <div class="rd-legal-item">
+                                            <h4>3. Data Privacy Protection (RA 10173)</h4>
+                                            <p>Personal details (full name, contact information, Purok, and street address) are processed strictly for Barangay Tumana dispute resolution and residency verification in compliance with the Data Privacy Act of 2012 and NPC Circular No. 16-01.</p>
+                                        </div>
+                                        <div class="rd-legal-item">
+                                            <h4>4. Accuracy &amp; Geolocation Usage</h4>
+                                            <p>Submitted narratives and pinned map coordinates are used to verify barangay territorial jurisdiction and support accurate issuance of notices and summons.</p>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="agap-field-row-3">
-                                    <div class="form-group">
-                                        <label for="profFirstName">First Name <span class="req">*</span></label>
-                                        <input type="text" id="profFirstName" name="first_name" required maxlength="100" data-validate="name" value="<?php echo htmlspecialchars($residentProfile['first_name']); ?>">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="profMiddleName">Middle Name</label>
-                                        <input type="text" id="profMiddleName" name="middle_name" maxlength="100" data-validate="name" value="<?php echo htmlspecialchars($residentProfile['middle_name']); ?>">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="profLastName">Last Name <span class="req">*</span></label>
-                                        <input type="text" id="profLastName" name="last_name" required maxlength="100" data-validate="name" value="<?php echo htmlspecialchars($residentProfile['last_name']); ?>">
-                                    </div>
-                                </div>
-                                <div class="agap-field-row-2">
-                                    <div class="form-group">
-                                        <label for="profEmail">Email Address <span class="req">*</span></label>
-                                        <input type="email" id="profEmail" name="email" required maxlength="150" data-validate="email" value="<?php echo htmlspecialchars($residentProfile['email']); ?>">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="profContactNo">Mobile Number <small style="font-weight:500; color:#64748b;">(For Verification)</small></label>
-                                        <input type="tel" id="profContactNo" name="contact_no" maxlength="20" data-validate="phone" placeholder="09XXXXXXXXX or +639XXXXXXXXX" value="<?php echo htmlspecialchars($residentProfile['contact_no']); ?>">
-                                    </div>
-                                </div>
-                                <div class="agap-field-row-2">
-                                    <div class="form-group">
-                                        <label for="profPurok">Purok / Area in Tumana</label>
-                                        <select id="profPurok" name="purok">
-                                            <option value="">Select Purok...</option>
-                                            <?php foreach ($purokOptions as $p): ?>
-                                                <option value="<?php echo htmlspecialchars($p); ?>" <?php echo ($residentProfile['purok'] === $p) ? 'selected' : ''; ?>><?php echo htmlspecialchars($p); ?></option>
-                                            <?php endforeach; ?>
-                                            <option value="Non-Resident" <?php echo ($residentProfile['purok'] === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="profAddress">Complete Street Address</label>
-                                        <input type="text" id="profAddress" name="address" maxlength="255" value="<?php echo htmlspecialchars($residentProfile['address']); ?>" placeholder="House #, Street, Barangay Tumana">
-                                    </div>
-                                </div>
-                                <div class="agap-form-actions" style="margin-top:8px;">
-                                    <button type="submit" class="agap-btn-submit" id="btnSaveResidentProfile">Save Profile Changes</button>
-                                </div>
-                            </form>
-                        </section>
-
-                        <section class="agap-form-card" aria-label="Change Password">
-                            <div class="agap-form-card-head">
-                                <div class="agap-form-card-title">
-                                    <span class="agap-form-card-icon" aria-hidden="true">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                    </span>
-                                    <div>
-                                        <h2>Change Password</h2>
-                                        <p style="margin:2px 0 0; font-size:0.78rem; color:#64748b;">Keep your resident portal account protected with a strong password.</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div id="residentPasswordAlert" class="alert" style="display:none;"></div>
-
-                            <form id="residentPasswordForm">
-                                <div class="form-group">
-                                    <label for="profCurrentPassword">Current Password <span class="req">*</span></label>
-                                    <input type="password" id="profCurrentPassword" name="current_password" required autocomplete="current-password">
-                                </div>
-                                <div class="form-group">
-                                    <label for="profNewPassword">New Password <span class="req">*</span></label>
-                                    <input type="password" id="profNewPassword" name="new_password" required minlength="12" maxlength="128" data-validate="password" autocomplete="new-password">
-                                    <span class="hint">At least 12 characters with uppercase, lowercase, and a number.</span>
-                                </div>
-                                <div class="form-group">
-                                    <label for="profConfirmPassword">Confirm New Password <span class="req">*</span></label>
-                                    <input type="password" id="profConfirmPassword" name="confirm_password" required minlength="12" maxlength="128" data-validate="password-confirm" data-match="profNewPassword" autocomplete="new-password">
-                                </div>
-                                <div class="agap-form-actions" style="margin-top:8px;">
-                                    <button type="submit" class="agap-btn-submit" id="btnSaveResidentPassword" style="width:100%;">Update Password</button>
-                                </div>
-                            </form>
-                        </section>
+                            </section>
+                        </div>
                     </div>
                 </div>
 
@@ -1405,13 +1576,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const respFirstHidden = document.getElementById('portalRespFirst');
     const respMiddleHidden = document.getElementById('portalRespMiddle');
     const respLastHidden = document.getElementById('portalRespLast');
-    function syncRespondentNameParts() {
-        const cleaned = String(respFullNameEl?.value || '').trim().replace(/\s+/g, ' ');
+    function splitFullNameParts(rawName) {
+        const cleaned = String(rawName || '').trim().replace(/\s+/g, ' ');
         const parts = cleaned ? cleaned.split(' ') : [];
-        if (respFirstHidden) respFirstHidden.value = parts[0] || '';
-        if (respMiddleHidden) respMiddleHidden.value = parts.length > 2 ? parts.slice(1, -1).join(' ') : '';
-        if (respLastHidden) respLastHidden.value = parts.length >= 2 ? parts[parts.length - 1] : '';
-        return parts;
+        return {
+            cleaned,
+            parts,
+            first: parts[0] || '',
+            middle: parts.length > 2 ? parts.slice(1, -1).join(' ') : '',
+            last: parts.length >= 2 ? parts[parts.length - 1] : ''
+        };
+    }
+
+    function syncRespondentNameParts() {
+        const parsed = splitFullNameParts(respFullNameEl?.value || '');
+        if (respFirstHidden) respFirstHidden.value = parsed.first;
+        if (respMiddleHidden) respMiddleHidden.value = parsed.middle;
+        if (respLastHidden) respLastHidden.value = parsed.last;
+        return parsed.parts;
     }
     respFullNameEl?.addEventListener('input', syncRespondentNameParts);
     respFullNameEl?.addEventListener('blur', syncRespondentNameParts);
@@ -1424,6 +1606,281 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const opt = Array.from(selectEl.options).find((o) => o.value.toLowerCase() === value.toLowerCase());
         if (opt) selectEl.value = opt.value;
+    }
+
+    const extraComplainantsListEl = document.getElementById('portalExtraComplainantsList');
+    const extraRespondentsListEl = document.getElementById('portalExtraRespondentsList');
+    const extraPartiesHiddenContainer = document.getElementById('portalExtraPartiesHiddenInputs');
+    const purokTemplateHtml = document.getElementById('portalRespPurok')?.innerHTML || '<option value="">Select Purok (Optional)...</option>';
+    let extraPartyUidCounter = 0;
+
+    const EXTRA_PARTY_CONFIG = {
+        Complainant: {
+            listEl: extraComplainantsListEl,
+            badgeLabel: 'Co-Complainant',
+            addressLabel: 'Complete Address (Optional)',
+            addressPlaceholder: 'House #, Street, Barangay Tumana',
+            addressRequired: false
+        },
+        Respondent: {
+            listEl: extraRespondentsListEl,
+            badgeLabel: 'Additional Respondent',
+            addressLabel: 'Actual Address (Legally Required for Summons)',
+            addressPlaceholder: 'House #, Street, Sitio / Barangay',
+            addressRequired: true
+        }
+    };
+
+    function normalizePersonFullName(raw) {
+        return String(raw || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    }
+
+    function showWizardFieldError(el, msg) {
+        if (!el) return;
+        if (window.AgapFieldValidator?.renderFieldError) {
+            window.AgapFieldValidator.renderFieldError(el, msg);
+        } else {
+            el.setCustomValidity(msg);
+            el.reportValidity();
+        }
+    }
+
+    function clearWizardFieldError(el) {
+        if (!el) return;
+        if (typeof el.setCustomValidity === 'function') {
+            el.setCustomValidity('');
+        }
+        el.classList.remove('input-error', 'agap-field-invalid');
+        const err = el.parentElement?.querySelector('.agap-field-error');
+        if (err) err.remove();
+    }
+
+    function renumberExtraPartyCards(partyType) {
+        const cfg = EXTRA_PARTY_CONFIG[partyType];
+        if (!cfg?.listEl) return;
+        const cards = Array.from(cfg.listEl.querySelectorAll('.rd-extra-party-card'));
+        cards.forEach((card, idx) => {
+            const numBadge = card.querySelector('.rd-extra-party-num');
+            if (numBadge) numBadge.textContent = String(idx + 2);
+        });
+    }
+
+    function getExtraPartyEntries(partyTypeFilter = null) {
+        const entries = [];
+        ['Complainant', 'Respondent'].forEach((type) => {
+            if (partyTypeFilter && type !== partyTypeFilter) return;
+            const listEl = EXTRA_PARTY_CONFIG[type]?.listEl;
+            if (!listEl) return;
+            listEl.querySelectorAll('.rd-extra-party-card').forEach((card) => {
+                const nameEl = card.querySelector('[data-party-field="name"]');
+                const addrEl = card.querySelector('[data-party-field="address"]');
+                const purokEl = card.querySelector('[data-party-field="purok"]');
+                const contactEl = card.querySelector('[data-party-field="contact"]');
+                const fullName = String(nameEl?.value || '').trim().replace(/\s+/g, ' ');
+                const origId = String(card.dataset.origResidentId || '').trim();
+                const origName = String(card.dataset.origFullName || '').trim();
+                const keepResidentId = (origId && normalizePersonFullName(fullName) === normalizePersonFullName(origName))
+                    ? origId
+                    : '';
+                entries.push({
+                    type,
+                    card,
+                    nameEl,
+                    addrEl,
+                    purokEl,
+                    contactEl,
+                    residentId: keepResidentId,
+                    fullName,
+                    parsedName: splitFullNameParts(fullName),
+                    address: String(addrEl?.value || '').trim(),
+                    purok: String(purokEl?.value || '').trim(),
+                    contact: String(contactEl?.value || '').trim()
+                });
+            });
+        });
+        return entries;
+    }
+
+    function syncExtraPartiesHiddenInputs() {
+        if (!extraPartiesHiddenContainer) return;
+        extraPartiesHiddenContainer.innerHTML = '';
+        const appendHidden = (fieldName, value) => {
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = fieldName;
+            inp.value = String(value ?? '');
+            extraPartiesHiddenContainer.appendChild(inp);
+        };
+
+        getExtraPartyEntries().forEach((entry) => {
+            appendHidden('party_resident_ids[]', entry.residentId);
+            appendHidden('party_types[]', entry.type);
+            appendHidden('party_names[]', entry.fullName);
+            appendHidden('party_first_names[]', entry.parsedName.first);
+            appendHidden('party_middle_names[]', entry.parsedName.middle);
+            appendHidden('party_last_names[]', entry.parsedName.last);
+            appendHidden('party_addresses[]', entry.address);
+            appendHidden('party_puroks[]', entry.purok);
+            appendHidden('party_contacts[]', entry.contact);
+        });
+    }
+
+    function clearExtraParties() {
+        if (extraComplainantsListEl) extraComplainantsListEl.innerHTML = '';
+        if (extraRespondentsListEl) extraRespondentsListEl.innerHTML = '';
+        syncExtraPartiesHiddenInputs();
+    }
+
+    function addExtraPartyRow(partyType, prefill = {}) {
+        const cfg = EXTRA_PARTY_CONFIG[partyType];
+        if (!cfg?.listEl) return null;
+        extraPartyUidCounter += 1;
+        const uid = extraPartyUidCounter;
+        const fullNameVal = String(prefill.fullName || '').trim().replace(/\s+/g, ' ');
+        const origResidentId = prefill.residentId ? String(prefill.residentId) : '';
+
+        const card = document.createElement('div');
+        card.className = 'rd-extra-party-card';
+        card.dataset.extraPartyType = partyType;
+        if (origResidentId) {
+            card.dataset.origResidentId = origResidentId;
+            card.dataset.origFullName = fullNameVal;
+        }
+
+        const addrReqMark = cfg.addressRequired ? ' <span class="req">*</span>' : '';
+        const addrReqAttr = cfg.addressRequired ? 'required' : '';
+        const nameId = `extraPartyName_${uid}`;
+        const addrId = `extraPartyAddr_${uid}`;
+        const purokId = `extraPartyPurok_${uid}`;
+        const contactId = `extraPartyContact_${uid}`;
+
+        card.innerHTML = `
+            <div class="rd-extra-party-card-head">
+                <span class="rd-extra-party-badge">
+                    <span class="rd-extra-party-num"></span>
+                    ${escHtml(cfg.badgeLabel)}
+                </span>
+                <button type="button" class="rd-remove-party-btn">Remove</button>
+            </div>
+            <div class="form-group">
+                <label for="${nameId}">Full Name (First &amp; Last Name) <span class="req">*</span></label>
+                <input type="text" id="${nameId}" data-party-field="name" required maxlength="150" data-validate="name" placeholder="e.g. Juan Dela Cruz" value="${escHtml(fullNameVal)}">
+            </div>
+            <div class="form-group">
+                <label for="${addrId}">${cfg.addressLabel}${addrReqMark}</label>
+                <input type="text" id="${addrId}" data-party-field="address" ${addrReqAttr} maxlength="255" placeholder="${escHtml(cfg.addressPlaceholder)}" value="${escHtml(prefill.address || '')}">
+            </div>
+            <div class="agap-field-row-2">
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="${purokId}">Purok / Area</label>
+                    <select id="${purokId}" data-party-field="purok">${purokTemplateHtml}</select>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label for="${contactId}">Mobile Number (Optional)</label>
+                    <input type="tel" id="${contactId}" data-party-field="contact" maxlength="20" data-validate="phone" placeholder="09XXXXXXXXX" value="${escHtml(prefill.contact || '')}">
+                </div>
+            </div>
+        `;
+
+        cfg.listEl.appendChild(card);
+        const purokSelectEl = card.querySelector(`[id="${purokId}"]`);
+        if (prefill.purok) {
+            selectMatchingPurok(purokSelectEl, prefill.purok);
+        }
+
+        const bindSync = () => syncExtraPartiesHiddenInputs();
+        card.querySelectorAll('input, select').forEach((el) => {
+            el.addEventListener('input', () => {
+                clearWizardFieldError(el);
+                bindSync();
+            });
+            el.addEventListener('change', () => {
+                clearWizardFieldError(el);
+                bindSync();
+            });
+        });
+
+        card.querySelector('.rd-remove-party-btn')?.addEventListener('click', () => {
+            card.remove();
+            renumberExtraPartyCards(partyType);
+            syncExtraPartiesHiddenInputs();
+        });
+
+        renumberExtraPartyCards(partyType);
+        syncExtraPartiesHiddenInputs();
+        if (!prefill.skipFocus) {
+            card.querySelector('[data-party-field="name"]')?.focus();
+        }
+        return card;
+    }
+
+    document.getElementById('btnAddExtraComplainant')?.addEventListener('click', () => addExtraPartyRow('Complainant'));
+    document.getElementById('btnAddExtraRespondent')?.addEventListener('click', () => addExtraPartyRow('Respondent'));
+
+    function validateWizardExtraAndConflictParties(stepNum) {
+        let firstBadEl = null;
+        const setBad = (el, msg) => {
+            showWizardFieldError(el, msg);
+            if (!firstBadEl) firstBadEl = el;
+        };
+
+        const primCompKey = normalizePersonFullName(document.getElementById('portalCompFullName')?.value || '');
+        const primRespKey = normalizePersonFullName(respFullNameEl?.value || '');
+        const seenComps = new Set(primCompKey ? [primCompKey] : []);
+        const seenResps = new Set();
+
+        if (stepNum === 1) {
+            getExtraPartyEntries('Complainant').forEach((entry) => {
+                if (entry.parsedName.parts.length < 2) {
+                    setBad(entry.nameEl, 'Please enter both first name and last name for each co-complainant.');
+                    return;
+                }
+                const key = normalizePersonFullName(entry.fullName);
+                if (seenComps.has(key)) {
+                    setBad(entry.nameEl, 'This complainant is already listed above.');
+                    return;
+                }
+                seenComps.add(key);
+                if (primRespKey && key === primRespKey) {
+                    setBad(entry.nameEl, 'A party cannot be listed as both a complainant and a respondent.');
+                    return;
+                }
+                const respDup = getExtraPartyEntries('Respondent').some((r) => normalizePersonFullName(r.fullName) === key);
+                if (respDup) {
+                    setBad(entry.nameEl, 'A party cannot be listed as both a complainant and a respondent.');
+                }
+            });
+        }
+
+        if (stepNum === 2) {
+            getExtraPartyEntries('Complainant').forEach((c) => {
+                const k = normalizePersonFullName(c.fullName);
+                if (k) seenComps.add(k);
+            });
+            if (respFullNameEl && primRespKey && seenComps.has(primRespKey)) {
+                setBad(respFullNameEl, 'A respondent cannot be the same person as a complainant.');
+            }
+            if (primRespKey) seenResps.add(primRespKey);
+
+            getExtraPartyEntries('Respondent').forEach((entry) => {
+                if (entry.parsedName.parts.length < 2) {
+                    setBad(entry.nameEl, 'Please enter both first name and last name for each respondent.');
+                    return;
+                }
+                const key = normalizePersonFullName(entry.fullName);
+                if (seenComps.has(key)) {
+                    setBad(entry.nameEl, 'A respondent cannot be the same person as a complainant.');
+                    return;
+                }
+                if (seenResps.has(key)) {
+                    setBad(entry.nameEl, 'This respondent is already listed above.');
+                    return;
+                }
+                seenResps.add(key);
+            });
+        }
+
+        return firstBadEl;
     }
 
     document.getElementById('btnPortalUseMyAddr')?.addEventListener('click', () => {
@@ -2920,15 +3377,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const parts = syncRespondentNameParts();
             if (parts.length < 2) {
                 const msg = "Please enter the respondent's full name (first and last name) for barangay summons.";
-                if (window.AgapFieldValidator?.renderFieldError) {
-                    window.AgapFieldValidator.renderFieldError(respFullNameEl, msg);
-                } else {
-                    respFullNameEl.setCustomValidity(msg);
-                    respFullNameEl.reportValidity();
-                }
+                showWizardFieldError(respFullNameEl, msg);
                 if (!firstInvalid) firstInvalid = respFullNameEl;
             }
         }
+
+        const extraBadEl = validateWizardExtraAndConflictParties(stepNum);
+        if (extraBadEl && !firstInvalid) {
+            firstInvalid = extraBadEl;
+        }
+        syncExtraPartiesHiddenInputs();
 
         if (firstInvalid) {
             firstInvalid.focus({ preventScroll: false });
@@ -2942,6 +3400,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const host = document.getElementById('rdWizardReviewContent');
         if (!host) return;
         syncGuidedNarrative();
+        syncExtraPartiesHiddenInputs();
         const dtRaw = document.getElementById('portalIncidentDatetime')?.value || '';
         const dtFormatted = dtRaw ? dtRaw.replace('T', ' ') : '—';
         const filesCount = document.getElementById('portalEvidence')?.files?.length || 0;
@@ -2957,6 +3416,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const claimAmt = document.getElementById('portalFineMax')?.value?.trim() || '';
         const extraNotes = document.getElementById('portalAdditionalDetails')?.value?.trim() || '';
 
+        const extraComps = getExtraPartyEntries('Complainant');
+        const extraResps = getExtraPartyEntries('Respondent');
+
+        const renderExtraPartyReviewCards = (items, labelPrefix) => items.map((item, idx) => `
+            <div class="rd-review-party-item">
+                <span class="rd-review-party-role">${escHtml(labelPrefix)} #${idx + 2}</span>
+                <dl class="rd-review-dl">
+                    <div><dt>Full Name</dt><dd>${escHtml(item.fullName || '—')}</dd></div>
+                    <div><dt>Contact Number</dt><dd>${escHtml(item.contact || 'Not provided')}</dd></div>
+                    <div class="rd-review-full"><dt>Address &amp; Purok</dt><dd>${escHtml([item.address, item.purok].filter(Boolean).join(' • ') || 'Not provided')}</dd></div>
+                </dl>
+            </div>
+        `).join('');
+
         const aiSecSug = currentReadonlyAiSuggestion?.secondary?.category_name ? currentReadonlyAiSuggestion.secondary : null;
         const aiSugSummary = (hasClickedAiSuggestion && currentReadonlyAiSuggestion?.primary?.category_name)
             ? `${currentReadonlyAiSuggestion.primary.category_name} (${currentReadonlyAiSuggestion.case_type || 'Civil'})${aiSecSug ? ` + ${aiSecSug.category_name} (${aiSecSug.case_type || currentReadonlyAiSuggestion.case_type || 'Civil'})` : ''}`
@@ -2968,25 +3441,27 @@ document.addEventListener('DOMContentLoaded', () => {
         host.innerHTML = `
             <div class="rd-review-box">
                 <div class="rd-review-box-head">
-                    <strong>1. Complainant Details</strong>
+                    <strong>1. Complainant Details (${1 + extraComps.length})</strong>
                     <button type="button" class="rd-review-edit-btn" data-wizard-goto="1">Edit</button>
                 </div>
                 <dl class="rd-review-dl">
-                    <div><dt>Full Name</dt><dd>${escHtml(document.getElementById('portalCompFullName')?.value || '—')}</dd></div>
+                    <div><dt>${extraComps.length ? 'Primary Complainant' : 'Full Name'}</dt><dd>${escHtml(document.getElementById('portalCompFullName')?.value || '—')}</dd></div>
                     <div><dt>Contact Number</dt><dd>${escHtml(document.getElementById('portalCompContact')?.value || '—')}</dd></div>
                     <div class="rd-review-full"><dt>Address &amp; Purok</dt><dd>${escHtml([document.getElementById('portalCompAddress')?.value?.trim(), document.getElementById('portalCompPurok')?.value].filter(Boolean).join(' • ') || '—')}</dd></div>
                 </dl>
+                ${extraComps.length ? `<div class="rd-review-party-list" style="margin-top:10px;">${renderExtraPartyReviewCards(extraComps, 'Co-Complainant')}</div>` : ''}
             </div>
             <div class="rd-review-box">
                 <div class="rd-review-box-head">
-                    <strong>2. Respondent Details (For Summons)</strong>
+                    <strong>2. Respondent Details (For Summons &mdash; ${1 + extraResps.length})</strong>
                     <button type="button" class="rd-review-edit-btn" data-wizard-goto="2">Edit</button>
                 </div>
                 <dl class="rd-review-dl">
-                    <div><dt>Respondent Full Name</dt><dd>${escHtml(respFullNameEl?.value || '—')}</dd></div>
+                    <div><dt>${extraResps.length ? 'Primary Respondent' : 'Respondent Full Name'}</dt><dd>${escHtml(respFullNameEl?.value || '—')}</dd></div>
                     <div><dt>Contact Number</dt><dd>${escHtml(document.getElementById('portalRespContact')?.value?.trim() || 'Not provided')}</dd></div>
                     <div class="rd-review-full"><dt>Actual Summons Address</dt><dd>${escHtml([document.getElementById('portalRespAddress')?.value?.trim(), document.getElementById('portalRespPurok')?.value].filter(Boolean).join(' • ') || '—')}</dd></div>
                 </dl>
+                ${extraResps.length ? `<div class="rd-review-party-list" style="margin-top:10px;">${renderExtraPartyReviewCards(extraResps, 'Additional Respondent')}</div>` : ''}
             </div>
             <div class="rd-review-box">
                 <div class="rd-review-box-head">
@@ -3107,6 +3582,7 @@ document.addEventListener('DOMContentLoaded', () => {
             resultBanner.style.display = 'none';
         }
         stopActiveVoiceCapture();
+        clearExtraParties();
         lastAiCoverage = null;
         resetAiSuggestionSelection(true);
         setStoryAiStatus('');
@@ -3159,8 +3635,22 @@ document.addEventListener('DOMContentLoaded', () => {
             if (wizardSubheadingEl) wizardSubheadingEl.textContent = 'Update your saved draft details below, save changes, or submit when ready.';
 
             const parties = Array.isArray(detail.parties) ? detail.parties : [];
-            const compParty = parties.find((p) => p.party_type === 'Complainant') || {};
-            const respParty = parties.find((p) => p.party_type === 'Respondent') || {};
+            const formatPartyName = (p) => [p?.first_name, p?.middle_name, p?.last_name, p?.suffix]
+                .filter(Boolean)
+                .join(' ')
+                .replace(/\s+/g, ' ')
+                .trim() || p?.resident_name || '';
+
+            const compParties = parties.filter((p) => p.party_type === 'Complainant');
+            const loggedResidentId = Number(document.getElementById('portalCompResidentIdHidden')?.value || 0);
+            const compParty = (loggedResidentId > 0
+                ? compParties.find((p) => Number(p.resident_id) === loggedResidentId)
+                : null) || compParties[0] || {};
+            const extraCompParties = compParties.filter((p) => p !== compParty);
+
+            const respParties = parties.filter((p) => p.party_type === 'Respondent');
+            const respParty = respParties[0] || {};
+            const extraRespParties = respParties.slice(1);
 
             const compContactEl = document.getElementById('portalCompContact');
             const compPurokEl = document.getElementById('portalCompPurok');
@@ -3175,11 +3665,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 compAddrEl.value = compParty.address;
             }
 
-            const respFullName = [respParty.first_name, respParty.middle_name, respParty.last_name, respParty.suffix]
-                .filter(Boolean)
-                .join(' ')
-                .replace(/\s+/g, ' ')
-                .trim() || respParty.resident_name || '';
+            const respFullName = formatPartyName(respParty);
             if (respFullNameEl) respFullNameEl.value = respFullName;
             syncRespondentNameParts();
             const respAddrEl = document.getElementById('portalRespAddress');
@@ -3188,6 +3674,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (respAddrEl) respAddrEl.value = respParty.address || '';
             if (respPurokEl) selectMatchingPurok(respPurokEl, respParty.purok || '');
             if (respContactEl) respContactEl.value = respParty.resident_contact || respParty.preferred_contact || '';
+
+            extraCompParties.forEach((p) => {
+                addExtraPartyRow('Complainant', {
+                    residentId: p.resident_id || '',
+                    fullName: formatPartyName(p),
+                    address: p.address || '',
+                    purok: p.purok || '',
+                    contact: p.resident_contact || p.preferred_contact || '',
+                    skipFocus: true
+                });
+            });
+            extraRespParties.forEach((p) => {
+                addExtraPartyRow('Respondent', {
+                    residentId: p.resident_id || '',
+                    fullName: formatPartyName(p),
+                    address: p.address || '',
+                    purok: p.purok || '',
+                    contact: p.resident_contact || p.preferred_contact || '',
+                    skipFocus: true
+                });
+            });
+            syncExtraPartiesHiddenInputs();
 
             if (dtEl && detail.incident_date) {
                 const datePart = String(detail.incident_date).slice(0, 10);
@@ -3252,18 +3760,20 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         if (resultBanner) resultBanner.style.display = 'none';
         syncGuidedNarrative();
+        syncExtraPartiesHiddenInputs();
 
         for (let s = 1; s <= 3; s++) {
             const pane = document.querySelector(`[data-wizard-pane="${s}"]`);
             if (!pane) continue;
             const fields = Array.from(pane.querySelectorAll('input, select, textarea')).filter((el) => !el.disabled && el.type !== 'hidden');
             const needsNameSplit = (s === 2 && syncRespondentNameParts().length < 2);
+            const hasExtraPartyErr = Boolean(validateWizardExtraAndConflictParties(s));
             const hasFieldErr = fields.some((el) => (
                 window.AgapFieldValidator?.validateElement
                     ? !window.AgapFieldValidator.validateElement(el, false)
                     : !el.checkValidity()
             ));
-            if (hasFieldErr || needsNameSplit) {
+            if (hasFieldErr || needsNameSplit || hasExtraPartyErr) {
                 goToWizardStep(s, { validateCurrent: false, scroll: false });
                 validateWizardPane(s);
                 if (resultBanner) {
@@ -3322,11 +3832,137 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Profile Update Handler
+    // Profile Settings Sub-Tabs, View/Edit Toggle & Update Handler
     const profForm = document.getElementById('residentProfileForm');
     const profAlert = document.getElementById('residentProfileAlert');
+    const profEditActions = document.getElementById('rdProfileEditActions');
+    const profCancelBtn = document.getElementById('btnCancelResidentProfile');
+    const profEditableTextIds = ['profFirstName', 'profMiddleName', 'profLastName', 'profEmail', 'profContactNo', 'profAddress'];
+    let profSnapshot = null;
+
+    function captureProfileSnapshot() {
+        const snap = {};
+        profEditableTextIds.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) snap[id] = el.value;
+        });
+        snap.profPurok = document.getElementById('profPurok')?.value || '';
+        snap.profLang = document.getElementById('profLang')?.value || 'fil';
+        return snap;
+    }
+
+    function restoreProfileSnapshot(snap) {
+        if (!snap) return;
+        profEditableTextIds.forEach((id) => {
+            const el = document.getElementById(id);
+            if (el && Object.prototype.hasOwnProperty.call(snap, id)) {
+                el.value = snap[id];
+                el.classList.remove('input-error', 'agap-field-invalid');
+                const err = el.parentElement?.querySelector('.agap-field-error');
+                if (err) err.remove();
+            }
+        });
+        const purokEl = document.getElementById('profPurok');
+        if (purokEl && Object.prototype.hasOwnProperty.call(snap, 'profPurok')) {
+            purokEl.value = snap.profPurok;
+        }
+        const langEl = document.getElementById('profLang');
+        if (langEl && Object.prototype.hasOwnProperty.call(snap, 'profLang')) {
+            langEl.value = snap.profLang;
+            document.querySelectorAll('#residentProfileForm .agap-seg-btn[data-seg-value]').forEach((btn) => {
+                btn.classList.toggle('is-active', btn.getAttribute('data-seg-value') === snap.profLang);
+            });
+        }
+    }
+
+    function setProfileEditMode(isEditing, focusId = '') {
+        if (!profForm) return;
+        if (isEditing && profForm.getAttribute('data-editing') !== 'true') {
+            profSnapshot = captureProfileSnapshot();
+        }
+        profForm.setAttribute('data-editing', isEditing ? 'true' : 'false');
+        profEditableTextIds.forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (isEditing) {
+                el.removeAttribute('readonly');
+            } else {
+                el.setAttribute('readonly', 'readonly');
+            }
+        });
+        ['profPurok', 'profLang'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !isEditing;
+        });
+        profForm.querySelectorAll('.agap-seg-btn[data-seg-value]').forEach((btn) => {
+            btn.disabled = !isEditing;
+        });
+        document.querySelectorAll('[data-rd-prof-edit]').forEach((btn) => {
+            btn.hidden = isEditing;
+        });
+        if (profEditActions) {
+            profEditActions.hidden = !isEditing;
+        }
+        if (isEditing && focusId) {
+            const target = document.getElementById(focusId);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => target.focus(), 140);
+            }
+        }
+    }
+
+    function switchProfileTab(tabKey) {
+        const cleanKey = tabKey || 'profile';
+        document.querySelectorAll('.rd-settings-nav-btn[data-rd-prof-tab]').forEach((btn) => {
+            const active = btn.getAttribute('data-rd-prof-tab') === cleanKey;
+            btn.classList.toggle('is-active', active);
+            if (active) {
+                btn.setAttribute('aria-current', 'page');
+            } else {
+                btn.removeAttribute('aria-current');
+            }
+        });
+        document.querySelectorAll('.rd-settings-pane[data-rd-prof-pane]').forEach((pane) => {
+            const active = pane.getAttribute('data-rd-prof-pane') === cleanKey;
+            pane.classList.toggle('is-active', active);
+            pane.hidden = !active;
+        });
+    }
+
+    document.querySelectorAll('.rd-settings-nav-btn[data-rd-prof-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            switchProfileTab(btn.getAttribute('data-rd-prof-tab'));
+        });
+    });
+
+    document.querySelectorAll('[data-rd-prof-edit]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            switchProfileTab('profile');
+            setProfileEditMode(true, btn.getAttribute('data-rd-prof-edit') || 'profFirstName');
+        });
+    });
+
+    profCancelBtn?.addEventListener('click', () => {
+        restoreProfileSnapshot(profSnapshot);
+        setProfileEditMode(false);
+        if (profAlert) profAlert.style.display = 'none';
+    });
+
+    document.getElementById('btnJumpEditVerification')?.addEventListener('click', () => {
+        const needEmail = !document.getElementById('profEmail')?.value?.trim();
+        const needPhone = !document.getElementById('profContactNo')?.value?.trim();
+        const focusTarget = needEmail ? 'profEmail' : (needPhone ? 'profContactNo' : 'profPurok');
+        switchProfileTab('profile');
+        setProfileEditMode(true, focusTarget);
+    });
+
     profForm?.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (profForm.getAttribute('data-editing') !== 'true') {
+            setProfileEditMode(true, 'profFirstName');
+            return;
+        }
         if (profAlert) profAlert.style.display = 'none';
         const saveBtn = document.getElementById('btnSaveResidentProfile');
         if (saveBtn) saveBtn.disabled = true;
@@ -3357,14 +3993,33 @@ document.addEventListener('DOMContentLoaded', () => {
             if (data.success) {
                 const fullName = `${payload.first_name} ${payload.last_name}`.trim();
                 const initials = ((payload.first_name.charAt(0) || 'R') + (payload.last_name.charAt(0) || '')).toUpperCase();
+                const addressSummary = [payload.purok, payload.address].filter(Boolean).join(' · ') || 'Barangay Tumana address not yet set';
+
                 const navNameEl = document.getElementById('rdHeaderName');
                 const navAvatarEl = document.getElementById('rdHeaderAvatar');
                 const subNameEl = document.getElementById('rdSubFullName');
                 const subEmailEl = document.getElementById('rdSubEmail');
+                const sumAvatarEl = document.getElementById('rdProfSummaryAvatar');
+                const sumNameEl = document.getElementById('rdProfSummaryName');
+                const sumEmailEl = document.getElementById('rdProfSummaryEmail');
+                const sumAddrEl = document.getElementById('rdProfSummaryAddress');
+
                 if (navNameEl && fullName) navNameEl.textContent = fullName;
                 if (navAvatarEl && initials) navAvatarEl.textContent = initials;
                 if (subNameEl && fullName) subNameEl.textContent = fullName;
                 if (subEmailEl && payload.email) subEmailEl.textContent = payload.email;
+                if (sumAvatarEl && initials) sumAvatarEl.textContent = initials;
+                if (sumNameEl && fullName) sumNameEl.textContent = fullName;
+                if (sumEmailEl && payload.email) sumEmailEl.textContent = payload.email;
+                if (sumAddrEl) sumAddrEl.textContent = addressSummary;
+
+                profSnapshot = captureProfileSnapshot();
+                setProfileEditMode(false);
+
+                // Sync Verification Checklist states
+                document.querySelector('[data-ver-check="email"]')?.classList.toggle('is-done', Boolean(payload.email));
+                document.querySelector('[data-ver-check="phone"]')?.classList.toggle('is-done', Boolean(payload.contact_no));
+                document.querySelector('[data-ver-check="address"]')?.classList.toggle('is-done', Boolean(payload.purok || payload.address));
 
                 // Sync auto-filled complainant fields + defaults for future form resets
                 const syncVal = (id, val) => {
@@ -3399,7 +4054,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const ready = Boolean(payload.email && payload.contact_no && (payload.address || payload.purok));
                     verGuide.innerHTML = ready
                         ? '<strong>Ready for Verification:</strong> Your Email, Mobile Number, and Barangay Address are saved and awaiting verification by the Barangay Administrator or Secretary.'
-                        : '<strong>Verification Status: Pending Review</strong> &mdash; Complete your <strong>Email Address</strong>, <strong>Mobile Number</strong>, <strong>Purok / Area in Tumana</strong>, and <strong>Complete Street Address</strong> below. Barangay Administrator or Secretary will review these details to verify your account.';
+                        : '<strong>Verification Status: Pending Review</strong> &mdash; Complete your <strong>Email Address</strong>, <strong>Mobile Number</strong>, <strong>Purok / Area in Tumana</strong>, and <strong>Complete Street Address</strong> under Profile. Barangay Administrator or Secretary will review these details to verify your account.';
                 }
             }
         } catch (_) {

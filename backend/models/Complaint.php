@@ -1495,24 +1495,37 @@ class Complaint
         }
 
         // 3. Additional parties
-        if (!empty($data['party_resident_ids']) && is_array($data['party_resident_ids'])) {
-            $types = $data['party_types'] ?? [];
-            foreach ($data['party_resident_ids'] as $index => $pIdRaw) {
+        $extraPartyIds = is_array($data['party_resident_ids'] ?? null) ? $data['party_resident_ids'] : [];
+        $extraPartyTypes = is_array($data['party_types'] ?? null) ? $data['party_types'] : [];
+        $extraKeys = array_unique(array_merge(array_keys($extraPartyIds), array_keys($extraPartyTypes)));
+        if (!empty($extraKeys)) {
+            $isOnlineSource = strcasecmp(trim((string) ($data['complaint_source'] ?? '')), 'Online') === 0;
+            $findExtraStmt = $this->conn->prepare('SELECT resident_id, residency_verified FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
+            $checkVerifiedStmt = $this->conn->prepare('SELECT resident_id, residency_verified FROM residents WHERE resident_id = ?');
+
+            foreach ($extraKeys as $index) {
+                $pIdRaw = $extraPartyIds[$index] ?? null;
                 $pId = filter_var($pIdRaw, FILTER_VALIDATE_INT) ?: null;
-                $pType = trim((string)($types[$index] ?? 'Witness'));
+                $pType = trim((string)($extraPartyTypes[$index] ?? 'Witness'));
                 if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
                     $pType = 'Witness';
                 }
                 if (!$pId && (!empty($data['party_first_names'][$index]) || !empty($data['party_names'][$index]))) {
                     $pFirst = trim((string)($data['party_first_names'][$index] ?? ''));
+                    $pMiddle = trim((string)($data['party_middle_names'][$index] ?? ''));
                     $pLast  = trim((string)($data['party_last_names'][$index] ?? ''));
                     if ($pFirst === '' && !empty($data['party_names'][$index])) {
-                        $parts = explode(' ', trim((string)$data['party_names'][$index]));
-                        $pFirst = array_shift($parts);
-                        $pLast = implode(' ', $parts) ?: '-';
+                        $parts = preg_split('/\s+/', trim((string)$data['party_names'][$index])) ?: [];
+                        $pFirst = array_shift($parts) ?? '';
+                        if ($pMiddle === '' && count($parts) >= 2) {
+                            $pLast = array_pop($parts) ?? '';
+                            $pMiddle = implode(' ', $parts);
+                        } else {
+                            $pLast = implode(' ', $parts) ?: '-';
+                        }
                     }
                     if ($pFirst !== '') {
-                        $pMiddle = trim((string)($data['party_middle_names'][$index] ?? ''));
+                        $pLast = $pLast !== '' ? $pLast : '-';
                         $pSuffix = trim((string)($data['party_suffixes'][$index] ?? ''));
                         $pContact = trim((string)($data['party_contacts'][$index] ?? ''));
                         $pAddress = trim((string)($data['party_addresses'][$index] ?? ''));
@@ -1521,56 +1534,64 @@ class Complaint
                         $pLat = (isset($data['party_latitudes'][$index]) && $data['party_latitudes'][$index] !== '') ? (float)$data['party_latitudes'][$index] : null;
                         $pLng = (isset($data['party_longitudes'][$index]) && $data['party_longitudes'][$index] !== '') ? (float)$data['party_longitudes'][$index] : null;
 
-                        $findStmt = $this->conn->prepare('SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
-                        $findStmt->execute([$pFirst, $pLast]);
-                        $foundId = $findStmt->fetchColumn();
-                        if ($foundId) {
-                            $pId = (int)$foundId;
+                        $findExtraStmt->execute([$pFirst, $pLast]);
+                        $existingMatch = $findExtraStmt->fetch(PDO::FETCH_ASSOC);
+                        if ($existingMatch) {
+                            $pId = (int)$existingMatch['resident_id'];
                         } else {
-                            $pBarangay = ($pPurok === 'Non-Resident' || ($pAddress && stripos($pAddress, 'tumana') === false)) ? 'Outside Tumana' : 'Tumana';
-                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, address, home_latitude, home_longitude, house_street, purok, barangay, city_municipality, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
-                            $ins->execute([$pFirst, $pMiddle ?: null, $pLast, $pSuffix ?: null, $pContact ?: null, $pAddress ?: null, $pLat, $pLng, $pAddress ?: null, $pPurok ?: null, $pBarangay, 'Marikina City']);
+                            $pIsNonTumana = ($pPurok === 'Non-Resident' || ($pAddress !== '' && stripos($pAddress, 'tumana') === false));
+                            $pBarangay = $pIsNonTumana ? 'Outside Tumana' : 'Tumana';
+                            $pVerifiedFlag = $isOnlineSource ? 0 : 1;
+                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, address, home_latitude, home_longitude, house_street, purok, barangay, city_municipality, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                            $ins->execute([$pFirst, $pMiddle ?: null, $pLast, $pSuffix ?: null, $pContact ?: null, $pAddress ?: null, $pLat, $pLng, $pAddress ?: null, $pPurok ?: null, $pBarangay, 'Marikina City', $pVerifiedFlag]);
                             $pId = (int)$this->conn->lastInsertId();
                         }
                     }
                 }
 
                 if ($pId && $pId > 0) {
+                    $checkVerifiedStmt->execute([$pId]);
+                    $pExisting = $checkVerifiedStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                    $skipOnlineVerifiedProfileUpdate = $isOnlineSource && !empty($pExisting['residency_verified']);
+
                     $pAddressVal = trim((string)($data['party_addresses'][$index] ?? ''));
                     $pPurokVal   = trim((string)($data['party_puroks'][$index] ?? ''));
                     $pContactVal = trim((string)($data['party_contacts'][$index] ?? ''));
                     $pLatVal     = (isset($data['party_latitudes'][$index]) && $data['party_latitudes'][$index] !== '') ? (float)$data['party_latitudes'][$index] : null;
                     $pLngVal     = (isset($data['party_longitudes'][$index]) && $data['party_longitudes'][$index] !== '') ? (float)$data['party_longitudes'][$index] : null;
-                    $pUpd = [];
-                    $pParams = [];
-                    if ($pAddressVal !== '') {
-                        $pUpd[] = "address = ?";
-                        $pParams[] = $pAddressVal;
-                        $pUpd[] = "house_street = ?";
-                        $pParams[] = $pAddressVal;
-                        $isNonTum = ($pPurokVal === 'Non-Resident' || (stripos($pAddressVal, 'tumana') === false && (stripos($pAddressVal, 'marikina') !== false || stripos($pAddressVal, 'quezon') !== false)));
-                        $pUpd[] = "barangay = ?";
-                        $pParams[] = $isNonTum ? 'Outside Tumana' : 'Tumana';
-                        $pUpd[] = "city_municipality = ?";
-                        $pParams[] = 'Marikina City';
-                    }
-                    if ($pLatVal !== null && $pLngVal !== null) {
-                        $pUpd[] = "home_latitude = ?";
-                        $pParams[] = $pLatVal;
-                        $pUpd[] = "home_longitude = ?";
-                        $pParams[] = $pLngVal;
-                    }
-                    if ($pPurokVal !== '') {
-                        $pUpd[] = "purok = ?";
-                        $pParams[] = $pPurokVal;
-                    }
-                    if ($pContactVal !== '') {
-                        $pUpd[] = "contact_no = ?";
-                        $pParams[] = $pContactVal;
-                    }
-                    if (!empty($pUpd)) {
-                        $pParams[] = $pId;
-                        $this->conn->prepare("UPDATE residents SET " . implode(', ', $pUpd) . " WHERE resident_id = ?")->execute($pParams);
+
+                    if (!$skipOnlineVerifiedProfileUpdate) {
+                        $pUpd = [];
+                        $pParams = [];
+                        if ($pAddressVal !== '') {
+                            $pUpd[] = "address = ?";
+                            $pParams[] = $pAddressVal;
+                            $pUpd[] = "house_street = ?";
+                            $pParams[] = $pAddressVal;
+                            $isNonTum = ($pPurokVal === 'Non-Resident' || (stripos($pAddressVal, 'tumana') === false && (stripos($pAddressVal, 'marikina') !== false || stripos($pAddressVal, 'quezon') !== false || stripos($pAddressVal, 'pasig') !== false || stripos($pAddressVal, 'cainta') !== false || stripos($pAddressVal, 'san mateo') !== false)));
+                            $pUpd[] = "barangay = ?";
+                            $pParams[] = $isNonTum ? 'Outside Tumana' : 'Tumana';
+                            $pUpd[] = "city_municipality = ?";
+                            $pParams[] = 'Marikina City';
+                        }
+                        if ($pLatVal !== null && $pLngVal !== null) {
+                            $pUpd[] = "home_latitude = ?";
+                            $pParams[] = $pLatVal;
+                            $pUpd[] = "home_longitude = ?";
+                            $pParams[] = $pLngVal;
+                        }
+                        if ($pPurokVal !== '') {
+                            $pUpd[] = "purok = ?";
+                            $pParams[] = $pPurokVal;
+                        }
+                        if ($pContactVal !== '') {
+                            $pUpd[] = "contact_no = ?";
+                            $pParams[] = $pContactVal;
+                        }
+                        if (!empty($pUpd)) {
+                            $pParams[] = $pId;
+                            $this->conn->prepare("UPDATE residents SET " . implode(', ', $pUpd) . " WHERE resident_id = ?")->execute($pParams);
+                        }
                     }
 
                     $residentLookup->execute([$pId]);
@@ -1602,7 +1623,7 @@ class Complaint
                         0,
                         0,
                         0,
-                        (int) ($pRes['residency_verified'] ?? 1)
+                        (int) ($pRes['residency_verified'] ?? ($isOnlineSource ? 0 : 1))
                     ]);
                 }
             }
@@ -1682,27 +1703,134 @@ class Complaint
             return ['success' => false, 'message' => $pErr];
         }
 
-        // Additional parties validation: all additional parties with resident ID must exist
-        if (!empty($data['party_resident_ids']) && is_array($data['party_resident_ids'])) {
-            $types = $data['party_types'] ?? [];
-            foreach ($data['party_resident_ids'] as $idx => $pIdRaw) {
-                if ($pIdRaw === '' || $pIdRaw === null) {
-                    continue;
-                }
-                $pId = filter_var($pIdRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-                if (!$pId) {
-                    continue;
-                }
-                $pType = trim((string)($types[$idx] ?? 'Witness'));
+        // Additional parties validation: validate both selected resident IDs and typed-in co-parties
+        $extraIds = is_array($data['party_resident_ids'] ?? null) ? $data['party_resident_ids'] : [];
+        $extraTypes = is_array($data['party_types'] ?? null) ? $data['party_types'] : [];
+        $extraKeys = array_unique(array_merge(array_keys($extraIds), array_keys($extraTypes)));
+        if (!empty($extraKeys)) {
+            $isOnlineSubmission = strcasecmp(trim((string) ($data['complaint_source'] ?? '')), 'Online') === 0;
+            $isDraftSubmission = !empty($data['is_draft']);
+
+            $normalizePartyName = static function (string $first, string $last): string {
+                return preg_replace('/\s+/', ' ', strtolower(trim($first . ' ' . $last))) ?? '';
+            };
+
+            $complainantIds = $compId ? [(int) $compId => true] : [];
+            $respondentIds = $respId ? [(int) $respId => true] : [];
+            $complainantNames = [];
+            $respondentNames = [];
+            if ($fullCompName !== '') {
+                $complainantNames[$fullCompName] = true;
+            }
+            if ($fullRespName !== '') {
+                $respondentNames[$fullRespName] = true;
+            }
+
+            foreach ($extraKeys as $idx) {
+                $pIdRaw = $extraIds[$idx] ?? null;
+                $pType = trim((string)($extraTypes[$idx] ?? 'Witness'));
                 if (!in_array($pType, ['Complainant', 'Respondent', 'Witness'], true)) {
                     return ['success' => false, 'message' => 'Invalid party type specified for additional party.'];
                 }
 
-                $checkP = $this->conn->prepare('SELECT resident_id, is_tenant, purok FROM residents WHERE resident_id = ?');
-                $checkP->execute([$pId]);
-                $pRow = $checkP->fetch(PDO::FETCH_ASSOC);
-                if (!$pRow) {
-                    return ['success' => false, 'message' => 'An additional party resident profile was not found in the directory.'];
+                $pId = ($pIdRaw !== '' && $pIdRaw !== null)
+                    ? filter_var($pIdRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+                    : null;
+                if ($pIdRaw !== '' && $pIdRaw !== null && !$pId) {
+                    return ['success' => false, 'message' => 'Invalid resident identifier specified for additional party.'];
+                }
+
+                $pFirst = trim((string)($data['party_first_names'][$idx] ?? ''));
+                $pMiddle = trim((string)($data['party_middle_names'][$idx] ?? ''));
+                $pLast = trim((string)($data['party_last_names'][$idx] ?? ''));
+                $pFull = trim((string)($data['party_names'][$idx] ?? ''));
+                $pAddress = trim((string)($data['party_addresses'][$idx] ?? ''));
+                $pPurok = trim((string)($data['party_puroks'][$idx] ?? ''));
+                $pContact = trim((string)($data['party_contacts'][$idx] ?? ''));
+
+                if (!$pId && $pFirst === '' && $pLast === '' && $pFull === '' && $pAddress === '' && $pContact === '') {
+                    continue;
+                }
+
+                $pNameKey = '';
+                if ($pId) {
+                    $checkP = $this->conn->prepare('SELECT resident_id, is_tenant, purok, first_name, last_name FROM residents WHERE resident_id = ?');
+                    $checkP->execute([$pId]);
+                    $pRow = $checkP->fetch(PDO::FETCH_ASSOC);
+                    if (!$pRow) {
+                        return ['success' => false, 'message' => 'An additional party resident profile was not found in the directory.'];
+                    }
+                    $pNameKey = $normalizePartyName((string) ($pRow['first_name'] ?? ''), (string) ($pRow['last_name'] ?? ''));
+                } else {
+                    if ($pFirst === '' && $pFull !== '') {
+                        $parts = preg_split('/\s+/', $pFull) ?: [];
+                        $pFirst = array_shift($parts) ?? '';
+                        if ($pMiddle === '' && count($parts) >= 2) {
+                            $pLast = array_pop($parts) ?? '';
+                            $pMiddle = implode(' ', $parts);
+                        } else {
+                            $pLast = implode(' ', $parts);
+                        }
+                    }
+
+                    $partyLabel = $pType === 'Complainant'
+                        ? 'additional complainant'
+                        : ($pType === 'Respondent' ? 'additional respondent' : 'additional witness');
+
+                    if ($pFirst === '' || $pLast === '' || $pLast === '-') {
+                        return ['success' => false, 'message' => "Please enter the full name (first and last name) for each {$partyLabel}."];
+                    }
+
+                    foreach ([
+                        'first name' => $pFirst,
+                        'middle name' => $pMiddle,
+                        'last name' => $pLast,
+                    ] as $partName => $partVal) {
+                        if ($partVal === '') {
+                            continue;
+                        }
+                        if ($allowEntity) {
+                            if (!ValidationService::maxLength($partVal, 100) || !ValidationService::text($partVal)) {
+                                return ['success' => false, 'message' => "Please enter a valid {$partyLabel} {$partName} (up to 100 characters)."];
+                            }
+                        } elseif (!ValidationService::name($partVal, 100, false)) {
+                            return ['success' => false, 'message' => "Please enter a valid {$partyLabel} {$partName} (letters only, up to 100 characters)."];
+                        }
+                    }
+
+                    if ($pContact !== '' && (mb_strlen($pContact, 'UTF-8') > 20 || !ValidationService::phone($pContact))) {
+                        return ['success' => false, 'message' => "Please enter a valid Philippine mobile or telephone number for {$partyLabel}."];
+                    }
+                    if ($pAddress !== '' && (!ValidationService::maxLength($pAddress, 255) || !ValidationService::address($pAddress))) {
+                        return ['success' => false, 'message' => "Please enter a valid {$partyLabel} address (up to 255 characters)."];
+                    }
+                    if ($isOnlineSubmission && !$isDraftSubmission && $pType === 'Respondent' && $pAddress === '') {
+                        return ['success' => false, 'message' => 'Please enter a summons address for each additional respondent.'];
+                    }
+
+                    $pNameKey = $normalizePartyName($pFirst, $pLast);
+                }
+
+                if ($pType === 'Complainant') {
+                    if (($pId && isset($respondentIds[$pId])) || ($pNameKey !== '' && isset($respondentNames[$pNameKey]))) {
+                        return ['success' => false, 'message' => 'A party cannot be listed as both a complainant and a respondent in the same complaint.'];
+                    }
+                    if ($pId) {
+                        $complainantIds[$pId] = true;
+                    }
+                    if ($pNameKey !== '') {
+                        $complainantNames[$pNameKey] = true;
+                    }
+                } elseif ($pType === 'Respondent') {
+                    if (($pId && isset($complainantIds[$pId])) || ($pNameKey !== '' && isset($complainantNames[$pNameKey]))) {
+                        return ['success' => false, 'message' => 'A party cannot be listed as both a complainant and a respondent in the same complaint.'];
+                    }
+                    if ($pId) {
+                        $respondentIds[$pId] = true;
+                    }
+                    if ($pNameKey !== '') {
+                        $respondentNames[$pNameKey] = true;
+                    }
                 }
             }
         }

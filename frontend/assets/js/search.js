@@ -37,12 +37,21 @@ document.addEventListener('DOMContentLoaded', () => {
     let activeSortKey = 'case_no';
     let activeSortDir = 'desc';
 
-    // Pagination State (Max 10 per page)
-    const pageSize = 10;
+    // Pagination State (Default 10 per page, reactive to #complaintPageSize)
+    const pageSizeSelect = document.getElementById('complaintPageSize');
+    let pageSize = Math.max(1, Number(pageSizeSelect?.value || 10) || 10);
     let currentPage = 1;
     const paginationContainer = document.getElementById('complaintPagination');
     const paginationSummary = document.getElementById('complaintPaginationSummary');
     const paginationControls = document.getElementById('complaintPaginationControls');
+
+    if (pageSizeSelect) {
+        pageSizeSelect.addEventListener('change', () => {
+            pageSize = Math.max(1, Number(pageSizeSelect.value || 10) || 10);
+            currentPage = 1;
+            renderPaginatedRows();
+        });
+    }
 
     // Toggle secondary filter drawer
     if (drawerToggle && drawerPanel) {
@@ -114,6 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
         sortSelect.addEventListener('change', () => {
             const val = sortSelect.value;
             applySortFromDropdownValue(val);
+            updateDrawerActiveState();
         });
     }
 
@@ -403,6 +413,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateDrawerActiveState() {
         if (!activeDot) return;
         const hasDrawerActive = Boolean(
+            (caseTypeSelect && caseTypeSelect.value) ||
+            (categorySelect && categorySelect.value) ||
+            (sortSelect && sortSelect.value && sortSelect.value !== 'case_number_desc') ||
             (intakeSelect && intakeSelect.value) ||
             (stageSelect && stageSelect.value) ||
             (dispositionSelect && dispositionSelect.value) ||
@@ -599,16 +612,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         paginationControls.replaceChildren();
 
-        if (totalPages <= 1) {
-            return;
-        }
-
-        const createBtn = (label, pageNum, disabled = false, current = false, isNav = false) => {
+        const createBtn = (label, pageNum, disabled = false, current = false, ariaLabel = '') => {
             const btn = document.createElement('button');
             btn.type = 'button';
-            btn.className = `complaints-page-btn ${current ? 'active current' : ''} ${isNav ? 'complaints-page-nav-btn' : ''}`;
+            btn.className = `agap-page-btn${current ? ' is-active' : ''}`;
             btn.textContent = label;
             btn.disabled = disabled;
+            if (ariaLabel) btn.setAttribute('aria-label', ariaLabel);
             if (current) btn.setAttribute('aria-current', 'page');
             btn.addEventListener('click', () => {
                 if (currentPage !== pageNum && !disabled) {
@@ -623,8 +633,15 @@ document.addEventListener('DOMContentLoaded', () => {
             return btn;
         };
 
+        if (totalPages <= 1) {
+            paginationControls.appendChild(createBtn('‹', 1, true, false, 'Previous page'));
+            paginationControls.appendChild(createBtn('1', 1, false, true));
+            paginationControls.appendChild(createBtn('›', 1, true, false, 'Next page'));
+            return;
+        }
+
         // Previous button
-        paginationControls.appendChild(createBtn('← Previous', currentPage - 1, currentPage <= 1, false, true));
+        paginationControls.appendChild(createBtn('‹', currentPage - 1, currentPage <= 1, false, 'Previous page'));
 
         // Numeric buttons with ellipsis if many pages
         const maxButtons = 5;
@@ -638,7 +655,7 @@ document.addEventListener('DOMContentLoaded', () => {
             paginationControls.appendChild(createBtn('1', 1, false, currentPage === 1));
             if (startPage > 2) {
                 const ellipsis = document.createElement('span');
-                ellipsis.className = 'pagination-ellipsis';
+                ellipsis.className = 'agap-page-ellipsis';
                 ellipsis.textContent = '…';
                 paginationControls.appendChild(ellipsis);
             }
@@ -651,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (endPage < totalPages) {
             if (endPage < totalPages - 1) {
                 const ellipsis = document.createElement('span');
-                ellipsis.className = 'pagination-ellipsis';
+                ellipsis.className = 'agap-page-ellipsis';
                 ellipsis.textContent = '…';
                 paginationControls.appendChild(ellipsis);
             }
@@ -659,7 +676,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Next button
-        paginationControls.appendChild(createBtn('Next →', currentPage + 1, currentPage >= totalPages, false, true));
+        paginationControls.appendChild(createBtn('›', currentPage + 1, currentPage >= totalPages, false, 'Next page'));
     }
 
     function renderRows(rows, totalCount) {
@@ -690,10 +707,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isPaanyaya = false;
 
-        // 1. Case No. / Complaint Reference ID
+        // 1. Case No. / Complaint Reference ID (with small icon badge matching list reference)
+        const docIconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
         let caseNumberHtml;
         if (!row.case_id && row.complaint_number) {
-            caseNumberHtml = `<span class="badge-case-paanyaya-no" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700; padding:2px 8px; border-radius:9999px; font-size:0.75rem;" title="Complaint Reference ID">${escapeHtml(String(row.complaint_number))}</span>`;
+            caseNumberHtml = `
+                <div class="agap-rec-id-wrap" title="Complaint Reference ID">
+                    <span class="agap-rec-icon is-blue">${docIconSvg}</span>
+                    <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(String(row.complaint_number))}</a>
+                </div>
+            `;
         } else if (isPaanyaya) {
             const formatPaanyayaDisplay = (cNum, compId, dt) => {
                 if (cNum && String(cNum).startsWith('P-')) return String(cNum);
@@ -704,7 +727,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return `P-${mm}-${ss}-${yy}`;
             };
             const displayCaseNum = formatPaanyayaDisplay(row.case_number || row.complaint_number, id, row.incident_date);
-            caseNumberHtml = `<span class="badge-case-paanyaya-no" style="background:#f0fdf4; color:#15803d; border:1px solid #86efac; font-weight:600; padding:2px 8px; border-radius:9999px; font-size:0.75rem;" title="Paanyaya Pre-Docket Number">${escapeHtml(displayCaseNum)}</span>`;
+            caseNumberHtml = `
+                <div class="agap-rec-id-wrap" title="Paanyaya Pre-Docket Number">
+                    <span class="agap-rec-icon is-amber">${docIconSvg}</span>
+                    <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(displayCaseNum)}</a>
+                </div>
+            `;
         } else {
             const formatDocketDisplay = (cNum, compId, dt) => {
                 if (cNum && !String(cNum).startsWith('CMP-') && !String(cNum).startsWith('P-')) return String(cNum);
@@ -715,16 +743,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 return `${mm}-${ss}-${yy}`;
             };
             const displayCaseNum = formatDocketDisplay(row.case_number || row.complaint_number, id, row.incident_date);
-            caseNumberHtml = `<span class="badge-case-docket">${escapeHtml(displayCaseNum)}</span>`;
+            caseNumberHtml = `
+                <div class="agap-rec-id-wrap" title="Docket / Case Number">
+                    <span class="agap-rec-icon">${docIconSvg}</span>
+                    <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(displayCaseNum)}</a>
+                </div>
+            `;
         }
 
         // 2. Complaint (Title of complaint / short description)
         const complaintTitle = row.complaint_title ? String(row.complaint_title).trim() : '';
+        const sourceLabel = String(row.complaint_source || 'Walk-in') === 'Online' ? 'Online' : 'Walk-in';
+        const sourceBadgeClass = sourceLabel === 'Online' ? 'is-blue' : 'is-emerald';
         let docBadgeHtml = '';
         if (row.document_status === 'Scan Uploaded') {
-            docBadgeHtml = `<span class="badge-doc-status badge-doc-uploaded" style="padding:1px 6px; font-size:0.7rem; font-weight:600;" title="KP Form 7 handwritten scan uploaded">📄 Scan</span>`;
+            docBadgeHtml = `<span class="agap-pill-badge is-slate" style="padding:1px 7px; font-size:0.7rem;" title="KP Form 7 handwritten scan uploaded">Scan Uploaded</span>`;
         } else if (row.document_status === 'Updated Scan Uploaded') {
-            docBadgeHtml = `<span class="badge-doc-status badge-doc-updated" style="padding:1px 6px; font-size:0.7rem; font-weight:600;" title="Updated KP Form 7 scan uploaded">📄 Updated</span>`;
+            docBadgeHtml = `<span class="agap-pill-badge is-amber" style="padding:1px 7px; font-size:0.7rem;" title="Updated KP Form 7 scan uploaded">Updated Scan</span>`;
         }
 
         const complaintHtml = `
@@ -734,7 +769,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </a>
                 <div class="complaint-sub-meta">
                     <span class="badge-case-type ${caseTypeClass}">${escapeHtml(caseType)}</span>
-                    <span class="badge-doc-status" style="padding:1px 6px; font-size:0.7rem; font-weight:700; border-radius:4px; background:${String(row.complaint_source || 'Walk-in') === 'Online' ? '#dbeafe' : '#dcfce7'}; color:${String(row.complaint_source || 'Walk-in') === 'Online' ? '#1e40af' : '#166534'};">${String(row.complaint_source || 'Walk-in') === 'Online' ? '🌐 Online' : '🏢 Walk-in'}</span>
+                    <span class="agap-pill-badge ${sourceBadgeClass}" style="padding:1px 7px; font-size:0.7rem;">${escapeHtml(sourceLabel)}</span>
                     ${docBadgeHtml}
                 </div>
             </div>
@@ -818,22 +853,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const isArchived = row.status === 'Archived' || row.case_status === 'Archived' || row.complaint_status === 'Archived';
 
         const editBtnHtml = !isDisposedOrClosed
-            ? `<button type="button" class="btn-row-action" onclick="window.location.href='complaint-edit.php?id=${id}'" title="Edit complaint">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            ? `<button type="button" class="agap-btn-act is-primary-soft" onclick="window.location.href='complaint-edit.php?id=${id}'" title="Edit complaint">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                     Edit
                 </button>`
             : '';
 
         const archiveBtnHtml = !isArchived
-            ? `<button type="button" class="btn-row-action btn-archive-action" onclick="archiveComplaint(${id})" title="Archive complaint">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
+            ? `<button type="button" class="agap-btn-act is-danger-soft" onclick="archiveComplaint(${id})" title="Archive complaint">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"></polyline><rect x="1" y="3" width="22" height="5"></rect><line x1="10" y1="12" x2="14" y2="12"></line></svg>
                 </button>`
             : '';
 
         const actionsHtml = Number.isInteger(id) && id > 0
-            ? `<div class="table-actions-group">
-                <button type="button" class="btn-row-action btn-view-action" onclick="window.location.href='complaint-details.php?id=${id}'" title="View full details">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            ? `<div class="agap-row-actions">
+                <button type="button" class="agap-btn-act" onclick="window.location.href='complaint-details.php?id=${id}'" title="View full details">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
                     View
                 </button>
                 ${editBtnHtml}

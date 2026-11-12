@@ -166,16 +166,4 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             </details>
         <?php endif; ?>
     </nav>
-    <div class="sidebar-footer">
-        <div class="sidebar-lang-card" id="sidebarLangCard">
-            <div class="sidebar-lang-header">
-                <span class="sidebar-lang-title">Wika / Language</span>
-            </div>
-            <div class="sidebar-lang-pills" role="group" aria-label="Tagalog or English language toggle">
-                <button type="button" class="sidebar-lang-btn" id="sidebarLangEnBtn" onclick="window.setAppLanguage && window.setAppLanguage('en')">English</button>
-                <button type="button" class="sidebar-lang-btn" id="sidebarLangTlBtn" onclick="window.setAppLanguage && window.setAppLanguage('tl')">Tagalog</button>
-            </div>
-        </div>
-        <div class="sidebar-brand-meta"><span>AGAP</span><small>Barangay Tumana</small></div>
-    </div>
 </aside>

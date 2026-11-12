@@ -26,6 +26,7 @@ $docketMessages = [
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/cases.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/cases.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/search.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/search.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/agap-list-layout.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/agap-list-layout.css'); ?>">
 
 <div class="dashboard-layout">
     <?php include '../../layouts/sidebar.php'; ?>
@@ -33,87 +34,135 @@ $docketMessages = [
     <div class="main-content">
         <?php include '../../layouts/navbar.php'; ?>
 
-        <div class="page-header">
-            <div>
-                <h1>Docketed Cases</h1>
-                <p>Manage and search docketed barangay cases, complaints, and proceedings records.</p>
-            </div>
-        </div>
+        <div class="agap-list-shell">
+            <section class="agap-list-card">
+                <div class="agap-list-header">
+                    <div class="agap-list-title-wrap">
+                        <div class="agap-list-title-row">
+                            <h1>Docketed Cases</h1>
+                            <span class="agap-stage-pill">Ongoing Docket</span>
+                        </div>
+                        <p class="agap-list-subtitle">Manage and track docketed barangay cases across mediation, conciliation, and arbitration.</p>
+                    </div>
+                </div>
 
-        <?php if (isset($docketMessages[$docketError])): ?>
-            <div class="page-alert" role="alert"><?php echo $docketMessages[$docketError]; ?></div>
-        <?php endif; ?>
+                <?php if (isset($docketMessages[$docketError])): ?>
+                    <div class="page-alert" role="alert" style="margin-bottom: 16px;"><?php echo $docketMessages[$docketError]; ?></div>
+                <?php endif; ?>
 
-        <!-- Compact Search & Filter Toolbar (copied from complaints page) -->
-        <section class="cases-toolbar-card complaints-toolbar-card">
-            <form id="caseRecordsSearchForm" class="complaints-toolbar-form" onsubmit="event.preventDefault();">
-                <div class="toolbar-main-row">
-                    <div class="search-box-wrap">
-                        <svg class="search-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                        <input id="caseSearchQuery" name="q" type="search" class="search-input-field" placeholder="Search by case no., complaint title, complainant, or respondent..." autocomplete="off">
-                        <button type="button" id="clearCaseSearchInput" class="search-clear-btn" title="Clear keyword">&times;</button>
+                <form id="caseRecordsSearchForm" onsubmit="event.preventDefault();">
+                    <div class="agap-list-subbar">
+                        <div class="agap-underline-tabs" role="tablist" aria-label="Case stages">
+                            <button type="button" class="agap-tab-item is-active" data-case-status="">
+                                All <span class="agap-tab-count" id="caseTabCountAll">0</span>
+                            </button>
+                            <button type="button" class="agap-tab-item" data-case-status="Docketed">
+                                Docketed <span class="agap-tab-count" id="caseTabCountDocketed">0</span>
+                            </button>
+                            <button type="button" class="agap-tab-item" data-case-status="Mediation">
+                                Mediation <span class="agap-tab-count" id="caseTabCountMediation">0</span>
+                            </button>
+                            <button type="button" class="agap-tab-item" data-case-status="Conciliation">
+                                Conciliation <span class="agap-tab-count" id="caseTabCountConciliation">0</span>
+                            </button>
+                            <button type="button" class="agap-tab-item" data-case-status="Arbitration">
+                                Arbitration <span class="agap-tab-count" id="caseTabCountArbitration">0</span>
+                            </button>
+                        </div>
+
+                        <div class="agap-inline-controls">
+                            <div class="agap-inline-search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                <input id="caseSearchQuery" name="q" type="search" placeholder="Search cases..." autocomplete="off">
+                                <button type="button" id="clearCaseSearchInput" class="search-clear-btn" title="Clear keyword">&times;</button>
+                            </div>
+
+                            <button type="button" id="toggleCaseFilterDrawer" class="agap-filter-icon-btn" title="Filter & Sort Options">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                                <span>Filter</span>
+                                <span id="caseFilterActiveDot" class="agap-filter-dot" style="display: none;"></span>
+                            </button>
+
+                            <button type="button" id="clearCaseFilters" class="agap-reset-link-btn" style="display: none;">
+                                Reset
+                            </button>
+                        </div>
                     </div>
 
-                    <select id="caseSearchType" name="case_type" class="toolbar-select">
-                        <option value="">All Case Types</option>
-                        <option value="Civil">Civil</option>
-                        <option value="Criminal">Criminal</option>
-                    </select>
+                    <div id="caseFilterDrawerPanel" class="filter-drawer-panel">
+                        <div class="agap-drawer-grid">
+                            <div class="agap-drawer-field">
+                                <label for="caseSearchType">Case Type</label>
+                                <select id="caseSearchType" name="case_type">
+                                    <option value="">All Case Types</option>
+                                    <option value="Civil">Civil</option>
+                                    <option value="Criminal">Criminal</option>
+                                </select>
+                            </div>
+                            <div class="agap-drawer-field">
+                                <label for="caseSearchStatus">Stage Status</label>
+                                <select id="caseSearchStatus" name="case_status">
+                                    <option value="">All Ongoing Statuses</option>
+                                    <option value="Docketed">Docketed</option>
+                                    <option value="Mediation">Mediation</option>
+                                    <option value="Conciliation">Conciliation</option>
+                                    <option value="Arbitration">Arbitration</option>
+                                </select>
+                            </div>
+                            <div class="agap-drawer-field">
+                                <label for="caseSearchSort">Sort Order</label>
+                                <select id="caseSearchSort" name="sort_by">
+                                    <option value="case_number_desc">Case No. (Newest)</option>
+                                    <option value="case_number_asc">Case No. (Oldest)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </form>
 
-                    <select id="caseSearchStatus" name="case_status" class="toolbar-select">
-                        <option value="">All Ongoing Statuses</option>
-                        <option value="Docketed">Docketed</option>
-                        <option value="Mediation">Mediation</option>
-                        <option value="Conciliation">Conciliation</option>
-                        <option value="Arbitration">Arbitration</option>
-                    </select>
-
-                    <select id="caseSearchSort" name="sort_by" class="toolbar-select" title="Order records">
-                        <option value="case_number_desc">Sort: Case No. (Desc)</option>
-                        <option value="case_number_asc">Sort: Case No. (Asc)</option>
-                    </select>
-
-                    <button type="button" id="clearCaseFilters" class="btn-reset-filters" style="display: none;">
-                        Reset Filters
-                    </button>
+                <div class="agap-list-meta">
+                    <span id="caseResultSummary">Loading cases...</span>
+                    <span id="caseTableTip">Select any case to view details or open its stage workspace.</span>
                 </div>
-            </form>
-        </section>
 
-                <section class="cases-table-card stage-section-card" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); margin-top: 16px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-                <div id="caseResultSummary" class="case-result-summary" style="font-weight: 600; color: #1e293b;">Loading cases...</div>
-                <small id="caseTableTip" style="color: #64748b; font-size: 0.82rem;">Select any case to view its proceedings, sessions, and stage workspace.</small>
-            </div>
+                <div class="agap-list-table-wrap">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Case No.</th>
+                                <th>Complainant</th>
+                                <th>Respondent</th>
+                                <th>Case Type</th>
+                                <th>Status</th>
+                                <th style="text-align: right;">Actions</th>
+                            </tr>
+                        </thead>
 
-            <div class="table-container integrated-cases-table-wrap">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Case No.</th>
-                            <th>Complainant</th>
-                            <th>Respondent</th>
-                            <th>Case Type</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
+                        <tbody id="caseTable">
+                            <tr>
+                                <td colspan="6" class="empty-state">
+                                    Loading cases...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
 
-                    <tbody id="caseTable">
-                        <tr>
-                            <td colspan="6" class="empty-state">
-                                Loading cases...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="casePagination" class="case-pagination" aria-label="Cases pagination" hidden style="margin: 12px 0 0; padding: 10px 14px;">
-                <span id="casePaginationSummary" class="case-pagination-summary" aria-live="polite"></span>
-                <div id="casePaginationControls" class="case-pagination-controls"></div>
-            </div>
-        </section>
+                <div id="casePagination" class="agap-list-footer" aria-label="Cases pagination" hidden>
+                    <div class="agap-page-size-wrap">
+                        <label for="casePageSize">Items Per Page</label>
+                        <select id="casePageSize" class="agap-page-size-select" aria-label="Items per page">
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span id="casePaginationSummary" class="agap-page-summary" aria-live="polite"></span>
+                    </div>
+                    <div id="casePaginationControls" class="agap-pagination-controls"></div>
+                </div>
+            </section>
+        </div>
 
     </div>
 </div>

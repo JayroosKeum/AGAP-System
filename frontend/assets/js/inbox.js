@@ -12,7 +12,7 @@ function stripNotificationEmoji(text) {
  */
 
 let allNotifications = [];
-let currentNotifTab = 'unread';
+let currentStatusFilter = 'all';
 let notifSearchQuery = '';
 let notifCategoryFilter = 'all';
 let notifSeverityFilter = 'all';
@@ -23,10 +23,20 @@ let selectedNotificationIds = new Set();
 document.addEventListener('DOMContentLoaded', () => {
     loadNotifications();
 
-    // Close any active dropdown menu on outside click
+    // Close any active dropdown menu or toolbar popover on outside click
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.notif-row-more')) {
             closeAllMenus();
+        }
+        if (!e.target.closest('.notif-popover-wrap')) {
+            closeToolbarPopovers();
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeAllMenus();
+            closeToolbarPopovers();
         }
     });
 });
@@ -111,21 +121,32 @@ window.loadNotifications = loadNotifications;
  * Update unread/read badge counters and toolbar button state
  */
 function updateTabBadges() {
+    const totalCount = allNotifications.length;
     const unreadCount = allNotifications.filter(n => !Number(n.is_read)).length;
     const readCount = allNotifications.filter(n => Number(n.is_read) === 1).length;
+    const urgentCount = allNotifications.filter(n => {
+        const cat = inferCategoryTag(n.title || '', n.message || '', n.severity || 'info');
+        const sev = (n.severity && n.severity !== 'info') ? String(n.severity).toLowerCase() : cat.severity;
+        return sev === 'urgent' || sev === 'warning';
+    }).length;
 
+    const allBadge = document.getElementById('tabCountAll');
     const unreadBadge = document.getElementById('tabCountUnread');
     const readBadge = document.getElementById('tabCountRead');
     const markAllBtn = document.getElementById('btnMarkAllRead');
 
-    if (unreadBadge) {
-        unreadBadge.textContent = unreadCount;
-        unreadBadge.style.display = unreadCount > 0 ? 'inline-block' : 'none';
-    }
-    if (readBadge) {
-        readBadge.textContent = readCount;
-        readBadge.style.display = readCount > 0 ? 'inline-block' : 'none';
-    }
+    if (allBadge) allBadge.textContent = totalCount;
+    if (unreadBadge) unreadBadge.textContent = unreadCount;
+    if (readBadge) readBadge.textContent = readCount;
+
+    const statTotal = document.getElementById('notifStatTotal');
+    const statUnread = document.getElementById('notifStatUnread');
+    const statUrgent = document.getElementById('notifStatUrgent');
+    const statRead = document.getElementById('notifStatRead');
+    if (statTotal) statTotal.textContent = totalCount;
+    if (statUnread) statUnread.textContent = unreadCount;
+    if (statUrgent) statUrgent.textContent = urgentCount;
+    if (statRead) statRead.textContent = readCount;
 
     if (markAllBtn) {
         markAllBtn.disabled = unreadCount === 0;
@@ -135,16 +156,18 @@ function updateTabBadges() {
 }
 
 /**
- * Update category filter chips live count badges
+ * Update category filter option live count badges
  */
 function updateCategoryChipCounts() {
-    const tabRows = allNotifications.filter(item => {
+    const scopedRows = allNotifications.filter(item => {
         const isUnread = !Number(item.is_read);
-        return currentNotifTab === 'unread' ? isUnread : !isUnread;
+        if (currentStatusFilter === 'unread') return isUnread;
+        if (currentStatusFilter === 'read') return !isUnread;
+        return true;
     });
 
     const counts = {
-        all: tabRows.length,
+        all: scopedRows.length,
         critical: 0,
         warning: 0,
         hearing: 0,
@@ -155,9 +178,9 @@ function updateCategoryChipCounts() {
         success: 0
     };
 
-    tabRows.forEach(item => {
+    scopedRows.forEach(item => {
         const cat = inferCategoryTag(item.title || '', item.message || '', item.severity || 'info');
-        if (counts.hasOwnProperty(cat.key)) {
+        if (Object.prototype.hasOwnProperty.call(counts, cat.key)) {
             counts[cat.key]++;
         }
     });
@@ -168,25 +191,63 @@ function updateCategoryChipCounts() {
     });
 }
 
+function toggleToolbarPopover(event, popoverId) {
+    if (event) event.stopPropagation();
+    const target = document.getElementById(popoverId);
+    if (!target) return;
+
+    const wasHidden = target.hidden;
+    closeToolbarPopovers();
+    closeAllMenus();
+
+    if (wasHidden) {
+        target.hidden = false;
+        const trigger = target.closest('.notif-popover-wrap')?.querySelector('.notif-tool-btn');
+        if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    }
+}
+window.toggleToolbarPopover = toggleToolbarPopover;
+
+function closeToolbarPopovers() {
+    document.querySelectorAll('.notif-popover-menu').forEach(menu => {
+        menu.hidden = true;
+    });
+    document.querySelectorAll('.notif-popover-wrap .notif-tool-btn').forEach(btn => {
+        btn.setAttribute('aria-expanded', 'false');
+    });
+}
+window.closeToolbarPopovers = closeToolbarPopovers;
+
+function toggleAnalyticsStrip() {
+    const strip = document.getElementById('notifSummaryStrip');
+    const btn = document.getElementById('btnNotifAnalytics');
+    if (!strip || !btn) return;
+    const willOpen = strip.hidden;
+    strip.hidden = !willOpen;
+    btn.classList.toggle('is-active', willOpen);
+    btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+}
+window.toggleAnalyticsStrip = toggleAnalyticsStrip;
+
 /**
- * Switch between Unread and Read tabs
+ * Filter by All / Unread / Read
  */
-function setNotifTab(tab) {
-    if (currentNotifTab === tab) return;
-    currentNotifTab = tab;
+function setStatusFilter(status) {
+    const normalized = (status === 'unread' || status === 'read') ? status : 'all';
+    currentStatusFilter = normalized;
 
-    const tabUnread = document.getElementById('tabUnread');
-    const tabRead = document.getElementById('tabRead');
-
-    if (tabUnread) tabUnread.classList.toggle('active', tab === 'unread');
-    if (tabRead) tabRead.classList.toggle('active', tab === 'read');
+    document.querySelectorAll('.notif-status-pill-btn[data-status-filter]').forEach(btn => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-status-filter') === normalized);
+    });
 
     selectedNotificationIds.clear();
     closeAllMenus();
     updateCategoryChipCounts();
+    updateClearFiltersButton();
     renderNotifications();
 }
-window.setNotifTab = setNotifTab;
+window.setStatusFilter = setStatusFilter;
+window.setNotifTab = setStatusFilter;
 
 /**
  * Real-time search handler
@@ -214,13 +275,33 @@ function clearSearch() {
 window.clearSearch = clearSearch;
 
 /**
- * Category Filter Chip Handler
+ * Category / Type Filter Handler
  */
 function setCategoryFilter(category) {
-    notifCategoryFilter = category;
-    document.querySelectorAll('.notif-chip').forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-category') === category);
+    notifCategoryFilter = category || 'all';
+    const labelMap = {
+        all: 'Type',
+        critical: 'Critical',
+        warning: 'Timeline',
+        hearing: 'Hearing',
+        summons: 'Summons',
+        pangkat: 'Pangkat',
+        complaint: 'Intake',
+        document: 'Document',
+        success: 'Resolved',
+    };
+    const labelEl = document.getElementById('notifTypeBtnLabel');
+    if (labelEl) {
+        labelEl.textContent = labelMap[notifCategoryFilter] || 'Type';
+    }
+    const typeBtn = document.getElementById('btnNotifTypeMenu');
+    if (typeBtn) {
+        typeBtn.classList.toggle('is-filtered', notifCategoryFilter !== 'all');
+    }
+    document.querySelectorAll('.notif-type-opt').forEach(btn => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-category') === notifCategoryFilter);
     });
+    closeToolbarPopovers();
     updateClearFiltersButton();
     renderNotifications();
 }
@@ -264,41 +345,59 @@ function resetAllFilters() {
     notifSeverityFilter = 'all';
     notifDateFilter = 'all';
     notifSortBy = 'date_desc';
+    currentStatusFilter = 'all';
 
     const searchInput = document.getElementById('notifSearchInput');
     const clearSearchBtn = document.getElementById('notifClearSearch');
     const severitySelect = document.getElementById('notifSeveritySelect');
     const dateSelect = document.getElementById('notifDateSelect');
     const sortSelect = document.getElementById('notifSortSelect');
+    const typeLabel = document.getElementById('notifTypeBtnLabel');
+    const typeBtn = document.getElementById('btnNotifTypeMenu');
 
     if (searchInput) searchInput.value = '';
     if (clearSearchBtn) clearSearchBtn.style.display = 'none';
     if (severitySelect) severitySelect.value = 'all';
     if (dateSelect) dateSelect.value = 'all';
     if (sortSelect) sortSelect.value = 'date_desc';
+    if (typeLabel) typeLabel.textContent = 'Type';
+    if (typeBtn) typeBtn.classList.remove('is-filtered');
 
-    document.querySelectorAll('.notif-chip').forEach(btn => {
-        btn.classList.toggle('active', btn.getAttribute('data-category') === 'all');
+    document.querySelectorAll('.notif-status-pill-btn[data-status-filter]').forEach(btn => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-status-filter') === 'all');
+    });
+    document.querySelectorAll('.notif-type-opt').forEach(btn => {
+        btn.classList.toggle('is-active', btn.getAttribute('data-category') === 'all');
     });
 
+    updateCategoryChipCounts();
     updateClearFiltersButton();
     renderNotifications();
 }
 window.resetAllFilters = resetAllFilters;
 
 /**
- * Show / hide reset filters button based on filter activity
+ * Show / hide active filter indicators
  */
 function updateClearFiltersButton() {
     const btn = document.getElementById('btnClearFilters');
-    if (!btn) return;
-    const hasActiveFilters = Boolean(
-        notifSearchQuery ||
-        notifCategoryFilter !== 'all' ||
+    const dot = document.getElementById('notifFilterActiveDot');
+    const filterMenuBtn = document.getElementById('btnNotifFilterMenu');
+
+    const hasMenuFilter = Boolean(
+        currentStatusFilter !== 'all' ||
         notifSeverityFilter !== 'all' ||
         notifDateFilter !== 'all'
     );
-    btn.style.display = hasActiveFilters ? 'inline-flex' : 'none';
+    const hasAnyFilters = Boolean(
+        hasMenuFilter ||
+        notifSearchQuery ||
+        notifCategoryFilter !== 'all'
+    );
+
+    if (btn) btn.style.visibility = hasAnyFilters ? 'visible' : 'hidden';
+    if (dot) dot.hidden = !hasMenuFilter;
+    if (filterMenuBtn) filterMenuBtn.classList.toggle('is-filtered', hasMenuFilter);
 }
 
 /**
@@ -310,10 +409,12 @@ function renderNotifications() {
 
     closeAllMenus();
 
-    // 1. Filter by Tab (Unread vs Read)
+    // 1. Filter by Status (All vs Unread vs Read)
     let rows = allNotifications.filter(item => {
         const isUnread = !Number(item.is_read);
-        return currentNotifTab === 'unread' ? isUnread : !isUnread;
+        if (currentStatusFilter === 'unread') return isUnread;
+        if (currentStatusFilter === 'read') return !isUnread;
+        return true;
     });
 
     // 2. Filter by search keyword (title, message, case #, complaint #)
@@ -324,7 +425,7 @@ function renderNotifications() {
         });
     }
 
-    // 3. Filter by Category Chip
+    // 3. Filter by Category
     if (notifCategoryFilter !== 'all') {
         rows = rows.filter(item => {
             const cat = inferCategoryTag(item.title || '', item.message || '', item.severity || 'info');
@@ -381,7 +482,6 @@ function renderNotifications() {
             if (rA !== rB) return rB - rA;
             return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
         }
-        // Default: date_desc
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
 
@@ -389,13 +489,22 @@ function renderNotifications() {
     if (rows.length === 0) {
         updateSelectionUI();
         const hasFilters = Boolean(
+            currentStatusFilter !== 'all' ||
             notifSearchQuery ||
             notifCategoryFilter !== 'all' ||
             notifSeverityFilter !== 'all' ||
             notifDateFilter !== 'all'
         );
-        let emptyTitle = currentNotifTab === 'unread' ? 'No Unread Notifications' : 'No Read Notifications';
-        let emptyDesc = currentNotifTab === 'unread' ? 'All caught up! No unread notifications.' : 'No read notifications found.';
+        let emptyTitle = 'No Notifications Yet';
+        let emptyDesc = 'Case updates, hearing reminders, and barangay notices will appear here.';
+
+        if (currentStatusFilter === 'unread') {
+            emptyTitle = 'No Unread Notifications';
+            emptyDesc = 'All caught up! No unread notifications right now.';
+        } else if (currentStatusFilter === 'read') {
+            emptyTitle = 'No Read Notifications';
+            emptyDesc = 'No read notifications found.';
+        }
 
         if (hasFilters) {
             emptyTitle = 'No Matching Notifications';
@@ -404,24 +513,19 @@ function renderNotifications() {
 
         listEl.innerHTML = `
             <div class="notif-empty-state">
-                
                 <div class="notif-empty-title">${escapeHtml(emptyTitle)}</div>
                 <p class="notif-empty-desc">${escapeHtml(emptyDesc)}</p>
                 ${hasFilters ? `
                     <button type="button" class="notif-btn-switch-tab" onclick="resetAllFilters()">
                         Reset All Filters
                     </button>
-                ` : (currentNotifTab === 'unread' ? `
-                    <button type="button" class="notif-btn-switch-tab" onclick="setNotifTab('read')">
-                        View Read Notifications &rarr;
-                    </button>
-                ` : '')}
+                ` : ''}
             </div>
         `;
         return;
     }
 
-    // 8. Build HTML rows
+    // 8. Build HTML table rows matching the structured 4-column reference layout
     listEl.innerHTML = rows.map(item => {
         const isUnread = !Number(item.is_read);
         const isSelected = selectedNotificationIds.has(Number(item.notification_id));
@@ -437,27 +541,20 @@ function renderNotifications() {
                     <input type="checkbox" class="notif-checkbox notif-row-checkbox" value="${item.notification_id}" ${isSelected ? 'checked' : ''} onchange="handleRowCheckChange(event, ${item.notification_id})" aria-label="Select notification">
                 </div>
                 <div class="notif-row-left">
-                    <span class="notif-dot ${isUnread ? 'dot-unread dot-' + effectiveSeverity : 'dot-read'}" title="${isUnread ? 'Unread (' + effectiveSeverity.toUpperCase() + ')' : 'Read'}"></span>
+                    <span class="notif-type-icon-tile tile-${cat.key}" aria-hidden="true">${getCategoryTileSvg(cat.key)}</span>
                     <div class="notif-text-col">
                         <div class="notif-row-title">${escapeHtml(stripNotificationEmoji(item.title) || 'Notification')}</div>
                         <div class="notif-row-msg">${escapeHtml(item.message || '')}</div>
                     </div>
                 </div>
                 <div class="notif-row-category">
-                    <span class="notif-category-badge ${cat.class}">
-                        ${cat.icon ? `<span class="notif-category-icon">${cat.icon}</span>` : ''}
-                        <span class="notif-category-label">${escapeHtml(cat.label)}</span>
-                    </span>
+                    <span class="notif-category-badge ${cat.class}">${escapeHtml(cat.shortLabel || cat.label)}</span>
                 </div>
                 <div class="notif-row-time">
                     <time datetime="${escapeAttr(item.created_at || '')}" title="${escapeAttr(fullTime)}">${escapeHtml(timeStr)}</time>
                 </div>
-                <div class="notif-row-actions-group" onclick="event.stopPropagation()">
-                    ${actionUrl ? `
-                        <a href="${escapeAttr(actionUrl)}" class="btn-notif-open-link" title="Open Case / Complaint">
-                            <span>Open</span> &rarr;
-                        </a>
-                    ` : ''}
+                <div class="notif-row-status-col" onclick="event.stopPropagation()">
+                    <span class="notif-status-pill ${isUnread ? 'is-unread' : 'is-read'}">${isUnread ? 'unread' : 'read'}</span>
                     <div class="notif-row-more">
                         <button type="button" class="btn-notif-dots" onclick="toggleMenu(event, ${item.notification_id})" title="More options" aria-label="More options">
                             &bull;&bull;&bull;
@@ -474,7 +571,7 @@ function renderNotifications() {
                                 </button>
                             ` : `
                                 <button type="button" class="notif-menu-item" onclick="markUnread(${item.notification_id})">
-                                    <span>•</span> Mark as unread
+                                    Mark as unread
                                 </button>
                             `}
                             <button type="button" class="notif-menu-item text-danger" onclick="deleteNotification(${item.notification_id})">
@@ -488,6 +585,29 @@ function renderNotifications() {
     }).join('');
 
     updateSelectionUI();
+}
+
+function getCategoryTileSvg(catKey) {
+    switch (catKey) {
+        case 'critical':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+        case 'warning':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+        case 'hearing':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>';
+        case 'summons':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>';
+        case 'pangkat':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+        case 'complaint':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></svg>';
+        case 'document':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>';
+        case 'success':
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
+        default:
+            return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+    }
 }
 
 /**
@@ -549,19 +669,15 @@ window.clearAllSelections = clearAllSelections;
  */
 function updateSelectionUI() {
     const count = selectedNotificationIds.size;
-    const actionsEl = document.getElementById('selectionBarActions');
+    const selBar = document.getElementById('notifSelectionBar');
     const badgeEl = document.getElementById('selectionCountBadge');
     const selectAllCb = document.getElementById('selectAllCheckbox');
-    const selectAllLabel = document.getElementById('selectAllLabel');
     const bulkCounts = document.querySelectorAll('.bulk-count');
 
     bulkCounts.forEach(el => el.textContent = count);
 
-    if (actionsEl) actionsEl.style.display = count > 0 ? 'flex' : 'none';
-    if (badgeEl) {
-        badgeEl.textContent = `${count} selected`;
-        badgeEl.style.display = count > 0 ? 'inline-flex' : 'none';
-    }
+    if (selBar) selBar.style.display = count > 0 ? 'flex' : 'none';
+    if (badgeEl) badgeEl.textContent = `${count} selected`;
 
     const visibleCbs = document.querySelectorAll('.notif-row-checkbox');
     const visibleCount = visibleCbs.length;
@@ -589,10 +705,6 @@ function updateSelectionUI() {
                 selectAllCb.indeterminate = true;
             }
         }
-    }
-
-    if (selectAllLabel) {
-        selectAllLabel.textContent = count > 0 ? `${count} selected` : 'Select all';
     }
 }
 
@@ -693,30 +805,30 @@ function inferCategoryTag(title, message, severity) {
     const sev = (severity || '').toLowerCase();
 
     if (text.includes('sla') || text.includes('overdue') || text.includes('emergency') || text.includes('cancelled') || text.includes('breach') || sev === 'urgent') {
-        return { key: 'critical', icon: '', label: 'Critical Blocker', class: 'tag-critical', severity: 'urgent' };
+        return { key: 'critical', icon: '', label: 'Critical Blocker', shortLabel: 'Critical', class: 'tag-critical', severity: 'urgent' };
     }
     if (text.includes('deadline') || text.includes('due soon') || text.includes('warning') || text.includes('lapsed') || sev === 'warning') {
-        return { key: 'warning', icon: '', label: 'Timeline Risk', class: 'tag-warning', severity: 'warning' };
+        return { key: 'warning', icon: '', label: 'Timeline Risk', shortLabel: 'Timeline', class: 'tag-warning', severity: 'warning' };
     }
     if (text.includes('hearing') || text.includes('rescheduled') || text.includes('appearance') || text.includes('mediation')) {
-        return { key: 'hearing', icon: '', label: 'Hearing Schedule', class: 'tag-hearing', severity: 'info' };
+        return { key: 'hearing', icon: '', label: 'Hearing Schedule', shortLabel: 'Hearing', class: 'tag-hearing', severity: 'info' };
     }
     if (text.includes('summon') || text.includes('kp form 9') || text.includes('kp form 8')) {
-        return { key: 'summons', icon: '', label: 'Summons Service', class: 'tag-summons', severity: 'info' };
+        return { key: 'summons', icon: '', label: 'Summons Service', shortLabel: 'Summons', class: 'tag-summons', severity: 'info' };
     }
     if (text.includes('pangkat') || text.includes('conciliation')) {
-        return { key: 'pangkat', icon: '', label: 'Pangkat Formation', class: 'tag-pangkat', severity: 'info' };
+        return { key: 'pangkat', icon: '', label: 'Pangkat Formation', shortLabel: 'Pangkat', class: 'tag-pangkat', severity: 'info' };
     }
     if (text.includes('paanyaya') || text.includes('complaint') || text.includes('intake')) {
-        return { key: 'complaint', icon: '', label: 'Complaint Intake', class: 'tag-complaint', severity: 'info' };
+        return { key: 'complaint', icon: '', label: 'Complaint Intake', shortLabel: 'Intake', class: 'tag-complaint', severity: 'info' };
     }
     if (text.includes('kp form') || text.includes('document')) {
-        return { key: 'document', icon: '', label: 'Legal Document', class: 'tag-document', severity: 'info' };
+        return { key: 'document', icon: '', label: 'Legal Document', shortLabel: 'Document', class: 'tag-document', severity: 'info' };
     }
     if (text.includes('settled') || text.includes('resolved') || text.includes('amicable') || sev === 'success') {
-        return { key: 'success', icon: '', label: 'Case Resolution', class: 'tag-success', severity: 'success' };
+        return { key: 'success', icon: '', label: 'Case Resolution', shortLabel: 'Resolved', class: 'tag-success', severity: 'success' };
     }
-    return { key: 'info', icon: '', label: 'System Notice', class: 'tag-info', severity: sev || 'info' };
+    return { key: 'info', icon: '', label: 'System Notice', shortLabel: 'Notice', class: 'tag-info', severity: sev || 'info' };
 }
 
 /**

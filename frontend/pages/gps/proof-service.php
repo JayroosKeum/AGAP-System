@@ -54,6 +54,7 @@ window.AGAP_SETTINGS = <?php echo json_encode([
 </script>
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/gps.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/gps.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/agap-list-layout.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/agap-list-layout.css'); ?>">
 
 <div class="dashboard-layout">
     <?php include '../../layouts/sidebar.php'; ?>
@@ -61,145 +62,198 @@ window.AGAP_SETTINGS = <?php echo json_encode([
     <div class="main-content">
         <?php include '../../layouts/navbar.php'; ?>
 
-        <!-- Page Header -->
-        <div class="page-header proof-page-header">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; width: 100%;">
-                <div>
-                    <a id="backLink" href="../complaints/complaint-list.php" class="back-link" hidden>
-                        <svg class="back-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                            <line x1="19" y1="12" x2="5" y2="12"></line>
-                            <polyline points="12 19 5 12 12 5"></polyline>
-                        </svg>
-                        <span id="backLinkLabel">Back to Complaint</span>
-                    </a>
-                    <div class="proof-title-row">
-                        <div>
-                            <h1 style="font-size: 1.6rem; font-weight: 800; color: #0f172a; margin: 0 0 4px 0; letter-spacing: -0.02em;">Summons</h1>
-                            <p style="margin: 0; color: #64748b; font-size: 0.92rem;">Manage summons and notice delivery, record Officers' Returns, and review service progress for each case.</p>
+        <div class="agap-list-shell">
+            <a id="backLink" href="../complaints/complaint-list.php" class="back-link" hidden style="margin-bottom: 12px; display: inline-flex; align-items: center; gap: 6px;">
+                <svg class="back-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+                <span id="backLinkLabel">Back to Complaint</span>
+            </a>
+
+            <section class="agap-list-card">
+                <div class="agap-list-header">
+                    <div class="agap-list-title-wrap">
+                        <div class="agap-list-title-row">
+                            <h1>Summons</h1>
+                            <span class="agap-stage-pill">Service of Notice</span>
+                        </div>
+                        <p class="agap-list-subtitle">Manage summons and notice delivery, record Officers' Returns, and review service progress for each case.</p>
+                    </div>
+                </div>
+
+                <div id="proofMessage" class="proof-message" role="alert" aria-live="polite" style="margin: 0 0 14px;"></div>
+
+                <!-- Unified Underlined Tabs + Inline Search & Filter Controls -->
+                <div class="agap-list-subbar">
+                    <div class="agap-underline-tabs" role="tablist" aria-label="Case service filters">
+                        <button type="button" id="tabFilterAll" class="agap-tab-item proof-tab-btn active" role="tab" aria-selected="true" data-filter="all" onclick="setProofFilter('all')">
+                            All Cases <span id="countAllCases" class="agap-tab-count">0</span>
+                        </button>
+                        <button type="button" id="tabFilterPending" class="agap-tab-item proof-tab-btn" role="tab" aria-selected="false" data-filter="pending" onclick="setProofFilter('pending')">
+                            Pending Delivery <span id="countPendingDelivery" class="agap-tab-count">0</span>
+                        </button>
+                        <button type="button" id="tabFilterServed" class="agap-tab-item proof-tab-btn" role="tab" aria-selected="false" data-filter="served" onclick="setProofFilter('served')">
+                            Fully Served <span id="countServedDelivery" class="agap-tab-count">0</span>
+                        </button>
+                    </div>
+
+                    <div class="agap-inline-controls">
+                        <div class="agap-inline-search">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <circle cx="11" cy="11" r="8"></circle>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                            </svg>
+                            <input
+                                id="summonCaseSearch"
+                                type="search"
+                                placeholder="Search KP no., parties..."
+                                autocomplete="off"
+                            >
+                            <button type="button" id="clearSummonSearch" class="search-clear-btn" title="Clear search">&times;</button>
+                        </div>
+
+                        <button type="button" id="toggleSummonFilterDrawer" class="agap-filter-icon-btn" title="Filter and sort options">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                            </svg>
+                            <span>Filter</span>
+                            <span id="summonFilterActiveDot" class="agap-filter-dot" style="display: none;"></span>
+                        </button>
+
+                        <button type="button" id="resetSummonFilters" class="agap-reset-link-btn" style="display: none;">
+                            Reset
+                        </button>
+                    </div>
+
+                    <!-- Hidden select for script backward-compatibility -->
+                    <select id="proofCaseId" name="case_id" hidden aria-hidden="true">
+                        <option value="">Select a case</option>
+                    </select>
+                </div>
+
+                <!-- Collapsible Notice Type & Sort Drawer -->
+                <div id="summonFilterDrawerPanel" class="filter-drawer-panel">
+                    <div class="agap-drawer-grid">
+                        <div class="agap-drawer-field">
+                            <label for="summonNoticeTypeFilter">Notice Type</label>
+                            <select id="summonNoticeTypeFilter">
+                                <option value="">All Notices</option>
+                                <option value="summons">Docketed Summons</option>
+                                <option value="paanyaya">Paanyaya Notice</option>
+                            </select>
+                        </div>
+                        <div class="agap-drawer-field">
+                            <label for="summonSortSelect">Sort By</label>
+                            <select id="summonSortSelect">
+                                <option value="hearing_date:asc">Hearing Date (Earliest)</option>
+                                <option value="hearing_date:desc">Hearing Date (Latest)</option>
+                                <option value="kp_number:desc">KP Number (Newest)</option>
+                                <option value="kp_number:asc">KP Number (Oldest)</option>
+                                <option value="complainant:asc">Complainant (A-Z)</option>
+                                <option value="respondent:asc">Respondent (A-Z)</option>
+                                <option value="service_status:asc">Service Status</option>
+                            </select>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <div id="proofMessage" class="proof-message" role="alert" aria-live="polite"></div>
+                <div class="agap-list-meta">
+                    <span id="summonListSummary">Click any case row to expand party returns and record service attempts.</span>
+                </div>
 
-        <!-- Filter Tabs & Unified Search Toolbar -->
-        <div class="proof-workspace-toolbar">
-            <div class="proof-filter-tabs" role="tablist" aria-label="Case service filters">
-                <button type="button" id="tabFilterAll" class="proof-tab-btn active" role="tab" aria-selected="true" data-filter="all" onclick="setProofFilter('all')">
-                    All Cases <span id="countAllCases" class="proof-tab-count">0</span>
-                </button>
-                <button type="button" id="tabFilterPending" class="proof-tab-btn" role="tab" aria-selected="false" data-filter="pending" onclick="setProofFilter('pending')">
-                    Pending Delivery <span id="countPendingDelivery" class="proof-tab-count">0</span>
-                </button>
-                <button type="button" id="tabFilterServed" class="proof-tab-btn" role="tab" aria-selected="false" data-filter="served" onclick="setProofFilter('served')">
-                    Fully Served <span id="countServedDelivery" class="proof-tab-count">0</span>
-                </button>
-            </div>
-
-            <div class="proof-search-container">
-                <svg style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: #94a3b8; pointer-events: none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-                <input
-                    id="summonCaseSearch"
-                    type="search"
-                    class="search-input-field"
-                    placeholder="Search KP number, parties, or description..."
-                    autocomplete="off"
-                    style="width: 100%; padding: 9px 36px 9px 38px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 0.88rem; outline: none; background: #fff;"
-                >
-                <button
-                    type="button"
-                    id="clearSummonSearch"
-                    title="Clear search"
-                    style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; font-size: 18px; line-height: 1; color: #94a3b8; cursor: pointer; display: none;"
-                >&times;</button>
-            </div>
-
-            <!-- Hidden select for script backward-compatibility -->
-            <select id="proofCaseId" name="case_id" hidden aria-hidden="true">
-                <option value="">Select a case</option>
-            </select>
-        </div>
-
-        <!-- Unified Expandable Case Table Workspace -->
-        <section class="gps-card proof-table-section" id="casesNeedingSummonsSection" style="margin-bottom: 24px; padding: 0; overflow: hidden;">
-            <div class="table-responsive" style="border: none; border-radius: 12px; overflow-x: auto; background: #fff;">
-                <table class="data-table proof-table" style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
-                            <th style="width: 44px; padding: 12px 14px; text-align: center;" aria-label="Expand toggle"></th>
-                            <th class="sortable-th" data-sort-key="kp_number" style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;" title="Click to sort by KP Number">
-                                <span class="th-content">KP Number <span class="sort-indicator" id="sortInd_summon_kp_number">⇅</span></span>
-                            </th>
-                            <th class="sortable-th" data-sort-key="complainant" style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;" title="Click to sort by Complainant">
-                                <span class="th-content">Complainant <span class="sort-indicator" id="sortInd_summon_complainant">⇅</span></span>
-                            </th>
-                            <th class="sortable-th" data-sort-key="respondent" style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;" title="Click to sort by Respondent">
-                                <span class="th-content">Respondent <span class="sort-indicator" id="sortInd_summon_respondent">⇅</span></span>
-                            </th>
-                            <th class="sortable-th sort-active-asc" data-sort-key="hearing_date" style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;" title="Click to sort by Hearing Date">
-                                <span class="th-content">Hearing Date <span class="sort-indicator" id="sortInd_summon_hearing_date">▲</span></span>
-                            </th>
-                            <th class="sortable-th" data-sort-key="service_status" style="padding: 12px 16px; text-align: left; font-weight: 600; font-size: 0.82rem; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;" title="Click to sort by Service Status">
-                                <span class="th-content">Service Status <span class="sort-indicator" id="sortInd_summon_service_status">⇅</span></span>
-                            </th>
-                        </tr>
-                    </thead>
-                    <tbody id="casesNeedingSummonsTable">
-                        <tr>
-                            <td colspan="6" class="empty-state" style="padding: 36px; text-align: center; color: #94a3b8;">
-                                Loading case service records...
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- Modern Pagination Bar (5 items per page) -->
-            <div id="summonPagination" class="complaints-pagination" aria-label="Proof of service pagination" style="display: none; padding: 14px 20px; border-top: 1px solid #e2e8f0; border-radius: 0 0 12px 12px;">
-                <span id="summonPaginationSummary" class="complaints-pagination-summary" aria-live="polite">Showing 0 cases</span>
-                <div id="summonPaginationControls" class="complaints-pagination-controls"></div>
-            </div>
-        </section>
-
-        <!-- Case Service History & Delivered Forms Timeline Section -->
-        <section class="gps-card proof-timeline-section" id="caseServiceTimelineSection" style="margin-bottom: 24px; padding: 0; overflow: hidden; display: none;">
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; gap: 10px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 8px; background: #e0f2fe; color: #0284c7; font-size: 16px;">
-                        📜
-                    </span>
-                    <div>
-                        <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700; color: #0f172a;">
-                            Case Service History &amp; Delivered Forms Timeline
-                        </h3>
-                        <p id="timelineCaseSubtitle" style="margin: 2px 0 0; font-size: 0.82rem; color: #64748b;">
-                            Chronological stream of all statutory invitations, notices, summons, and officer returns across the case lifecycle
-                        </p>
+                <!-- Unified Expandable Case Table Workspace -->
+                <div class="agap-list-table-wrap" id="casesNeedingSummonsSection">
+                    <div class="table-responsive" style="border: none; background: transparent;">
+                        <table class="data-table proof-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 44px; text-align: center;" aria-label="Expand toggle"></th>
+                                    <th class="sortable-th" data-sort-key="kp_number" title="Click to sort by KP Number">
+                                        <span class="th-content">KP Number <span class="sort-indicator" id="sortInd_summon_kp_number">⇅</span></span>
+                                    </th>
+                                    <th class="sortable-th" data-sort-key="complainant" title="Click to sort by Complainant">
+                                        <span class="th-content">Complainant <span class="sort-indicator" id="sortInd_summon_complainant">⇅</span></span>
+                                    </th>
+                                    <th class="sortable-th" data-sort-key="respondent" title="Click to sort by Respondent">
+                                        <span class="th-content">Respondent <span class="sort-indicator" id="sortInd_summon_respondent">⇅</span></span>
+                                    </th>
+                                    <th class="sortable-th sort-active-asc" data-sort-key="hearing_date" title="Click to sort by Hearing Date">
+                                        <span class="th-content">Hearing Date <span class="sort-indicator" id="sortInd_summon_hearing_date">▲</span></span>
+                                    </th>
+                                    <th class="sortable-th" data-sort-key="service_status" title="Click to sort by Service Status">
+                                        <span class="th-content">Service Status <span class="sort-indicator" id="sortInd_summon_service_status">⇅</span></span>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="casesNeedingSummonsTable">
+                                <tr>
+                                    <td colspan="6" class="empty-state" style="padding: 36px; text-align: center; color: #94a3b8;">
+                                        Loading case service records...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <button type="button" id="toggleTimelineBtn" class="btn-secondary" onclick="toggleTimelineVisibility()" style="font-size: 0.78rem; padding: 5px 12px; border-radius: 6px; cursor: pointer; background: #fff;">
-                        Expand Timeline
-                    </button>
-                </div>
-            </div>
-            <div id="caseServiceTimelineContainer" style="display: none; padding: 20px; background: #fff;">
-                <div style="text-align: center; color: #94a3b8; padding: 20px; font-size: 0.88rem;">
-                    Select or expand a case above to review its full statutory service history timeline.
-                </div>
-            </div>
-        </section>
 
-        <!-- Hidden legacy section for backward compatibility -->
-        <section id="hearingDeliveriesSection" hidden aria-hidden="true" style="display: none;">
-            <div id="serviceStatusAlert" style="display: none;"></div>
-            <div id="hearingDeliveriesContainer"></div>
-        </section>
+                <!-- Bottom Footer: Items Per Page + Numeric Pagination -->
+                <div id="summonPagination" class="agap-list-footer" aria-label="Proof of service pagination" style="display: none;">
+                    <div class="agap-page-size-wrap">
+                        <label for="summonPageSize">Items Per Page</label>
+                        <select id="summonPageSize" class="agap-page-size-select" aria-label="Items per page">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                        <span id="summonPaginationSummary" class="agap-page-summary" aria-live="polite">Showing 0 cases</span>
+                    </div>
+                    <div id="summonPaginationControls" class="agap-pagination-controls"></div>
+                </div>
+            </section>
+
+            <!-- Case Service History & Delivered Forms Timeline Section -->
+            <section class="agap-list-card proof-timeline-section" id="caseServiceTimelineSection" style="margin-top: 18px; padding: 0; overflow: hidden; display: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="agap-rec-icon is-blue" style="width: 34px; height: 34px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="8" y1="13" x2="16" y2="13"/>
+                                <line x1="8" y1="17" x2="13" y2="17"/>
+                            </svg>
+                        </span>
+                        <div>
+                            <h3 style="margin: 0; font-size: 1.02rem; font-weight: 700; color: #0f172a;">
+                                Case Service History &amp; Delivered Forms Timeline
+                            </h3>
+                            <p id="timelineCaseSubtitle" style="margin: 2px 0 0; font-size: 0.82rem; color: #64748b;">
+                                Chronological stream of all statutory invitations, notices, summons, and officer returns across the case lifecycle
+                            </p>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button type="button" id="toggleTimelineBtn" class="agap-btn-act" onclick="toggleTimelineVisibility()">
+                            Expand Timeline
+                        </button>
+                    </div>
+                </div>
+                <div id="caseServiceTimelineContainer" style="display: none; padding: 20px; background: #fff;">
+                    <div style="text-align: center; color: #94a3b8; padding: 20px; font-size: 0.88rem;">
+                        Select or expand a case above to review its full statutory service history timeline.
+                    </div>
+                </div>
+            </section>
+
+            <!-- Hidden legacy section for backward compatibility -->
+            <section id="hearingDeliveriesSection" hidden aria-hidden="true" style="display: none;">
+                <div id="serviceStatusAlert" style="display: none;"></div>
+                <div id="hearingDeliveriesContainer"></div>
+            </section>
+        </div>
     </div>
 </div>
 

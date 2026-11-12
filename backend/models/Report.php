@@ -98,7 +98,7 @@ class Report
         return $rows;
     }
 
-    public function dashboardStats(string $period = 'all', ?string $startDate = null, ?string $endDate = null): array
+    public function dashboardStats(string $period = 'all', ?string $startDate = null, ?string $endDate = null, ?int $form6Year = null): array
     {
         $today = date('Y-m-d');
         // A seven-calendar-day window includes today plus the following six
@@ -373,7 +373,7 @@ class Report
                 'analytics' => $this->getAnalyticsSummary(),
             ];
 
-            return array_merge($basePayload, $this->getCaptainExecutiveInsights('all', null, null, $basePayload));
+            return array_merge($basePayload, $this->getCaptainExecutiveInsights('all', null, null, $basePayload, $form6Year));
         }
 
         // Period-filtered queries
@@ -657,7 +657,7 @@ class Report
             'analytics' => $this->getAnalyticsSummary($startDate, $endDate),
         ];
 
-        return array_merge($basePayload, $this->getCaptainExecutiveInsights($period, $startDate, $endDate, $basePayload));
+        return array_merge($basePayload, $this->getCaptainExecutiveInsights($period, $startDate, $endDate, $basePayload, $form6Year));
     }
 
     /** Calendar uses one event shape for active formal hearings and Paanyaya sessions. */
@@ -716,9 +716,176 @@ class Report
     }
 
     /**
+     * Builds the annual 12-month LTIA Form 06 (Summary of Cases) dataset.
+     */
+    private function buildLtiaForm6Summary(?int $requestedYear, array $captainInfo, array $settingsMap): array
+    {
+        $yearRows = $this->safeFetchAll(
+            "SELECT DISTINCT YEAR(docket_date) AS yr
+             FROM cases
+             WHERE docket_date IS NOT NULL
+             ORDER BY yr DESC"
+        );
+        $currentYear = (int) date('Y');
+        $availableYears = [];
+        foreach ($yearRows as $yrRow) {
+            $yr = (int) ($yrRow['yr'] ?? 0);
+            if ($yr >= 2000 && $yr <= 2100) {
+                $availableYears[] = $yr;
+            }
+        }
+        if (!in_array($currentYear, $availableYears, true)) {
+            $availableYears[] = $currentYear;
+        }
+        rsort($availableYears, SORT_NUMERIC);
+        $availableYears = array_values(array_unique($availableYears));
+
+        $year = ($requestedYear !== null && $requestedYear >= 2000 && $requestedYear <= 2100)
+            ? $requestedYear
+            : ($availableYears[0] ?? $currentYear);
+
+        if (!in_array($year, $availableYears, true)) {
+            $availableYears[] = $year;
+            rsort($availableYears, SORT_NUMERIC);
+            $availableYears = array_values(array_unique($availableYears));
+        }
+
+        $emptyRow = static function (int $monthNum = 0, string $label = ''): array {
+            return [
+                'month' => $monthNum,
+                'label' => $label,
+                'criminal' => 0,
+                'civil' => 0,
+                'others' => 0,
+                'nature_total' => 0,
+                'mediation' => 0,
+                'conciliation' => 0,
+                'arbitration' => 0,
+                'settled_total' => 0,
+                'pending' => 0,
+                'dismissed' => 0,
+                'repudiated' => 0,
+                'certified' => 0,
+                'dropped' => 0,
+                'referred_other_agency' => 0,
+                'not_settled_total' => 0,
+                'total_filed' => 0,
+            ];
+        };
+
+        $monthNames = [
+            1 => 'JAN', 2 => 'FEB', 3 => 'MAR', 4 => 'APR',
+            5 => 'MAY', 6 => 'JUN', 7 => 'JUL', 8 => 'AUG',
+            9 => 'SEP', 10 => 'OCT', 11 => 'NOV', 12 => 'DEC',
+        ];
+        $months = [];
+        foreach ($monthNames as $num => $abbr) {
+            $months[$num] = $emptyRow($num, $abbr);
+        }
+        $totals = $emptyRow(0, 'TOTAL=');
+
+        $hasArbitration = $this->tableExists('arbitration_records');
+        $hasCfa = $this->tableExists('cfa_records');
+        $arbitrationSelect = $hasArbitration ? 'ar.award_date' : 'NULL AS award_date';
+        $arbitrationJoin = $hasArbitration ? 'LEFT JOIN arbitration_records ar ON ar.case_id = c.case_id' : '';
+        $cfaSelect = $hasCfa ? 'cfa.issuance_date AS cfa_date' : 'NULL AS cfa_date';
+        $cfaJoin = $hasCfa ? 'LEFT JOIN cfa_records cfa ON cfa.case_id = c.case_id' : '';
+
+        $cases = $this->safeFetchAll(
+            "SELECT c.case_id,
+                    MONTH(c.docket_date) AS docket_month,
+                    c.case_type,
+                    c.case_status,
+                    s.settlement_date,
+                    {$arbitrationSelect},
+                    {$cfaSelect},
+                    (SELECT COUNT(*)
+                     FROM hearings h
+                     WHERE h.case_id = c.case_id
+                       AND h.hearing_type = 'Conciliation'
+                       AND h.status = 'Completed') AS completed_conciliation
+             FROM cases c
+             LEFT JOIN settlements s ON s.case_id = c.case_id
+             {$arbitrationJoin}
+             {$cfaJoin}
+             WHERE YEAR(c.docket_date) = ?",
+            [$year]
+        );
+
+        foreach ($cases as $case) {
+            $m = (int) ($case['docket_month'] ?? 0);
+            if ($m < 1 || $m > 12) {
+                continue;
+            }
+
+            $nature = strtolower(trim((string) ($case['case_type'] ?? '')));
+            $natureKey = $nature === 'criminal' ? 'criminal' : ($nature === 'civil' ? 'civil' : 'others');
+            $months[$m][$natureKey]++;
+            $months[$m]['nature_total']++;
+            $months[$m]['total_filed']++;
+
+            $status = strtolower(trim((string) ($case['case_status'] ?? '')));
+            if (!empty($case['award_date']) || $status === 'arbitration') {
+                $months[$m]['arbitration']++;
+                $months[$m]['settled_total']++;
+            } elseif (!empty($case['settlement_date']) || $status === 'settled') {
+                $settledKey = ((int) ($case['completed_conciliation'] ?? 0) > 0) ? 'conciliation' : 'mediation';
+                $months[$m][$settledKey]++;
+                $months[$m]['settled_total']++;
+            } else {
+                if (str_contains($status, 'repudiat')) {
+                    $actionKey = 'repudiated';
+                } elseif (str_contains($status, 'drop') || str_contains($status, 'withdraw')) {
+                    $actionKey = 'dropped';
+                } elseif (str_contains($status, 'dismiss')) {
+                    $actionKey = 'dismissed';
+                } elseif (!empty($case['cfa_date']) || str_contains($status, 'cfa')) {
+                    $actionKey = 'certified';
+                } elseif (str_contains($status, 'refer')) {
+                    $actionKey = 'referred_other_agency';
+                } else {
+                    $actionKey = 'pending';
+                }
+                $months[$m][$actionKey]++;
+                $months[$m]['not_settled_total']++;
+            }
+        }
+
+        $sumKeys = [
+            'criminal', 'civil', 'others', 'nature_total',
+            'mediation', 'conciliation', 'arbitration', 'settled_total',
+            'pending', 'dismissed', 'repudiated', 'certified',
+            'dropped', 'referred_other_agency', 'not_settled_total', 'total_filed',
+        ];
+        foreach ($months as $row) {
+            foreach ($sumKeys as $k) {
+                $totals[$k] += $row[$k];
+            }
+        }
+
+        return [
+            'year' => $year,
+            'available_years' => $availableYears,
+            'meta' => [
+                'barangay_name' => $captainInfo['barangay_name'] ?? 'Barangay Tumana',
+                'city_name' => $captainInfo['city_name'] ?? 'Marikina City',
+                'province_name' => $settingsMap['province_name'] ?? 'Metro Manila NCR',
+                'captain_name' => $captainInfo['captain_name'] ?? 'HON. AKIKO LYNNE CENTENO',
+                'mayor_name' => $settingsMap['mayor_name'] ?? '',
+                'barangay_ira' => $settingsMap['barangay_ira'] ?? '',
+                'population' => $settingsMap['barangay_population'] ?? '',
+                'land_area' => $settingsMap['land_area'] ?? '',
+                'total_cases' => $totals['total_filed'],
+            ],
+            'months' => array_values($months),
+            'totals' => $totals,
+        ];
+    }
+
+    /**
      * Executive intelligence payload tailored for the Punong Barangay (Barangay Captain).
      */
-    private function getCaptainExecutiveInsights(string $period, ?string $startDate, ?string $endDate, array $base): array
+    private function getCaptainExecutiveInsights(string $period, ?string $startDate, ?string $endDate, array $base, ?int $form6Year = null): array
     {
         $today = date('Y-m-d');
         $nextSeven = date('Y-m-d', strtotime('+7 days'));
@@ -727,7 +894,10 @@ class Report
         // 1. Official Barangay / Captain settings
         $settingsRows = $this->safeFetchAll(
             "SELECT setting_key, setting_value FROM system_settings
-             WHERE setting_key IN ('captain_name', 'lupon_secretary_name', 'barangay_name', 'city_name')"
+             WHERE setting_key IN (
+                 'captain_name', 'lupon_secretary_name', 'barangay_name', 'city_name',
+                 'province_name', 'mayor_name', 'barangay_ira', 'barangay_population', 'land_area'
+             )"
         );
         $settingsMap = [];
         foreach ($settingsRows as $sr) {
@@ -1083,6 +1253,7 @@ class Report
             'pending_verifications' => array_slice($pendingVerificationsList, 0, 15),
             'pending_complaints' => $pendingComplaintsList,
             'transmittals_due' => $transmittalsDueList,
+            'ltia_form6' => $this->buildLtiaForm6Summary($form6Year, $captainInfo, $settingsMap),
         ];
     }
 

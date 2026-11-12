@@ -53,28 +53,10 @@ include '../../layouts/header.php';
                 </p>
             </div>
             <div class="pb-header-toolbar">
-                <div class="pb-period-pill-group" aria-label="Timeframe and date range">
-                    <div class="period-indicator pb-date-range-pill" id="periodIndicator">
-                        <span class="indicator-icon" aria-hidden="true">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                        </span>
-                        <div class="indicator-texts">
-                            <strong id="periodLabelDisplay">All Time</strong>
-                            <small id="periodDateRangeDisplay">All recorded data in the system</small>
-                        </div>
-                    </div>
-                    <div class="period-nav-buttons" id="periodNavButtons" style="display:none;">
-                        <button type="button" id="prevPeriodBtn" class="btn-period-nav" title="Previous period" aria-label="Previous period">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                        </button>
-                        <button type="button" id="currentPeriodBtn" class="btn-period-nav btn-period-current" title="Reset to current period">
-                            <span id="currentPeriodText">Current</span>
-                        </button>
-                        <button type="button" id="nextPeriodBtn" class="btn-period-nav" title="Next period" aria-label="Next period">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                        </button>
-                    </div>
-                </div>
+                <button type="button" class="pb-btn-customize-layout" id="btnToggleCustomizeLayout" aria-pressed="false" title="Resize, reorder, or hide dashboard widgets">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+                    <span>Customize</span>
+                </button>
 
                 <button type="button" class="pb-btn-add-widget" id="btnOpenWidgetDrawer" aria-haspopup="dialog" aria-controls="addWidgetDrawer">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><path d="M17.5 14v7M14 17.5h7"></path></svg>
@@ -96,8 +78,6 @@ include '../../layouts/header.php';
                         <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="monitoring" role="menuitem">KP Monitoring Report</button>
                         <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="form8" role="menuitem">LTIA Form 8 – Case &amp; Settlement Log</button>
                         <button type="button" class="dash-dropdown-item official-report-launch" data-report-type="form6" role="menuitem">LTIA Form 6 – Summary of Cases</button>
-                        <div class="dash-dropdown-separator" role="separator"></div>
-                        <a href="../reports/report-list.php" class="dash-dropdown-item" role="menuitem" style="text-decoration:none; color:inherit;">Open LTIA &amp; Transmittals Hub &rarr;</a>
                     </div>
                 </div>
             </div>
