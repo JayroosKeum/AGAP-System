@@ -86,8 +86,8 @@ include '../../layouts/header.php';
 
         <?php if ($isAdmin): ?>
             <section id="staffPanel" class="users-tab-panel" role="tabpanel"<?php echo $initialTab === 'staff' ? '' : ' hidden'; ?>>
-                <div class="kpi-cards-grid is-six-cards">
-                    <article class="kpi-stat-card is-clickable" data-staff-card-filter="all" role="button" tabindex="0">
+                <div class="kpi-cards-grid">
+                    <article class="kpi-stat-card">
                         <div class="kpi-card-top">
                             <span class="kpi-icon-box" aria-hidden="true">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -100,79 +100,45 @@ include '../../layouts/header.php';
                         <div class="kpi-card-label">Total staff</div>
                         <div class="kpi-card-metric-row">
                             <span class="kpi-card-value" id="staffTotalCount">0</span>
-                            <span class="kpi-delta-pill is-emerald" id="staffActiveTotalPill">0 active</span>
+                            <span class="kpi-delta-pill is-emerald" id="staffTotalShare">100%</span>
                         </div>
                     </article>
 
-                    <article class="kpi-stat-card is-clickable" data-staff-card-filter="secretary" role="button" tabindex="0">
+                    <article class="kpi-stat-card">
                         <div class="kpi-card-top">
                             <span class="kpi-icon-box" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>
                             </span>
                             <svg class="kpi-sparkline" viewBox="0 0 88 28" fill="none" aria-hidden="true">
                                 <path d="M2 15 C14 8, 24 9, 34 18 C45 26, 56 24, 68 14 C75 8, 80 11, 84 10" stroke="#9333ea" stroke-width="1.6" stroke-linecap="round" opacity="0.65"/>
                                 <circle cx="84" cy="10" r="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
                             </svg>
                         </div>
-                        <div class="kpi-card-label">Barangay Secretary</div>
+                        <div class="kpi-card-label">Active users</div>
                         <div class="kpi-card-metric-row">
-                            <span class="kpi-card-value" id="staffSecretaryCount">0</span>
-                            <span class="kpi-delta-pill is-indigo" id="staffSecretaryShare">0%</span>
+                            <span class="kpi-card-value" id="staffActiveCount">0</span>
+                            <span class="kpi-delta-pill is-emerald" id="staffActiveShare">0%</span>
                         </div>
                     </article>
 
-                    <article class="kpi-stat-card is-clickable" data-staff-card-filter="clerk" role="button" tabindex="0">
+                    <article class="kpi-stat-card">
                         <div class="kpi-card-top">
                             <span class="kpi-icon-box" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="7" y1="9" x2="17" y2="9"></line><line x1="7" y1="13" x2="13" y2="13"></line></svg>
-                            </span>
-                            <svg class="kpi-sparkline" viewBox="0 0 88 28" fill="none" aria-hidden="true">
-                                <path d="M2 16 C12 9, 22 10, 34 18 C46 25, 58 24, 68 13 C75 7, 80 9, 84 9" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round" opacity="0.65"/>
-                                <circle cx="84" cy="9" r="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
-                            </svg>
-                        </div>
-                        <div class="kpi-card-label">Lupon Clerk</div>
-                        <div class="kpi-card-metric-row">
-                            <span class="kpi-card-value" id="staffClerkCount">0</span>
-                            <span class="kpi-delta-pill is-emerald" id="staffClerkShare">0%</span>
-                        </div>
-                    </article>
-
-                    <article class="kpi-stat-card is-clickable" data-staff-card-filter="member" role="button" tabindex="0">
-                        <div class="kpi-card-top">
-                            <span class="kpi-icon-box" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path></svg>
-                            </span>
-                            <svg class="kpi-sparkline" viewBox="0 0 88 28" fill="none" aria-hidden="true">
-                                <path d="M2 15 C13 7, 24 10, 35 17 C45 24, 57 22, 68 13 C75 8, 80 10, 84 10" stroke="#0d9488" stroke-width="1.6" stroke-linecap="round" opacity="0.65"/>
-                                <circle cx="84" cy="10" r="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
-                            </svg>
-                        </div>
-                        <div class="kpi-card-label">Lupon Members</div>
-                        <div class="kpi-card-metric-row">
-                            <span class="kpi-card-value" id="staffMemberCount">0</span>
-                            <span class="kpi-delta-pill is-emerald" id="staffMemberShare">0%</span>
-                        </div>
-                    </article>
-
-                    <article class="kpi-stat-card is-clickable" data-staff-card-filter="server" role="button" tabindex="0">
-                        <div class="kpi-card-top">
-                            <span class="kpi-icon-box" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                             </span>
                             <svg class="kpi-sparkline" viewBox="0 0 88 28" fill="none" aria-hidden="true">
                                 <path d="M2 16 C12 9, 22 10, 34 18 C46 25, 58 24, 68 13 C75 7, 80 9, 84 9" stroke="#4f46e5" stroke-width="1.6" stroke-linecap="round" opacity="0.65"/>
                                 <circle cx="84" cy="9" r="3" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.5"/>
                             </svg>
                         </div>
-                        <div class="kpi-card-label">Summon Server</div>
+                        <div class="kpi-card-label">Pending activation</div>
                         <div class="kpi-card-metric-row">
-                            <span class="kpi-card-value" id="staffServerCount">0</span>
-                            <span class="kpi-delta-pill is-indigo" id="staffServerShare">0%</span>
+                            <span class="kpi-card-value" id="staffPendingCount">0</span>
+                            <span class="kpi-delta-pill is-indigo" id="staffPendingShare">0%</span>
                         </div>
                     </article>
 
-                    <article class="kpi-stat-card is-clickable" data-staff-card-filter="disabled" role="button" tabindex="0">
+                    <article class="kpi-stat-card">
                         <div class="kpi-card-top">
                             <span class="kpi-icon-box" aria-hidden="true">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
@@ -318,12 +284,6 @@ include '../../layouts/header.php';
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                             <input type="search" id="rvSearchInput" placeholder="Search by name, email, mobile, or address...">
                         </div>
-                        <select id="rvFilterSelect" class="users-pill-select" aria-label="Filter resident accounts">
-                            <option value="all">All statuses</option>
-                            <option value="pending">Pending verification</option>
-                            <option value="verified">Verified</option>
-                            <option value="incomplete">Missing mobile / address</option>
-                        </select>
                     </div>
                 </div>
 
