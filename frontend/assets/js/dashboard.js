@@ -597,7 +597,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const labelEl = toggleBtn.querySelector('span');
             if (labelEl) labelEl.textContent = state.isCustomizing ? 'Done customizing' : 'Customize';
         }
-        if (!state.isCustomizing) {
+        if (state.isCustomizing) {
+            const grid = document.getElementById('captainModularWidgets');
+            const active = document.activeElement;
+            if (grid && active && grid.contains(active) && !active.closest('.pb-widget-customize-bar, .pb-widget-hide-btn, .pb-resize-handle')) {
+                active.blur?.();
+            }
+        } else {
             document.querySelectorAll('.pb-widget-card[data-widget-id]').forEach((card) => {
                 card.removeAttribute('draggable');
                 card.classList.remove('is-dragging-widget', 'is-drag-target');
@@ -902,6 +908,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
         initWidgetDragReorder();
         initWidgetDragResize();
+
+        const widgetsGrid = document.getElementById('captainModularWidgets');
+        if (widgetsGrid && !widgetsGrid.dataset.readonlyGuardBound) {
+            widgetsGrid.dataset.readonlyGuardBound = '1';
+            const isLayoutControl = (target) =>
+                Boolean(target?.closest?.('.pb-widget-customize-bar, .pb-widget-hide-btn, .pb-resize-handle'));
+
+            ['click', 'dblclick', 'submit', 'input', 'change'].forEach((evtName) => {
+                widgetsGrid.addEventListener(evtName, (e) => {
+                    if (!state.isCustomizing) return;
+                    if (isLayoutControl(e.target)) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, true);
+            });
+
+            widgetsGrid.addEventListener('keydown', (e) => {
+                if (!state.isCustomizing) return;
+                if (isLayoutControl(e.target)) return;
+                if (e.key === 'Tab') return;
+                e.preventDefault();
+                e.stopPropagation();
+            }, true);
+
+            widgetsGrid.addEventListener('focusin', (e) => {
+                if (!state.isCustomizing) return;
+                if (isLayoutControl(e.target)) return;
+                e.target?.blur?.();
+            }, true);
+        }
+
         applyWidgetLayout();
     };
 

@@ -484,8 +484,41 @@ class Paanyaya
                    c.complaint_number,
                    c.complaint_title,
                    c.status AS complaint_workflow_status,
+                   COALESCE(c.paanyaya_attempt_count, 0) AS complaint_paanyaya_count,
                    cs.case_id AS linked_case_id,
                    cs.case_status AS linked_case_status,
+                   EXISTS (
+                       SELECT 1 FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                   ) AS has_stage2_issued,
+                   (
+                       SELECT ps2.invitation_date FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                       LIMIT 1
+                   ) AS stage2_invitation_date,
+                   (
+                       SELECT ps2.invitation_time FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                       LIMIT 1
+                   ) AS stage2_invitation_time,
+                   (
+                       SELECT ps2.status FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                       LIMIT 1
+                   ) AS stage2_status,
+                   EXISTS (
+                       SELECT 1 FROM paanyaya_sessions pse
+                       WHERE pse.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND pse.attempt_number >= 2
+                   ) AS has_session2_issued,
                    COALESCE(
                        NULLIF(TRIM(p.complainant_name), ''),
                        (
@@ -554,6 +587,172 @@ class Paanyaya
     }
 
     /**
+     * Groups Paanyaya records by linked complaint/case (or unlinked 1st->2nd pair)
+     * so the list renders one expandable case row with a chronological vertical
+     * progression (1st Paanyaya, 2nd Paanyaya, and any additional connected records).
+     */
+    public function getGroupedPaanyayaCases(?string $status = null, ?string $search = null): array
+    {
+        $allRecords = $this->getAllPaanyayas(null, null);
+
+        // Identify standalone complainant+invitee pairs where a 2nd attempt exists
+        $standalonePairedKeys = [];
+        foreach ($allRecords as $r) {
+            $effCid = (int) ($r['complaint_id'] ?: ($r['escalated_to_complaint_id'] ?? 0));
+            if ($effCid === 0 && (int) ($r['attempt_number'] ?? 1) >= 2) {
+                $pairKey = mb_strtolower(trim((string) ($r['complainant_name'] ?? '')), 'UTF-8')
+                    . '|' . mb_strtolower(trim((string) ($r['invitee_name'] ?? '')), 'UTF-8');
+                $standalonePairedKeys[$pairKey] = true;
+            }
+        }
+
+        $grouped = [];
+        foreach ($allRecords as $r) {
+            $effCid = (int) ($r['complaint_id'] ?: ($r['escalated_to_complaint_id'] ?? 0));
+            if ($effCid > 0) {
+                $groupKey = 'complaint:' . $effCid;
+            } else {
+                $pairKey = mb_strtolower(trim((string) ($r['complainant_name'] ?? '')), 'UTF-8')
+                    . '|' . mb_strtolower(trim((string) ($r['invitee_name'] ?? '')), 'UTF-8');
+                $groupKey = !empty($standalonePairedKeys[$pairKey])
+                    ? ('pair:' . $pairKey)
+                    : ('single:' . (int) $r['paanyaya_id']);
+            }
+            $grouped[$groupKey][] = $r;
+        }
+
+        $ordinalFn = static function (int $n): string {
+            if ($n === 1) return '1st Paanyaya';
+            if ($n === 2) return '2nd Paanyaya';
+            if ($n === 3) return '3rd Paanyaya';
+            return $n . 'th Paanyaya';
+        };
+
+        $cases = [];
+        foreach ($grouped as $groupKey => $items) {
+            usort($items, static function (array $a, array $b): int {
+                $attCmp = ((int) ($a['attempt_number'] ?? 1)) <=> ((int) ($b['attempt_number'] ?? 1));
+                if ($attCmp !== 0) return $attCmp;
+                $dtA = trim((string) ($a['scheduled_date'] ?? '')) . ' ' . trim((string) ($a['scheduled_time'] ?? ''));
+                $dtB = trim((string) ($b['scheduled_date'] ?? '')) . ' ' . trim((string) ($b['scheduled_time'] ?? ''));
+                $dtCmp = strcmp($dtA, $dtB);
+                if ($dtCmp !== 0) return $dtCmp;
+                return ((int) $a['paanyaya_id']) <=> ((int) $b['paanyaya_id']);
+            });
+
+            $count = count($items);
+            $latest = $items[$count - 1];
+            if ($count === 1 && !empty($latest['has_stage2_issued'])) {
+                $stage2Synthetic = $latest;
+                $stage2Synthetic['attempt_number'] = 2;
+                $stage2Synthetic['scheduled_date'] = $latest['stage2_invitation_date'] ?: $latest['scheduled_date'];
+                $stage2Synthetic['scheduled_time'] = $latest['stage2_invitation_time'] ?: $latest['scheduled_time'];
+                $stage2Synthetic['status'] = $latest['stage2_status'] ?: ($latest['status'] ?? 'Scheduled');
+                $items[] = $stage2Synthetic;
+                $count = count($items);
+                $latest = $items[$count - 1];
+            }
+
+            $maxAttempt = 1;
+            foreach ($items as $it) {
+                $maxAttempt = max($maxAttempt, (int) ($it['attempt_number'] ?? 1));
+            }
+
+            $hasSecondPaanyaya = ($count >= 2)
+                || ($maxAttempt >= 2)
+                || !empty($latest['has_stage2_issued'])
+                || !empty($latest['has_session2_issued'])
+                || ((int) ($latest['complaint_paanyaya_count'] ?? 0) >= 2);
+
+            $enrichedItems = [];
+            foreach ($items as $idx => $it) {
+                $isLatest = ($idx === $count - 1);
+                $stepNumber = ($idx === 0 && (int) ($it['attempt_number'] ?? 1) >= 2)
+                    ? (int) $it['attempt_number']
+                    : ($idx + 1);
+                $rawRowStatus = trim((string) ($it['status'] ?? 'Scheduled'));
+                $isSuperseded = !$isLatest;
+                $isStepCompleted = $isSuperseded || in_array($rawRowStatus, ['Completed', 'Done', 'Resolved', 'Settled'], true);
+
+                $it['step_index'] = $stepNumber;
+                $it['step_label'] = $ordinalFn($stepNumber);
+                $it['is_latest'] = $isLatest;
+                $it['is_superseded'] = $isSuperseded;
+                $it['step_state'] = $isLatest ? 'current' : 'done';
+                $it['step_display_status'] = $isSuperseded
+                    ? 'Done'
+                    : ($isStepCompleted && $rawRowStatus === 'Completed' ? 'Done' : $rawRowStatus);
+                $enrichedItems[] = $it;
+            }
+            if (!empty($enrichedItems)) {
+                $latest = $enrichedItems[count($enrichedItems) - 1];
+            }
+
+            $rawWorkflowStatus = $latest['current_workflow_status'] ?? $latest['status'] ?? 'Scheduled';
+            $displayStatus = $hasSecondPaanyaya
+                ? 'Done'
+                : ($rawWorkflowStatus === 'Completed' ? 'Done' : $rawWorkflowStatus);
+
+            $cases[] = [
+                'group_key' => $groupKey,
+                'latest' => $latest,
+                'items' => $enrichedItems,
+                'item_count' => $count,
+                'has_second_paanyaya' => $hasSecondPaanyaya,
+                'display_status' => $displayStatus,
+                'workflow_status' => $rawWorkflowStatus,
+                'workflow_stage' => $latest['current_workflow_stage'] ?? 'Stage 0 · Informal Dialogue',
+                'latest_sort_dt' => trim((string) ($latest['scheduled_date'] ?? '')) . ' ' . trim((string) ($latest['scheduled_time'] ?? '')),
+                'latest_id' => (int) ($latest['paanyaya_id'] ?? 0),
+            ];
+        }
+
+        usort($cases, static function (array $a, array $b): int {
+            $dtCmp = strcmp($b['latest_sort_dt'], $a['latest_sort_dt']);
+            if ($dtCmp !== 0) return $dtCmp;
+            return $b['latest_id'] <=> $a['latest_id'];
+        });
+
+        if ($search !== null && trim($search) !== '') {
+            $term = mb_strtolower(trim($search), 'UTF-8');
+            $cases = array_values(array_filter($cases, static function (array $case) use ($term): bool {
+                foreach ($case['items'] as $it) {
+                    $haystack = mb_strtolower(implode(' ', [
+                        (string) ($it['invitee_name'] ?? ''),
+                        (string) ($it['complainant_name'] ?? ''),
+                        (string) ($it['complaint_number'] ?? ''),
+                        (string) ($it['complaint_title'] ?? ''),
+                        (string) ($it['invitee_address'] ?? ''),
+                        (string) ($it['complainant_address'] ?? ''),
+                    ]), 'UTF-8');
+                    if (str_contains($haystack, $term)) {
+                        return true;
+                    }
+                }
+                return false;
+            }));
+        }
+
+        if ($status !== null && $status !== '' && $status !== 'all') {
+            $cases = array_values(array_filter($cases, static function (array $case) use ($status): bool {
+                $st = $case['display_status'];
+                if (in_array($status, ['Resolved', 'Completed', 'Settled', 'Done'], true)) {
+                    return in_array($st, ['Done', 'Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true);
+                }
+                if (in_array($status, ['Cancelled', 'Failed', 'Escalated'], true)) {
+                    return in_array($st, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true);
+                }
+                if (in_array($status, ['Scheduled', 'Pending'], true)) {
+                    return in_array($st, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true);
+                }
+                return $st === $status;
+            }));
+        }
+
+        return $cases;
+    }
+
+    /**
      * Gets a single Paanyaya record by ID.
      */
     public function getPaanyayaById(int $paanyayaId): ?array
@@ -563,8 +762,41 @@ class Paanyaya
                    c.complaint_number,
                    c.complaint_title,
                    c.status AS complaint_workflow_status,
+                   COALESCE(c.paanyaya_attempt_count, 0) AS complaint_paanyaya_count,
                    cs.case_id AS linked_case_id,
                    cs.case_status AS linked_case_status,
+                   EXISTS (
+                       SELECT 1 FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                   ) AS has_stage2_issued,
+                   (
+                       SELECT ps2.invitation_date FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                       LIMIT 1
+                   ) AS stage2_invitation_date,
+                   (
+                       SELECT ps2.invitation_time FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                       LIMIT 1
+                   ) AS stage2_invitation_time,
+                   (
+                       SELECT ps2.status FROM paanyaya_stages ps2
+                       WHERE ps2.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND ps2.stage_type = 'Paanyaya 2'
+                         AND (ps2.issued_at IS NOT NULL OR ps2.invitation_date IS NOT NULL)
+                       LIMIT 1
+                   ) AS stage2_status,
+                   EXISTS (
+                       SELECT 1 FROM paanyaya_sessions pse
+                       WHERE pse.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                         AND pse.attempt_number >= 2
+                   ) AS has_session2_issued,
                    COALESCE(
                        NULLIF(TRIM(p.complainant_name), ''),
                        (
@@ -1882,17 +2114,27 @@ class Paanyaya
             ]);
 
             // Sync with independent paanyayas table
+            $stageAttempt = ($stageType === self::STAGE_2) ? 2 : 1;
+            if ($stageAttempt >= 2) {
+                $this->conn->prepare("
+                    UPDATE paanyayas
+                    SET status = 'Completed', updated_at = NOW()
+                    WHERE complaint_id = ? AND status = 'Scheduled'
+                ")->execute([$complaintId]);
+            }
+
             $insP = $this->conn->prepare("
                 INSERT INTO paanyayas (
                     complaint_id, invitee_name, scheduled_date, scheduled_time,
-                    status, venue, pdf_path, scheduled_by
-                ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?, ?)
+                    status, attempt_number, venue, pdf_path, scheduled_by
+                ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?, ?, ?)
             ");
             $insP->execute([
                 $complaintId,
                 $inviteeName,
                 $invitationDate,
                 $invitationTime,
+                $stageAttempt,
                 $venue,
                 $pdfRelativePath,
                 $userId

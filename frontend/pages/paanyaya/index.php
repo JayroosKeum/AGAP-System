@@ -20,7 +20,7 @@ $paanyayaModel = new Paanyaya();
 $statusFilter = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
 $searchFilter = isset($_GET['search']) ? trim((string)$_GET['search']) : '';
 
-$paanyayas = $paanyayaModel->getAllPaanyayas($statusFilter !== '' ? $statusFilter : null, $searchFilter !== '' ? $searchFilter : null);
+$paanyayas = $paanyayaModel->getGroupedPaanyayaCases($statusFilter !== '' ? $statusFilter : null, $searchFilter !== '' ? $searchFilter : null);
 
 $dbConn = (new Database())->connect();
 $residentsForLookup = [];
@@ -42,16 +42,16 @@ $purokOptions = [
     'Doña Petra', 'Sitio', 'Non-Resident (Outside Barangay Tumana)'
 ];
 
-// Count summary
-$allList = $paanyayaModel->getAllPaanyayas();
+// Count summary across grouped cases
+$allList = $paanyayaModel->getGroupedPaanyayaCases();
 $countTotal = count($allList);
 $countScheduled = 0;
 $countCompleted = 0;
 $countCancelled = 0;
 foreach ($allList as $item) {
-    $st = $item['current_workflow_status'] ?? $item['status'] ?? '';
+    $st = $item['display_status'] ?? 'Scheduled';
     if (in_array($st, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true)) $countScheduled++;
-    elseif (in_array($st, ['Completed', 'Resolved', 'Settled', 'Dismissed', 'Archived'], true)) $countCompleted++;
+    elseif (in_array($st, ['Done', 'Completed', 'Resolved', 'Settled', 'Dismissed', 'Archived'], true)) $countCompleted++;
     elseif (in_array($st, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true)) $countCancelled++;
 }
 
@@ -229,23 +229,23 @@ include '../../layouts/header.php';
     text-align: left;
 }
 .paanyaya-table th {
-    background: #f1f5f9;
-    padding: 12px 18px;
-    font-weight: 700;
-    color: #475569;
+    background: #f8fafc;
+    padding: 11px 14px;
+    font-weight: 800;
+    color: #64748b;
     border-bottom: 1px solid #e2e8f0;
-    font-size: 0.8rem;
+    font-size: 0.74rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.035em;
 }
 .paanyaya-table td {
-    padding: 14px 18px;
-    border-bottom: 1px solid #f1f5f9;
-    color: #1e293b;
+    padding: 13px 14px;
+    border-bottom: 1px solid #edf2f7;
+    color: #334155;
     vertical-align: middle;
 }
 .paanyaya-table tr:hover {
-    background: #f8fafc;
+    background: #fafbff;
 }
 .status-pill-scheduled {
     background: #dbeafe;
@@ -614,6 +614,290 @@ include '../../layouts/header.php';
     cursor: not-allowed !important;
     pointer-events: none !important;
 }
+
+/* Case Grouping & Vertical Stepper Dropdown (modeled after step progression) */
+tr[data-paanyaya-row="1"] {
+    cursor: pointer;
+    transition: background-color 0.14s ease;
+}
+tr[data-paanyaya-row="1"].is-expanded {
+    background: #f0f9ff !important;
+}
+tr[data-paanyaya-row="1"].is-expanded td {
+    border-bottom: 1px solid #bae6fd !important;
+}
+.paanyaya-status-dual {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+.paanyaya-step-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    white-space: nowrap;
+}
+.paanyaya-step-chip.is-multi {
+    background: #ecfdf5;
+    color: #15803d;
+    border-color: #86efac;
+}
+.paanyaya-expand-btn {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: 6px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+}
+.paanyaya-expand-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+.paanyaya-expand-btn[aria-expanded="true"] {
+    background: #dcfce7;
+    border-color: #22c55e;
+    color: #15803d;
+}
+.paanyaya-expand-btn svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.18s ease;
+}
+.paanyaya-expand-btn[aria-expanded="true"] svg {
+    transform: rotate(90deg);
+}
+.paanyaya-series-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+.paanyaya-case-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #e2e8f0;
+}
+.paanyaya-dropdown-row {
+    background: #f8fafc;
+}
+.paanyaya-dropdown-row td.paanyaya-dropdown-cell {
+    padding: 12px 20px 18px 56px;
+    border-top: 0;
+    background: #f8fafc;
+}
+.paanyaya-stepper-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 16px 20px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.05);
+}
+.paanyaya-stepper-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.paanyaya-stepper-title {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: #0f172a;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.paanyaya-vstepper {
+    display: flex;
+    flex-direction: column;
+}
+.paanyaya-vstep {
+    display: flex;
+    align-items: stretch;
+    gap: 14px;
+}
+.paanyaya-vstep-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 30px;
+    flex-shrink: 0;
+    position: relative;
+}
+.paanyaya-vstep-pointer {
+    font-size: 0.72rem;
+    font-weight: 900;
+    line-height: 1;
+    color: #16a34a;
+    margin: 2px 0 5px;
+    background: #ffffff;
+    padding: 0 3px;
+}
+.paanyaya-vstep-circle {
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 800;
+    flex-shrink: 0;
+    z-index: 1;
+}
+.paanyaya-vstep.is-done .paanyaya-vstep-circle {
+    background: #22c55e;
+    color: #ffffff;
+    border: 2px solid #22c55e;
+}
+.paanyaya-vstep.is-current .paanyaya-vstep-circle {
+    background: #22c55e;
+    color: #ffffff;
+    border: 2px solid #16a34a;
+    box-shadow: 0 0 0 5px rgba(34, 197, 94, 0.22);
+}
+.paanyaya-vstep.is-upcoming .paanyaya-vstep-circle {
+    background: #ffffff;
+    color: #94a3b8;
+    border: 2px solid #cbd5e1;
+}
+.paanyaya-vstep-line {
+    width: 2px;
+    flex: 1 1 auto;
+    min-height: 20px;
+    background: #cbd5e1;
+    margin: 4px 0 2px;
+}
+.paanyaya-vstep.is-done .paanyaya-vstep-line {
+    background: #22c55e;
+}
+.paanyaya-vstep:last-child .paanyaya-vstep-line {
+    display: none;
+}
+.paanyaya-vstep-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-bottom: 12px;
+}
+.paanyaya-vstep:last-child .paanyaya-vstep-content {
+    padding-bottom: 0;
+}
+.paanyaya-vstep-box {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 11px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.paanyaya-vstep.is-current .paanyaya-vstep-box {
+    background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+    border: 1.5px solid #22c55e;
+    box-shadow: 0 4px 14px rgba(34, 197, 94, 0.13);
+}
+.paanyaya-vstep.is-upcoming .paanyaya-vstep-box {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+}
+.paanyaya-vstep-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+.paanyaya-vstep-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.paanyaya-vstep-name {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #334155;
+}
+.paanyaya-vstep.is-current .paanyaya-vstep-name {
+    color: #14532d;
+    font-weight: 800;
+}
+.paanyaya-vstep.is-upcoming .paanyaya-vstep-name {
+    color: #94a3b8;
+    font-weight: 600;
+}
+.paanyaya-vstep-recent-pill {
+    font-size: 0.67rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    background: #16a34a;
+    color: #ffffff;
+}
+.paanyaya-vstep-sub {
+    font-size: 0.78rem;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.paanyaya-vstep.is-current .paanyaya-vstep-sub {
+    color: #166534;
+}
+@media (max-width: 768px) {
+    .agap-underline-tabs {
+        flex-wrap: wrap;
+        gap: 6px 14px;
+    }
+    .paanyaya-dropdown-row td.paanyaya-dropdown-cell {
+        padding: 10px 12px 14px 12px;
+    }
+    .paanyaya-stepper-card {
+        padding: 12px 14px;
+        position: sticky;
+        left: 12px;
+        max-width: calc(100vw - 52px);
+        box-sizing: border-box;
+    }
+}
 </style>
 
 <div class="dashboard-layout">
@@ -657,10 +941,10 @@ include '../../layouts/header.php';
                             <span class="agap-tab-count"><?php echo $countScheduled; ?></span>
                         </a>
                         <a href="index.php?status=Resolved<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>"
-                           class="agap-tab-item <?php echo in_array($statusFilter, ['Resolved', 'Completed', 'Settled'], true) ? 'active' : ''; ?>"
+                           class="agap-tab-item <?php echo in_array($statusFilter, ['Resolved', 'Completed', 'Settled', 'Done'], true) ? 'active' : ''; ?>"
                            data-status="Resolved"
                            id="paanyayaCardSettled">
-                            <span>Settled</span>
+                            <span>Settled / Done</span>
                             <span class="agap-tab-count"><?php echo $countCompleted; ?></span>
                         </a>
                         <a href="index.php?status=Cancelled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>"
@@ -681,7 +965,7 @@ include '../../layouts/header.php';
                                 <circle cx="11" cy="11" r="8"></circle>
                                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
                             </svg>
-                            <input type="text" name="search" id="paanyayaSearchInput" placeholder="Search invitee or complainant..." value="<?php echo htmlspecialchars($searchFilter); ?>" autocomplete="off">
+                            <input type="text" name="search" id="paanyayaSearchInput" placeholder="Search complainant, respondent, status..." value="<?php echo htmlspecialchars($searchFilter); ?>" autocomplete="off">
                             <button type="button" id="paanyayaClearSearchBtn" class="search-clear-btn" title="Clear search" aria-label="Clear search">&times;</button>
                         </div>
                         <?php if ($searchFilter !== ''): ?>
@@ -690,37 +974,112 @@ include '../../layouts/header.php';
                     </form>
                 </div>
 
+                <div class="agap-list-meta">
+                    <span>Click any row to expand the Paanyaya progression, schedule details, and manage invitations.</span>
+                </div>
+
                 <!-- Bordered Table Card -->
                 <div class="agap-list-table-wrap">
                     <table class="paanyaya-table">
                         <thead>
                             <tr>
-                                <th>Invitee (Inanyayahan)</th>
-                                <th>Complainant (Nagpaanyaya)</th>
-                                <th>Scheduled Date &amp; Time</th>
+                                <th style="width: 44px; text-align: center;" aria-label="Expand toggle"></th>
+                                <th>Complainant</th>
+                                <th>Respondent</th>
                                 <th>Status</th>
-                                <th style="text-align: right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="paanyayaTbody">
                             <?php if (empty($paanyayas)): ?>
                                 <tr id="paanyayaServerEmptyRow">
-                                    <td colspan="5" style="text-align: center; color: #64748b; padding: 40px 20px;">
+                                    <td colspan="4" style="text-align: center; color: #64748b; padding: 40px 20px;">
                                         <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a;">No Paanyaya invitations found</div>
                                         <p style="font-size: 0.84rem; margin: 4px 0 0; color: #64748b;">Click "Schedule New Paanyaya" above to issue an informal invitation.</p>
                                     </td>
                                 </tr>
                             <?php else: ?>
-                                <?php foreach ($paanyayas as $p): ?>
+                                <?php
+                                    $resolveBadgeVariant = static function (string $status): string {
+                                        if (in_array($status, ['Done', 'Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived', 'CFA Issued', 'RESPONDENT_DEFAULT'], true)) {
+                                            return 'is-green';
+                                        }
+                                        if (in_array($status, ['Escalated', 'DISMISSED_BARRED', 'Repudiated'], true)) {
+                                            return 'is-purple';
+                                        }
+                                        if (in_array($status, ['Cancelled', 'Failed'], true)) {
+                                            return 'is-red';
+                                        }
+                                        return 'is-blue';
+                                    };
+
+                                    $renderPaanyayaActions = static function (
+                                        array $row,
+                                        string $actionStatus,
+                                        int $attemptNum,
+                                        int $linkedCid,
+                                        string $invLabel,
+                                        string $compLabel,
+                                        string $dateLabel,
+                                        string $timeLabel,
+                                        bool $includeStage = true
+                                    ): string {
+                                        $pid = (int)($row['paanyaya_id'] ?? 0);
+                                        $cid = (int)($row['complaint_id'] ?? $linkedCid);
+                                        $cnum = (string)($row['complaint_number'] ?? '');
+                                        ob_start();
+                                        ?>
+                                        <button type="button" class="agap-btn-act is-primary-soft btn-preview-modal"
+                                                data-paanyaya-id="<?php echo $pid; ?>"
+                                                data-complaint-id="<?php echo $cid; ?>"
+                                                data-attempt="<?php echo $attemptNum; ?>"
+                                                data-name="<?php echo htmlspecialchars($invLabel, ENT_QUOTES); ?>"
+                                                title="Preview Paanyaya Official Letter">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                            <span>Letter</span>
+                                        </button>
+                                        <?php if ($includeStage && $linkedCid > 0): ?>
+                                            <a href="stage.php?complaint_id=<?php echo $linkedCid; ?>" class="agap-btn-act" title="Open the full Paanyaya stage workspace">
+                                                <span>Stage</span>
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php if ($pid > 0): ?>
+                                            <button type="button" class="agap-btn-act btn-open-attendance"
+                                                    data-paanyaya-id="<?php echo $pid; ?>"
+                                                    data-complaint-id="<?php echo $linkedCid; ?>"
+                                                    data-invitee="<?php echo htmlspecialchars($invLabel, ENT_QUOTES); ?>"
+                                                    data-complainant="<?php echo htmlspecialchars($compLabel, ENT_QUOTES); ?>"
+                                                    data-date="<?php echo htmlspecialchars($dateLabel, ENT_QUOTES); ?>"
+                                                    data-time="<?php echo htmlspecialchars($timeLabel, ENT_QUOTES); ?>"
+                                                    data-status="<?php echo htmlspecialchars($actionStatus, ENT_QUOTES); ?>"
+                                                    data-attempt="<?php echo $attemptNum; ?>"
+                                                    data-complaint-number="<?php echo htmlspecialchars($cnum, ENT_QUOTES); ?>"
+                                                    title="Manage the Paanyaya stage, attendance, outcome, and escalation">
+                                                <span>Manage</span>
+                                            </button>
+                                        <?php elseif ($linkedCid > 0): ?>
+                                            <a href="stage.php?complaint_id=<?php echo $linkedCid; ?>" class="agap-btn-act" title="Manage formal Paanyaya stage">
+                                                <span>Manage Stage</span>
+                                            </a>
+                                        <?php endif; ?>
+                                        <?php
+                                        return (string)ob_get_clean();
+                                    };
+                                ?>
+                                <?php foreach ($paanyayas as $groupIndex => $caseGroup): ?>
                                     <?php
+                                        $p = $caseGroup['latest'] ?? $caseGroup;
+                                        $items = $caseGroup['items'] ?? [$p];
+                                        $groupKey = (string)($caseGroup['group_key'] ?? ('single:' . (int)($p['paanyaya_id'] ?? $groupIndex)));
+                                        $dropdownDomId = 'paanyaya-dropdown-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', $groupKey) . '-' . $groupIndex;
+                                        $hasSecond = !empty($caseGroup['has_second_paanyaya']);
+                                        $itemCount = (int)($caseGroup['item_count'] ?? count($items));
+
                                         $d = !empty($p['scheduled_date']) ? date('M j, Y', strtotime($p['scheduled_date'])) : '—';
                                         $t = !empty($p['scheduled_time']) ? date('g:i A', strtotime($p['scheduled_time'])) : '';
-                                        $st = $p['current_workflow_status'] ?? $p['status'] ?? 'Scheduled';
-                                        $workflowStage = $p['current_workflow_stage'] ?? 'Stage 0 · Informal Dialogue';
-                                        $badgeVariant = 'is-blue';
-                                        if (in_array($st, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived', 'CFA Issued', 'RESPONDENT_DEFAULT'], true)) $badgeVariant = 'is-green';
-                                        elseif (in_array($st, ['Escalated', 'DISMISSED_BARRED', 'Repudiated'], true)) $badgeVariant = 'is-purple';
-                                        elseif (in_array($st, ['Cancelled', 'Failed'], true)) $badgeVariant = 'is-red';
+                                        $displaySt = (string)($caseGroup['display_status'] ?? ($p['current_workflow_status'] ?? ($p['status'] ?? 'Scheduled')));
+                                        $rawWorkflowSt = (string)($caseGroup['workflow_status'] ?? ($p['current_workflow_status'] ?? ($p['status'] ?? 'Scheduled')));
+                                        $workflowStage = (string)($caseGroup['workflow_stage'] ?? ($p['current_workflow_stage'] ?? 'Stage 0 · Informal Dialogue'));
+                                        $badgeVariant = $resolveBadgeVariant($displaySt);
 
                                         $invName = trim((string) ($p['invitee_name'] ?: 'Inanyayahan'));
                                         $invParts = preg_split('/\s+/', $invName) ?: ['I'];
@@ -734,26 +1093,37 @@ include '../../layouts/header.php';
                                         $invContactLine = trim((string)($p['invitee_contact_no'] ?? ''));
                                         $compAddrLine = trim(implode(', ', array_filter([$p['complainant_address'] ?? '', $p['complainant_purok'] ?? ''])));
                                         $compContactLine = trim((string)($p['complainant_contact_no'] ?? ''));
-                                        $searchBlob = strtolower(implode(' ', [$invName, $compName, $invAddrLine, $invContactLine, $compAddrLine, $st, (string)($p['complaint_number'] ?? '')]));
+
+                                        $stepSearchTokens = [];
+                                        foreach ($items as $sItem) {
+                                            $stepSearchTokens[] = (string)($sItem['step_label'] ?? '');
+                                            $stepSearchTokens[] = (string)($sItem['status'] ?? '');
+                                            $stepSearchTokens[] = (string)($sItem['step_display_status'] ?? '');
+                                            if (!empty($sItem['scheduled_date'])) {
+                                                $stepSearchTokens[] = date('M j, Y', strtotime($sItem['scheduled_date']));
+                                            }
+                                        }
+                                        $searchBlob = strtolower(implode(' ', array_merge([
+                                            $invName, $compName, $invAddrLine, $invContactLine, $compAddrLine,
+                                            $displaySt, $rawWorkflowSt, (string)($p['complaint_number'] ?? ''),
+                                            $hasSecond ? '2nd paanyaya second done' : '1st paanyaya'
+                                        ], $stepSearchTokens)));
+
+                                        $linkedComplaintId = (int)($p['complaint_id'] ?: ($p['escalated_to_complaint_id'] ?? 0));
+                                        $latestAttempt = (int)($p['step_index'] ?? ($p['attempt_number'] ?? 1));
+                                        $latestStepLabel = (string)($p['step_label'] ?? ($latestAttempt === 2 ? '2nd Paanyaya' : ($latestAttempt === 3 ? '3rd Paanyaya' : '1st Paanyaya')));
                                     ?>
-                                    <tr data-paanyaya-row="1" data-search="<?php echo htmlspecialchars($searchBlob, ENT_QUOTES); ?>">
-                                        <td>
-                                            <div class="agap-person-cell">
-                                                <span class="agap-person-avatar is-respondent" aria-hidden="true"><?php echo htmlspecialchars($invInitials); ?></span>
-                                                <div class="agap-person-meta">
-                                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                                        <span class="agap-person-name"><?php echo htmlspecialchars($invName); ?></span>
-                                                        <?php if ((int)($p['attempt_number'] ?? 1) === 2): ?>
-                                                            <span class="agap-pill-badge is-blue" style="padding:1px 6px; font-size:0.68rem;" title="Ikalawang Paanyaya">2nd</span>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                    <?php if ($invAddrLine !== '' || $invContactLine !== ''): ?>
-                                                        <span class="agap-person-sub"><?php echo htmlspecialchars(trim(implode(' · ', array_filter([$invAddrLine, $invContactLine])))); ?></span>
-                                                    <?php elseif (!empty($p['scheduled_by_name'])): ?>
-                                                        <span class="agap-person-sub">Issued by <?php echo htmlspecialchars($p['scheduled_by_name']); ?></span>
-                                                    <?php endif; ?>
-                                                </div>
-                                            </div>
+                                    <tr data-paanyaya-row="1"
+                                        data-group-key="<?php echo htmlspecialchars($groupKey, ENT_QUOTES); ?>"
+                                        data-search="<?php echo htmlspecialchars($searchBlob, ENT_QUOTES); ?>">
+                                        <td class="cell-expand" style="width: 44px; text-align: center;">
+                                            <button type="button"
+                                                    class="paanyaya-expand-btn"
+                                                    aria-expanded="false"
+                                                    aria-controls="<?php echo htmlspecialchars($dropdownDomId, ENT_QUOTES); ?>"
+                                                    title="View Paanyaya progression for this case">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                                            </button>
                                         </td>
                                         <td>
                                             <div class="agap-person-cell">
@@ -767,55 +1137,148 @@ include '../../layouts/header.php';
                                             </div>
                                         </td>
                                         <td>
-                                            <div style="font-weight: 600; color: #0f172a;"><?php echo $d; ?></div>
-                                            <?php if ($t !== ''): ?>
-                                                <div style="font-size: 0.76rem; color: #64748b;"><?php echo $t; ?></div>
-                                            <?php endif; ?>
+                                            <div class="agap-person-cell">
+                                                <span class="agap-person-avatar is-respondent" aria-hidden="true"><?php echo htmlspecialchars($invInitials); ?></span>
+                                                <div class="agap-person-meta">
+                                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                                                        <span class="agap-person-name"><?php echo htmlspecialchars($invName); ?></span>
+                                                        <?php if (!empty($p['complaint_number'])): ?>
+                                                            <span class="paanyaya-case-chip">Case #<?php echo htmlspecialchars($p['complaint_number']); ?></span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <?php if ($invAddrLine !== '' || $invContactLine !== ''): ?>
+                                                        <span class="agap-person-sub"><?php echo htmlspecialchars(trim(implode(' · ', array_filter([$invAddrLine, $invContactLine])))); ?></span>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </div>
                                         </td>
                                         <td>
-                                            <span class="agap-pill-badge <?php echo $badgeVariant; ?>"><?php echo htmlspecialchars($st); ?></span>
-                                            <?php if (!empty($p['has_linked_case_workflow'])): ?>
-                                                <div style="font-size: 0.72rem; color: #475569; margin-top: 4px; font-weight: 600;">
-                                                    <?php echo htmlspecialchars($workflowStage); ?>
-                                                </div>
-                                            <?php endif; ?>
-                                            <?php if (!empty($p['complainant_attended']) || !empty($p['invitee_attended'])): ?>
-                                                <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">
-                                                    Att: <?php echo htmlspecialchars(substr($p['complainant_attended'] ?? '?', 0, 1)); ?>/<?php echo htmlspecialchars(substr($p['invitee_attended'] ?? '?', 0, 1)); ?>
-                                                </div>
-                                            <?php endif; ?>
+                                            <div class="paanyaya-status-dual">
+                                                <span class="paanyaya-step-chip <?php echo ($hasSecond || $latestAttempt >= 2) ? 'is-multi' : ''; ?>">
+                                                    <?php echo htmlspecialchars($latestStepLabel); ?>
+                                                </span>
+                                                <span class="agap-pill-badge <?php echo $badgeVariant; ?>">
+                                                    <?php echo $displaySt === 'Done' ? '✓ Done' : htmlspecialchars($displaySt); ?>
+                                                </span>
+                                            </div>
                                         </td>
-                                        <td style="text-align: right;">
-                                            <div class="agap-row-actions">
-                                                <button type="button" class="agap-btn-act is-primary-soft btn-preview-modal"
-                                                        data-paanyaya-id="<?php echo (int)$p['paanyaya_id']; ?>"
-                                                        data-complaint-id="<?php echo (int)($p['complaint_id'] ?? 0); ?>"
-                                                        data-name="<?php echo htmlspecialchars($invName); ?>"
-                                                        title="Preview Paanyaya Official Letter">
-                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                                    <span>Letter</span>
-                                                </button>
+                                    </tr>
+                                    <tr class="paanyaya-dropdown-row"
+                                        id="<?php echo htmlspecialchars($dropdownDomId, ENT_QUOTES); ?>"
+                                        data-paanyaya-dropdown-for="<?php echo htmlspecialchars($groupKey, ENT_QUOTES); ?>"
+                                        hidden>
+                                        <td colspan="4" class="paanyaya-dropdown-cell">
+                                            <div class="paanyaya-stepper-card">
+                                                <div class="paanyaya-stepper-header">
+                                                    <div class="paanyaya-stepper-title">
+                                                        <span>Paanyaya Progression</span>
+                                                        <?php if (!empty($p['complaint_number'])): ?>
+                                                            <span class="paanyaya-case-chip">Case #<?php echo htmlspecialchars($p['complaint_number']); ?></span>
+                                                        <?php endif; ?>
+                                                        <?php if ($hasSecond): ?>
+                                                            <span class="paanyaya-series-pill"><?php echo max(2, $itemCount); ?> Connected Invitations</span>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                    <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                                        <span style="font-size: 0.76rem; color: #64748b; font-weight: 600;">
+                                                            <?php echo htmlspecialchars($workflowStage); ?>
+                                                        </span>
+                                                        <?php if ($linkedComplaintId > 0): ?>
+                                                            <a href="stage.php?complaint_id=<?php echo $linkedComplaintId; ?>" class="agap-btn-act" title="Open the full Paanyaya stage workspace">
+                                                                <span>Stage Workspace</span>
+                                                            </a>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                </div>
+                                                <div class="paanyaya-vstepper">
+                                                    <?php
+                                                        $showUpcomingSecond = (
+                                                            count($items) === 1
+                                                            && !in_array($displaySt, ['Done', 'Resolved', 'Completed', 'Settled', 'Cancelled', 'Escalated', 'Dismissed', 'Archived', 'CFA Issued'], true)
+                                                        );
+                                                    ?>
+                                                    <?php foreach ($items as $item): ?>
+                                                        <?php
+                                                            $stepNum = (int)($item['step_index'] ?? ($item['attempt_number'] ?? 1));
+                                                            $stepLabel = (string)($item['step_label'] ?? ($stepNum === 2 ? '2nd Paanyaya' : '1st Paanyaya'));
+                                                            $isStepCurrent = !empty($item['is_latest']);
+                                                            $stepClass = $isStepCurrent ? 'is-current' : 'is-done';
 
-                                                <?php $linkedComplaintId = (int)($p['complaint_id'] ?: ($p['escalated_to_complaint_id'] ?? 0)); ?>
-                                                <?php if ($linkedComplaintId > 0): ?>
-                                                    <a href="stage.php?complaint_id=<?php echo $linkedComplaintId; ?>" class="agap-btn-act" title="Open the full Paanyaya stage workspace">
-                                                        <span>Stage</span>
-                                                    </a>
-                                                <?php endif; ?>
-
-                                                <button type="button" class="agap-btn-act btn-open-attendance"
-                                                        data-paanyaya-id="<?php echo (int)$p['paanyaya_id']; ?>"
-                                                        data-complaint-id="<?php echo (int)$linkedComplaintId; ?>"
-                                                        data-invitee="<?php echo htmlspecialchars($invName); ?>"
-                                                        data-complainant="<?php echo htmlspecialchars($compName); ?>"
-                                                        data-date="<?php echo htmlspecialchars($d); ?>"
-                                                        data-time="<?php echo htmlspecialchars($t); ?>"
-                                                        data-status="<?php echo htmlspecialchars($st); ?>"
-                                                        data-attempt="<?php echo (int)($p['attempt_number'] ?? 1); ?>"
-                                                        data-complaint-number="<?php echo htmlspecialchars($p['complaint_number'] ?? ''); ?>"
-                                                        title="Manage the Paanyaya stage, attendance, outcome, and escalation">
-                                                    <span>Manage</span>
-                                                </button>
+                                                            $itemDate = !empty($item['scheduled_date']) ? date('M j, Y', strtotime($item['scheduled_date'])) : '—';
+                                                            $itemTime = !empty($item['scheduled_time']) ? date('g:i A', strtotime($item['scheduled_time'])) : '';
+                                                            $itemRawStatus = (string)($item['status'] ?? 'Scheduled');
+                                                            $itemDispStatus = (string)($item['step_display_status'] ?? ($isStepCurrent ? $itemRawStatus : 'Done'));
+                                                            $itemActionStatus = $isStepCurrent ? $itemRawStatus : $itemDispStatus;
+                                                            $itemBadgeVariant = $resolveBadgeVariant($itemDispStatus);
+                                                            $itemLinkedCid = (int)($item['complaint_id'] ?: ($item['escalated_to_complaint_id'] ?? $linkedComplaintId));
+                                                            $itemInvName = trim((string)($item['invitee_name'] ?: $invName));
+                                                            $itemCompName = trim((string)($item['complainant_name'] ?: $compName));
+                                                        ?>
+                                                        <div class="paanyaya-vstep <?php echo $stepClass; ?>">
+                                                            <div class="paanyaya-vstep-rail" aria-hidden="true">
+                                                                <?php if ($isStepCurrent): ?>
+                                                                    <span class="paanyaya-vstep-pointer">&#709;</span>
+                                                                <?php endif; ?>
+                                                                <span class="paanyaya-vstep-circle">
+                                                                    <?php if (!$isStepCurrent): ?>
+                                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                                                                    <?php else: ?>
+                                                                        <?php echo $stepNum; ?>
+                                                                    <?php endif; ?>
+                                                                </span>
+                                                                <span class="paanyaya-vstep-line"></span>
+                                                            </div>
+                                                            <div class="paanyaya-vstep-content">
+                                                                <div class="paanyaya-vstep-box">
+                                                                    <div class="paanyaya-vstep-meta">
+                                                                        <div class="paanyaya-vstep-top">
+                                                                            <span class="paanyaya-vstep-name"><?php echo htmlspecialchars($stepLabel); ?></span>
+                                                                            <?php if ($isStepCurrent): ?>
+                                                                                <span class="paanyaya-vstep-recent-pill">Most Recent</span>
+                                                                            <?php endif; ?>
+                                                                            <span class="agap-pill-badge <?php echo $itemBadgeVariant; ?>">
+                                                                                <?php echo $itemDispStatus === 'Done' ? '✓ Done' : htmlspecialchars($itemDispStatus); ?>
+                                                                            </span>
+                                                                        </div>
+                                                                        <div class="paanyaya-vstep-sub">
+                                                                            <span>Scheduled: <strong><?php echo htmlspecialchars($itemDate); ?><?php echo $itemTime !== '' ? ' · ' . htmlspecialchars($itemTime) : ''; ?></strong></span>
+                                                                            <?php if (!empty($item['complainant_attended']) || !empty($item['invitee_attended'])): ?>
+                                                                                <span>Attendance: <?php echo htmlspecialchars((string)($item['complainant_attended'] ?? 'Pending')); ?> / <?php echo htmlspecialchars((string)($item['invitee_attended'] ?? 'Pending')); ?></span>
+                                                                            <?php endif; ?>
+                                                                            <?php if (!empty($item['outcome_notes'])): ?>
+                                                                                <span><?php echo htmlspecialchars(mb_strimwidth(trim((string)$item['outcome_notes']), 0, 90, '...', 'UTF-8')); ?></span>
+                                                                            <?php endif; ?>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="agap-row-actions">
+                                                                        <?php echo $renderPaanyayaActions($item, $itemActionStatus, $stepNum, $itemLinkedCid, $itemInvName, $itemCompName, $itemDate, $itemTime, false); ?>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                    <?php if ($showUpcomingSecond): ?>
+                                                        <div class="paanyaya-vstep is-upcoming">
+                                                            <div class="paanyaya-vstep-rail" aria-hidden="true">
+                                                                <span class="paanyaya-vstep-circle">2</span>
+                                                                <span class="paanyaya-vstep-line"></span>
+                                                            </div>
+                                                            <div class="paanyaya-vstep-content">
+                                                                <div class="paanyaya-vstep-box">
+                                                                    <div class="paanyaya-vstep-meta">
+                                                                        <div class="paanyaya-vstep-top">
+                                                                            <span class="paanyaya-vstep-name">2nd Paanyaya</span>
+                                                                            <span class="agap-pill-badge" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">Pending</span>
+                                                                        </div>
+                                                                        <div class="paanyaya-vstep-sub">
+                                                                            <span>Not yet scheduled — will mark this case Done once issued.</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
@@ -2044,20 +2507,22 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.btn-preview-modal').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
-            const paanyayaId = this.dataset.paanyayaId || 0;
-            const complaintId = this.dataset.complaintId || 0;
+            const paanyayaId = parseInt(this.dataset.paanyayaId || '0', 10) || 0;
+            const complaintId = parseInt(this.dataset.complaintId || '0', 10) || 0;
+            const attempt = parseInt(this.dataset.attempt || '1', 10) || 1;
+            const attemptQuery = attempt >= 2 ? `&attempt_number=${attempt}` : '';
             const invitee = this.dataset.name || 'Inanyayahan';
 
             if (previewTitle) previewTitle.textContent = `✉️ Paanyaya Letter: ${invitee}`;
             if (previewSubtitle) previewSubtitle.textContent = `Barangay Tumana Official Dialogue Invitation Letter`;
 
             const previewUrl = (paanyayaId > 0)
-                ? `../../../backend/api/paanyaya/preview.php?paanyaya_id=${paanyayaId}&format=html`
-                : `../../../backend/api/paanyaya/preview.php?complaint_id=${complaintId}&format=html`;
+                ? `../../../backend/api/paanyaya/preview.php?paanyaya_id=${paanyayaId}&format=html${attemptQuery}`
+                : `../../../backend/api/paanyaya/preview.php?complaint_id=${complaintId}&format=html${attemptQuery}`;
 
             const pdfUrl = (paanyayaId > 0)
-                ? `../../../backend/api/paanyaya/preview.php?paanyaya_id=${paanyayaId}&format=pdf`
-                : `../../../backend/api/paanyaya/preview.php?complaint_id=${complaintId}&format=pdf`;
+                ? `../../../backend/api/paanyaya/preview.php?paanyaya_id=${paanyayaId}&format=pdf${attemptQuery}`
+                : `../../../backend/api/paanyaya/preview.php?complaint_id=${complaintId}&format=pdf${attemptQuery}`;
 
             if (previewDownloadBtn) {
                 previewDownloadBtn.href = pdfUrl + '&download=1';
@@ -2146,7 +2611,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function applyAttendanceLockState(status, complaintId, attempt, complaintNumber = '') {
         const normStatus = String(status || '').trim().toLowerCase();
         const parsedComplaintId = parseInt(complaintId, 10) || 0;
-        const isSettled = ['resolved', 'settled', 'completed'].includes(normStatus);
+        const isSettled = ['resolved', 'settled', 'completed', 'done'].includes(normStatus);
         const isEscalated = normStatus === 'escalated' || (parsedComplaintId > 0 && !isSettled);
 
         const lockNotice = document.getElementById('attLockNoticeBanner');
@@ -2442,8 +2907,8 @@ document.addEventListener('DOMContentLoaded', function() {
             if (attScheduleLabel) attScheduleLabel.textContent = `Iskedyul: ${date} ${time}`;
             if (attStatusBadge) {
                 attStatusBadge.textContent = status;
-                const isStResolved = ['resolved', 'settled', 'completed'].includes(status.toLowerCase());
-                const isStEscalated = status.toLowerCase() === 'escalated' || complaintId > 0;
+                const isStResolved = ['resolved', 'settled', 'completed', 'done'].includes(status.toLowerCase());
+                const isStEscalated = status.toLowerCase() === 'escalated' || (complaintId > 0 && !isStResolved);
                 attStatusBadge.className = isStResolved ? 'status-pill-resolved' : (isStEscalated ? 'status-pill-escalated' : 'status-pill-scheduled');
             }
             if (attCompNameDisplay) attCompNameDisplay.textContent = complainant;
@@ -2483,7 +2948,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (row.complainant_attended) setRadio('complainant_attended', row.complainant_attended);
                     if (row.invitee_attended) setRadio('invitee_attended', row.invitee_attended);
 
-                    const effStatus = row.status || status;
+                    const effStatus = status.toLowerCase() === 'done' ? 'Done' : (row.status || status);
                     const effComplaintId = parseInt(row.complaint_id || row.escalated_to_complaint_id || complaintId, 10);
                     const effCompNumber = row.complaint_number || complaintNumber;
 
@@ -2726,7 +3191,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!emptyRow) {
                 emptyRow = document.createElement('tr');
                 emptyRow.id = 'paanyayaFilterEmptyRow';
-                emptyRow.innerHTML = '<td colspan="5" style="text-align:center; color:#64748b; padding:36px 20px;"><div style="font-weight:700; color:#0f172a;">No matching Paanyaya invitations</div><p style="margin:4px 0 0; font-size:0.84rem;">Try clearing your search keyword.</p></td>';
+                emptyRow.innerHTML = '<td colspan="4" style="text-align:center; color:#64748b; padding:36px 20px;"><div style="font-weight:700; color:#0f172a;">No matching Paanyaya invitations</div><p style="margin:4px 0 0; font-size:0.84rem;">Try clearing your search keyword.</p></td>';
                 paanyayaTbody.appendChild(emptyRow);
             }
             emptyRow.style.display = '';
@@ -2791,6 +3256,35 @@ document.addEventListener('DOMContentLoaded', function() {
         addPageBtn('›', paanyayaCurrentPage + 1, paanyayaCurrentPage >= totalPages);
     }
 
+    const getDropdownRowFor = (tr) => {
+        const next = tr ? tr.nextElementSibling : null;
+        return (next && next.classList.contains('paanyaya-dropdown-row')) ? next : null;
+    };
+
+    const setPaanyayaRowExpanded = (tr, expand) => {
+        if (!tr) return;
+        const dropdownRow = getDropdownRowFor(tr);
+        const expandBtn = tr.querySelector('.paanyaya-expand-btn');
+        tr.classList.toggle('is-expanded', expand);
+        if (expandBtn) expandBtn.setAttribute('aria-expanded', expand ? 'true' : 'false');
+        if (dropdownRow) {
+            const isParentVisible = tr.style.display !== 'none';
+            dropdownRow.hidden = !(expand && isParentVisible);
+        }
+    };
+
+    paanyayaRows.forEach(tr => {
+        const expandBtn = tr.querySelector('.paanyaya-expand-btn');
+        expandBtn?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            setPaanyayaRowExpanded(tr, !tr.classList.contains('is-expanded'));
+        });
+        tr.addEventListener('click', (e) => {
+            if (e.target.closest('a, button, input, select, textarea, label')) return;
+            setPaanyayaRowExpanded(tr, !tr.classList.contains('is-expanded'));
+        });
+    });
+
     function renderPaanyayaPage() {
         if (!paanyayaRows.length) return;
         const q = (paanyayaSearchInput?.value || '').trim().toLowerCase();
@@ -2811,7 +3305,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const visibleSet = new Set(matched.slice(startIdx, endIdx));
 
         paanyayaRows.forEach(tr => {
-            tr.style.display = visibleSet.has(tr) ? '' : 'none';
+            const visible = visibleSet.has(tr);
+            tr.style.display = visible ? '' : 'none';
+            const dropdownRow = getDropdownRowFor(tr);
+            if (dropdownRow) {
+                dropdownRow.hidden = !(visible && tr.classList.contains('is-expanded'));
+            }
         });
         syncPaanyayaEmptyRow(total === 0);
         renderPaanyayaPagination(total, totalPages, startIdx, endIdx);

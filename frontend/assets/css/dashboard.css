@@ -4364,9 +4364,13 @@
     cursor: pointer;
     font-size: 1rem;
     line-height: 1;
-    display: inline-flex;
+    display: none;
     align-items: center;
     justify-content: center;
+}
+
+.dashboard-overview.is-customizing .pb-widget-hide-btn {
+    display: inline-flex;
 }
 
 .pb-widget-hide-btn:hover {
@@ -4823,6 +4827,19 @@
 .dashboard-overview.is-customizing .pb-widget-card {
     border-color: #cbd5e1;
     box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+    user-select: none;
+}
+
+.dashboard-overview.is-customizing .pb-widget-card *:not(.pb-widget-customize-bar):not(.pb-widget-customize-bar *):not(.pb-resize-handle):not(.pb-resize-live-pill):not(.pb-widget-hide-btn) {
+    pointer-events: none;
+    cursor: default;
+}
+
+.dashboard-overview.is-customizing .pb-widget-card .pb-widget-customize-bar,
+.dashboard-overview.is-customizing .pb-widget-card .pb-widget-customize-bar *,
+.dashboard-overview.is-customizing .pb-widget-card .pb-resize-handle,
+.dashboard-overview.is-customizing .pb-widget-card .pb-widget-hide-btn {
+    pointer-events: auto;
 }
 
 .pb-widget-card.is-dragging-widget {
