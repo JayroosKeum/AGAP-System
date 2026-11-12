@@ -17,11 +17,13 @@ if ($roleId === 4) {
     header('Location: ../gps/proof-service.php');
     exit;
 }
+require_once __DIR__ . '/../../../backend/config/database.php';
 if (!in_array($roleId, [1, 2, 3], true)) {
     http_response_code(403);
     exit('Access denied for this role.');
 }
 
+$isLuponReadOnly = $roleId === 3;
 $canAuthorizePastDate = $roleId === 1;
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
@@ -190,8 +192,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
             <div class="case-bar-right">
                 <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
-                    <button type="button" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')"><span>Mark Intake Eligible</span></button>
-                    <button type="button" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
+                    <a href="complaint-details.php?id=<?php echo $complaintId; ?>#intake-screening" class="btn-case-primary">Review Intake</a>
                 <?php elseif ($roleId === 3 && $assignedLisoId !== (int) $_SESSION['user_id']): ?>
                     <span style="color:#64748b; font-size:.82rem; font-weight:700;">Assigned to another LISO</span>
                 <?php endif; ?>
@@ -205,10 +206,19 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <span id="statusTrackerButtonLabel">Status: In Progress</span>
                     <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
                 </button>
-                <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                    <span>Edit Case</span>
-                </a>
+                <?php if (!$isLuponReadOnly): ?>
+                    <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                        <span>Edit Case</span>
+                    </a>
+                <?php else: ?>
+                    <span class="btn-case-status" style="background:#eef6f2; border-color:#cde2d6; color:#102b2d; cursor:default;" title="View Details, Minutes &amp; KP Forms Only">
+                        Read-Only Lupon View
+                    </span>
+                <?php endif; ?>
+                <script>
+                    window.__agapLuponReadOnly = <?php echo $isLuponReadOnly ? 'true' : 'false'; ?>;
+                </script>
             </div>
         </div>
 
@@ -225,17 +235,22 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
         <script>
         async function reviewIntake(complaintId, status) {
-            const reviewNotes = window.prompt(status === 'Accepted' ? 'Optional preliminary-screening notes:' : 'Explain what information is required:');
-            if (reviewNotes === null) return;
+            const reviewNotes = document.getElementById('lisoScreeningDecisionNotes').value.trim();
             const form = new FormData();
             form.append('complaint_id', complaintId);
             form.append('status', status);
             form.append('review_notes', reviewNotes);
-            const response = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: form });
-            const result = await response.json();
-            if (!result.success) { window.agapNotify?.(result.message || 'Unable to save the screening decision.', 'error'); return; }
-            window.agapNotify?.(result.message, 'success');
-            window.location.reload();
+            try {
+                const response = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: form });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || 'Unable to save the screening decision.');
+                }
+                window.agapNotify?.(result.message, 'success');
+                window.location.reload();
+            } catch (error) {
+                window.agapNotify?.(error.message, 'error');
+            }
         }
 
         async function docketEligibleIntake(complaintId) {
@@ -283,6 +298,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 <span>Overview &amp; Workflow</span>
             </button>
+            <?php if (!$usesPaanyayaPreparation || $preparation): ?>
+            <a href="<?php echo $preparation ? 'complaint-details.php?id=' . $complaintId . '#paanyaya-preparation' : '../paanyaya/stage.php?complaint_id=' . $complaintId; ?>" class="case-tab-item" id="navTabPaanyayaLink" style="text-decoration:none;">
+                <span>🤝 Paanyaya</span>
+            </a>
+            <?php endif; ?>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-mediation' ? 'active' : ''; ?>" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                 <span>Mediation</span>
@@ -380,7 +400,22 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         🖨️ Print Transmittal Letter
                     </button>
                 </div>
-            </div>">
+            </div>
+
+            <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
+                <section id="intake-screening" class="case-hero-card" aria-labelledby="intake-screening-title">
+                    <h2 id="intake-screening-title">LISO Preliminary Screening</h2>
+                    <p>Review the narrative, parties, and incident details before recording your decision.</p>
+                    <div class="form-group">
+                        <label for="lisoScreeningDecisionNotes">Screening notes</label>
+                        <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000"></textarea>
+                    </div>
+                    <div class="case-bar-right">
+                        <button type="button" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
+                        <button type="button" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')">Mark Intake Eligible</button>
+                    </div>
+                </section>
+            <?php endif; ?>
 
             <!-- Top Hero Section: Primary Case Info & Immediate Context -->
             <div class="case-hero-card">
@@ -471,6 +506,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         <strong style="font-size: 0.82rem; color: #64748b; text-transform: uppercase;">Requested Resolution / Relief:</strong>
                         <p id="complaintRequestedResolution" style="margin: 4px 0 0; font-size: 0.9rem; color: #1e293b;"></p>
                     </div>
+                    <div id="complaintAiSuggestionCallout" style="display:none; margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: #eff6ff; border: 1px solid #bfdbfe;"></div>
                 </div>
             </div>
 

@@ -167,15 +167,15 @@ include '../../layouts/header.php';
                                         <div class="form-grid-3">
                                             <div class="form-group">
                                                 <label class="form-label">Barangay Name <span class="required">*</span></label>
-                                                <input type="text" name="barangay_name" class="form-control" value="<?php echo htmlspecialchars($settings['barangay_name'] ?? 'Barangay Tumana'); ?>" required>
+                                                <input type="text" name="barangay_name" class="form-control" maxlength="255" value="<?php echo htmlspecialchars($settings['barangay_name'] ?? 'Barangay Tumana'); ?>" required>
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">City / Municipality <span class="required">*</span></label>
-                                                <input type="text" name="city_name" class="form-control" value="<?php echo htmlspecialchars($settings['city_name'] ?? 'Lungsod ng Marikina'); ?>" required>
+                                                <input type="text" name="city_name" class="form-control" maxlength="255" value="<?php echo htmlspecialchars($settings['city_name'] ?? 'Lungsod ng Marikina'); ?>" required>
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Province / Region <span class="required">*</span></label>
-                                                <input type="text" name="province_name" class="form-control" value="<?php echo htmlspecialchars($settings['province_name'] ?? 'Kalakhang Maynila (NCR)'); ?>" required>
+                                                <input type="text" name="province_name" class="form-control" maxlength="255" value="<?php echo htmlspecialchars($settings['province_name'] ?? 'Kalakhang Maynila (NCR)'); ?>" required>
                                             </div>
                                         </div>
 
@@ -187,11 +187,11 @@ include '../../layouts/header.php';
                                         <div class="form-grid-2">
                                             <div class="form-group">
                                                 <label class="form-label">Telephone / Mobile Hotline</label>
-                                                <input type="text" name="barangay_contact" class="form-control" value="<?php echo htmlspecialchars($settings['barangay_contact'] ?? ''); ?>">
+                                                <input type="tel" name="barangay_contact" class="form-control" maxlength="20" data-validate="phone" value="<?php echo htmlspecialchars($settings['barangay_contact'] ?? ''); ?>">
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Official Correspondence Email</label>
-                                                <input type="email" name="barangay_email" class="form-control" value="<?php echo htmlspecialchars($settings['barangay_email'] ?? ''); ?>">
+                                                <input type="email" name="barangay_email" class="form-control" maxlength="150" value="<?php echo htmlspecialchars($settings['barangay_email'] ?? ''); ?>">
                                             </div>
                                         </div>
                                     </div>
@@ -208,20 +208,20 @@ include '../../layouts/header.php';
                                         <div class="form-grid-2">
                                             <div class="form-group">
                                                 <label class="form-label">Punong Barangay / Lupon Chairman <span class="required">*</span></label>
-                                                <input type="text" name="captain_name" class="form-control" value="<?php echo htmlspecialchars($settings['captain_name'] ?? 'HON. AKIKO LYNNE CENTENO'); ?>" required>
+                                                <input type="text" name="captain_name" class="form-control" maxlength="255" value="<?php echo htmlspecialchars($settings['captain_name'] ?? 'HON. AKIKO LYNNE CENTENO'); ?>" required>
                                                 <div class="form-help">Automatically presides over 1st &amp; 2nd Mediation hearings.</div>
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Barangay Secretary</label>
-                                                <input type="text" name="barangay_secretary_name" class="form-control" value="<?php echo htmlspecialchars($settings['barangay_secretary_name'] ?? 'MARY JANE G. RAMOS'); ?>">
+                                                <input type="text" name="barangay_secretary_name" class="form-control" maxlength="255" value="<?php echo htmlspecialchars($settings['barangay_secretary_name'] ?? 'MARY JANE G. RAMOS'); ?>">
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Lupon Secretary</label>
-                                                <input type="text" name="lupon_secretary_name" class="form-control" value="<?php echo htmlspecialchars($settings['lupon_secretary_name'] ?? 'MA. CRISTINA D. SANTOS'); ?>">
+                                                <input type="text" name="lupon_secretary_name" class="form-control" maxlength="255" value="<?php echo htmlspecialchars($settings['lupon_secretary_name'] ?? 'MA. CRISTINA D. SANTOS'); ?>">
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Legal Officer / City Legal Consultant</label>
-                                                <input type="text" name="legal_officer_name" class="form-control" value="<?php echo htmlspecialchars($settings['legal_officer_name'] ?? 'ATTY. CARLOS M. VALDEZ'); ?>">
+                                                <input type="text" name="legal_officer_name" class="form-control" maxlength="255" value="<?php echo htmlspecialchars($settings['legal_officer_name'] ?? 'ATTY. CARLOS M. VALDEZ'); ?>">
                                             </div>
                                         </div>
 
@@ -679,7 +679,7 @@ include '../../layouts/header.php';
                                             </div>
                                             <div class="form-group">
                                                 <label class="form-label">Sender Name (Alphanumeric)</label>
-                                                <input type="text" name="sms_sender_name" class="form-control" value="<?php echo htmlspecialchars($settings['sms_sender_name'] ?? 'BRGY_TUMANA'); ?>">
+                                                <input type="text" name="sms_sender_name" class="form-control" maxlength="20" pattern="[A-Za-z0-9_ -]{1,20}" value="<?php echo htmlspecialchars($settings['sms_sender_name'] ?? 'BRGY_TUMANA'); ?>">
                                             </div>
                                         </div>
 
@@ -956,12 +956,30 @@ include '../../layouts/header.php';
                                             </label>
                                         </div>
 
-                                        <div class="form-group" style="max-width: 320px; margin-top: 14px;">
-                                            <label class="form-label">System Interface Language</label>
-                                            <select id="profileLangSelect" class="form-control">
-                                                <option value="fil" <?php echo ($profile['preferred_language'] ?? 'fil') === 'fil' ? 'selected' : ''; ?>>Filipino / Tagalog (Default)</option>
-                                                <option value="en" <?php echo ($profile['preferred_language'] ?? '') === 'en' ? 'selected' : ''; ?>>English</option>
-                                            </select>
+                                        <div id="languageSettingsCard" style="margin-top: 16px; padding: 16px 18px; background: #eef6f2; border: 1.5px solid #cde2d6; border-radius: 12px;">
+                                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+                                                <div>
+                                                    <h4 style="margin:0; font-size:0.95rem; font-weight:800; color:#102b2d;">🌐 Language &amp; Tagalog Settings</h4>
+                                                    <div style="font-size:0.8rem; color:#475569; margin-top:2px;">Palitan ang wika ng buong sistema at default na wika ng mga KP Form printouts para sa lahat ng roles.</div>
+                                                </div>
+                                                <div style="display:inline-flex; gap:4px; background:#ffffff; padding:4px; border-radius:9px; border:1px solid #cde2d6;">
+                                                    <button type="button" id="settingsLangEnBtn" class="sidebar-lang-btn" onclick="window.setAppLanguage && window.setAppLanguage('en')" style="padding:6px 12px;">English</button>
+                                                    <button type="button" id="settingsLangTlBtn" class="sidebar-lang-btn" onclick="window.setAppLanguage && window.setAppLanguage('tl')" style="padding:6px 12px;">Tagalog (Filipino)</button>
+                                                </div>
+                                            </div>
+                                            <input type="hidden" id="profileLangSelect" value="<?php echo ($profile['preferred_language'] ?? 'fil') === 'fil' ? 'fil' : 'en'; ?>">
+                                            <div class="form-grid-2" style="align-items: start;">
+                                                <div class="form-group" style="margin-bottom:0;">
+                                                    <label class="form-label">KP Form &amp; Printout Language</label>
+                                                    <select id="kpFormLangSelect" class="form-control" onchange="window.setKpFormLanguage && window.setKpFormLanguage(this.value)">
+                                                        <option value="fil">Tagalog / Filipino (KP Form Standard)</option>
+                                                        <option value="en">English / Bilingual</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group" style="margin-bottom:0;">
+                                                    <?php $agapFontSliderCompact = false; include '../../layouts/font-size-slider.php'; ?>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1228,7 +1246,7 @@ include '../../layouts/header.php';
         <div class="settings-modal-body">
             <div class="form-group">
                 <label class="form-label">Recipient Mobile Number <span class="required">*</span></label>
-                <input type="text" id="testSmsRecipient" class="form-control" placeholder="e.g. 09171234567" required>
+                <input type="tel" id="testSmsRecipient" class="form-control" maxlength="20" data-validate="phone" placeholder="e.g. 09171234567" required>
                 <div class="form-help">Enter an 11-digit mobile number for immediate SMS dispatch.</div>
             </div>
             <div class="form-group">

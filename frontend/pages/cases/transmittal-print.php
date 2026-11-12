@@ -2,7 +2,7 @@
 session_start();
 
 if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 3, 4], true)) {
-    header('Location: ../../auth/login.php');
+    header('Location: ../auth/login.php');
     exit;
 }
 

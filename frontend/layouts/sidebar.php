@@ -1,5 +1,7 @@
 <?php
+require_once __DIR__ . '/../../backend/middleware/rbac.php';
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
+$roleName = agapGetRoleName(isset($db) && $db instanceof PDO ? $db : null);
 $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
 $normalizedPath = str_replace('\\', '/', $requestPath);
 $pathSegments = array_values(array_filter(explode('/', $normalizedPath), static fn($seg) => $seg !== ''));
@@ -18,7 +20,8 @@ $isGroupActive = static function (array $dirs, array $pages = []) use ($currentF
     }
     return !empty($pages) && in_array($currentFile, $pages, true);
 };
-$dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/clerk-dashboard.php', 3 => '../dashboard/lupon-dashboard.php', 4 => '../dashboard/server-dashboard.php'][$roleId] ?? '../auth/login.php';
+$dashboardLink = $roleName === 'Resident' ? '../resident/dashboard.php'
+    : ([1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/clerk-dashboard.php', 3 => '../dashboard/lupon-dashboard.php', 4 => '../dashboard/server-dashboard.php'][$roleId] ?? '../auth/login.php');
 ?>
 <aside class="sidebar" id="appSidebar">
     <div class="sidebar-brand">
@@ -62,7 +65,7 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
                         </span>
                         <span class="nav-link-label">Complaints</span>
                     </a>
-                    <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'create-case.php', 'case-assignment.php'], 'cases'); ?> title="Cases and assignments">
+                    <a href="../cases/case-list.php"<?php echo $isActive(['case-list.php', 'case-assignment.php'], 'cases'); ?> title="Cases and assignments">
                         <span class="nav-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>
                         </span>
@@ -70,20 +73,42 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
                     </a>
                 </div>
             </details>
-            <details class="nav-group"<?php echo $isGroupActive(['documents', 'gps']) ? ' open' : ''; ?> data-nav-group="operations">
+            <details class="nav-group"<?php echo $isGroupActive(['gps', 'reports']) ? ' open' : ''; ?> data-nav-group="operations">
                 <summary>Operations</summary>
                 <div class="nav-group-links">
-                    <a href="../documents/document-center.php"<?php echo $isActive(['document-center.php', 'summons.php', 'settlements.php', 'cfa.php', 'kp-form-9.php'], 'documents'); ?> title="KP Documents and Forms">
-                        <span class="nav-icon" aria-hidden="true">
-                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                        </span>
-                        <span class="nav-link-label">KP Documents and Forms</span>
-                    </a>
                     <a href="../gps/proof-service.php"<?php echo $isActive(['proof-service.php'], 'gps'); ?> title="Proof of service">
                         <span class="nav-icon" aria-hidden="true">
                             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"></path><path d="m9 10 2 2 4-4"></path></svg>
                         </span>
                         <span class="nav-link-label">Proof of service</span>
+                    </a>
+                    <?php if (in_array($roleId, [1, 2], true) || in_array($roleName, ['Administrator', 'Lupon Clerk'], true)): ?>
+                        <a href="../reports/report-list.php"<?php echo $isActive(['report-list.php'], 'reports'); ?> title="LTIA &amp; DILG Reports">
+                            <span class="nav-icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
+                            </span>
+                            <span class="nav-link-label">LTIA &amp; Transmittals</span>
+                        </a>
+                    <?php endif; ?>
+                </div>
+            </details>
+        <?php endif; ?>
+
+        <?php if ($roleId === 3 || $roleName === 'Lupon Member'): ?>
+            <details class="nav-group"<?php echo $isGroupActive(['dashboard', 'complaints']) ? ' open' : ''; ?> data-nav-group="lupon-review">
+                <summary>Lupon Review (Read-Only)</summary>
+                <div class="nav-group-links">
+                    <a href="../dashboard/lupon-dashboard.php#jurisdictionQueue" title="My Walk-in Screenings">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                        </span>
+                        <span class="nav-link-label">My Walk-in Screenings</span>
+                    </a>
+                    <a href="../dashboard/lupon-dashboard.php#assignedCasesSection" title="Case Dossiers, Minutes &amp; KP Forms">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>
+                        </span>
+                        <span class="nav-link-label">Minutes &amp; KP Forms</span>
                     </a>
                 </div>
             </details>
@@ -107,12 +132,17 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             <details class="nav-group"<?php echo $isGroupActive(['users', 'settings']) ? ' open' : ''; ?> data-nav-group="administration">
                 <summary>Administration</summary>
                 <div class="nav-group-links">
-                    <?php if ($roleId === 1): ?>
-                        <a href="../users/user-list.php"<?php echo $isActive(['user-list.php', 'roles.php'], 'users'); ?> title="Users and roles">
+                    <?php if (in_array($roleId, [1, 2], true)): ?>
+                        <?php
+                        $isAdminNav = ($roleId === 1 || $roleName === 'Administrator');
+                        $usersNavHref = $isAdminNav ? '../users/user-list.php' : '../users/user-list.php?tab=residents';
+                        $usersNavLabel = $isAdminNav ? 'Users & Residents' : 'Resident Verification';
+                        ?>
+                        <a href="<?php echo $usersNavHref; ?>"<?php echo $isActive(['user-list.php', 'resident-verification.php'], 'users'); ?> title="<?php echo htmlspecialchars($usersNavLabel, ENT_QUOTES, 'UTF-8'); ?>">
                             <span class="nav-icon" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                             </span>
-                            <span class="nav-link-label">Users and roles</span>
+                            <span class="nav-link-label"><?php echo htmlspecialchars($usersNavLabel, ENT_QUOTES, 'UTF-8'); ?></span>
                         </a>
                     <?php endif; ?>
                     <a href="../settings/index.php"<?php echo $isActive(['index.php'], 'settings'); ?> title="Settings">
@@ -137,5 +167,4 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             </details>
         <?php endif; ?>
     </nav>
-    <div class="sidebar-footer"><span>AGAP</span><small>Barangay Tumana</small></div>
 </aside>

@@ -2130,6 +2130,488 @@ input[data-ai-external-consent]:focus {
     margin-top: 8px;
 }
 
+.ai-classification-preview {
+    margin-top: 12px;
+    padding: 14px 16px;
+    border: 1.5px solid #93c5fd;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+.ai-classification-preview-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.ai-classification-meta {
+    font-size: 0.78rem;
+    color: #475569;
+    margin-top: 2px;
+}
+
+.ai-classification-source-pill {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    white-space: nowrap;
+}
+
+.ai-classification-advisory {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border-radius: 7px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    color: #92400e;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.ai-classification-section {
+    margin-top: 10px;
+}
+
+.ai-classification-label {
+    display: block;
+    font-size: 0.81rem;
+    font-weight: 700;
+    color: #334155;
+    margin-bottom: 6px;
+}
+
+.ai-classification-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ai-classification-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.ai-classification-option:hover {
+    border-color: #60a5fa;
+    background: #f0f9ff;
+}
+
+.ai-classification-option.is-selected {
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+
+.ai-classification-option input[type="radio"],
+.ai-classification-secondary-label input[type="checkbox"],
+.ai-classification-confirm-label input[type="checkbox"],
+.ai-verified-banner-check input[type="checkbox"] {
+    width: 16px !important;
+    height: 16px !important;
+    min-height: 16px !important;
+    max-width: 16px !important;
+    max-height: 16px !important;
+    padding: 0 !important;
+    margin: 2px 0 0 !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+    accent-color: #166534;
+    box-shadow: none !important;
+}
+
+.ai-classification-option-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.ai-classification-option-title {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 0.87rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.ai-classification-option-reason {
+    font-size: 0.79rem;
+    color: #475569;
+    margin-top: 3px;
+    line-height: 1.38;
+}
+
+.ai-class-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 999px;
+    text-transform: uppercase;
+}
+
+.ai-class-badge.is-civil {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.ai-class-badge.is-criminal {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.ai-class-badge.is-conf-high {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.ai-class-badge.is-conf-medium {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.ai-class-badge.is-conf-low {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.ai-classification-secondary-label,
+.ai-classification-confirm-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 9px 11px;
+    border-radius: 7px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.ai-classification-secondary-label {
+    background: #f0f9ff;
+    border: 1px dashed #7dd3fc;
+    color: #0c4a6e;
+}
+
+.ai-classification-confirm-label {
+    margin-top: 12px;
+    background: #fefce8;
+    border: 1px solid #fde047;
+    color: #713f12;
+    font-weight: 600;
+}
+
+.ai-classification-verified-banner {
+    margin: 12px 0 14px;
+    padding: 11px 14px;
+    border-radius: 8px;
+    border: 1.5px solid #cbd5e1;
+}
+
+.ai-classification-verified-banner.is-verified {
+    background: #f0fdf4;
+    border-color: #86efac;
+    color: #14532d;
+}
+
+.ai-classification-verified-banner.is-pending {
+    background: #fffbeb;
+    border-color: #f59e0b;
+    color: #78350f;
+}
+
+.ai-verified-banner-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.ai-verified-banner-badge {
+    font-size: 0.74rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+}
+
+.ai-classification-verified-banner.is-verified .ai-verified-banner-badge {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.ai-classification-verified-banner.is-pending .ai-verified-banner-badge {
+    background: #d97706;
+    color: #ffffff;
+}
+
+.ai-verified-banner-summary {
+    font-size: 0.81rem;
+    font-weight: 600;
+}
+
+.ai-verified-banner-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    line-height: 1.4;
+}
+
+.kp-jurisdiction-panel {
+    border: 1.5px solid #cbd5e1;
+}
+
+.kp-badge-shield {
+    background: #0f766e !important;
+    color: #ffffff !important;
+    font-size: 0.75rem !important;
+    letter-spacing: 0.03em;
+}
+
+.kp-overall-pill {
+    font-size: 0.76rem;
+    font-weight: 800;
+    padding: 4px 11px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.kp-overall-pill.is-eligible {
+    background: #dcfce7;
+    color: #166534;
+    border: 1px solid #86efac;
+}
+
+.kp-overall-pill.is-blotter-only {
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fcd34d;
+}
+
+.kp-overall-pill.is-excluded {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+}
+
+.kp-jurisdiction-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 8px;
+}
+
+.kp-check-card {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 13px 14px;
+    display: flex;
+    flex-direction: column;
+}
+
+.kp-check-card.is-fail {
+    border-color: #fca5a5;
+    background: #fef2f2;
+}
+
+.kp-check-card.is-warn {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.kp-check-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.kp-check-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.kp-check-cite {
+    font-size: 0.72rem;
+    color: #64748b;
+    font-weight: 600;
+    margin-top: 1px;
+}
+
+.kp-check-pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+.kp-check-pill.is-pass {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.kp-check-pill.is-warn {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.kp-check-pill.is-fail {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.kp-check-summary {
+    font-size: 0.8rem;
+    color: #334155;
+    line-height: 1.42;
+}
+
+.kp-check-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.kp-radio-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.kp-inline-check,
+.kp-radio-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: #1e293b;
+    line-height: 1.38;
+    cursor: pointer;
+    margin: 0;
+}
+
+.kp-inline-check input[type="checkbox"],
+.kp-radio-item input[type="radio"] {
+    width: 16px !important;
+    height: 16px !important;
+    min-height: 16px !important;
+    max-width: 16px !important;
+    max-height: 16px !important;
+    padding: 0 !important;
+    margin: 2px 0 0 !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+    accent-color: #0f766e;
+    box-shadow: none !important;
+}
+
+.kp-inline-alert {
+    margin-bottom: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    color: #92400e;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.38;
+}
+
+.kp-select-label {
+    display: block;
+    font-size: 0.79rem;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 5px;
+}
+
+.kp-extra-exclusions {
+    margin-top: 14px;
+    padding: 10px 14px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+}
+
+.kp-extra-exclusions summary {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #334155;
+    cursor: pointer;
+    user-select: none;
+}
+
+.kp-extra-exclusions-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 14px;
+    margin-top: 10px;
+}
+
+.kp-verdict-banner {
+    margin-top: 14px;
+    padding: 12px 15px;
+    border-radius: 8px;
+    border: 1.5px solid #86efac;
+    background: #f0fdf4;
+    color: #14532d;
+}
+
+.kp-verdict-banner.is-blotter-only {
+    border-color: #f59e0b;
+    background: #fffbeb;
+    color: #78350f;
+}
+
+.kp-verdict-banner.is-excluded {
+    border-color: #f87171;
+    background: #fef2f2;
+    color: #7f1d1d;
+}
+
+.kp-verdict-title {
+    font-size: 0.88rem;
+    font-weight: 800;
+}
+
+.kp-verdict-list {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    font-size: 0.81rem;
+    line-height: 1.45;
+}
+
+@media (max-width: 768px) {
+    .kp-jurisdiction-grid,
+    .kp-extra-exclusions-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 #prayerForReliefGroup {
     margin-top: 18px;
 }
@@ -4167,6 +4649,7 @@ input[data-ai-external-consent]:focus {
 .paper-mode-layout #additionalDetailsGroup,
 .paper-mode-layout .ai-narrative-actions,
 .paper-mode-layout .ai-narrative-preview,
+.paper-mode-layout .ai-classification-preview,
 .paper-mode-layout #witnessesGroupSection {
     display: none !important;
 }

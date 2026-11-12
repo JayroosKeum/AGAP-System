@@ -98,7 +98,7 @@
 
             <div class="modal-actions" style="margin-top: 10px;">
                 <button type="button" class="btn-secondary" onclick="closeRecordTransmittalModal()">Cancel</button>
-                <button type="submit" class="btn-create" id="btnSubmitTransmittal">Save Transmittal Record</button>
+                <button type="submit" class="btn-create" id="btnSubmitTransmittal">Generate Form &amp; Record Transmittal</button>
             </div>
         </form>
     </div>

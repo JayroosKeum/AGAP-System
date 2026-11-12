@@ -17,6 +17,7 @@ if (!$complaintId || $complaintId <= 0) {
 }
 
 require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/partials/kp-jurisdiction-ui.php';
 $db = (new Database())->connect();
 
 // Fetch complaint record
@@ -206,6 +207,9 @@ foreach ($parties as $p) {
     if ($p['party_type'] === 'Complainant') {
         $initialComplainants[] = $entry;
     } elseif ($p['party_type'] === 'Respondent') {
+        if (($p['purok'] ?? '') === 'Non-Resident' || (int)($p['is_tenant'] ?? 0) === 2) {
+            $entry['kp_jurisdiction_exception'] = empty($intakeScreening['parties_in_diff_lgu']) ? 1 : 0;
+        }
         $initialRespondents[] = $entry;
     } else {
         $entry['party_type'] = $p['party_type'];
@@ -243,6 +247,8 @@ unset($_SESSION['complaint_flash']);
 // Determine effective values (Old input > Database record)
 $effCategoryId = $old['category_id'] ?? $complaint['category_id'];
 $effOtherCategorySpec = $old['other_category_specification'] ?? ($complaint['other_category_specification'] ?? '');
+$effSecondaryCategoryId = $old['secondary_category_id'] ?? ($complaint['secondary_category_id'] ?? '');
+$effSecondaryOtherSpec = $old['secondary_other_category_specification'] ?? ($complaint['secondary_other_category_specification'] ?? '');
 $effCaseType = $old['case_type'] ?? ($complaint['case_type'] ?? 'Civil');
 $effTitle = $old['complaint_title'] ?? $complaint['complaint_title'];
 
@@ -351,6 +357,10 @@ include __DIR__ . '/../../layouts/header.php';
                         
                         <a href="#section-location" id="nav-sec-location" class="quicknav-link">
                             <span class="quicknav-badge">4</span> Incident Location &amp; Map Pin
+                        </a>
+
+                        <a href="#section-jurisdiction" id="nav-sec-jurisdiction" class="quicknav-link">
+                            <span class="quicknav-badge">KP</span> Jurisdiction Check
                         </a>
 
                         <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
@@ -523,6 +533,10 @@ include __DIR__ . '/../../layouts/header.php';
 
                                 <div class="form-group">
                                     <label for="caseType">Case Type <span class="required-mark">*</span></label>
+                                    <div class="agap-segmented-group" data-seg-target="caseType" role="group" aria-label="Case Type">
+                                        <button type="button" class="agap-seg-btn <?php echo ($effCaseType === 'Civil') ? 'is-active' : ''; ?>" data-seg-value="Civil">Civil</button>
+                                        <button type="button" class="agap-seg-btn <?php echo ($effCaseType === 'Criminal') ? 'is-active' : ''; ?>" data-seg-value="Criminal">Criminal</button>
+                                    </div>
                                     <select id="caseType" name="case_type" required>
                                         <option value="Civil" <?php echo ($effCaseType === 'Civil') ? 'selected' : ''; ?>>Civil</option>
                                         <option value="Criminal" <?php echo ($effCaseType === 'Criminal') ? 'selected' : ''; ?>>Criminal</option>
@@ -537,7 +551,26 @@ include __DIR__ . '/../../layouts/header.php';
                                     <span class="required-mark">*</span>
                                 </label>
                                 <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($effOtherCategorySpec); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
-                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
+                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
+                            </div>
+                            <div class="form-group" style="margin-top: 8px; margin-bottom: 12px;">
+                                <label for="secondaryCategoryId">2nd Complaint Category / Ikalawang Reklamo (Optional &bull; Up to 2 categories)</label>
+                                <select id="secondaryCategoryId" name="secondary_category_id">
+                                    <option value="">None (Single category only)</option>
+                                    <?php foreach ($categories as $cat): ?>
+                                        <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)$effSecondaryCategoryId === (string)$cat['category_id']) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($cat['category_name']); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="form-group" id="secondaryOtherCategoryWrapper" style="display: none; margin-top: 8px; margin-bottom: 12px;">
+                                <label for="secondaryOtherCategorySpecification" style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                    <span>Specify 2nd Complaint Category / Pakitukoy ang Ikalawang Kategorya</span>
+                                    <span class="required-mark">*</span>
+                                </label>
+                                <input type="text" id="secondaryOtherCategorySpecification" name="secondary_other_category_specification" maxlength="255" placeholder="Pakitukoy ang ikalawang alitan o kategorya..." value="<?php echo htmlspecialchars($effSecondaryOtherSpec); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
+
                             </div>
 
                             <!-- Safe Spaces Act (RA 11313) Mandatory 1st Offense Toggle & VAWC/PNP Routing -->
@@ -603,6 +636,7 @@ include __DIR__ . '/../../layouts/header.php';
                                     <span id="futureDateNotice" class="future-date-hint" style="display:none;">Notice: Selected incident date is in the future. Please verify before saving.</span>
                                 </div>
                             </div>
+
 
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
@@ -748,6 +782,7 @@ include __DIR__ . '/../../layouts/header.php';
                             <input type="hidden" id="respContactUnknown" name="respondent_contact_unknown" value="0">
                             <input type="hidden" id="respMiddleUnknown" name="respondent_middle_name_unknown" value="0">
                             <input type="hidden" id="respBirthUnknown" name="respondent_birthdate_unknown" value="0">
+                            <input type="hidden" id="respondentKpException" name="respondent_kp_jurisdiction_exception" value="<?php echo !empty($old['respondent_kp_jurisdiction_exception']) || !empty($initialRespondents[0]['kp_jurisdiction_exception']) ? '1' : '0'; ?>">
 
                             <!-- Container for dynamic additional parties hidden inputs -->
                             <div id="additionalPartiesHiddenContainer"></div>
@@ -768,11 +803,17 @@ include __DIR__ . '/../../layouts/header.php';
 
                             <div class="form-group">
                                 <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
+                                <?php
+                                $narrativeGuideId = 'agapNarrativeGuide';
+                                $narrativeTargetSelector = '#narrative';
+                                include __DIR__ . '/../../layouts/narrative-accoc-guide.php';
+                                ?>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($effNarrative); ?></textarea>
                                 <?php include __DIR__ . '/tabs/narrative-dictation.php'; ?>
                                 <div class="ai-narrative-actions">
                                     <div class="ai-narrative-tools">
                                         <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
+                                        <button type="button" class="btn-outline-sm" data-classify-complaint>Suggest Category &amp; Title</button>
                                         <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
                                     </div>
                                     <label class="ai-consent-checkbox-label">
@@ -789,6 +830,7 @@ include __DIR__ . '/../../layouts/header.php';
                                     </div>
                                 </div>
                             </div>
+
 
                             <div class="form-group" id="prayerForReliefGroup" style="margin-bottom:0;">
                                 <label for="requestedResolution">Relief / Settlement Desired by Complainant <span class="optional-label">Optional</span></label>
@@ -945,6 +987,8 @@ include __DIR__ . '/../../layouts/header.php';
                             </div>
                         </section>
 
+                        <?php renderKpJurisdictionVerificationPanel($old, $intakeScreening, $complaint); ?>
+
                         <!-- SECTION 5: EVIDENCE & ATTACHMENTS -->
                         <section id="section-evidence" class="intake-section-card">
                             <div class="intake-section-header">
@@ -1040,6 +1084,11 @@ include __DIR__ . '/../../layouts/header.php';
                     </div>
                 </div>
 
+
+                        <div class="intake-bottom-actions" style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 20px; padding: 18px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 14px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);">
+                            <a href="complaint-details.php?id=<?php echo $complaintId; ?>" class="btn-secondary" style="text-decoration: none; padding: 10px 22px;">Cancel</a>
+                            <button type="submit" form="editComplaintForm" class="btn-create" style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.92rem; font-weight: 700;">Save Complaint Changes</button>
+                        </div>
 
             </form>
         </div>
@@ -1173,7 +1222,7 @@ include __DIR__ . '/../../layouts/header.php';
                                     <input type="checkbox" id="modalContactUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
                                 </label>
                             </div>
-                            <input type="text" id="modalContactNo" placeholder="e.g. 0917 123 4567" maxlength="50">
+                            <input type="tel" id="modalContactNo" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
                         </div>
                         <div class="party-field-col">
                             <label for="modalEmail">Email Address</label>
@@ -1300,7 +1349,7 @@ include __DIR__ . '/../../layouts/header.php';
                             <div class="party-fields-grid-2" style="margin-top:8px;">
                                 <div class="party-field-col">
                                     <label for="modalGuardianContact">Guardian Contact Number</label>
-                                    <input type="text" id="modalGuardianContact" placeholder="e.g. 0917 123 4567">
+                                    <input type="tel" id="modalGuardianContact" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
                                 </div>
                                 <div class="party-field-col">
                                     <label for="modalGuardianAddress">Guardian Address</label>
@@ -1367,6 +1416,28 @@ document.addEventListener('DOMContentLoaded', () => {
             otherCategoryInputEl?.focus();
         }
     });
+    const secondaryCategorySelectEl = document.getElementById('secondaryCategoryId');
+    const secondaryOtherWrapperEl = document.getElementById('secondaryOtherCategoryWrapper');
+    const secondaryOtherInputEl = document.getElementById('secondaryOtherCategorySpecification');
+    function syncSecondaryOtherCategoryVisibility() {
+        if (!secondaryCategorySelectEl || !secondaryOtherWrapperEl || !secondaryOtherInputEl) return;
+        const secOpt = secondaryCategorySelectEl.options[secondaryCategorySelectEl.selectedIndex];
+        const secText = secOpt ? secOpt.text : '';
+        const isSecOthers = secondaryCategorySelectEl.value !== '' && (secText.includes('Others') || secText.includes('Iba pa'));
+        secondaryOtherWrapperEl.style.display = isSecOthers ? 'block' : 'none';
+        secondaryOtherInputEl.required = isSecOthers;
+    }
+    secondaryCategorySelectEl?.addEventListener('change', () => {
+        if (secondaryCategorySelectEl.value && categorySelectEl && secondaryCategorySelectEl.value === categorySelectEl.value) {
+            window.agapNotify?.('Please choose a different 2nd complaint category from the primary category.', 'warning', 'Duplicate Category');
+            secondaryCategorySelectEl.value = '';
+        }
+        syncSecondaryOtherCategoryVisibility();
+        if (secondaryOtherWrapperEl?.style.display === 'block') {
+            secondaryOtherInputEl?.focus();
+        }
+    });
+    syncSecondaryOtherCategoryVisibility();
     syncOtherCategoryVisibility();
 
     // Distinct parties validation
@@ -2870,6 +2941,25 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        if (window.AgapFieldValidator) {
+            const modalCheck = window.AgapFieldValidator.collectPartyModalErrors({
+                firstName,
+                middleName: document.getElementById('modalMiddleUnknown')?.checked ? '' : (document.getElementById('modalMiddleName')?.value || ''),
+                lastName,
+                birthDate: document.getElementById('modalBirthUnknown')?.checked ? '' : (document.getElementById('modalBirthdate')?.value || ''),
+                age: document.getElementById('modalAge')?.value || '',
+                contactNo: document.getElementById('modalContactNo')?.value || '',
+                contactUnknown: document.getElementById('modalContactUnknown')?.checked || false,
+                email: document.getElementById('modalEmail')?.value || '',
+                isMinor,
+                guardianName: document.getElementById('modalGuardianName')?.value || '',
+                guardianContact: document.getElementById('modalGuardianContact')?.value || '',
+                allowEntity: document.querySelector('[name="party_is_juridical"]')?.checked || document.querySelector('[name="party_is_government"]')?.checked || false
+            });
+            errors.push(...modalCheck.errors);
+            errorFieldIds.push(...modalCheck.fieldIds);
+        }
+
         if (errors.length > 0) {
             showModalValidationErrors(errors, errorFieldIds);
             return;
@@ -3035,6 +3125,7 @@ document.addEventListener('DOMContentLoaded', () => {
             setResp('respContactUnknown', resp.contact_unknown ? '1' : '0');
             setResp('respMiddleUnknown', resp.middle_unknown ? '1' : '0');
             setResp('respBirthUnknown', resp.birth_unknown ? '1' : '0');
+            setResp('respondentKpException', resp.kp_jurisdiction_exception ? '1' : '0');
         } else {
             ['respondentResidentId', 'respondentName', 'respondentFirstName', 'respondentMiddleName',
              'respondentLastName', 'respondentSuffix', 'respondentBirthdate', 'respondentAge',
@@ -3044,6 +3135,7 @@ document.addEventListener('DOMContentLoaded', () => {
              'respContactUnknown', 'respMiddleUnknown', 'respBirthUnknown'].forEach(id => setResp(id, ''));
             setResp('respondentIsTenant', '0');
             setResp('respondentIsMinor', '0');
+            setResp('respondentKpException', '0');
         }
 
         // Sync additional parties container
@@ -3089,6 +3181,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             }
             addContainer.innerHTML = html;
+            document.dispatchEvent(new CustomEvent('agap:parties-updated'));
         }
     }
 

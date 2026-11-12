@@ -751,3 +751,113 @@ body.high-contrast-mode .lupon-case-card {
     justify-content: flex-end;
     gap: 12px;
 }
+
+
+/* AGAP Lupon Static KPI, Verification Queue & KP Forms Preview */
+.lupon-kpi-card,
+.lupon-kpi-card:hover {
+    cursor: default !important;
+    transform: none !important;
+    background: #ffffff;
+    border: 1px solid #e6ecea;
+    border-radius: 14px;
+    box-shadow: 0 1px 3px rgba(16, 43, 45, 0.03);
+}
+
+.lupon-kpi-card:focus-visible {
+    outline: none !important;
+    box-shadow: 0 1px 3px rgba(16, 43, 45, 0.03) !important;
+}
+
+.jurisdiction-queue-panel {
+    background: #ffffff;
+    border: 1px solid #d5e4dc;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 22px;
+    box-shadow: 0 2px 8px rgba(16, 43, 45, 0.03);
+}
+
+.jurisdiction-queue-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.jurisdiction-verify-card {
+    background: #f9fbfa;
+    border: 1px solid #d9e6df;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.jurisdiction-verify-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px dashed #d9e6df;
+}
+
+.btn-verify-pass {
+    background: #102b2d;
+    color: #ffffff;
+    border: 1px solid #102b2d;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.btn-verify-pass:hover {
+    background: #1b6553;
+}
+
+.btn-verify-reject {
+    background: #ffffff;
+    color: #991b1b;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.btn-verify-reject:hover {
+    background: #fef2f2;
+}
+
+.dossier-readonly-banner {
+    background: #eef6f2;
+    border: 1px solid #cde2d6;
+    border-left: 4px solid #102b2d;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 0.9rem;
+    color: #102b2d;
+}
+
+.dossier-docs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+}
+
+.dossier-doc-item {
+    background: #f8faf9;
+    border: 1px solid #d5e4dc;
+    border-radius: 10px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+}

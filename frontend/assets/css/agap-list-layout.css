@@ -1,0 +1,787 @@
+/* ==========================================================================
+   AGAP Unified List Page Layout (Reference Card + Underlined Tabs + Table)
+   Used by: paanyaya/index.php, complaints/complaint-list.php, cases/case-list.php
+   ========================================================================== */
+
+.agap-list-shell {
+    width: 100%;
+    max-width: 1520px;
+    margin: 0 auto;
+    padding: 20px clamp(14px, 2.2vw, 32px) 44px;
+    box-sizing: border-box;
+}
+
+.agap-list-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    padding: 24px 28px 26px;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04);
+}
+
+/* Header */
+.agap-list-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.agap-list-title-wrap {
+    min-width: 0;
+}
+
+.agap-list-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.agap-list-title-row h1 {
+    margin: 0;
+    font-size: 1.55rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+}
+
+.agap-list-subtitle {
+    margin: 4px 0 0;
+    font-size: 0.86rem;
+    color: #64748b;
+}
+
+.agap-stage-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    background: #eef6f2;
+    border: 1px solid #cde2d6;
+    color: #1b6553;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.agap-list-primary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 18px;
+    border-radius: 10px;
+    border: 1px solid #1b6553;
+    background: #1b6553;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(27, 101, 83, 0.22);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    white-space: nowrap;
+}
+
+.agap-list-primary-btn:hover {
+    background: #102b2d;
+    border-color: #102b2d;
+    color: #ffffff;
+    text-decoration: none;
+    transform: translateY(-1px);
+}
+
+.agap-list-primary-btn svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
+/* Subbar: Underlined Tabs (left) + Inline Search & Filter Icons (right) */
+.agap-list-subbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.agap-underline-tabs,
+.agap-list-shell .complaints-nav-tabs {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-bottom: none;
+    margin: 0;
+    padding: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.agap-underline-tabs::-webkit-scrollbar,
+.agap-list-shell .complaints-nav-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.agap-tab-item,
+.agap-list-shell .complaints-nav-tabs .nav-tab-btn,
+.agap-list-shell .proof-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 2px 12px;
+    border: 0;
+    border-radius: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    box-shadow: none;
+    color: #64748b;
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+    margin-bottom: -1px;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.agap-tab-item:hover,
+.agap-list-shell .complaints-nav-tabs .nav-tab-btn:hover,
+.agap-list-shell .proof-tab-btn:hover {
+    background: transparent;
+    color: #0f172a;
+    text-decoration: none;
+}
+
+.agap-tab-item.active,
+.agap-tab-item.is-active,
+.agap-list-shell .complaints-nav-tabs .nav-tab-btn.active,
+.agap-list-shell .proof-tab-btn.active {
+    background: transparent;
+    border-color: transparent;
+    border-bottom-color: #1b6553;
+    box-shadow: none;
+    color: #102b2d;
+    font-weight: 700;
+}
+
+.agap-tab-count,
+.agap-list-shell .complaints-nav-tabs .tab-count-pill,
+.agap-list-shell .proof-tab-btn .agap-tab-count,
+.agap-list-shell .proof-tab-btn .proof-tab-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 700;
+    min-width: 18px;
+}
+
+.agap-tab-item.active .agap-tab-count,
+.agap-tab-item.is-active .agap-tab-count,
+.agap-list-shell .complaints-nav-tabs .nav-tab-btn.active .tab-count-pill,
+.agap-list-shell .proof-tab-btn.active .agap-tab-count,
+.agap-list-shell .proof-tab-btn.active .proof-tab-count {
+    background: #eef6f2;
+    color: #1b6553;
+}
+
+/* Right Controls beside Underlined Tabs */
+.agap-inline-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 9px;
+    flex-wrap: wrap;
+}
+
+.agap-inline-search {
+    position: relative;
+    width: 245px;
+    max-width: 100%;
+}
+
+.agap-inline-search svg {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 15px;
+    height: 15px;
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.agap-inline-search input {
+    width: 100%;
+    height: 36px;
+    padding: 6px 30px 6px 33px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 0.84rem;
+    color: #0f172a;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.agap-inline-search input:focus {
+    border-color: #1b6553;
+    box-shadow: 0 0 0 3px rgba(27, 101, 83, 0.1);
+}
+
+.agap-inline-search .search-clear-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: 0;
+    background: transparent;
+    color: #94a3b8;
+    font-size: 1.05rem;
+    cursor: pointer;
+    padding: 0 3px;
+    line-height: 1;
+    display: none;
+}
+
+.agap-inline-search .search-clear-btn:hover {
+    color: #0f172a;
+}
+
+.agap-filter-icon-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 11px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    background: #ffffff;
+    color: #334155;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    white-space: nowrap;
+}
+
+.agap-filter-icon-btn:hover,
+.agap-filter-icon-btn.active {
+    background: #eef6f2;
+    border-color: #cde2d6;
+    color: #1b6553;
+}
+
+.agap-filter-icon-btn svg {
+    width: 15px;
+    height: 15px;
+}
+
+.agap-filter-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    background: #1b6553;
+}
+
+.agap-reset-link-btn {
+    height: 36px;
+    padding: 0 11px;
+    border-radius: 9px;
+    border: 1px solid #fecaca;
+    background: #fef2f2;
+    color: #dc2626;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.agap-reset-link-btn:hover {
+    background: #fee2e2;
+}
+
+/* Filter Drawer / Popover Card inside List Shell */
+.agap-list-shell .filter-drawer-panel,
+.agap-filter-drawer {
+    display: none;
+    max-height: none;
+    overflow: visible;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+
+.agap-list-shell .filter-drawer-panel.open,
+.agap-filter-drawer.open {
+    display: block;
+    max-height: none;
+}
+
+.agap-drawer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+    gap: 12px;
+    align-items: end;
+}
+
+.agap-drawer-field label {
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 5px;
+}
+
+.agap-drawer-field select,
+.agap-drawer-field input {
+    width: 100%;
+    height: 36px;
+    padding: 6px 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 0.83rem;
+    color: #0f172a;
+    box-sizing: border-box;
+    outline: none;
+}
+
+.agap-drawer-field select:focus,
+.agap-drawer-field input:focus {
+    border-color: #1b6553;
+}
+
+/* Meta Summary / Active Filter Chips */
+.agap-list-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    font-size: 0.81rem;
+    color: #64748b;
+}
+
+.agap-list-meta:empty {
+    display: none;
+}
+
+/* Clean Bordered Table Card */
+.agap-list-table-wrap,
+.agap-list-shell .complaints-table-container {
+    width: 100%;
+    overflow-x: auto;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: none;
+    margin: 0;
+}
+
+.agap-list-table-wrap table,
+.agap-list-shell .modern-complaints-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 0.86rem;
+}
+
+.agap-list-table-wrap thead th,
+.agap-list-shell .modern-complaints-table thead th {
+    background: #f8fafc;
+    padding: 11px 16px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+}
+
+.agap-list-table-wrap tbody td,
+.agap-list-shell .modern-complaints-table tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+    vertical-align: middle;
+}
+
+.agap-list-table-wrap tbody tr:last-child td,
+.agap-list-shell .modern-complaints-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.agap-list-table-wrap tbody tr:hover,
+.agap-list-shell .modern-complaints-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.agap-list-shell .proof-table .case-main-row.is-expanded {
+    background: #eef6f2 !important;
+}
+
+.agap-list-shell .proof-table .case-main-row.is-expanded td {
+    border-bottom-color: #cde2d6 !important;
+}
+
+.agap-list-shell .proof-table .mobile-cell-val {
+    display: block;
+    min-width: 0;
+}
+
+/* Record ID Cell with Small Tinted Doc Icon */
+.agap-rec-id-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    white-space: nowrap;
+}
+
+.agap-rec-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: #eef6f2;
+    color: #1b6553;
+    border: 1px solid #cde2d6;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.agap-rec-icon.is-amber {
+    background: #fffbeb;
+    color: #b45309;
+    border-color: #fde68a;
+}
+
+.agap-rec-icon.is-blue {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #bfdbfe;
+}
+
+.agap-rec-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.agap-rec-id-text {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.agap-rec-id-text:hover {
+    color: #1b6553;
+    text-decoration: underline;
+}
+
+/* Party Person Cell with Circular Initials */
+.agap-person-cell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.agap-person-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    background: #eef6f2;
+    color: #1b6553;
+    font-size: 0.7rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: 0.02em;
+}
+
+.agap-person-avatar.is-respondent {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.agap-person-meta {
+    min-width: 0;
+}
+
+.agap-person-name {
+    display: block;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.3;
+}
+
+.agap-person-sub {
+    display: block;
+    font-size: 0.75rem;
+    color: #64748b;
+    line-height: 1.35;
+    margin-top: 1px;
+}
+
+/* Clean Soft Pastel Status Badges */
+.agap-pill-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.agap-pill-badge.is-blue { background: #eff6ff; color: #1d4ed8; }
+.agap-pill-badge.is-green { background: #dcfce7; color: #15803d; }
+.agap-pill-badge.is-amber { background: #fef3c7; color: #b45309; }
+.agap-pill-badge.is-red { background: #fee2e2; color: #b91c1c; }
+.agap-pill-badge.is-purple { background: #f3e8ff; color: #7e22ce; }
+.agap-pill-badge.is-slate { background: #f1f5f9; color: #475569; }
+.agap-pill-badge.is-emerald { background: #eef6f2; color: #1b6553; }
+
+/* Unified Compact Row Action Buttons (View on Left, Edit on Right) */
+.agap-row-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.agap-btn-act {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 7px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #334155;
+    font-family: inherit;
+    font-size: 0.77rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.agap-btn-act:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+    text-decoration: none;
+}
+
+.agap-btn-act.is-primary-soft {
+    background: #eef6f2;
+    border-color: #cde2d6;
+    color: #1b6553;
+}
+
+.agap-btn-act.is-primary-soft:hover {
+    background: #1b6553;
+    border-color: #1b6553;
+    color: #ffffff;
+}
+
+.agap-btn-act.is-danger-soft {
+    color: #c2410c;
+}
+
+.agap-btn-act.is-danger-soft:hover {
+    background: #fff7ed;
+    border-color: #fdba74;
+    color: #9a3412;
+}
+
+.agap-btn-act svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+}
+
+/* Bottom Footer: Items Per Page (Left) + Numeric Pagination (Right) */
+.agap-list-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding-top: 4px;
+}
+
+.agap-list-footer[hidden] {
+    display: none !important;
+}
+
+.agap-page-size-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.81rem;
+    color: #64748b;
+}
+
+.agap-page-size-select {
+    height: 34px;
+    padding: 4px 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #0f172a;
+    cursor: pointer;
+    outline: none;
+}
+
+.agap-page-size-select:focus {
+    border-color: #1b6553;
+}
+
+.agap-page-summary {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
+.agap-pagination-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.agap-page-btn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 9px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #475569;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.agap-page-btn:hover:not(:disabled):not(.is-active) {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+
+.agap-page-btn.is-active,
+.agap-page-btn.active {
+    background: #102b2d;
+    border-color: #102b2d;
+    color: #ffffff;
+    cursor: default;
+}
+
+.agap-page-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.agap-page-ellipsis {
+    padding: 0 4px;
+    color: #94a3b8;
+    font-size: 0.84rem;
+}
+
+@media (max-width: 900px) {
+    .agap-list-card {
+        padding: 18px 16px 20px;
+    }
+
+    .agap-list-subbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .agap-inline-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .agap-inline-search {
+        flex: 1 1 200px;
+        width: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .agap-list-shell .complaints-nav-tabs,
+    .agap-list-shell .complaints-table-container {
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    .agap-list-shell #casesNeedingSummonsSection {
+        border: none;
+        background: transparent;
+        overflow: visible;
+    }
+
+    .agap-list-shell .proof-tab-btn {
+        padding: 8px 2px 11px;
+    }
+}
+
+@media (max-width: 600px) {
+    .agap-list-shell {
+        padding: 12px;
+    }
+
+    .agap-list-card {
+        padding: 16px 14px;
+    }
+
+    .agap-list-footer {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}

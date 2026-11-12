@@ -108,13 +108,21 @@ $recentComplaints = array_slice($complaints, 0, 5);
                 <a class="resident-secondary-action" href="dashboard.php">Try again</a>
             </section>
         <?php else: ?>
-        <section class="resident-hero" aria-labelledby="resident-dashboard-title">
-            <div>
-                <p class="resident-dashboard-eyebrow">Barangay Tumana, Marikina City</p>
+        <section class="rd-hero-card" aria-labelledby="resident-dashboard-title">
+            <div class="rd-hero-copy">
+                <span class="rd-hero-badge">Barangay Tumana, Marikina City</span>
                 <h1 id="resident-dashboard-title">Good day, <?= htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8') ?>.</h1>
-                <p>Submit a community concern and follow its progress in one secure place.</p>
+                <p class="rd-hero-sub">Submit a community concern and follow its progress.</p>
+                <div class="rd-hero-actions">
+                    <a class="rd-hero-cta" href="../complaints/complaint-create.php">Submit a concern</a>
+                    <?php if ($complaints): ?>
+                        <a class="rd-hero-ghost" href="#my-concerns">Track my concerns</a>
+                    <?php endif; ?>
+                </div>
             </div>
-            <a class="resident-primary-action" href="../complaints/complaint-create.php"><span aria-hidden="true">+</span> Submit a concern</a>
+            <div class="rd-hero-art" aria-hidden="true">
+                <div class="rd-hero-seal"><img src="../../assets/images/tumana_logo.jpg" alt=""></div>
+            </div>
         </section>
 
         <section class="resident-summary-grid" aria-label="My concern summary">

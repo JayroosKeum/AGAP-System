@@ -203,10 +203,61 @@ class User {
         return (bool) $stmt->fetchColumn();
     }
 
-    public function getAll(): array
+    public function getAll(bool $staffOnly = false): array
     {
-        $stmt = $this->db->query('SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no, u.role_id, u.status, r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id ORDER BY u.last_name, u.first_name');
+        $sql = "SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no, u.role_id, u.status, r.role_name,
+                       (u.email_verification_token IS NOT NULL AND u.status = 'Inactive') AS pending_verification,
+                       (u.password_hash IS NOT NULL AND u.password_hash <> '') AS has_password
+                FROM users u INNER JOIN roles r ON r.role_id = u.role_id";
+        if ($staffOnly) {
+            $sql .= ' WHERE u.role_id IN (1, 2, 3, 4)';
+        }
+        $stmt = $this->db->query($sql . ' ORDER BY u.last_name, u.first_name');
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function getStaffRoles(): array
+    {
+        return $this->db->query('SELECT role_id, role_name FROM roles WHERE role_id IN (1, 2, 3, 4) ORDER BY role_id')
+            ->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function setStatus(int $id, string $status): array
+    {
+        if (!in_array($status, ['Active', 'Inactive'], true)) {
+            return ['success' => false, 'message' => 'Choose a valid account status.'];
+        }
+        $this->db->beginTransaction();
+        try {
+            // Lock the administrator set before changing any status so two
+            // concurrent requests cannot both disable the last administrator.
+            $admins = $this->db->query("SELECT user_id FROM users WHERE role_id = 1 AND status = 'Active' ORDER BY user_id FOR UPDATE")
+                ->fetchAll(PDO::FETCH_COLUMN);
+            $statement = $this->db->prepare('SELECT role_id, status, password_hash FROM users WHERE user_id = ? AND role_id IN (1, 2, 3, 4) FOR UPDATE');
+            $statement->execute([$id]);
+            $user = $statement->fetch(PDO::FETCH_ASSOC);
+            if (!$user) {
+                throw new DomainException('Staff account was not found.');
+            }
+            if ($user['status'] !== $status) {
+                if ($status === 'Inactive' && (int) $user['role_id'] === 1 && count($admins) < 2) {
+                    throw new DomainException('At least one administrator must stay active.');
+                }
+                if ($status === 'Active' && empty($user['password_hash'])) {
+                    throw new DomainException('The account must set its password through staff verification first.');
+                }
+                $this->db->prepare('UPDATE users SET status = ? WHERE user_id = ?')->execute([$status, $id]);
+            }
+            $this->db->commit();
+            return ['success' => true, 'status' => $status];
+        } catch (Throwable $error) {
+            $this->db->rollBack();
+            if ($error instanceof DomainException) {
+                return ['success' => false, 'message' => $error->getMessage()];
+            }
+            error_log('User status update failed: ' . $error->getMessage());
+            return ['success' => false, 'message' => 'Unable to update the account status.'];
+        }
     }
 
     public function roleExists(int $roleId): bool

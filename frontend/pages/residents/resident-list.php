@@ -302,7 +302,8 @@ include '../../layouts/header.php';
                     <label>Birth Date</label>
                     <input
                         type="date"
-                        name="birth_date">
+                        name="birth_date"
+                        max="<?php echo date('Y-m-d'); ?>">
                 </div>
 
                 <div class="form-group">
@@ -336,10 +337,11 @@ include '../../layouts/header.php';
                 <div class="form-group">
                     <label>Contact Number</label>
                     <input
-                        type="text"
+                        type="tel"
                         name="contact_no"
                         placeholder="e.g. 0917 123 4567"
                         maxlength="20"
+                        data-validate="phone"
                         inputmode="tel">
                 </div>
 
@@ -553,7 +555,8 @@ include '../../layouts/header.php';
                     <input
                         type="date"
                         name="birth_date"
-                        id="editBirthDate">
+                        id="editBirthDate"
+                        max="<?php echo date('Y-m-d'); ?>">
                 </div>
 
                 <div class="form-group">
@@ -591,10 +594,11 @@ include '../../layouts/header.php';
                 <div class="form-group">
                     <label>Contact Number</label>
                     <input
-                        type="text"
+                        type="tel"
                         name="contact_no"
                         id="editContactNo"
                         maxlength="20"
+                        data-validate="phone"
                         inputmode="tel">
                 </div>
 

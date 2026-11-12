@@ -1,8 +1,10 @@
 <?php
+require_once __DIR__ . '/../../backend/services/SecurityBootstrap.php';
+SecurityBootstrap::applyHttpHeaders();
 require_once __DIR__ . '/../../backend/services/CsrfService.php';
 
 if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+    SecurityBootstrap::startSession();
 }
 
 $headerCsrfToken = CsrfService::token();
@@ -45,21 +47,32 @@ if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSI
     <title>AGAP | Automated Grievance Assistance Platform</title>
     <link rel="stylesheet" href="../../assets/css/app.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/app.css'); ?>">
     <link rel="stylesheet" href="../../assets/css/notifications.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/notifications.css'); ?>">
+    <link rel="stylesheet" href="../../assets/css/forms.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/forms.css'); ?>">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <script src="../../assets/js/notifications.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/notifications.js'); ?>"></script>
     <script src="../../assets/js/i18n.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/i18n.js'); ?>"></script>
     <script src="../../assets/js/draft-manager.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/draft-manager.js'); ?>"></script>
     <script src="../../assets/js/draft-autosave.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/draft-autosave.js'); ?>"></script>
+    <script src="../../assets/js/field-validator.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/field-validator.js'); ?>"></script>
+    <script src="../../assets/js/forms.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/forms.js'); ?>"></script>
+    <script src="../../assets/js/narrative-checklist.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/narrative-checklist.js'); ?>"></script>
     <script>
         (function() {
             try {
                 var saved = localStorage.getItem('agap_sidebar_collapsed');
-                var isMedium = window.innerWidth > 900 && window.innerWidth <= 1200;
+                var isMedium = window.innerWidth > 900 && window.innerWidth <= 1024;
                 if (saved === 'true' || (saved === null && isMedium)) {
                     document.documentElement.classList.add('sidebar-collapsed');
                 } else if (saved === 'false') {
                     document.documentElement.classList.add('sidebar-expanded');
+                }
+                var fontPxMap = { '0': '14px', '1': '16px', '2': '18px', '3': '20px' };
+                var fStep = localStorage.getItem('agap_font_scale_step');
+                if (fStep === null && localStorage.getItem('agap_lupon_font_size') === 'large') fStep = '2';
+                if (fStep !== null && fontPxMap[fStep]) {
+                    document.documentElement.style.fontSize = fontPxMap[fStep];
+                    document.documentElement.setAttribute('data-agap-font-step', fStep);
                 }
             } catch (e) {}
         })();

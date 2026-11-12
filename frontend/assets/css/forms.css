@@ -1,0 +1,573 @@
+/* AGAP Shared Bento Form Design System
+   Clean 2-Column Section Cards, Segmented Controls, Rounded Inputs & Unified Action Bars */
+
+/* Bento Section Grid */
+.agap-form-bento {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+    align-items: stretch;
+}
+
+.agap-bento-span-2 {
+    grid-column: 1 / -1;
+}
+
+.agap-form-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 22px 24px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+    display: flex;
+    flex-direction: column;
+}
+
+.agap-form-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.agap-form-card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.agap-form-card-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef6f2;
+    border: 1px solid #d5e4dc;
+    color: #1b6553;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.agap-form-card-icon svg {
+    width: 17px;
+    height: 17px;
+}
+
+.agap-form-card-title h3,
+.agap-form-card-title h2 {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 700;
+    color: #102b2d;
+    letter-spacing: -0.01em;
+}
+
+/* Field Row Helpers inside Bento Cards */
+.agap-field-row-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.agap-field-row-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+/* Unified Control & Label Polish across All AGAP Forms */
+.agap-form-card .form-group label,
+.intake-section-card .form-group label,
+.modal-content .form-group label,
+.modal-card .form-group label,
+.portal-card .form-group label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.agap-form-card .form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.agap-form-card .form-group select,
+.agap-form-card .form-group textarea,
+.intake-section-card .form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.intake-section-card .form-group select,
+.intake-section-card .form-group textarea,
+.modal-content .form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.modal-content .form-group select,
+.modal-content .form-group textarea,
+.modal-card .form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.modal-card .form-group select,
+.modal-card .form-group textarea,
+.portal-card .form-group input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.portal-card .form-group select,
+.portal-card .form-group textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    padding: 9px 13px;
+    min-height: 42px;
+    font-size: 0.88rem;
+    background: #ffffff;
+    color: #0f172a;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.agap-form-card .form-group textarea,
+.intake-section-card .form-group textarea,
+.modal-content .form-group textarea,
+.modal-card .form-group textarea {
+    min-height: 86px;
+}
+
+.agap-form-card .form-group input[readonly],
+.agap-form-card .form-group input[disabled],
+.intake-section-card .form-group input[readonly],
+.intake-section-card .form-group input[disabled] {
+    background: #f8fafc;
+    color: #64748b;
+    border-color: #e2e8f0;
+}
+
+.agap-form-card .form-group input:not([type="checkbox"]):not([type="radio"]):not([readonly]):not([disabled]):focus,
+.agap-form-card .form-group select:focus,
+.agap-form-card .form-group textarea:focus,
+.intake-section-card .form-group input:not([type="checkbox"]):not([type="radio"]):not([readonly]):not([disabled]):focus,
+.intake-section-card .form-group select:focus,
+.intake-section-card .form-group textarea:focus,
+.modal-content .form-group input:not([type="checkbox"]):not([type="radio"]):focus,
+.modal-content .form-group select:focus,
+.modal-content .form-group textarea:focus,
+.portal-card .form-group input:not([type="checkbox"]):not([type="radio"]):focus,
+.portal-card .form-group select:focus,
+.portal-card .form-group textarea:focus {
+    outline: none;
+    border-color: #1b6553;
+    box-shadow: 0 0 0 3px rgba(27, 101, 83, 0.12);
+}
+
+/* Segmented Toggle Pill Control (Matches reference Priority / Warranty selector) */
+.agap-seg-native-select {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+    pointer-events: none !important;
+}
+
+.agap-segmented-group {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 4px;
+    padding: 4px;
+    min-height: 42px;
+    background: #ffffff;
+    border: 1px solid #d5e4dc;
+    border-radius: 10px;
+}
+
+.agap-seg-btn {
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #475569;
+    font-family: inherit;
+    font-size: 0.83rem;
+    font-weight: 600;
+    padding: 7px 10px;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.agap-seg-btn:hover:not(.is-active) {
+    background: #f3f7f5;
+    color: #102b2d;
+}
+
+.agap-seg-btn.is-active {
+    background: #1b6553;
+    color: #ffffff;
+    font-weight: 700;
+    box-shadow: 0 2px 6px rgba(27, 101, 83, 0.22);
+}
+
+/* Unified Bottom Action Bar */
+.agap-form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.agap-btn-cancel {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 10px 26px;
+    border-radius: 10px;
+    border: 1px solid #b7d7c8;
+    background: #ffffff;
+    color: #1b6553;
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.agap-btn-cancel:hover {
+    background: #eef6f2;
+    border-color: #1b6553;
+}
+
+.agap-btn-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    min-width: 220px;
+    padding: 10px 30px;
+    border-radius: 10px;
+    border: 1px solid #1b6553;
+    background: #1b6553 !important;
+    color: #ffffff !important;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(27, 101, 83, 0.2);
+    transition: background 0.15s ease, transform 0.14s ease;
+}
+
+.agap-btn-submit:hover {
+    background: #102b2d !important;
+    border-color: #102b2d;
+    transform: translateY(-1px);
+}
+
+/* Staff Complaint Create / Edit Bento Upgrade (in Digital mode on wide desktop) */
+form.complaint-intake-form .intake-section-card {
+    border-radius: 14px;
+    border-color: #e2e8f0;
+    padding: 22px 24px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+}
+
+form.complaint-intake-form .intake-section-header {
+    border-bottom-color: #eef2f0;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+}
+
+form.complaint-intake-form .section-badge-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: #eef6f2;
+    border: 1px solid #d5e4dc;
+    color: #1b6553;
+    font-size: 0.8rem;
+}
+
+form.complaint-intake-form .intake-bottom-actions {
+    border-radius: 14px !important;
+    border: 1px solid #e2e8f0 !important;
+    padding: 18px 24px !important;
+    margin-top: 4px !important;
+}
+
+form.complaint-intake-form .intake-bottom-actions .btn-create {
+    min-height: 44px;
+    border-radius: 10px !important;
+    padding: 10px 28px !important;
+    background: #1b6553 !important;
+}
+
+form.complaint-intake-form .intake-bottom-actions .btn-create:hover {
+    background: #102b2d !important;
+}
+
+form.complaint-intake-form .intake-bottom-actions .btn-secondary {
+    min-height: 44px;
+    border-radius: 10px !important;
+    background: #ffffff !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #1e293b !important;
+}
+
+form.complaint-intake-form .intake-bottom-actions .btn-secondary:hover {
+    background: #f8fafc !important;
+    border-color: #94a3b8 !important;
+}
+
+@media (min-width: 1280px) {
+    form.complaint-intake-form .intake-layout-container:not(.paper-mode-layout) .intake-sections-container {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+        align-items: stretch;
+    }
+
+    form.complaint-intake-form .intake-layout-container:not(.paper-mode-layout) .fast-intake-badge,
+    form.complaint-intake-form .intake-layout-container:not(.paper-mode-layout) #section-jurisdiction,
+    form.complaint-intake-form .intake-layout-container:not(.paper-mode-layout) #section-evidence,
+    form.complaint-intake-form .intake-layout-container:not(.paper-mode-layout) .intake-bottom-actions {
+        grid-column: 1 / -1;
+    }
+
+    form.complaint-intake-form .intake-layout-container:not(.paper-mode-layout) .location-split-layout {
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    form.complaint-intake-form .intake-layout-container:not(.paper-mode-layout) .complaint-location-map {
+        height: 250px !important;
+    }
+}
+
+@media (max-width: 960px) {
+    .agap-form-bento,
+    .agap-field-row-2,
+    .agap-field-row-3 {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 600px) {
+    .agap-form-actions {
+        flex-direction: column-reverse;
+        align-items: stretch;
+    }
+    .agap-btn-cancel,
+    .agap-btn-submit {
+        width: 100%;
+    }
+}
+
+/* Shared Password Visibility Toggle */
+.agap-pw-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.agap-pw-wrap > input {
+    width: 100%;
+    padding-right: 42px !important;
+}
+
+.agap-pw-wrap .agap-pw-toggle-btn {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+    box-shadow: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.agap-pw-wrap .agap-pw-toggle-btn:hover {
+    background: rgba(15, 23, 42, 0.06);
+    color: #102b2d;
+    transform: translateY(-50%);
+}
+
+.agap-pw-wrap .agap-pw-toggle-btn:focus-visible {
+    outline: 2px solid #2b6b5e;
+    outline-offset: 1px;
+}
+
+.agap-pw-wrap .agap-pw-toggle-btn svg {
+    display: block;
+    pointer-events: none;
+}
+
+/* =========================================================================
+   5 W's + How & ACCOC Live Narrative Checklist (Shared Resident + Staff)
+   ========================================================================= */
+
+.rd-story-guide-card {
+    background: #f8fbf9;
+    border: 1px solid #d7e5dd;
+    border-radius: 10px;
+    padding: 11px 13px;
+    margin: 0 0 10px;
+}
+
+.rd-story-guide-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.rd-story-guide-title {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.rd-story-guide-title strong {
+    font-size: 0.78rem;
+    font-weight: 800;
+    color: #102b2d;
+    letter-spacing: 0.01em;
+}
+
+.rd-story-guide-title small {
+    font-size: 0.71rem;
+    color: #556b6c;
+    line-height: 1.35;
+}
+
+.rd-story-guide-score {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.71rem;
+    font-weight: 700;
+    background: #eef2f6;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    white-space: nowrap;
+}
+
+.rd-story-guide-score.is-complete {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+}
+
+.rd-story-guide {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 0 0 7px;
+}
+
+.rd-story-guide:last-of-type {
+    margin-bottom: 0;
+}
+
+.rd-story-guide-label {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: #2b6b5e;
+    min-width: 78px;
+    margin-right: 2px;
+}
+
+.rd-story-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.71rem;
+    font-weight: 600;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.rd-story-chip-icon {
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    border: 1.5px solid #94a3b8;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.rd-story-chip.is-covered {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+}
+
+.rd-story-chip.is-covered .rd-story-chip-icon {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #ffffff;
+}
+
+.rd-story-chip.is-covered .rd-story-chip-icon::before {
+    content: "\2713";
+}
+
+.rd-story-chip.is-warning {
+    background: #fef2f2;
+    border-color: #fca5a5;
+    color: #991b1b;
+}
+
+.rd-story-chip.is-warning .rd-story-chip-icon {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #ffffff;
+}
+
+.rd-story-chip.is-warning .rd-story-chip-icon::before {
+    content: "!";
+}
+
+.rd-story-guide-feedback {
+    margin: 8px 0 0;
+    padding-top: 7px;
+    border-top: 1px dashed #d7e5dd;
+    font-size: 0.73rem;
+    color: #475569;
+    line-height: 1.4;
+}
+
+.rd-story-guide-feedback.is-complete {
+    color: #166534;
+    font-weight: 600;
+}
+
+.rd-story-guide-feedback.is-warning {
+    color: #b91c1c;
+    font-weight: 600;
+}

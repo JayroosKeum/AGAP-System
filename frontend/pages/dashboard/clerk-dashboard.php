@@ -1,7 +1,8 @@
 <?php
-session_start();
+require_once '../../../backend/services/SecurityBootstrap.php';
+SecurityBootstrap::startSession();
 
-// Enforce access control: Admin (1) and Lupon Clerk (2)
+// Only the administrator and clerk use the front-desk workflow.
 if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)) {
     header('Location: ../auth/login.php');
     exit;
@@ -35,10 +36,16 @@ include '../../layouts/header.php';
             <div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <h1 style="margin: 0; font-size: 1.6rem; color: #0f172a;">Lupon Clerk Dashboard</h1>
-                    <span style="background: #e0e7ff; color: #3730a3; font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px;">
+                    <span style="background: #eef6f2; color: #1b6553; border: 1px solid #cde2d6; font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px;">
                         Front-Desk &amp; Docket Intake
                     </span>
                 </div>
+            </div>
+            <div class="top-quick-actions" aria-label="Clerk quick access actions">
+                <a href="../complaints/complaint-create.php" class="btn-top-primary" id="btnClerkNewIntake">+ Walk-in Intake</a>
+                <a href="../users/user-list.php?tab=residents" class="btn-top-secondary">Verify Residents</a>
+                <a href="#clerkPaanyayaPreparation" class="btn-top-secondary">Paanyaya Preparation</a>
+                <a href="../reports/report-list.php" class="btn-top-secondary" id="btnClerkPrintRepo">LTIA &amp; Transmittals</a>
             </div>
         </div>
 
@@ -50,7 +57,7 @@ include '../../layouts/header.php';
             <div id="activeLisoList" class="active-liso-list" aria-live="polite">Checking available Lupon Members…</div>
         </section>
 
-        <section class="paanyaya-preparation" aria-labelledby="paanyaya-queue-title">
+        <section class="paanyaya-preparation" id="clerkPaanyayaPreparation" aria-labelledby="paanyaya-queue-title">
             <h2 id="paanyaya-queue-title">Ready for Paanyaya</h2>
             <?php if ($paanyayaQueueUnavailable): ?>
                 <p>The Paanyaya queue is currently unavailable.</p>
@@ -125,7 +132,7 @@ include '../../layouts/header.php';
         <!-- ── 2. Daily Intake & Docket Queue ───────────────────────────────── -->
         <section class="clerk-docket-queue-grid" aria-label="Daily Intake & Docket Queue">
             <!-- Walk-ins / Today's Intakes -->
-            <article class="docket-queue-card card-walkin" data-clerk-card="walkin" role="button" tabindex="0" title="Click to view walk-ins / new complaint intake">
+            <article class="docket-queue-card card-walkin" data-clerk-card="walkin">
                 <div class="card-top">
                     <span class="card-badge">Daily Intake</span>
                     
@@ -133,14 +140,10 @@ include '../../layouts/header.php';
                 <div class="card-count" id="clerkWalkinsToday">—</div>
                 <h3 class="card-title">Walk-ins / Today's Intakes</h3>
                 <p class="card-desc">Mga bagong reklamong naitala at sumailalim sa screening ngayong araw</p>
-                <a href="../complaints/complaint-create.php" class="btn-clerk-primary" id="btnClerkNewIntake">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    <span>New Complaint Intake</span>
-                </a>            
             </article>
 
             <!-- Active Paanyaya Invitations -->
-            <article class="docket-queue-card card-paanyaya" data-clerk-card="paanyaya" role="button" tabindex="0" title="Click to filter Paanyaya invitations in Agenda Stream">
+            <article class="docket-queue-card card-paanyaya" data-clerk-card="paanyaya">
                 <div class="card-top">
                     <span class="card-badge">Stage 0 Invitations</span>
                     
@@ -148,73 +151,90 @@ include '../../layouts/header.php';
                 <div class="card-count" id="clerkActivePaanyaya">—</div>
                 <h3 class="card-title">Active Paanyaya Invitations</h3>
                 <p class="card-desc">1st at 2nd invitations na nakabinbin para sa impormal na pag-uusap</p>
-                <a href="../paanyaya/index.php" class="btn-clerk-secondary" id="btnClerkIssuePaanyaya">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
-                    <span>Issue Paanyaya Invitation</span>
-                </a>
             </article>
 
             <!-- Cases Pending Form Issuance -->
-            <article class="docket-queue-card card-forms" data-clerk-card="forms" role="button" tabindex="0" title="Click to view cases pending form issuance / print blank repository">
+            <article class="docket-queue-card card-forms" data-clerk-card="forms">
                 <div class="card-top">
                     <span class="card-badge">Forms &amp; Summons</span>
                     
                 </div>
                 <div class="card-count" id="clerkPendingForms">—</div>
-                <h3 class="card-title">Cases Pending Form Issuance</h3>
-                <p class="card-desc">Mga kasong nangangailangan ng pagpapalabas ng KP Forms 7, 8, at 9</p>
-                <a href="../documents/document-center.php" class="btn-clerk-outline" id="btnClerkPrintRepo">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
-                    <span>Print Blank KP Forms Repository</span>
-                </a>            
+                <h3 class="card-title">Transmittals &amp; LTIA Queue</h3>
+                <p class="card-desc">Bawat form (KP 7–25) ay awtomatikong ginagawa sa loob mismo ng kaso; buksan ang LTIA &amp; Transmittals.</p>
             </article>
-        </section>
 
-        <!-- ── 3. System Metrics Grid (Standardized Stat Cards) ────────────── -->
-        <section class="clerk-system-metrics-grid" aria-label="System Metrics Grid">
-            <article class="system-metric-pill" data-clerk-metric="total" role="button" tabindex="0" title="Click to show all agenda sessions">
-                <div class="kpi-card-header">
-                    <span class="metric-name">Total Cases</span>
-                    <span class="metric-icon icon-total"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg></span>
+            <!-- 4th Top Card: Active Staff -->
+            <article class="docket-queue-card card-staff">
+                <div class="card-top">
+                    <span class="card-badge" style="background:#f3f7f5; color:#1b6553; border:1px solid #d5e4dc;">Barangay Roster</span>
                 </div>
-                <div class="metric-val" id="sysMetricTotalCases">—</div>
-                <span class="metric-sub">All recorded cases</span>
-            </article>
-            <article class="system-metric-pill" data-clerk-metric="mediation" role="button" tabindex="0" title="Click to filter mediation hearings in Agenda Stream">
-                <div class="kpi-card-header">
-                    <span class="metric-name">Active Mediation</span>
-                    <span class="metric-icon icon-mediation"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg></span>
-                </div>
-                <div class="metric-val" id="sysMetricMediation">—</div>
-                <span class="metric-sub">Mediation cases</span>
-            </article>
-            <article class="system-metric-pill" data-clerk-metric="conciliation" role="button" tabindex="0" title="Click to filter conciliation hearings in Agenda Stream">
-                <div class="kpi-card-header">
-                    <span class="metric-name">Pangkat Conciliation</span>
-                    <span class="metric-icon icon-conciliation"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg></span>
-                </div>
-                <div class="metric-val" id="sysMetricConciliation">—</div>
-                <span class="metric-sub">Active panel cases</span>
-            </article>
-            <article class="system-metric-pill" data-clerk-metric="settled" role="button" tabindex="0" title="Click to view settled cases">
-                <div class="kpi-card-header">
-                    <span class="metric-name">Settled Cases</span>
-                    <span class="metric-icon icon-settled"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
-                </div>
-                <div class="metric-val" id="sysMetricSettled">—</div>
-                <span class="metric-sub">Resolved through settlement</span>
-            </article>
-            <article class="system-metric-pill" data-clerk-metric="users" role="button" tabindex="0" title="Click to view active users">
-                <div class="kpi-card-header">
-                    <span class="metric-name">Active Users</span>
-                    <span class="metric-icon icon-users"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></span>
-                </div>
-                <div class="metric-val" id="sysMetricActiveUsers">—</div>
-                <span class="metric-sub">Barangay staff &amp; lupon</span>
+                <div class="card-count" id="sysMetricActiveUsers">-</div>
+                <h3 class="card-title">Active Staff &amp; Lupon</h3>
+                <p class="card-desc">Bilang ng aktibong staff at Lupon members sa sistema</p>
             </article>
         </section>
 
         <!-- ── 4. Main Two-Column Layout ────────────────────────────────────── -->
+
+        <!-- Clerk Bento Analytics Summary -->
+        <section class="bento-visual-grid" aria-label="Clerk Case Stage and Settlement Breakdown">
+            <div class="bento-card">
+                <div class="bento-card-head">
+                    <div>
+                        <h3>Case Stage Pipeline</h3>
+                        <span>End-to-end complaint-bound docket stages</span>
+                    </div>
+                    <div class="bento-big-number" id="sysMetricTotalCases">-</div>
+                    <span id="bentoClerkTotal" hidden aria-hidden="true">-</span>
+                </div>
+                <div class="stage-progress-track" aria-hidden="true">
+                    <div class="stage-seg-med" id="bentoClerkSegMed" style="width: 30%;"></div>
+                    <div class="stage-seg-con" id="bentoClerkSegCon" style="width: 25%;"></div>
+                    <div class="stage-seg-set" id="bentoClerkSegSet" style="width: 35%;"></div>
+                    <div class="stage-seg-cfa" id="bentoClerkSegCfa" style="width: 10%;"></div>
+                </div>
+                <div class="bento-stage-pills">
+                    <div class="bento-mini-pill">
+                        <span><i class="bento-dot" style="background:#102b2d;"></i>Mediation</span>
+                        <strong id="sysMetricMediation">0</strong>
+                        <span id="bentoClerkMed" hidden aria-hidden="true">0</span>
+                    </div>
+                    <div class="bento-mini-pill">
+                        <span><i class="bento-dot" style="background:#1b6553;"></i>Conciliation</span>
+                        <strong id="sysMetricConciliation">0</strong>
+                        <span id="bentoClerkCon" hidden aria-hidden="true">0</span>
+                    </div>
+                    <div class="bento-mini-pill">
+                        <span><i class="bento-dot" style="background:#22c55e;"></i>Settled</span>
+                        <strong id="sysMetricSettled">0</strong>
+                        <span id="bentoClerkSet" hidden aria-hidden="true">0</span>
+                    </div>
+                    <div class="bento-mini-pill">
+                        <span><i class="bento-dot" style="background:#f59e0b;"></i>Archived / Other</span>
+                        <strong id="bentoClerkOther">0</strong>
+                        <span id="sysMetricArchived" hidden aria-hidden="true">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bento-card">
+                <div class="bento-card-head">
+                    <div>
+                        <h3>Settlement Completion Rate</h3>
+                        <span id="bentoClerkGaugeSub">Ready for 10-day MTC/DILG transmittal cycle</span>
+                    </div>
+                    <div class="gauge-wrap">
+                        <svg width="88" height="48" viewBox="0 0 100 54" aria-hidden="true">
+                            <path d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#e6ecea" stroke-width="10" stroke-linecap="round"></path>
+                            <path id="bentoClerkGaugeArc" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke="#1b6553" stroke-width="10" stroke-linecap="round" stroke-dasharray="126" stroke-dashoffset="42"></path>
+                        </svg>
+                        <div class="gauge-pct" id="bentoClerkGaugePct">0%</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <div class="dash-portal-grid">
             <!-- LEFT COLUMN: Agenda Stream & Macro Dispute Analytics -->
             <div class="dash-portal-main">
@@ -358,6 +378,21 @@ include '../../layouts/header.php';
                 </div>
 
                 <!-- 2. Security & Audit Feed -->
+                <!-- 2. Barangay Tumana News & Advisories -->
+                <div class="dash-aside-card" style="margin-bottom: 20px;">
+                    <div class="aside-card-header" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                        <div>
+                            <h3 class="aside-card-title">Announcements &amp; News</h3>
+                            <p class="aside-card-sub">Barangay Tumana bulletin</p>
+                        </div>
+                        <button type="button" id="btnOpenStaffNewsManager" class="staff-news-manage-btn">Manage News</button>
+                    </div>
+                    <div class="dash-aside-body" style="padding: 12px 14px;">
+                        <div id="staffBulletinNewsList" class="dash-aside-news-feed"></div>
+                    </div>
+                </div>
+
+                <!-- 3. Security & Audit Feed -->
                 <div class="dash-aside-card" style="margin-bottom: 20px;">
                     <div class="aside-card-header">
                         <div style="display: flex; align-items: center; gap: 8px;">
@@ -463,6 +498,13 @@ include '../../layouts/header.php';
     </div>
 </div>
 
+<?php include __DIR__ . '/../../layouts/news-manager-modal.php'; ?>
+<script src="../../assets/js/news-widget.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/news-widget.js'); ?>"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        window.AgapNewsWidget?.initStaffBulletin();
+    });
+</script>
 <script src="../../assets/js/clerk-dashboard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/clerk-dashboard.js'); ?>"></script>
 <script src="../../assets/js/liso-duty.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/liso-duty.js'); ?>"></script>
 

@@ -428,6 +428,7 @@ include '../../layouts/header.php';
                             <div class="form-group">
                                 <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe what happened in the order it occurred."><?php echo htmlspecialchars($old['narrative'] ?? ''); ?></textarea>
+                                <?php include __DIR__ . '/../../layouts/narrative-accoc-guide.php'; ?>
                                 <?php include __DIR__ . '/tabs/narrative-dictation.php'; ?>
                                 <div class="ai-narrative-actions">
                                     <div class="ai-narrative-tools">
@@ -880,6 +881,10 @@ include '../../layouts/header.php';
 
                                 <div class="form-group">
                                     <label for="caseType">Case Type <span class="required-mark">*</span></label>
+                                    <div class="agap-segmented-group" data-seg-target="caseType" role="group" aria-label="Case type">
+                                        <button type="button" class="agap-seg-btn" data-seg-value="Civil">Civil</button>
+                                        <button type="button" class="agap-seg-btn" data-seg-value="Criminal">Criminal</button>
+                                    </div>
                                     <select id="caseType" name="case_type" required>
                                         <option value="Civil" <?php echo (($old['case_type'] ?? 'Civil') === 'Civil') ? 'selected' : ''; ?>>Civil</option>
                                         <option value="Criminal" <?php echo (($old['case_type'] ?? '') === 'Criminal') ? 'selected' : ''; ?>>Criminal</option>

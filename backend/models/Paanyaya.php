@@ -534,21 +534,70 @@ class Paanyaya
             return $records;
         }
 
-        return array_values(array_filter($records, function (array $record) use ($status): bool {
-            $currentStatus = $record['current_workflow_status'] ?? $record['status'] ?? '';
+        return array_values(array_filter($records, static fn (array $record): bool =>
+            self::matchesWorkflowStatus($record['current_workflow_status'], $status)
+        ));
+    }
 
-            if (in_array($status, ['Resolved', 'Completed', 'Settled'], true)) {
-                return in_array($currentStatus, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true);
-            }
-            if (in_array($status, ['Cancelled', 'Failed', 'Escalated'], true)) {
-                return in_array($currentStatus, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true);
-            }
-            if (in_array($status, ['Scheduled', 'Pending'], true)) {
-                return in_array($currentStatus, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true);
-            }
+    private static function matchesWorkflowStatus(string $currentStatus, ?string $status): bool
+    {
+        return match ($status) {
+            null, '', 'all' => true,
+            'Resolved', 'Completed', 'Settled' => in_array($currentStatus, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true),
+            'Cancelled', 'Failed', 'Escalated' => in_array($currentStatus, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true),
+            'Scheduled', 'Pending' => in_array($currentStatus, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true),
+            default => $currentStatus === $status,
+        };
+    }
 
-            return $currentStatus === $status;
-        }));
+    public function getGroupedPaanyayaCases(?string $status = null, ?string $search = null): array
+    {
+        $groupKey = static function (array $record): string {
+            $complaintId = (int) ($record['complaint_id'] ?: ($record['escalated_to_complaint_id'] ?? 0));
+            return $complaintId > 0 ? 'complaint:' . $complaintId : 'single:' . (int) $record['paanyaya_id'];
+        };
+
+        $groups = [];
+        foreach ($this->getAllPaanyayas() as $record) {
+            $groups[$groupKey($record)][(int) $record['paanyaya_id']] = $record;
+        }
+
+        if ($search !== null) {
+            $matchedGroups = [];
+            foreach ($this->getAllPaanyayas(null, $search) as $record) {
+                $matchedGroups[$groupKey($record)] = true;
+            }
+            $groups = array_intersect_key($groups, $matchedGroups);
+        }
+
+        $cases = [];
+        foreach ($groups as $key => $items) {
+            usort($items, static fn (array $left, array $right): int =>
+                [(int) $left['attempt_number'], $left['scheduled_date'], $left['scheduled_time'], (int) $left['paanyaya_id']]
+                <=> [(int) $right['attempt_number'], $right['scheduled_date'], $right['scheduled_time'], (int) $right['paanyaya_id']]
+            );
+            $lastIndex = count($items) - 1;
+            foreach ($items as $index => &$item) {
+                $item['is_latest'] = $index === $lastIndex;
+                $item['step_display_status'] = $item['status'] === 'Completed' ? 'Done' : $item['status'];
+            }
+            unset($item);
+            $latest = $items[$lastIndex];
+            $workflowStatus = $latest['current_workflow_status'];
+            if (!self::matchesWorkflowStatus($workflowStatus, $status)) {
+                continue;
+            }
+            $cases[] = [
+                'group_key' => $key,
+                'latest' => $latest,
+                'items' => $items,
+                'has_second_paanyaya' => (int) $latest['attempt_number'] >= 2,
+                'display_status' => $workflowStatus === 'Completed' ? 'Done' : $workflowStatus,
+                'workflow_status' => $workflowStatus,
+                'workflow_stage' => $latest['current_workflow_stage'],
+            ];
+        }
+        return $cases;
     }
 
     /**

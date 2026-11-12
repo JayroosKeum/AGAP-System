@@ -473,3 +473,18 @@
     justify-content: flex-end;
     gap: 10px;
 }
+
+
+/* AGAP Server Static KPI Override */
+.server-kpi-card,
+.server-kpi-card:hover {
+    cursor: default !important;
+    transform: none !important;
+    border-radius: 14px;
+    border: 1px solid #e6ecea;
+    box-shadow: 0 1px 3px rgba(16, 43, 45, 0.03);
+}
+.server-kpi-card:focus-visible {
+    outline: none !important;
+    box-shadow: 0 1px 3px rgba(16, 43, 45, 0.03) !important;
+}

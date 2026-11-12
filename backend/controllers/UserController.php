@@ -14,9 +14,14 @@ class UserController {
         $this->audit = new AuditService();
     }
 
-    public function index(): array
+    public function index(bool $staffOnly = false): array
     {
-        return $this->user->getAll();
+        return $this->user->getAll($staffOnly);
+    }
+
+    public function staffRoles(): array
+    {
+        return $this->user->getStaffRoles();
     }
 
     public function create(array $data, int $actorId): array
@@ -77,6 +82,24 @@ class UserController {
         $result = $this->user->update($id, $validated['data']);
         if ($result['success']) $this->audit->log($actorId, 'Updated user account', 'User Management', $id);
         return $result + ['message' => $result['success'] ? 'User account updated.' : ($result['message'] ?? 'Unable to update the user account.')];
+    }
+
+    public function setStatus(int $id, string $status, int $actorId): array
+    {
+        if ($id < 1) {
+            return ['success' => false, 'message' => 'A valid user is required.'];
+        }
+        $normalizedStatus = trim($status);
+        if ($id === $actorId && $normalizedStatus === 'Inactive') {
+            return ['success' => false, 'message' => 'You cannot disable your own account.'];
+        }
+        $result = $this->user->setStatus($id, $normalizedStatus);
+        if (!empty($result['success'])) {
+            $action = $normalizedStatus === 'Inactive' ? 'Disabled user account' : 'Enabled user account';
+            $this->audit->log($actorId, $action, 'User Management', $id);
+        }
+        $defaultMsg = $normalizedStatus === 'Inactive' ? 'User account disabled.' : 'User account enabled.';
+        return $result + ['message' => !empty($result['success']) ? $defaultMsg : ($result['message'] ?? 'Unable to update user status.')];
     }
 
     public function delete(int $id, int $actorId): array

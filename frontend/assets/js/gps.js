@@ -136,7 +136,7 @@ let allLoadedSummonCases = [];
 let filteredSummonCases = [];
 let activeFilterTab = 'all'; // 'all' | 'pending' | 'cfa_ready'
 let activeExpandedCaseId = null;
-const summonPageSize = 5;
+let summonPageSize = Number(document.getElementById('summonPageSize')?.value || 10) || 10;
 let currentSummonPage = 1;
 let activeSummonSortKey = 'hearing_date';
 let activeSummonSortDir = 'asc';
@@ -295,6 +295,13 @@ function setupSummonTableSorting() {
             }
 
             updateSummonSortHeadersUI();
+            const sortSelect = document.getElementById('summonSortSelect');
+            if (sortSelect) {
+                const candidate = `${activeSummonSortKey}:${activeSummonSortDir}`;
+                if (sortSelect.querySelector(`option[value="${candidate}"]`)) {
+                    sortSelect.value = candidate;
+                }
+            }
             currentSummonPage = 1;
             applySummonFilterAndRender();
         });
@@ -320,16 +327,13 @@ function renderSummonPaginationControls(total, totalPages, startIdx, endIdx) {
 
     paginationControls.replaceChildren();
 
-    if (totalPages <= 1) {
-        return;
-    }
-
-    const createBtn = (label, pageNum, disabled = false, current = false, isNav = false) => {
+    const createBtn = (label, pageNum, disabled = false, current = false, ariaLabel = '') => {
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.className = `complaints-page-btn ${current ? 'active current' : ''} ${isNav ? 'complaints-page-nav-btn' : ''}`;
+        btn.className = `agap-page-btn${current ? ' is-active' : ''}`;
         btn.textContent = label;
         btn.disabled = disabled;
+        if (ariaLabel) btn.setAttribute('aria-label', ariaLabel);
         if (current) btn.setAttribute('aria-current', 'page');
         btn.addEventListener('click', () => {
             if (currentSummonPage !== pageNum && !disabled) {
@@ -344,8 +348,15 @@ function renderSummonPaginationControls(total, totalPages, startIdx, endIdx) {
         return btn;
     };
 
+    if (totalPages <= 1) {
+        paginationControls.appendChild(createBtn('‹', 1, true, false, 'Previous page'));
+        paginationControls.appendChild(createBtn('1', 1, false, true));
+        paginationControls.appendChild(createBtn('›', 1, true, false, 'Next page'));
+        return;
+    }
+
     // Previous button
-    paginationControls.appendChild(createBtn('← Previous', currentSummonPage - 1, currentSummonPage <= 1, false, true));
+    paginationControls.appendChild(createBtn('‹', currentSummonPage - 1, currentSummonPage <= 1, false, 'Previous page'));
 
     // Numeric buttons with ellipsis if many pages
     const maxButtons = 5;
@@ -359,7 +370,7 @@ function renderSummonPaginationControls(total, totalPages, startIdx, endIdx) {
         paginationControls.appendChild(createBtn('1', 1, false, currentSummonPage === 1));
         if (startPage > 2) {
             const ellipsis = document.createElement('span');
-            ellipsis.className = 'pagination-ellipsis';
+            ellipsis.className = 'agap-page-ellipsis';
             ellipsis.textContent = '…';
             paginationControls.appendChild(ellipsis);
         }
@@ -372,7 +383,7 @@ function renderSummonPaginationControls(total, totalPages, startIdx, endIdx) {
     if (endPage < totalPages) {
         if (endPage < totalPages - 1) {
             const ellipsis = document.createElement('span');
-            ellipsis.className = 'pagination-ellipsis';
+            ellipsis.className = 'agap-page-ellipsis';
             ellipsis.textContent = '…';
             paginationControls.appendChild(ellipsis);
         }
@@ -380,14 +391,21 @@ function renderSummonPaginationControls(total, totalPages, startIdx, endIdx) {
     }
 
     // Next button
-    paginationControls.appendChild(createBtn('Next →', currentSummonPage + 1, currentSummonPage >= totalPages, false, true));
+    paginationControls.appendChild(createBtn('›', currentSummonPage + 1, currentSummonPage >= totalPages, false, 'Next page'));
 }
 
 function applySummonFilterAndRender() {
     const searchInput = document.getElementById('summonCaseSearch');
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+    const noticeType = document.getElementById('summonNoticeTypeFilter')?.value || '';
     const clearBtn = document.getElementById('clearSummonSearch');
+    const resetBtn = document.getElementById('resetSummonFilters');
+    const activeDot = document.getElementById('summonFilterActiveDot');
+
     if (clearBtn) clearBtn.style.display = query ? 'block' : 'none';
+    const hasCustomSort = activeSummonSortKey !== 'hearing_date' || activeSummonSortDir !== 'asc';
+    if (activeDot) activeDot.style.display = (noticeType || hasCustomSort) ? 'inline-block' : 'none';
+    if (resetBtn) resetBtn.style.display = (query || noticeType || hasCustomSort || activeFilterTab !== 'all') ? 'inline-block' : 'none';
 
     let list = [...allLoadedSummonCases];
 
@@ -398,6 +416,13 @@ function applySummonFilterAndRender() {
         list = list.filter(item => !isCasePending(item) && !isCaseCfaReady(item));
     } else if (activeFilterTab === 'cfa_ready') {
         list = list.filter(isCaseCfaReady);
+    }
+
+    // Apply Notice Type Filter
+    if (noticeType === 'paanyaya') {
+        list = list.filter(item => Boolean(item.is_paanyaya));
+    } else if (noticeType === 'summons') {
+        list = list.filter(item => !item.is_paanyaya);
     }
 
     // Apply Search Query
@@ -522,61 +547,87 @@ function renderSummonCasesTable(cases) {
 
         let kpNumber;
         if (canAccessCaseDetails) {
-            const targetComplaintId = item.complaint_id || item.case_id;
             const caseDetailsUrl = item.complaint_id
                 ? `../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}${item.is_paanyaya ? '&tab=paanyaya' : ''}`
                 : `../cases/case-details.php?id=${encodeURIComponent(item.case_id)}`;
 
-            const kpLinkHtml = `<a href="${caseDetailsUrl}" class="case-kp-link" onclick="event.stopPropagation();" title="View case details for ${escapeGpsHtml(kpNumberRaw)}" style="color:#0284c7; font-size:0.92rem; font-weight:700; text-decoration:none; cursor:pointer;" onmouseover="this.style.textDecoration='underline'; this.style.color='#0369a1';" onmouseout="this.style.textDecoration='none'; this.style.color='#0284c7';">${escapeGpsHtml(kpNumberRaw)}</a>`;
+            const kpLinkHtml = `<a href="${caseDetailsUrl}" class="agap-rec-id-text case-kp-link" onclick="event.stopPropagation();" title="View case details for ${escapeGpsHtml(kpNumberRaw)}">${escapeGpsHtml(kpNumberRaw)}</a>`;
 
             kpNumber = item.is_paanyaya
-                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">${kpLinkHtml}<span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
+                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;">${kpLinkHtml}<span class="agap-pill-badge is-emerald" style="padding:1px 7px; font-size:0.7rem;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
                 : kpLinkHtml;
         } else {
             kpNumber = item.is_paanyaya
-                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;"><span>${escapeGpsHtml(kpNumberRaw)}</span><span style="font-size:0.72rem; padding:2px 7px; background:#ecfdf5; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:700;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
-                : escapeGpsHtml(kpNumberRaw);
+                ? `<div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap;"><span class="agap-rec-id-text">${escapeGpsHtml(kpNumberRaw)}</span><span class="agap-pill-badge is-emerald" style="padding:1px 7px; font-size:0.7rem;">${escapeGpsHtml(item.paanyaya_stage_type || item.hearing_type || 'Paanyaya')}</span></div>`
+                : `<span class="agap-rec-id-text">${escapeGpsHtml(kpNumberRaw)}</span>`;
         }
+        const getGpsInitials = (rawName) => {
+            const words = String(rawName || '').trim().split(/[\s,]+/).filter(Boolean);
+            if (!words.length) return 'N';
+            if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+            return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+        };
         const complainant = item.complainant_names || 'Not recorded';
         const respondent = item.respondent_names || 'Not recorded';
         const hearingDate = item.hearing_date
             ? `
-                <div style="font-weight: 600; color: #0f172a; font-size: 0.88rem;">
+                <div style="font-weight: 600; color: #0f172a; font-size: 0.85rem;">
                     ${escapeGpsHtml(formatDateTime(item.hearing_date))}
                 </div>
-                ${item.hearing_type ? `<span class="hearing-type-pill" style="font-size: 0.72rem; padding: 2px 7px; background: #e0f2fe; color: #0369a1; border-radius: 4px; display: inline-block; margin-top: 3px; font-weight: 600;">${escapeGpsHtml(item.hearing_type)}</span>` : ''}
+                ${item.hearing_type ? `<span class="agap-pill-badge is-blue" style="padding: 1px 7px; font-size: 0.7rem; margin-top: 3px;">${escapeGpsHtml(item.hearing_type)}</span>` : ''}
             `
             : '<span style="color: #94a3b8; font-style: italic; font-size: 0.84rem;">Pending schedule</span>';
+
+        const iconToneClass = item.is_paanyaya ? 'is-amber' : '';
 
         // Main Case Row
         rowsHtml.push(`
             <tr id="case-row-${caseId}" class="case-main-row ${isExpanded ? 'is-expanded' : ''}" onclick="toggleExpandCase(${caseId}, event)">
-                <td class="cell-expand" style="padding: 12px 14px; text-align: center;">
+                <td class="cell-expand" style="text-align: center;">
                     <button type="button" class="row-expand-btn ${isExpanded ? 'is-expanded' : ''}" aria-label="${isExpanded ? 'Collapse' : 'Expand'} details for ${escapeGpsHtml(kpNumberRaw)}" onclick="toggleExpandCase(${caseId}, event)">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
                     </button>
                 </td>
-                <td class="cell-kp" style="padding: 12px 16px;">
-                    <strong style="color: #0284c7; font-size: 0.92rem; font-weight: 700;">
-                        ${kpNumber}
-                    </strong>
-                    ${item.complaint_title ? `<div class="case-row-subtitle" title="${escapeGpsHtml(item.complaint_title)}">${escapeGpsHtml(item.complaint_title)}</div>` : ''}
+                <td class="cell-kp">
+                    <div class="agap-rec-id-wrap">
+                        <span class="agap-rec-icon ${iconToneClass}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        </span>
+                        <div>
+                            ${kpNumber}
+                            ${item.complaint_title ? `<span class="agap-person-sub case-row-subtitle" title="${escapeGpsHtml(item.complaint_title)}">${escapeGpsHtml(item.complaint_title)}</span>` : ''}
+                        </div>
+                    </div>
                 </td>
-                <td class="party-name-cell cell-complainant" style="padding: 12px 16px;">
+                <td class="party-name-cell cell-complainant">
                     <span class="mobile-cell-label">Complainant</span>
-                    <span class="mobile-cell-val">${escapeGpsHtml(complainant)}</span>
+                    <span class="mobile-cell-val">
+                        <div class="agap-person-cell">
+                            <span class="agap-person-avatar">${escapeGpsHtml(getGpsInitials(complainant))}</span>
+                            <div class="agap-person-meta">
+                                <span class="agap-person-name">${escapeGpsHtml(complainant)}</span>
+                            </div>
+                        </div>
+                    </span>
                 </td>
-                <td class="party-name-cell cell-respondent" style="padding: 12px 16px;">
+                <td class="party-name-cell cell-respondent">
                     <span class="mobile-cell-label">Respondent</span>
-                    <span class="mobile-cell-val">${escapeGpsHtml(respondent)}</span>
+                    <span class="mobile-cell-val">
+                        <div class="agap-person-cell">
+                            <span class="agap-person-avatar is-respondent">${escapeGpsHtml(getGpsInitials(respondent))}</span>
+                            <div class="agap-person-meta">
+                                <span class="agap-person-name">${escapeGpsHtml(respondent)}</span>
+                            </div>
+                        </div>
+                    </span>
                 </td>
-                <td class="cell-hearing" style="padding: 12px 16px;">
+                <td class="cell-hearing">
                     <span class="mobile-cell-label">Hearing</span>
                     <span class="mobile-cell-val">${hearingDate}</span>
                 </td>
-                <td class="cell-status" style="padding: 12px 16px;">
+                <td class="cell-status">
                     <span class="mobile-cell-label">Status</span>
                     <div class="mobile-cell-val mobile-status-wrap">
                         ${renderTableServiceStatus(item)}
@@ -1177,6 +1228,66 @@ window.loadHearingDeliveries = loadHearingDeliveries;
 function setupSummonCaseSearch() {
     const searchInput = document.getElementById('summonCaseSearch');
     const clearBtn = document.getElementById('clearSummonSearch');
+    const pageSizeSelect = document.getElementById('summonPageSize');
+    const drawerToggle = document.getElementById('toggleSummonFilterDrawer');
+    const drawerPanel = document.getElementById('summonFilterDrawerPanel');
+    const noticeFilter = document.getElementById('summonNoticeTypeFilter');
+    const sortSelect = document.getElementById('summonSortSelect');
+    const resetBtn = document.getElementById('resetSummonFilters');
+
+    if (pageSizeSelect && !pageSizeSelect.dataset.bound) {
+        pageSizeSelect.dataset.bound = '1';
+        summonPageSize = Math.max(1, Number(pageSizeSelect.value || 10) || 10);
+        pageSizeSelect.addEventListener('change', () => {
+            summonPageSize = Math.max(1, Number(pageSizeSelect.value || 10) || 10);
+            currentSummonPage = 1;
+            renderSummonCasesTable(filteredSummonCases);
+        });
+    }
+
+    if (drawerToggle && drawerPanel && !drawerToggle.dataset.bound) {
+        drawerToggle.dataset.bound = '1';
+        drawerToggle.addEventListener('click', () => {
+            const isOpen = drawerPanel.classList.toggle('open');
+            drawerToggle.classList.toggle('active', isOpen);
+        });
+    }
+
+    if (noticeFilter && !noticeFilter.dataset.bound) {
+        noticeFilter.dataset.bound = '1';
+        noticeFilter.addEventListener('change', () => {
+            currentSummonPage = 1;
+            applySummonFilterAndRender();
+        });
+    }
+
+    if (sortSelect && !sortSelect.dataset.bound) {
+        sortSelect.dataset.bound = '1';
+        sortSelect.addEventListener('change', () => {
+            const [key, dir] = String(sortSelect.value || 'hearing_date:asc').split(':');
+            activeSummonSortKey = key || 'hearing_date';
+            activeSummonSortDir = (dir === 'desc') ? 'desc' : 'asc';
+            updateSummonSortHeadersUI();
+            currentSummonPage = 1;
+            applySummonFilterAndRender();
+        });
+    }
+
+    if (resetBtn && !resetBtn.dataset.bound) {
+        resetBtn.dataset.bound = '1';
+        resetBtn.addEventListener('click', () => {
+            if (searchInput) searchInput.value = '';
+            if (noticeFilter) noticeFilter.value = '';
+            activeSummonSortKey = 'hearing_date';
+            activeSummonSortDir = 'asc';
+            if (sortSelect) sortSelect.value = 'hearing_date:asc';
+            updateSummonSortHeadersUI();
+            if (drawerPanel) drawerPanel.classList.remove('open');
+            if (drawerToggle) drawerToggle.classList.remove('active');
+            setProofFilter('all');
+        });
+    }
+
     if (!searchInput || searchInput.dataset.bound) return;
     searchInput.dataset.bound = '1';
 
@@ -2099,63 +2210,6 @@ async function renderCaseServiceTimeline(caseId) {
                             </div>
                         </details>
                     `;
-                }
-                if (false) {
-                items.forEach((item, idx) => {
-                    let pillBg = '#f1f5f9';
-                    let pillColor = '#475569';
-                    let pillIcon = '⚪';
-                    if (item.status_pill === 'served-personal') {
-                        pillBg = '#dcfce7'; pillColor = '#15803d'; pillIcon = '🟢';
-                    } else if (item.status_pill === 'served-substituted') {
-                        pillBg = '#e0f2fe'; pillColor = '#0369a1'; pillIcon = '🔵';
-                    } else if (item.status_pill === 'refused') {
-                        pillBg = '#fef3c7'; pillColor = '#b45309'; pillIcon = '🟡';
-                    } else if (item.status_pill === 'unserved') {
-                        pillBg = '#fee2e2'; pillColor = '#b91c1c'; pillIcon = '🔴';
-                    }
-
-                    const formattedDate = item.service_datetime ? formatDateTime(item.service_datetime) : 'Pending / Not Recorded';
-
-                    html += `
-                        <div style="display: flex; gap: 14px; align-items: flex-start; padding: 12px 14px; background: #fafafa; border: 1px solid #eef2f6; border-radius: 8px;">
-                            <div style="flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; background: #fff; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; box-shadow: 0 1px 2px rgba(0,0,0,0.04);">
-                                ${item.document_code.includes('10') ? '👥' : (item.document_code.includes('11') ? '📜' : (item.document_code.includes('12') ? '⚖️' : (item.document_code.includes('9') ? '📩' : (item.document_code.includes('8') ? '📋' : '✉️'))))}
-                            </div>
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px;">
-                                    <div>
-                                        <strong style="color: #0f172a; font-size: 0.9rem;">${escapeGpsHtml(item.document_code)}</strong>
-                                        <span style="font-size: 0.8rem; color: #475569; margin-left: 6px;">${escapeGpsHtml(item.document_title)}</span>
-                                        ${item.attempt_label ? `<span style="margin-left: 6px; background: #f1f5f9; color: #334155; font-size: 0.72rem; font-weight: 700; padding: 1px 6px; border-radius: 4px;">${escapeGpsHtml(item.attempt_label)}</span>` : ''}
-                                    </div>
-                                    <span style="background: ${pillBg}; color: ${pillColor}; font-size: 0.74rem; font-weight: 700; padding: 2px 9px; border-radius: 9999px; display: inline-flex; align-items: center; gap: 4px;">
-                                        ${pillIcon} ${escapeGpsHtml(item.delivery_status)}
-                                    </span>
-                                </div>
-                                <div style="font-size: 0.82rem; color: #475569; margin-bottom: 6px; display: flex; flex-wrap: wrap; gap: 14px;">
-                                    <span>Recipient: <strong>${escapeGpsHtml(item.recipient_name)}</strong> (${escapeGpsHtml(item.party_type)})</span>
-                                    <span>Server: <strong>${escapeGpsHtml(item.served_by_name)}</strong></span>
-                                    <span>Timestamp: <strong>${escapeGpsHtml(formattedDate)}</strong></span>
-                                    ${item.unserved_reason ? `<span style="color: #dc2626;">Reason: <strong>${escapeGpsHtml(item.unserved_reason)}</strong></span>` : ''}
-                                </div>
-                                ${item.remarks ? `<div style="font-size: 0.78rem; color: #64748b; font-style: italic; margin-bottom: 6px;">Notes: ${escapeGpsHtml(item.remarks)}</div>` : ''}
-                                <div style="display: flex; gap: 10px; align-items: center; font-size: 0.8rem;">
-                                    ${item.preview_url ? `
-                                        <a href="${item.preview_url}" target="_blank" style="color: #0284c7; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-                                            📄 View Document
-                                        </a>
-                                    ` : ''}
-                                    ${item.proof_file_path ? `
-                                        <a href="../../${escapeGpsHtml(item.proof_file_path)}" target="_blank" style="color: #16a34a; text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
-                                            📷 View Photo Proof
-                                        </a>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
                 }
                 html += `</div>`;
             }

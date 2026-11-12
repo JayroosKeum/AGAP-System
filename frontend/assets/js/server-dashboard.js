@@ -368,9 +368,7 @@
             });
         };
 
-        bindKpiCard('kpiPendingCard', 'pending');
-        bindKpiCard('kpiServedCard', 'served');
-        bindKpiCard('kpiUnservedCard', 'unserved');
+        // KPI stat cards remain static; explicit filter tabs handle status switching.
 
         // Modal triggers
         document.getElementById('loggerCloseBtn')?.addEventListener('click', closeLoggerModal);
