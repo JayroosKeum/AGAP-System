@@ -71,7 +71,7 @@ if (!empty($result['complaint_id'])) {
         header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=mediation');
         exit;
     }
-    header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=mediation');
+    header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id']);
     exit;
 }
 

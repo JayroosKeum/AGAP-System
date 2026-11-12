@@ -8,12 +8,9 @@ class Complaint
 {
     private PDO $conn;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null)
     {
-        $database = new Database();
-
-        $this->conn =
-            $database->connect();
+        $this->conn = $conn ?? (new Database())->connect();
     }
 
     public function getAll()
@@ -566,17 +563,6 @@ class Complaint
         if (!in_array($status, $allowed, true)) {
             return ['success' => false, 'message' => 'Select a valid review decision.'];
         }
-        $existsSql = "SELECT c.complaint_id FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status <> 'Archived'";
-        $existsParams = [$id];
-        if ($mustBeAssignedLiso) {
-            // Keep existing online-intake handling intact. For a walk-in with
-            // an explicit LISO handoff, only the assigned member may decide it.
-            $existsSql .= ' AND (c.liso_assigned_to IS NULL OR c.liso_assigned_to = ?)';
-            $existsParams[] = $reviewerId;
-        }
-        $exists = $this->conn->prepare($existsSql);
-        $exists->execute($existsParams);
-        if (!$exists->fetchColumn()) return ['success' => false, 'message' => 'This complaint cannot be reviewed in its current status.'];
         $decision = match ($status) {
             'Needs Information' => 'Needs Information',
             'Accepted' => 'Eligible',
@@ -584,8 +570,22 @@ class Complaint
             default => 'Pending',
         };
         $reviewerId ??= (int) ($_SESSION['user_id'] ?? 0);
-        $stmt = $this->conn->prepare('UPDATE complaints SET status = ?, screening_decision = ?, review_notes = ?, liso_reviewed_by = ?, liso_reviewed_at = NOW() WHERE complaint_id = ?');
-        $stmt->execute([$status, $decision, $notes, $reviewerId ?: null, $id]);
+        $stmt = $this->conn->prepare(
+            "UPDATE complaints c
+             LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+             LEFT JOIN users assigned ON assigned.user_id = c.liso_assigned_to
+             SET c.status = ?, c.screening_decision = ?, c.review_notes = ?,
+                 c.liso_reviewed_by = ?, c.liso_reviewed_at = NOW()
+             WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status <> 'Archived'
+               AND (c.liso_assigned_to IS NULL OR (
+                   c.liso_assigned_to = ? AND c.screening_decision <> 'Eligible'
+                   AND assigned.role_id = 3 AND assigned.status = 'Active'
+               ))"
+        );
+        $stmt->execute([$status, $decision, $notes, $reviewerId ?: null, $id, $mustBeAssignedLiso ? $reviewerId : 0]);
+        if ($stmt->rowCount() !== 1) {
+            return ['success' => false, 'message' => 'This screening can no longer be updated by your account.'];
+        }
         $screening = $this->conn->prepare('UPDATE complaint_intake_screenings SET screened_by = ?, screened_at = NOW() WHERE complaint_id = ?');
         $screening->execute([$reviewerId ?: null, $id]);
         return ['success' => true, 'message' => 'Complaint review saved.'];
@@ -603,7 +603,10 @@ class Complaint
             if (($complaint['screening_decision'] ?? '') !== 'Eligible') {
                 throw new InvalidArgumentException('Only complaint intakes marked eligible by preliminary screening may be formally docketed.');
             }
-            $caseModel = new CaseModel();
+            $caseModel = new CaseModel($this->conn);
+            if ($caseModel->getDocketingError($id) === 'paanyaya_preparation_required') {
+                throw new InvalidArgumentException('Continue this walk-in from Paanyaya Preparation on its intake record.');
+            }
             if (!$caseModel->create(['complaint_id' => $id, 'case_type' => $complaint['case_type']])) {
                 throw new RuntimeException('Formal case docketing could not be completed.');
             }

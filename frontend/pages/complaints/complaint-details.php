@@ -30,13 +30,41 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 }
 
 $complaintId = (int)$_GET['id'];
+$preparation = null;
+$preparationParties = [];
+$preparationFlash = $_SESSION['paanyaya_preparation_flash'] ?? null;
+if (($preparationFlash['complaint_id'] ?? null) === $complaintId) {
+    unset($_SESSION['paanyaya_preparation_flash']);
+} else {
+    $preparationFlash = null;
+}
+
+require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.php';
+$preparationDb = (new Database())->connect();
+$usesPaanyayaPreparation = PaanyayaPreparationService::requiresPreparation($preparationDb, $complaintId);
+if (in_array($roleId, [1, 2], true) && $usesPaanyayaPreparation) {
+    try {
+        $preparationService = new PaanyayaPreparationService($preparationDb);
+        $preparation = $preparationService->intake($complaintId);
+        if ($preparation) {
+            $preparationParties = $preparation['ready_at']
+                ? json_decode($preparation['verified_parties'], true, 512, JSON_THROW_ON_ERROR)
+                : $preparationService->parties($complaintId);
+        }
+    } catch (PDOException $exception) {
+        error_log('Paanyaya preparation workspace: ' . $exception->getMessage());
+        $preparationFlash ??= ['type' => 'error', 'message' => 'Paanyaya preparation is currently unavailable.'];
+    }
+}
 $canScreenSelectedIntake = true;
 if ($roleId === 3) {
-    require_once __DIR__ . '/../../../backend/config/database.php';
-    $assignmentStatement = (new Database())->connect()->prepare('SELECT liso_assigned_to FROM complaints WHERE complaint_id = ? LIMIT 1');
+    $assignmentStatement = $preparationDb->prepare('SELECT liso_assigned_to, screening_decision FROM complaints WHERE complaint_id = ? LIMIT 1');
     $assignmentStatement->execute([$complaintId]);
-    $assignedLisoId = (int) $assignmentStatement->fetchColumn();
-    $canScreenSelectedIntake = $assignedLisoId < 1 || $assignedLisoId === (int) $_SESSION['user_id'];
+    $screening = $assignmentStatement->fetch(PDO::FETCH_ASSOC);
+    $assignedLisoId = (int) ($screening['liso_assigned_to'] ?? 0);
+    $canScreenSelectedIntake = $assignedLisoId < 1 || (
+        $assignedLisoId === (int) $_SESSION['user_id'] && ($screening['screening_decision'] ?? '') !== 'Eligible'
+    );
 }
 $rawTab = trim((string)($_GET['tab'] ?? 'tab-overview'));
 if (!str_starts_with($rawTab, 'tab-')) {
@@ -44,6 +72,10 @@ if (!str_starts_with($rawTab, 'tab-')) {
 }
 $validTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
 if ($rawTab === 'tab-paanyaya') {
+    if ($usesPaanyayaPreparation && in_array($roleId, [1, 2], true)) {
+        header('Location: complaint-details.php?id=' . $complaintId . '#paanyaya-preparation');
+        exit;
+    }
     header('Location: ../paanyaya/stage.php?complaint_id=' . $complaintId);
     exit;
 }
@@ -133,6 +165,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 <link rel="stylesheet" href="../../assets/css/cases.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/cases.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/case-details-modern.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/case-details-modern.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/hearings.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/hearings.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/paanyaya-preparation.css?v=<?= filemtime(__DIR__ . '/../../assets/css/paanyaya-preparation.css') ?>">
 
 <div class="dashboard-layout">
 
@@ -159,10 +192,10 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
                     <button type="button" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')"><span>Mark Intake Eligible</span></button>
                     <button type="button" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
-                <?php elseif ($roleId === 3): ?>
+                <?php elseif ($roleId === 3 && $assignedLisoId !== (int) $_SESSION['user_id']): ?>
                     <span style="color:#64748b; font-size:.82rem; font-weight:700;">Assigned to another LISO</span>
                 <?php endif; ?>
-                <?php if (in_array($roleId, [1, 2], true)): ?>
+                <?php if (in_array($roleId, [1, 2], true) && !$usesPaanyayaPreparation): ?>
                     <button type="button" class="btn-case-primary" onclick="docketEligibleIntake(<?php echo $complaintId; ?>)">
                         <span>Formal Docket</span>
                     </button>
@@ -324,6 +357,10 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
              TAB PANE 1: OVERVIEW & WORKFLOW (Default Active Tab)
              =================================================================== -->
         <div id="tab-overview" class="case-tab-pane <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>">
+
+            <?php if ($preparation || $preparationFlash): ?>
+                <?php include __DIR__ . '/tabs/paanyaya-preparation.php'; ?>
+            <?php endif; ?>
 
             <!-- Celebratory Statutory Countdown Completion Alert Banner -->
             <div id="statutoryTransmittalAlertBanner" style="display: none; margin-bottom: 16px; background: #ecfdf5; border: 1px solid #6ee7b7; border-left: 5px solid #10b981; border-radius: 8px; padding: 14px 18px; color: #065f46; font-size: 0.9rem; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">

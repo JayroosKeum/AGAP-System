@@ -1,0 +1,52 @@
+.paanyaya-preparation {
+    background: #fff;
+    border: 1px solid #d6e5db;
+    border-radius: 12px;
+    color: #173638;
+    margin-bottom: 18px;
+    padding: 20px;
+    scroll-margin-top: 88px;
+}
+
+.paanyaya-preparation h2 { font-size: 1.2rem; margin: 0 0 10px; }
+.paanyaya-preparation h3 { font-size: 1rem; margin: 16px 0 8px; }
+.paanyaya-prep-list { list-style: none; margin: 0; padding: 0; }
+.paanyaya-prep-list li {
+    align-items: baseline;
+    border-bottom: 1px solid #e7eee9;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    justify-content: space-between;
+    padding: 10px 0;
+}
+.paanyaya-prep-list a, .paanyaya-prep-preview a { color: #225d4c; text-decoration: underline; }
+.paanyaya-prep-status {
+    background: #e8f3ed;
+    border-radius: 6px;
+    color: #22523d;
+    display: inline-block;
+    font-weight: 700;
+    margin: 0;
+    padding: 4px 8px;
+}
+.paanyaya-prep-fields {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+    margin: 16px 0;
+}
+.paanyaya-prep-fields label { display: grid; gap: 4px; }
+.paanyaya-prep-fields input {
+    border: 1px solid #aabeb3;
+    border-radius: 6px;
+    color: inherit;
+    font: inherit;
+    min-height: 42px;
+    min-width: 0;
+    padding: 6px 10px;
+}
+.paanyaya-prep-check { align-items: baseline; display: flex; gap: 8px; margin: 0 0 14px; }
+.paanyaya-prep-preview { margin: 14px 0; }
+.paanyaya-prep-preview summary { color: #225d4c; cursor: pointer; font-weight: 700; }
+.paanyaya-prep-preview iframe { border: 1px solid #d6e5db; height: min(70vh, 680px); width: 100%; }

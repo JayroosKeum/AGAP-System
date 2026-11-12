@@ -2019,6 +2019,44 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     margin-bottom: 6px;
 }
 
+.narrative-dictation {
+    margin-top: 10px;
+    border: 1px solid #dbe7df;
+    border-radius: 8px;
+    background: #f6faf7;
+}
+
+.narrative-dictation summary {
+    padding: 10px 12px;
+    color: #225d4c;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.narrative-dictation-body {
+    padding: 0 12px 12px;
+}
+
+.narrative-dictation [data-dictation-status] {
+    margin: 8px 0;
+    color: #334155;
+}
+
+.narrative-dictation audio {
+    display: block;
+    width: min(100%, 360px);
+    margin-top: 10px;
+}
+
+.narrative-dictation [data-dictation-preview] {
+    margin-top: 12px;
+}
+
+.narrative-dictation [hidden],
+.paper-mode-layout .narrative-dictation {
+    display: none;
+}
+
 .ai-narrative-tools {
     display: flex;
     align-items: center;
@@ -3302,6 +3340,39 @@ input[data-ai-external-consent]:focus {
     padding: 24px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
     scroll-margin-top: 90px;
+}
+
+.intake-review-summary:not([hidden]) {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: 14px 20px;
+    margin: 0 0 20px;
+    padding: 14px 16px;
+    border: 1px solid #dbe7df;
+    border-radius: 8px;
+    background: #f6faf7;
+}
+
+.intake-review-summary dt a {
+    color: #225d4c;
+    font-weight: 700;
+    text-decoration: underline;
+}
+
+.intake-review-summary dd {
+    margin: 4px 0 0;
+    overflow-wrap: anywhere;
+}
+
+.intake-bottom-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #e2e8f0;
 }
 
 .intake-section-header {

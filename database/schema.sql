@@ -405,6 +405,22 @@ CREATE TABLE IF NOT EXISTS paanyayas (
     CONSTRAINT fk_paanyayas_scheduled_by FOREIGN KEY (scheduled_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Preparation is tracked independently of attendance and delivery.
+CREATE TABLE IF NOT EXISTS paanyaya_preparations (
+    complaint_id INT UNSIGNED PRIMARY KEY,
+    appointment_at DATETIME NOT NULL,
+    venue VARCHAR(255) NOT NULL,
+    verified_parties JSON NOT NULL,
+    document_pdf MEDIUMBLOB NOT NULL,
+    prepared_by INT UNSIGNED NULL,
+    prepared_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    ready_by INT UNSIGNED NULL,
+    ready_at DATETIME NULL,
+    FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
+    FOREIGN KEY (prepared_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    FOREIGN KEY (ready_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 -- Legacy compatibility record used alongside the newer paanyayas flow.
 CREATE TABLE IF NOT EXISTS complaint_paanyaya (
     paanyaya_id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

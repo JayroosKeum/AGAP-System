@@ -155,6 +155,9 @@ class PaanyayaModel
      */
     public function savePaanyaya(int $complaintId, array $data, int $userId): array
     {
+        if (PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Prepare this walk-in invitation from the original intake record.'];
+        }
         $stageType = in_array(($data['stage_type'] ?? ''), ['Paanyaya 1', 'Paanyaya 2'], true)
             ? $data['stage_type']
             : 'Paanyaya 1';

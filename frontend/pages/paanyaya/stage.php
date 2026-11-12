@@ -16,6 +16,15 @@ if ($complaintId <= 0) {
     exit;
 }
 
+require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.php';
+if (PaanyayaPreparationService::requiresPreparation((new Database())->connect(), $complaintId)) {
+    $destination = in_array($roleId, [1, 2], true)
+        ? '../complaints/complaint-details.php?id=' . $complaintId . '#paanyaya-preparation'
+        : ($roleId === 3 ? '../dashboard/lupon-dashboard.php' : '../gps/proof-service.php');
+    header('Location: ' . $destination, true, 303);
+    exit;
+}
+
 include '../../layouts/header.php';
 ?>
 

@@ -18,6 +18,7 @@ $docketError = $_GET['error'] ?? '';
 $docketMessages = [
     'invalid_complaint' => 'The Complaint ID does not exist. Choose a complaint from the list below.',
     'complaint_not_accepted' => 'A complaint must be reviewed and accepted before it can be docketed.',
+    'paanyaya_preparation_required' => 'Continue this walk-in from Paanyaya Preparation on its intake record.',
     'duplicate_case' => 'This complaint has already been docketed as a case.',
     'save_failed' => 'The case could not be docketed. Please try again.'
 ];

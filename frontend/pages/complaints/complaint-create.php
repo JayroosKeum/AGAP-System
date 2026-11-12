@@ -241,16 +241,11 @@ include '../../layouts/header.php';
             <!-- Header Bar -->
             <div class="intake-header-bar">
                 <div>
-                    <a href="complaint-list.php" class="back-link">
+                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="back-link">
                         <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                        <span>Back to Complaints</span>
+                        <span><?= $isResidentPortal ? 'Back to Resident Dashboard' : 'Back to Complaints' ?></span>
                     </a>
-                    <h1 class="intake-title"><?php echo $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : 'File Official Complaint (Direct to Mediation — Stage 1)'; ?></h1>
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <a href="../paanyaya/index.php" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 8px; background: #f0fdf4; border: 1.5px solid #86efac; color: #166534; font-size: 0.84rem; font-weight: 700;">
-                        <span>🤝 Prefer an Informal Dialogue first? Go to Paanyaya Module &rarr;</span>
-                    </a>
+                    <h1 class="intake-title"><?= $isFromPaanyaya ? 'Complete Formal Complaint Details' : ($isResidentPortal ? 'Submit a Concern' : 'Record a Walk-in Complaint') ?></h1>
                 </div>
             </div>
 
@@ -291,26 +286,22 @@ include '../../layouts/header.php';
                     <div class="intake-left-panel-col" id="intakeLeftPanel">
                         <!-- STICKY QUICK-NAV SIDEBAR (Digital Mode) -->
                         <nav class="intake-quicknav-sidebar" id="intakeQuickNav" aria-label="Form Quick Navigation">
-                            <div class="quicknav-title">Form Quick-Nav</div>
-                            
-                            <a href="#section-ingestion" id="nav-sec-ingestion" class="quicknav-link is-active">
-                                <span class="quicknav-badge">1</span> Filing Method &amp; Case Classification
-                            </a>
-                            
-                            <a href="#section-parties" id="nav-sec-parties" class="quicknav-link">
-                                <span class="quicknav-badge">2</span> Involved Parties
-                            </a>
+                            <div class="quicknav-title">Complaint intake</div>
 
-                            <a href="#section-narrative" id="nav-sec-narrative" class="quicknav-link">
-                                <span class="quicknav-badge">3</span> Statement of Facts &amp; Relief Sought
+                            <a href="#section-narrative" id="nav-sec-narrative" class="quicknav-link is-active" aria-current="step">
+                                <span class="quicknav-badge">1</span> Narrative
                             </a>
-                            
                             <a href="#section-location" id="nav-sec-location" class="quicknav-link">
-                                <span class="quicknav-badge">4</span> Incident Location &amp; Map Pin
+                                <span class="quicknav-badge">2</span> When and where
                             </a>
-
+                            <a href="#section-parties" id="nav-sec-parties" class="quicknav-link">
+                                <span class="quicknav-badge">3</span> People involved
+                            </a>
                             <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
-                                <span class="quicknav-badge">5</span> Evidence &amp; Attachments
+                                <span class="quicknav-badge">4</span> Requested outcome &amp; evidence
+                            </a>
+                            <a href="#section-ingestion" id="nav-sec-ingestion" class="quicknav-link">
+                                <span class="quicknav-badge">5</span> Review and submit
                             </a>
 
                             <div class="quicknav-footer">
@@ -421,277 +412,195 @@ include '../../layouts/header.php';
                     <!-- LONG-FORM SECTIONS STACK / FAST INTAKE FORM -->
                     <div class="intake-sections-container" id="intakeSectionsContainer">
 
-                        <div class="fast-intake-badge">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                            <span>Formal Complaint Intake &amp; Docketing</span>
-                        </div>
-
-                        <!-- SECTION 1: CASE CLASSIFICATION -->
-                        <section id="section-ingestion" class="intake-section-card">
+                        <!-- Section 1: Narrative -->
+                        <section id="section-narrative" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">1</span>
                                     <div class="section-title-wrap">
-                                        <h3>Case Classification</h3>
-                                        <p>Specify dispute categorization and complaint details</p>
+                                        <h3>Narrative</h3>
+                                        <p><?= $isResidentPortal ? 'Describe what happened in your own words.' : 'Record what happened in the resident’s own words.' ?></p>
                                     </div>
                                 </div>
                                 <span class="section-step-indicator">Section 1 of 5</span>
                             </div>
 
-                            <!-- Filing Method Hidden: Default to Digital Intake -->
-                            <input type="hidden" name="filing_method" id="filingMethod" value="digital">
-
-                            <?php if (!$isResidentPortal && empty($escalatePaanyaya)): ?>
-                                <div class="form-group" style="margin: 10px 0 18px; padding: 14px 16px; background: #eef7f0; border: 1px solid #c7dfcd; border-radius: 8px;">
-                                    <label for="lisoAssignedTo" style="color: #1f5138; font-weight: 750;">LISO assigned to screen this walk-in <span class="required-mark">*</span></label>
-                                    <select id="lisoAssignedTo" name="liso_assigned_to" required style="margin-top: 7px; width: 100%;">
-                                        <option value="">Select a Lupon Member currently on LISO duty</option>
-                                        <?php foreach ($activeLisos as $liso): ?>
-                                            <?php $lisoName = trim(($liso['first_name'] ?? '') . ' ' . ($liso['last_name'] ?? '')); ?>
-                                            <option value="<?= (int) $liso['user_id'] ?>" <?= ((string) ($old['liso_assigned_to'] ?? '') === (string) $liso['user_id']) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($lisoName !== '' ? $lisoName : 'Lupon Member') ?> · timed in <?= htmlspecialchars(date('g:i A', strtotime((string) $liso['started_at']))) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <?php if (!$activeLisos): ?>
-                                        <p style="color: #9a5a10; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">No LISO is timed in. Ask a Lupon Member to start LISO duty before recording this walk-in.</p>
-                                    <?php else: ?>
-                                        <p style="color: #4d6e59; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">Only members currently timed in are listed. The assigned LISO will receive this intake in My Walk-in Screenings.</p>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endif; ?>
-
-                            <!-- Dispute Classification Grid -->
-                            <div class="form-row-2" style="margin-top: 10px;">
-                                <div class="form-group">
-                                    <label for="primaryCategoryInput">Complaint Category <span class="required-mark">*</span></label>
-                                    <div style="position: relative;">
-                                        <input type="text" 
-                                               id="primaryCategoryInput" 
-                                               name="category_name" 
-                                               list="categoriesList" 
-                                               class="form-control" 
-                                               placeholder="Select category or type complaint..." 
-                                               autocomplete="off" 
-                                               required 
-                                               value="<?php 
-                                                   $oldCatName = '';
-                                                   if (!empty($old['category_id'])) {
-                                                       foreach ($categories as $cat) {
-                                                           if ((string)$cat['category_id'] === (string)$old['category_id']) {
-                                                               $oldCatName = $cat['category_name'];
-                                                               break;
-                                                           }
-                                                       }
-                                                   }
-                                                   if (empty($oldCatName) && !empty($old['other_category_specification'])) {
-                                                       $oldCatName = $old['other_category_specification'];
-                                                   }
-                                                   echo htmlspecialchars($oldCatName); 
-                                               ?>"
-                                               style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.92rem;">
-                                        
-                                        <!-- Synchronized select for backward-compatibility with scripts and form post -->
-                                        <select id="categoryId" name="category_id" style="display: none;">
-                                            <option value="">Select Category</option>
-                                            <?php foreach ($categories as $cat): ?>
-                                                <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)($old['category_id'] ?? '') === (string)$cat['category_id']) ? 'selected' : ''; ?>>
-                                                     <?php echo htmlspecialchars($cat['category_name']); ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
+                            <div class="form-group">
+                                <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
+                                <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe what happened in the order it occurred."><?php echo htmlspecialchars($old['narrative'] ?? ''); ?></textarea>
+                                <?php include __DIR__ . '/tabs/narrative-dictation.php'; ?>
+                                <div class="ai-narrative-actions">
+                                    <div class="ai-narrative-tools">
+                                        <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
+                                        <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
                                     </div>
-                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Pumili sa listahan o i-type ang kategorya ng reklamo.</small>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="caseType">Case Type <span class="required-mark">*</span></label>
-                                    <select id="caseType" name="case_type" required>
-                                        <option value="Civil" <?php echo (($old['case_type'] ?? 'Civil') === 'Civil') ? 'selected' : ''; ?>>Civil</option>
-                                        <option value="Criminal" <?php echo (($old['case_type'] ?? '') === 'Criminal') ? 'selected' : ''; ?>>Criminal</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <!-- "Others Please Specify" Input (Dynamically shown when explicitly selected/customized) -->
-                            <div class="form-group" id="otherCategoryWrapper" style="display: none; margin-top: 8px; margin-bottom: 12px;">
-                                <label for="otherCategorySpecification" style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
-                                    <span>Specify Complaint Category / Pakitukoy ang Kategorya</span>
-                                    <span class="required-mark">*</span>
-                                </label>
-                                <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($old['other_category_specification'] ?? ''); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
-                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
-                            </div>
-
-                            <?php 
-                                $hasSecondCategory = !empty($old['secondary_category_id']) || !empty($old['secondary_other_category_specification']) || !empty($old['secondary_category_name']); 
-                                $oldSecName = $old['secondary_category_name'] ?? '';
-                                if (empty($oldSecName) && !empty($old['secondary_category_id'])) {
-                                    foreach ($categories as $cat) {
-                                        if ((string)$cat['category_id'] === (string)$old['secondary_category_id']) {
-                                            $oldSecName = $cat['category_name'];
-                                            break;
-                                        }
-                                    }
-                                }
-                                if (empty($oldSecName) && !empty($old['secondary_other_category_specification'])) {
-                                    $oldSecName = $old['secondary_other_category_specification'];
-                                }
-                            ?>
-
-                            <!-- SECOND COMPLAINT CATEGORY (Takes 1 or 2 different complaints) -->
-                            <div style="margin-top: 8px; margin-bottom: 14px;">
-                                <button type="button" class="btn-outline-sm" id="btnAddSecondCategory" style="display: <?php echo $hasSecondCategory ? 'none' : 'inline-flex'; ?>; align-items: center; gap: 6px; font-weight: 600; color: #0284c7; border: 1.5px dashed #0284c7; background: #f0f9ff; padding: 7px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">
-                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                    <span>+ Add 2nd Complaint / Ikalawang Reklamo (Optional)</span>
-                                </button>
-
-                                <div id="secondCategoryContainer" style="display: <?php echo $hasSecondCategory ? 'block' : 'none'; ?>; margin-top: 10px; padding: 14px 16px; background: #f8fafc; border: 1.5px dashed #0284c7; border-radius: 8px;">
-                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                        <label for="secondaryCategoryInput" style="font-weight: 700; color: #0369a1; font-size: 0.88rem; display: flex; align-items: center; gap: 6px; margin: 0;">
-                                            <span style="background: #0284c7; color: #fff; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800;">2</span>
-                                            <span>Second Complaint Category / Ikalawang Reklamo (Optional)</span>
-                                        </label>
-                                        <button type="button" id="btnRemoveSecondCategory" style="background: none; border: none; color: #ef4444; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px;">
-                                            &times; Remove 2nd Complaint
-                                        </button>
-                                    </div>
-                                    <input type="text" 
-                                           id="secondaryCategoryInput" 
-                                           name="secondary_category_name" 
-                                           list="categoriesList" 
-                                           class="form-control" 
-                                           placeholder="Search or type 2nd complaint category (e.g. Slander, Unjust Vexation, Paninira ng Ari-arian)..." 
-                                           autocomplete="off" 
-                                           value="<?php echo htmlspecialchars($oldSecName); ?>"
-                                           style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.92rem;">
-                                    <input type="hidden" id="secondaryCategoryId" name="secondary_category_id" value="<?php echo htmlspecialchars($old['secondary_category_id'] ?? ''); ?>">
-                                    <input type="hidden" id="secondaryOtherSpecification" name="secondary_other_category_specification" value="<?php echo htmlspecialchars($old['secondary_other_category_specification'] ?? ''); ?>">
-                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Pumili o mag-type kung may ikalawang reklamong isinasampa.</small>
-                                </div>
-                            </div>
-
-                            <!-- Shared HTML5 Datalist for Categories Autocomplete -->
-                            <datalist id="categoriesList">
-                                <?php foreach ($categories as $cat): ?>
-                                    <option value="<?php echo htmlspecialchars($cat['category_name']); ?>"></option>
-                                <?php endforeach; ?>
-                            </datalist>
-
-                            <!-- Safe Spaces Act (RA 11313) Mandatory 1st Offense Toggle & VAWC/PNP Routing -->
-                            <div class="safe-spaces-offense-box" id="safeSpacesOffenseWrapper" style="display: none;">
-                                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-                                    <label style="margin: 0; font-weight: 700; font-size: 0.92rem; color: #1e293b; display: flex; align-items: center; gap: 6px;">
-                                        <span>Safe Spaces Act (R.A. 11313) Offense Tier Verification</span>
-                                        <span class="required-mark">*</span>
-                                    </label>
-                                    <span style="background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">RA 11313 §11(a)</span>
-                                </div>
-                                <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: #475569;">
-                                    Barangay jurisdiction covers <strong>1st Offense Only (Catcalling / Wolf-Whistling)</strong>. Repeat (2nd/3rd) offenses or severe harassment must be routed to the <strong>VAWC Desk / PNP</strong>.
-                                </p>
-                                <div class="safe-spaces-toggle-row">
-                                    <label class="safe-spaces-option-card" id="cardFirstOffenseCatcalling">
-                                        <input type="checkbox" id="chkFirstOffenseCatcalling" name="is_first_offense_catcalling" value="1" <?php echo !empty($old['is_first_offense_catcalling']) ? 'checked' : ''; ?> style="margin-top: 3px; width: 16px; height: 16px; accent-color: #16a34a;">
-                                        <div>
-                                            <div style="font-weight: 700; font-size: 0.86rem; color: #14532d;">1st Offense Only (Catcalling/Whistling) <span class="required-mark">*</span></div>
-                                            <div style="font-size: 0.78rem; color: #166534; margin-top: 2px;">Verified 1st offense light street harassment eligible for Barangay handling.</div>
-                                        </div>
-                                    </label>
-                                    <label class="safe-spaces-option-card" id="cardRepeatOffenseVawc">
-                                        <input type="checkbox" id="chkRepeatOffenseVawc" name="is_repeat_offense_vawc" value="1" <?php echo !empty($old['is_repeat_offense_vawc']) ? 'checked' : ''; ?> style="margin-top: 3px; width: 16px; height: 16px; accent-color: #dc2626;">
-                                        <div>
-                                            <div style="font-weight: 700; font-size: 0.86rem; color: #7f1d1d;">2nd / 3rd Offense (Route to VAWC / PNP)</div>
-                                            <div style="font-size: 0.78rem; color: #991b1b; margin-top: 2px;">Repeat offender or escalated harassment — outside Lupon conciliation.</div>
-                                        </div>
+                                    <label class="ai-consent-checkbox-label">
+                                        <input type="checkbox" data-ai-external-consent>
+                                        <span>I understand this narrative will be sent to Google Gemini for AI processing.</span>
                                     </label>
                                 </div>
-                                <div id="vawcPnpRoutingBanner" class="vawc-pnp-routing-banner" style="display: none;">
-                                    <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
-                                        <span>🚨 Mandatory VAWC / PNP Referral — 2nd / 3rd Offense Outside KP Jurisdiction</span>
-                                        <span style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px;">DO NOT DOCKET FOR MEDIATION</span>
+                                <div class="ai-narrative-preview" data-narrative-preview hidden>
+                                    <strong>AI suggestion</strong>
+                                    <p data-narrative-suggestion></p>
+                                    <div class="ai-narrative-preview-actions">
+                                        <button type="button" class="btn-create btn-sm" data-apply-narrative>Apply suggestion</button>
+                                        <button type="button" class="btn-secondary btn-sm" data-discard-narrative>Keep my original</button>
                                     </div>
-                                    <p style="margin: 0;">
-                                        Under <strong>R.A. 11313 Sec. 11</strong>, 2nd and 3rd offenses of gender-based street harassment carry higher penalties (imprisonment of 6–30 days and fines up to ₱10,000) and cannot be conciliated by the Lupon. Endorse and route this complainant directly to the <strong>Barangay VAWC Desk</strong> or <strong>PNP Women and Children Protection Desk (WCPD)</strong>.
-                                    </p>
                                 </div>
                             </div>
 
-                            <div class="form-row-2">
-                                <div class="form-group">
-                                    <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
-                                    <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
-                                </div>
-
-                                <div class="form-group">
-                                    <?php
-                                    $isTimeUnknownOld = !empty($old['is_time_unknown']);
-                                    $defaultDt = $old['incident_datetime'] ?? '';
-                                    if (!$defaultDt && !empty($old['incident_date'])) {
-                                        $defaultDt = $old['incident_date'] . ((!$isTimeUnknownOld && !empty($old['incident_time'])) ? 'T' . substr($old['incident_time'], 0, 5) : '');
-                                    }
-                                    if ($isTimeUnknownOld && str_contains($defaultDt, 'T')) {
-                                        $defaultDt = explode('T', $defaultDt)[0];
-                                    }
-                                    ?>
-                                    <label for="incidentDateTime" id="lblIncidentDateTime">
-                                        <?php echo $isTimeUnknownOld ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?> <span class="required-mark">*</span>
-                                    </label>
-                                    <input type="<?php echo $isTimeUnknownOld ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($defaultDt); ?>">
-                                    <div class="time-options-row">
-                                        <label class="time-option-label">
-                                            <input type="checkbox" name="is_time_approximate" value="1" id="isTimeApproximate" <?php echo !empty($old['is_time_approximate']) ? 'checked' : ''; ?> <?php echo $isTimeUnknownOld ? 'disabled' : ''; ?>>
-                                            <span>Approximate time</span>
-                                        </label>
-                                        <label class="time-option-label">
-                                            <input type="checkbox" name="is_time_unknown" value="1" id="isTimeUnknown" <?php echo $isTimeUnknownOld ? 'checked' : ''; ?>>
-                                            <span>Exact time unknown</span>
-                                        </label>
-                                    </div>
-                                    <span id="futureDateNotice" class="future-date-hint" style="display:none;">Notice: Selected incident date is in the future. Please verify before filing.</span>
-                                </div>
-                            </div>
-
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
-                                <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
-                                <small class="field-hint">Record internal or physical blotter reference number if applicable.</small>
-                                <div id="blotterJurisdictionNotice" class="field-hint" style="display:none; color:#b45309; font-weight:600; margin-top:5px; background:#fef3c7; padding:4px 8px; border-radius:4px; border:1px solid #fde68a;">
-                                    ⚠️ Required for damages > ₱5,000 (Police / Court Jurisdiction — Issue Blotter Reference Only).
-                                </div>
-                            </div>
-
-                            <input type="hidden" name="jurisdiction_screened" id="jurisdictionScreened" value="1">
-                            <input type="hidden" name="has_private_offended_party" value="1">
                         </section>
 
-
-                        <!-- SECTION 2: INVOLVED PARTIES (MODAL-DRIVEN WITH MULTIPLE TOGGLES) -->
-                        <section id="section-parties" class="intake-section-card">
+                        <!-- Section 2: When and where -->
+                        <section id="section-location" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">2</span>
                                     <div class="section-title-wrap">
-                                        <h3>Involved Parties</h3>
-                                        <p>Manage dispute participants cleanly without cluttering the screen.</p>
+                                        <h3>When and where</h3>
+                                        <p>Confirm the date, time, and place described in the narrative.</p>
                                     </div>
                                 </div>
                                 <span class="section-step-indicator">Section 2 of 5</span>
                             </div>
 
-                            <!-- Real-time Duplicate Warning Banner -->
-                            <div id="duplicateComplaintBanner" class="duplicate-warning-banner" style="display:none;">
-                                <div class="duplicate-warning-header">
-                                    <span>Potential Duplicate Complaint Detected</span>
-                                    <button type="button" class="btn-clear-evidence" id="dismissDuplicateBanner" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#9a3412;">&times;</button>
-                                </div>
-                                <p style="margin:0;font-size:0.83rem;">The system found active complaint record(s) involving the same complainant and respondent:</p>
-                                <ul class="duplicate-warning-list" id="duplicateComplaintList"></ul>
-                                <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:0.8rem;color:#7c2d12;font-weight:600;">
-                                    <input type="checkbox" name="duplicate_acknowledged" id="duplicateAcknowledged" value="1" style="margin-top:2px;">
-                                    <span>I reviewed the possible duplicate record(s) and confirm that this filing should proceed.</span>
+                            <div class="form-group">
+                                <?php
+                                $isTimeUnknownOld = !empty($old['is_time_unknown']);
+                                $defaultDt = $old['incident_datetime'] ?? '';
+                                if (!$defaultDt && !empty($old['incident_date'])) {
+                                    $defaultDt = $old['incident_date'] . ((!$isTimeUnknownOld && !empty($old['incident_time'])) ? 'T' . substr($old['incident_time'], 0, 5) : '');
+                                }
+                                if ($isTimeUnknownOld && str_contains($defaultDt, 'T')) {
+                                    $defaultDt = explode('T', $defaultDt)[0];
+                                }
+                                ?>
+                                <label for="incidentDateTime" id="lblIncidentDateTime">
+                                    <?php echo $isTimeUnknownOld ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?> <span class="required-mark">*</span>
                                 </label>
+                                <input type="<?php echo $isTimeUnknownOld ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($defaultDt); ?>">
+                                <div class="time-options-row">
+                                    <label class="time-option-label">
+                                        <input type="checkbox" name="is_time_approximate" value="1" id="isTimeApproximate" <?php echo !empty($old['is_time_approximate']) ? 'checked' : ''; ?> <?php echo $isTimeUnknownOld ? 'disabled' : ''; ?>>
+                                        <span>Approximate time</span>
+                                    </label>
+                                    <label class="time-option-label">
+                                        <input type="checkbox" name="is_time_unknown" value="1" id="isTimeUnknown" <?php echo $isTimeUnknownOld ? 'checked' : ''; ?>>
+                                        <span>Exact time unknown</span>
+                                    </label>
+                                </div>
+                                <span id="futureDateNotice" class="future-date-hint" style="display:none;">Notice: Selected incident date is in the future. Please verify before filing.</span>
+                            </div>
+
+                            <div class="location-split-layout">
+                                <!-- Left Column: Address Fields -->
+                                <div>
+                                    <div class="form-group">
+                                        <label for="incidentStreet">Street Address / Alley / Landmark <span class="required-mark">*</span></label>
+                                        <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="House #, Street, building, or nearby place" value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
+                                    </div>
+
+                                    <div class="detail-info-grid">
+                                        <div class="form-group">
+                                            <label for="incidentPurok">Sitio / Zone / Purok (Tumana)</label>
+                                            <?php
+                                            $currPurok = $old['incident_purok'] ?? '';
+                                            $knownPuroks = [
+                                                'Outside Tumana',
+                                                'Non-Resident',
+                                                'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
+                                                'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
+                                            ];
+                                            $isCustomPurok = !empty($currPurok) && !in_array($currPurok, $knownPuroks, true);
+                                            ?>
+                                            <select name="incident_purok" id="incidentPurok">
+                                                <option value="">Select Purok / Area</option>
+                                                <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Outside Tumana</option>
+                                                <optgroup label="Numbered Puroks">
+                                                    <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
+                                                    <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
+                                                    <option value="Purok 3" <?php echo ($currPurok === 'Purok 3') ? 'selected' : ''; ?>>Purok 3</option>
+                                                    <option value="Purok 4" <?php echo ($currPurok === 'Purok 4') ? 'selected' : ''; ?>>Purok 4</option>
+                                                    <option value="Purok 5" <?php echo ($currPurok === 'Purok 5') ? 'selected' : ''; ?>>Purok 5</option>
+                                                    <option value="Purok 6" <?php echo ($currPurok === 'Purok 6') ? 'selected' : ''; ?>>Purok 6</option>
+                                                    <option value="Purok 7" <?php echo ($currPurok === 'Purok 7') ? 'selected' : ''; ?>>Purok 7</option>
+                                                    <option value="Purok 8" <?php echo ($currPurok === 'Purok 8') ? 'selected' : ''; ?>>Purok 8</option>
+                                                </optgroup>
+                                                <optgroup label="Zones & Compounds">
+                                                    <option value="Doña Petra" <?php echo ($currPurok === 'Doña Petra') ? 'selected' : ''; ?>>Doña Petra Compound</option>
+                                                    <option value="Bagong Farmers" <?php echo ($currPurok === 'Bagong Farmers') ? 'selected' : ''; ?>>Bagong Farmers</option>
+                                                    <option value="Bukang Liwayway" <?php echo ($currPurok === 'Bukang Liwayway') ? 'selected' : ''; ?>>Bukang Liwayway</option>
+                                                    <option value="Libis Tumana" <?php echo ($currPurok === 'Libis Tumana') ? 'selected' : ''; ?>>Libis Tumana</option>
+                                                    <option value="Bagong Purok" <?php echo ($currPurok === 'Bagong Purok') ? 'selected' : ''; ?>>Sitio Bagong Purok</option>
+                                                    <option value="Palay" <?php echo ($currPurok === 'Palay') ? 'selected' : ''; ?>>Palay Area</option>
+                                                    <option value="Mais" <?php echo ($currPurok === 'Mais') ? 'selected' : ''; ?>>Mais Area</option>
+                                                    <option value="Singkamas" <?php echo ($currPurok === 'Singkamas') ? 'selected' : ''; ?>>Singkamas Area</option>
+                                                </optgroup>
+                                                <?php if ($isCustomPurok): ?>
+                                                    <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> (Existing)</option>
+                                                <?php endif; ?>
+                                            </select>
+                                        </div>
+
+                                        <div class="form-group">
+                                            <label for="incidentBarangay">Barangay</label>
+                                            <input type="text" id="incidentBarangay" name="incident_barangay" value="Tumana" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
+                                        </div>
+                                    </div>
+
+                                    <div class="detail-info-grid">
+                                        <div class="form-group">
+                                            <label for="incidentCity">City / Municipality</label>
+                                            <input type="text" id="incidentCity" name="incident_city" value="Marikina City" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="incidentProvince">Province / Region</label>
+                                            <input type="text" id="incidentProvince" value="Metro Manila" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
+                                        </div>
+                                    </div>
+
+
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <label for="incidentLocationDetails">Specific Location / Landmark Details <span class="optional-label">Optional</span></label>
+                                        <textarea id="incidentLocationDetails" name="incident_location_details" rows="2" maxlength="1000" placeholder="Floor, unit number, corner, access directions, or additional boundary notes..."><?php echo htmlspecialchars($old['incident_location_details'] ?? ''); ?></textarea>
+                                    </div>
+                                </div>
+
+                                <!-- Right Column: Map Pinpoint Box -->
+                                <div>
+                                    <button type="button" class="btn-toggle-paper-map" id="btnTogglePaperMap">Pin Precise Map Location (Optional)</button>
+                                    <div class="location-map-pinbox" id="locationMapPinbox">
+                                        <div class="map-pinbox-topbar">
+                                            <span>Location Coordinates: <strong id="mapCoordsDisplay">14.6521° N, 121.0854° E</strong></span>
+                                            <button type="button" class="btn-recenter-map" id="btnRecenterMap" title="Center map on Barangay Tumana">Recenter</button>
+                                        </div>
+
+                                        <input type="hidden" name="map_location_state" value="<?php echo htmlspecialchars($old['map_location_state'] ?? 'none'); ?>" data-map-state>
+                                        <input type="hidden" name="location_latitude" value="<?php echo htmlspecialchars($old['location_latitude'] ?? ''); ?>" data-map-latitude>
+                                        <input type="hidden" name="location_longitude" value="<?php echo htmlspecialchars($old['location_longitude'] ?? ''); ?>" data-map-longitude>
+
+                                        <div id="addComplaintMap" class="complaint-location-map" style="height: 320px; border: none; border-radius: 0;" aria-label="Map for selecting the exact incident location"></div>
+
+                                        <div style="padding: 10px 14px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                                            <span class="map-selection-status" data-map-status style="font-size:0.8rem; color:#64748b;">No map point selected.</span>
+                                            <button type="button" class="btn-secondary btn-sm" data-clear-map style="padding: 4px 10px; font-size: 0.76rem;">Clear pin</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Section 3: People involved -->
+                        <section id="section-parties" class="intake-section-card">
+                            <div class="intake-section-header">
+                                <div class="section-header-left">
+                                    <span class="section-badge-num">3</span>
+                                    <div class="section-title-wrap">
+                                        <h3>People involved</h3>
+                                        <p>Add or verify the complainants, respondents, and any witnesses.</p>
+                                    </div>
+                                </div>
+                                <span class="section-step-indicator">Section 3 of 5</span>
                             </div>
 
                             <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
@@ -811,40 +720,17 @@ include '../../layouts/header.php';
                             <div id="additionalPartiesHiddenContainer"></div>
                         </section>
 
-<!-- SECTION 3: STATEMENT OF FACTS & RELIEF SOUGHT -->
-                        <section id="section-narrative" class="intake-section-card">
+                        <!-- Section 4: Requested outcome &amp; evidence -->
+                        <section id="section-evidence" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
-                                    <span class="section-badge-num">3</span>
+                                    <span class="section-badge-num">4</span>
                                     <div class="section-title-wrap">
-                                        <h3>Statement of Facts &amp; Relief Sought</h3>
-                                        <p>Provide narrative according to Katarungang Pambarangay guidelines.</p>
+                                        <h3>Requested outcome &amp; evidence</h3>
+                                        <p><?= $isResidentPortal ? 'Tell us what outcome you’re asking for and attach any available evidence.' : 'Record what the resident is asking for and attach any available evidence.' ?></p>
                                     </div>
                                 </div>
-                                <span class="section-step-indicator">Section 3 of 5</span>
-                            </div>
-
-                            <div class="form-group">
-                                <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
-                                <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($old['narrative'] ?? ''); ?></textarea>
-                                <div class="ai-narrative-actions">
-                                    <div class="ai-narrative-tools">
-                                        <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
-                                        <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
-                                    </div>
-                                    <label class="ai-consent-checkbox-label">
-                                        <input type="checkbox" data-ai-external-consent>
-                                        <span>I understand this narrative will be sent to Google Gemini for AI processing.</span>
-                                    </label>
-                                </div>
-                                <div class="ai-narrative-preview" data-narrative-preview hidden>
-                                    <strong>AI suggestion</strong>
-                                    <p data-narrative-suggestion></p>
-                                    <div class="ai-narrative-preview-actions">
-                                        <button type="button" class="btn-create btn-sm" data-apply-narrative>Apply suggestion</button>
-                                        <button type="button" class="btn-secondary btn-sm" data-discard-narrative>Keep my original</button>
-                                    </div>
-                                </div>
+                                <span class="section-step-indicator">Section 4 of 5</span>
                             </div>
 
                             <div class="form-group" id="prayerForReliefGroup" style="margin-bottom:0;">
@@ -890,135 +776,8 @@ include '../../layouts/header.php';
                                     </div>
                                 </div>
                             </div>
-                        </section>
 
-
-                        <!-- SECTION 4: INCIDENT LOCATION & INTEGRATED MAP -->
-                        <section id="section-location" class="intake-section-card">
-                            <div class="intake-section-header">
-                                <div class="section-header-left">
-                                    <span class="section-badge-num">4</span>
-                                    <div class="section-title-wrap">
-                                        <h3>Incident Location &amp; Map Pin</h3>
-                                        <p>Specify incident address and set precise geographic location coordinates.</p>
-                                    </div>
-                                </div>
-                                <span class="section-step-indicator">Section 4 of 5</span>
-                            </div>
-
-                            <div class="location-split-layout">
-                                <!-- Left Column: Address Fields -->
-                                <div>
-                                    <div class="form-group">
-                                        <label for="incidentStreet">Street Address / Alley / Landmark <span class="required-mark">*</span></label>
-                                        <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="House #, Street, building, or nearby place" value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
-                                    </div>
-
-                                    <div class="detail-info-grid">
-                                        <div class="form-group">
-                                            <label for="incidentPurok">Sitio / Zone / Purok (Tumana)</label>
-                                            <?php
-                                            $currPurok = $old['incident_purok'] ?? '';
-                                            $knownPuroks = [
-                                                'Outside Tumana',
-                                                'Non-Resident',
-                                                'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7', 'Purok 8',
-                                                'Doña Petra', 'Bagong Farmers', 'Bukang Liwayway', 'Libis Tumana', 'Bagong Purok', 'Palay', 'Mais', 'Singkamas'
-                                            ];
-                                            $isCustomPurok = !empty($currPurok) && !in_array($currPurok, $knownPuroks, true);
-                                            ?>
-                                            <select name="incident_purok" id="incidentPurok">
-                                                <option value="">Select Purok / Area</option>
-                                                <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Outside Tumana</option>
-                                                <optgroup label="Numbered Puroks">
-                                                    <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
-                                                    <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
-                                                    <option value="Purok 3" <?php echo ($currPurok === 'Purok 3') ? 'selected' : ''; ?>>Purok 3</option>
-                                                    <option value="Purok 4" <?php echo ($currPurok === 'Purok 4') ? 'selected' : ''; ?>>Purok 4</option>
-                                                    <option value="Purok 5" <?php echo ($currPurok === 'Purok 5') ? 'selected' : ''; ?>>Purok 5</option>
-                                                    <option value="Purok 6" <?php echo ($currPurok === 'Purok 6') ? 'selected' : ''; ?>>Purok 6</option>
-                                                    <option value="Purok 7" <?php echo ($currPurok === 'Purok 7') ? 'selected' : ''; ?>>Purok 7</option>
-                                                    <option value="Purok 8" <?php echo ($currPurok === 'Purok 8') ? 'selected' : ''; ?>>Purok 8</option>
-                                                </optgroup>
-                                                <optgroup label="Zones & Compounds">
-                                                    <option value="Doña Petra" <?php echo ($currPurok === 'Doña Petra') ? 'selected' : ''; ?>>Doña Petra Compound</option>
-                                                    <option value="Bagong Farmers" <?php echo ($currPurok === 'Bagong Farmers') ? 'selected' : ''; ?>>Bagong Farmers</option>
-                                                    <option value="Bukang Liwayway" <?php echo ($currPurok === 'Bukang Liwayway') ? 'selected' : ''; ?>>Bukang Liwayway</option>
-                                                    <option value="Libis Tumana" <?php echo ($currPurok === 'Libis Tumana') ? 'selected' : ''; ?>>Libis Tumana</option>
-                                                    <option value="Bagong Purok" <?php echo ($currPurok === 'Bagong Purok') ? 'selected' : ''; ?>>Sitio Bagong Purok</option>
-                                                    <option value="Palay" <?php echo ($currPurok === 'Palay') ? 'selected' : ''; ?>>Palay Area</option>
-                                                    <option value="Mais" <?php echo ($currPurok === 'Mais') ? 'selected' : ''; ?>>Mais Area</option>
-                                                    <option value="Singkamas" <?php echo ($currPurok === 'Singkamas') ? 'selected' : ''; ?>>Singkamas Area</option>
-                                                </optgroup>
-                                                <?php if ($isCustomPurok): ?>
-                                                    <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> (Existing)</option>
-                                                <?php endif; ?>
-                                            </select>
-                                        </div>
-
-                                        <div class="form-group">
-                                            <label for="incidentBarangay">Barangay</label>
-                                            <input type="text" id="incidentBarangay" name="incident_barangay" value="Tumana" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
-                                        </div>
-                                    </div>
-
-                                    <div class="detail-info-grid">
-                                        <div class="form-group">
-                                            <label for="incidentCity">City / Municipality</label>
-                                            <input type="text" id="incidentCity" name="incident_city" value="Marikina City" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
-                                        </div>
-                                        <div class="form-group">
-                                            <label for="incidentProvince">Province / Region</label>
-                                            <input type="text" id="incidentProvince" value="Metro Manila" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
-                                        </div>
-                                    </div>
-
-
-                                    <div class="form-group" style="margin-bottom:0;">
-                                        <label for="incidentLocationDetails">Specific Location / Landmark Details <span class="optional-label">Optional</span></label>
-                                        <textarea id="incidentLocationDetails" name="incident_location_details" rows="2" maxlength="1000" placeholder="Floor, unit number, corner, access directions, or additional boundary notes..."><?php echo htmlspecialchars($old['incident_location_details'] ?? ''); ?></textarea>
-                                    </div>
-                                </div>
-
-                                <!-- Right Column: Map Pinpoint Box -->
-                                <div>
-                                    <button type="button" class="btn-toggle-paper-map" id="btnTogglePaperMap">Pin Precise Map Location (Optional)</button>
-                                    <div class="location-map-pinbox" id="locationMapPinbox">
-                                        <div class="map-pinbox-topbar">
-                                            <span>Location Coordinates: <strong id="mapCoordsDisplay">14.6521° N, 121.0854° E</strong></span>
-                                            <button type="button" class="btn-recenter-map" id="btnRecenterMap" title="Center map on Barangay Tumana">Recenter</button>
-                                        </div>
-
-                                        <input type="hidden" name="map_location_state" value="<?php echo htmlspecialchars($old['map_location_state'] ?? 'none'); ?>" data-map-state>
-                                        <input type="hidden" name="location_latitude" value="<?php echo htmlspecialchars($old['location_latitude'] ?? ''); ?>" data-map-latitude>
-                                        <input type="hidden" name="location_longitude" value="<?php echo htmlspecialchars($old['location_longitude'] ?? ''); ?>" data-map-longitude>
-
-                                        <div id="addComplaintMap" class="complaint-location-map" style="height: 320px; border: none; border-radius: 0;" aria-label="Map for selecting the exact incident location"></div>
-
-                                        <div style="padding: 10px 14px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                                            <span class="map-selection-status" data-map-status style="font-size:0.8rem; color:#64748b;">No map point selected.</span>
-                                            <button type="button" class="btn-secondary btn-sm" data-clear-map style="padding: 4px 10px; font-size: 0.76rem;">Clear pin</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-
-
-                        <!-- SECTION 5: EVIDENCE & ATTACHMENTS -->
-                        <section id="section-evidence" class="intake-section-card">
-                            <div class="intake-section-header">
-                                <div class="section-header-left">
-                                    <span class="section-badge-num">5</span>
-                                    <div class="section-title-wrap">
-                                        <h3>Evidence &amp; Attachments</h3>
-                                        <p>Upload documents, blotter copies, or photo evidence with classification tags.</p>
-                                    </div>
-                                </div>
-                                <span class="section-step-indicator">Section 5 of 5</span>
-                            </div>
-
-                            <!-- Dropzone -->
+                            <!-- Evidence attachments -->
                             <div class="evidence-upload-zone" id="evidenceDropZone">
                                 <input type="file" id="evidenceFiles" name="evidence[]" multiple accept="image/*,video/*,.pdf,.doc,.docx" class="evidence-file-input">
                                 <div class="upload-zone-body">
@@ -1050,13 +809,246 @@ include '../../layouts/header.php';
 
                         </section>
 
-                        <!-- Action Row directly under Section 5 Evidence & Attachments -->
-                        <div class="intake-bottom-actions" style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 24px; padding: 20px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-                            <a href="complaint-list.php" class="btn-secondary" style="text-decoration: none; padding: 10px 20px;">Cancel</a>
-                            <button type="submit" form="createComplaintForm" class="btn-create" id="btnSubmitComplaint" style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 700; padding: 11px 26px;">
-                                <?php echo !empty($escalatePaanyaya) ? 'File Complaint &amp; Proceed to Mediation →' : 'Save &amp; File Formal Complaint →'; ?>
-                            </button>
-                        </div>
+                        <!-- Section 5: Review and submit -->
+                        <section id="section-ingestion" class="intake-section-card">
+                            <div class="intake-section-header">
+                                <div class="section-header-left">
+                                    <span class="section-badge-num">5</span>
+                                    <div class="section-title-wrap">
+                                        <h3>Review and submit</h3>
+                                        <p>Check the details and select the complaint classification.</p>
+                                    </div>
+                                </div>
+                                <span class="section-step-indicator">Section 5 of 5</span>
+                            </div>
+
+
+                            <dl class="intake-review-summary" id="intakeReviewSummary" hidden>
+                                <div><dt><a href="#section-narrative">Narrative</a></dt><dd data-review="narrative"></dd></div>
+                                <div><dt><a href="#section-location">When and where</a></dt><dd data-review="incident"></dd></div>
+                                <div><dt><a href="#section-parties">Complainants</a></dt><dd data-review="complainants"></dd></div>
+                                <div><dt><a href="#section-parties">Respondents</a></dt><dd data-review="respondents"></dd></div>
+                                <div><dt><a href="#section-evidence">Requested outcome</a></dt><dd data-review="outcome"></dd></div>
+                                <div><dt><a href="#section-evidence">Evidence</a></dt><dd data-review="evidence"></dd></div>
+                            </dl>
+
+                            <!-- Filing Method Hidden: Default to Digital Intake -->
+                            <input type="hidden" name="filing_method" id="filingMethod" value="digital">
+
+                            <!-- Dispute Classification Grid -->
+                            <div class="form-row-2" style="margin-top: 10px;">
+                                <div class="form-group">
+                                    <label for="primaryCategoryInput">Complaint Category <span class="required-mark">*</span></label>
+                                    <div style="position: relative;">
+                                        <input type="text"
+                                               id="primaryCategoryInput"
+                                               name="category_name"
+                                               list="categoriesList"
+                                               class="form-control"
+                                               placeholder="Select category or type complaint..."
+                                               autocomplete="off"
+                                               required
+                                               value="<?php
+                                                   $oldCatName = '';
+                                                   if (!empty($old['category_id'])) {
+                                                       foreach ($categories as $cat) {
+                                                           if ((string)$cat['category_id'] === (string)$old['category_id']) {
+                                                               $oldCatName = $cat['category_name'];
+                                                               break;
+                                                           }
+                                                       }
+                                                   }
+                                                   if (empty($oldCatName) && !empty($old['other_category_specification'])) {
+                                                       $oldCatName = $old['other_category_specification'];
+                                                   }
+                                                   echo htmlspecialchars($oldCatName);
+                                               ?>"
+                                               style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.92rem;">
+
+                                        <!-- Synchronized select for backward-compatibility with scripts and form post -->
+                                        <select id="categoryId" name="category_id" style="display: none;">
+                                            <option value="">Select Category</option>
+                                            <?php foreach ($categories as $cat): ?>
+                                                <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)($old['category_id'] ?? '') === (string)$cat['category_id']) ? 'selected' : ''; ?>>
+                                                     <?php echo htmlspecialchars($cat['category_name']); ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Pumili sa listahan o i-type ang kategorya ng reklamo.</small>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="caseType">Case Type <span class="required-mark">*</span></label>
+                                    <select id="caseType" name="case_type" required>
+                                        <option value="Civil" <?php echo (($old['case_type'] ?? 'Civil') === 'Civil') ? 'selected' : ''; ?>>Civil</option>
+                                        <option value="Criminal" <?php echo (($old['case_type'] ?? '') === 'Criminal') ? 'selected' : ''; ?>>Criminal</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- "Others Please Specify" Input (Dynamically shown when explicitly selected/customized) -->
+                            <div class="form-group" id="otherCategoryWrapper" style="display: none; margin-top: 8px; margin-bottom: 12px;">
+                                <label for="otherCategorySpecification" style="font-weight: 600; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                    <span>Specify Complaint Category / Pakitukoy ang Kategorya</span>
+                                    <span class="required-mark">*</span>
+                                </label>
+                                <input type="text" id="otherCategorySpecification" name="other_category_specification" maxlength="255" placeholder="Pakitukoy ang partikular na alitan o kategorya (e.g. Alitan sa bintana, ingay ng aircon)..." value="<?php echo htmlspecialchars($old['other_category_specification'] ?? ''); ?>" style="border: 1.5px solid #3b82f6; background: #f8fafc; border-radius: 6px; padding: 9px 12px; font-size: 0.9rem;">
+                                <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
+                            </div>
+
+                            <?php
+                                $hasSecondCategory = !empty($old['secondary_category_id']) || !empty($old['secondary_other_category_specification']) || !empty($old['secondary_category_name']);
+                                $oldSecName = $old['secondary_category_name'] ?? '';
+                                if (empty($oldSecName) && !empty($old['secondary_category_id'])) {
+                                    foreach ($categories as $cat) {
+                                        if ((string)$cat['category_id'] === (string)$old['secondary_category_id']) {
+                                            $oldSecName = $cat['category_name'];
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (empty($oldSecName) && !empty($old['secondary_other_category_specification'])) {
+                                    $oldSecName = $old['secondary_other_category_specification'];
+                                }
+                            ?>
+
+                            <!-- SECOND COMPLAINT CATEGORY (Takes 1 or 2 different complaints) -->
+                            <div style="margin-top: 8px; margin-bottom: 14px;">
+                                <button type="button" class="btn-outline-sm" id="btnAddSecondCategory" style="display: <?php echo $hasSecondCategory ? 'none' : 'inline-flex'; ?>; align-items: center; gap: 6px; font-weight: 600; color: #0284c7; border: 1.5px dashed #0284c7; background: #f0f9ff; padding: 7px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    <span>+ Add 2nd Complaint / Ikalawang Reklamo (Optional)</span>
+                                </button>
+
+                                <div id="secondCategoryContainer" style="display: <?php echo $hasSecondCategory ? 'block' : 'none'; ?>; margin-top: 10px; padding: 14px 16px; background: #f8fafc; border: 1.5px dashed #0284c7; border-radius: 8px;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                        <label for="secondaryCategoryInput" style="font-weight: 700; color: #0369a1; font-size: 0.88rem; display: flex; align-items: center; gap: 6px; margin: 0;">
+                                            <span style="background: #0284c7; color: #fff; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800;">2</span>
+                                            <span>Second Complaint Category / Ikalawang Reklamo (Optional)</span>
+                                        </label>
+                                        <button type="button" id="btnRemoveSecondCategory" style="background: none; border: none; color: #ef4444; font-size: 0.82rem; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px;">
+                                            &times; Remove 2nd Complaint
+                                        </button>
+                                    </div>
+                                    <input type="text"
+                                           id="secondaryCategoryInput"
+                                           name="secondary_category_name"
+                                           list="categoriesList"
+                                           class="form-control"
+                                           placeholder="Search or type 2nd complaint category (e.g. Slander, Unjust Vexation, Paninira ng Ari-arian)..."
+                                           autocomplete="off"
+                                           value="<?php echo htmlspecialchars($oldSecName); ?>"
+                                           style="width: 100%; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 9px 12px; font-size: 0.92rem;">
+                                    <input type="hidden" id="secondaryCategoryId" name="secondary_category_id" value="<?php echo htmlspecialchars($old['secondary_category_id'] ?? ''); ?>">
+                                    <input type="hidden" id="secondaryOtherSpecification" name="secondary_other_category_specification" value="<?php echo htmlspecialchars($old['secondary_other_category_specification'] ?? ''); ?>">
+                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Pumili o mag-type kung may ikalawang reklamong isinasampa.</small>
+                                </div>
+                            </div>
+
+                            <!-- Shared HTML5 Datalist for Categories Autocomplete -->
+                            <datalist id="categoriesList">
+                                <?php foreach ($categories as $cat): ?>
+                                    <option value="<?php echo htmlspecialchars($cat['category_name']); ?>"></option>
+                                <?php endforeach; ?>
+                            </datalist>
+
+                            <!-- Safe Spaces Act (RA 11313) Mandatory 1st Offense Toggle & VAWC/PNP Routing -->
+                            <div class="safe-spaces-offense-box" id="safeSpacesOffenseWrapper" style="display: none;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                                    <label style="margin: 0; font-weight: 700; font-size: 0.92rem; color: #1e293b; display: flex; align-items: center; gap: 6px;">
+                                        <span>Safe Spaces Act (R.A. 11313) Offense Tier Verification</span>
+                                        <span class="required-mark">*</span>
+                                    </label>
+                                    <span style="background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">RA 11313 §11(a)</span>
+                                </div>
+                                <p style="margin: 4px 0 0 0; font-size: 0.82rem; color: #475569;">
+                                    Barangay jurisdiction covers <strong>1st Offense Only (Catcalling / Wolf-Whistling)</strong>. Repeat (2nd/3rd) offenses or severe harassment must be routed to the <strong>VAWC Desk / PNP</strong>.
+                                </p>
+                                <div class="safe-spaces-toggle-row">
+                                    <label class="safe-spaces-option-card" id="cardFirstOffenseCatcalling">
+                                        <input type="checkbox" id="chkFirstOffenseCatcalling" name="is_first_offense_catcalling" value="1" <?php echo !empty($old['is_first_offense_catcalling']) ? 'checked' : ''; ?> style="margin-top: 3px; width: 16px; height: 16px; accent-color: #16a34a;">
+                                        <div>
+                                            <div style="font-weight: 700; font-size: 0.86rem; color: #14532d;">1st Offense Only (Catcalling/Whistling) <span class="required-mark">*</span></div>
+                                            <div style="font-size: 0.78rem; color: #166534; margin-top: 2px;">Verified 1st offense light street harassment eligible for Barangay handling.</div>
+                                        </div>
+                                    </label>
+                                    <label class="safe-spaces-option-card" id="cardRepeatOffenseVawc">
+                                        <input type="checkbox" id="chkRepeatOffenseVawc" name="is_repeat_offense_vawc" value="1" <?php echo !empty($old['is_repeat_offense_vawc']) ? 'checked' : ''; ?> style="margin-top: 3px; width: 16px; height: 16px; accent-color: #dc2626;">
+                                        <div>
+                                            <div style="font-weight: 700; font-size: 0.86rem; color: #7f1d1d;">2nd / 3rd Offense (Route to VAWC / PNP)</div>
+                                            <div style="font-size: 0.78rem; color: #991b1b; margin-top: 2px;">Repeat offender or escalated harassment — outside Lupon conciliation.</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div id="vawcPnpRoutingBanner" class="vawc-pnp-routing-banner" style="display: none;">
+                                    <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                                        <span>🚨 Mandatory VAWC / PNP Referral — 2nd / 3rd Offense Outside KP Jurisdiction</span>
+                                        <span style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-size: 0.7rem; padding: 1px 6px; border-radius: 4px;">DO NOT DOCKET FOR MEDIATION</span>
+                                    </div>
+                                    <p style="margin: 0;">
+                                        Under <strong>R.A. 11313 Sec. 11</strong>, 2nd and 3rd offenses of gender-based street harassment carry higher penalties (imprisonment of 6–30 days and fines up to ₱10,000) and cannot be conciliated by the Lupon. Endorse and route this complainant directly to the <strong>Barangay VAWC Desk</strong> or <strong>PNP Women and Children Protection Desk (WCPD)</strong>.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
+                                <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
+                                <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
+                                <small class="field-hint">Record internal or physical blotter reference number if applicable.</small>
+                                <div id="blotterJurisdictionNotice" class="field-hint" style="display:none; color:#b45309; font-weight:600; margin-top:5px; background:#fef3c7; padding:4px 8px; border-radius:4px; border:1px solid #fde68a;">
+                                    ⚠️ Required for damages > ₱5,000 (Police / Court Jurisdiction — Issue Blotter Reference Only).
+                                </div>
+                            </div>
+
+                            <?php if (!$isResidentPortal && empty($escalatePaanyaya)): ?>
+                                <div class="form-group" style="margin: 10px 0 18px; padding: 14px 16px; background: #eef7f0; border: 1px solid #c7dfcd; border-radius: 8px;">
+                                    <label for="lisoAssignedTo" style="color: #1f5138; font-weight: 750;">LISO assigned to screen this walk-in <span class="required-mark">*</span></label>
+                                    <select id="lisoAssignedTo" name="liso_assigned_to" required style="margin-top: 7px; width: 100%;">
+                                        <option value="">Select a Lupon Member currently on LISO duty</option>
+                                        <?php foreach ($activeLisos as $liso): ?>
+                                            <?php $lisoName = trim(($liso['first_name'] ?? '') . ' ' . ($liso['last_name'] ?? '')); ?>
+                                            <option value="<?= (int) $liso['user_id'] ?>" <?= ((string) ($old['liso_assigned_to'] ?? '') === (string) $liso['user_id']) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($lisoName !== '' ? $lisoName : 'Lupon Member') ?> · timed in <?= htmlspecialchars(date('g:i A', strtotime((string) $liso['started_at']))) ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <?php if (!$activeLisos): ?>
+                                        <p style="color: #9a5a10; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">No LISO is timed in. Ask a Lupon Member to start LISO duty before recording this walk-in.</p>
+                                    <?php else: ?>
+                                        <p style="color: #4d6e59; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">Only members currently timed in are listed. The assigned LISO will receive this intake in My Walk-in Screenings.</p>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+
+                            <!-- Real-time Duplicate Warning Banner -->
+                            <div id="duplicateComplaintBanner" class="duplicate-warning-banner" style="display:none;">
+                                <div class="duplicate-warning-header">
+                                    <span>Potential Duplicate Complaint Detected</span>
+                                    <button type="button" class="btn-clear-evidence" id="dismissDuplicateBanner" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#9a3412;">&times;</button>
+                                </div>
+                                <p style="margin:0;font-size:0.83rem;">The system found active complaint record(s) involving the same complainant and respondent:</p>
+                                <ul class="duplicate-warning-list" id="duplicateComplaintList"></ul>
+                                <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:0.8rem;color:#7c2d12;font-weight:600;">
+                                    <input type="checkbox" name="duplicate_acknowledged" id="duplicateAcknowledged" value="1" style="margin-top:2px;">
+                                    <span>I reviewed the possible duplicate record(s) and confirm that this filing should proceed.</span>
+                                </label>
+                            </div>
+
+                            <input type="hidden" name="jurisdiction_screened" id="jurisdictionScreened" value="1">
+                            <input type="hidden" name="has_private_offended_party" value="1">
+
+                            <div class="intake-bottom-actions">
+                                <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="btn-secondary">Cancel</a>
+                                <button type="submit" class="btn-create" id="btnSubmitComplaint">
+                                    <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation' : ($isResidentPortal ? 'Submit Concern' : 'Submit for LISO Screening') ?>
+                                </button>
+                            </div>
+                        </section>
 
                     </div>
                 </div>
@@ -2034,7 +2026,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Form submission validation (Frictionless: direct party details allowed)
     const createForm = document.getElementById('createComplaintForm');
+    const reviewSummary = document.getElementById('intakeReviewSummary');
+    const reviewFields = new Map(Array.from(
+        reviewSummary?.querySelectorAll('[data-review]') ?? [],
+        field => [field.dataset.review, field]
+    ));
+
+    function updateIntakeReview() {
+        if (!reviewSummary) return;
+
+        const value = id => document.getElementById(id)?.value.trim() ?? '';
+        const shortText = (text, fallback) => {
+            if (!text) return fallback;
+            const excerpt = Array.from(text);
+            return excerpt.length > 180 ? excerpt.slice(0, 177).join('') + '…' : text;
+        };
+
+        const rawDate = value('incidentDateTime');
+        const date = rawDate ? new Date(rawDate.includes('T') ? rawDate : rawDate + 'T00:00') : null;
+        let when = 'Date not entered';
+        if (date && !Number.isNaN(date.getTime())) {
+            when = date.toLocaleDateString('en-PH', { dateStyle: 'medium' });
+            if (document.getElementById('isTimeUnknown')?.checked) {
+                when += ' (time unknown)';
+            } else if (rawDate.includes('T')) {
+                when += ' · ' + date.toLocaleTimeString('en-PH', { timeStyle: 'short' });
+                if (document.getElementById('isTimeApproximate')?.checked) when += ' (approximate)';
+            }
+        }
+        const street = value('incidentStreet');
+        const place = [street, value('incidentPurok'), value('incidentBarangay'), value('incidentCity')]
+            .filter(Boolean).join(', ');
+        const fileCount = document.getElementById('evidenceFiles')?.files?.length ?? 0;
+        const summary = {
+            narrative: shortText(value('narrative'), 'Narrative not entered'),
+            incident: when + ' — ' + (street ? place : 'Location not entered'),
+            complainants: partyNamesList(complainantsList, value('complainantFirstName'), value('complainantLastName'), 'No complainant added'),
+            respondents: partyNamesList(respondentsList, value('respondentFirstName'), value('respondentLastName'), 'No respondent added'),
+            outcome: shortText(value('requestedResolution'), 'No outcome specified'),
+            evidence: fileCount ? `${fileCount} ${fileCount === 1 ? 'file' : 'files'} attached` : 'No attachments',
+        };
+        reviewFields.forEach((field, key) => {
+            field.textContent = summary[key];
+        });
+        reviewSummary.hidden = false;
+    }
+
     if (createForm) {
+        createForm.addEventListener('input', updateIntakeReview);
+        createForm.addEventListener('change', updateIntakeReview);
         createForm.addEventListener('submit', (e) => {
             // Check Safe Spaces Act (RA 11313) mandatory 1st Offense toggle & VAWC/PNP routing
             if (window.isSafeSpacesCategorySelected && window.isSafeSpacesCategorySelected()) {
@@ -2081,6 +2121,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (potentialDuplicatesDetected && !document.getElementById('duplicateAcknowledged')?.checked) {
                 e.preventDefault();
+                document.getElementById('duplicateComplaintBanner').style.display = 'block';
                 window.agapNotify?.('Review the potential duplicate record(s) and confirm whether this filing should proceed.', 'error');
                 document.getElementById('duplicateAcknowledged')?.focus();
                 return;
@@ -3737,6 +3778,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderParties() {
         renderComplainants();
         renderRespondents();
+        updateIntakeReview();
     }
 
     function renderComplainants() {
@@ -4360,40 +4402,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Quick-Nav ScrollSpy & Smooth Scrolling ──
     const quickNavLinks = document.querySelectorAll('#intakeQuickNav .quicknav-link');
-    const navSectionIds = ['section-ingestion', 'section-parties', 'section-narrative', 'section-location', 'section-evidence'];
-    const navSections = navSectionIds.map(id => document.getElementById(id)).filter(Boolean);
+    const navSections = Array.from(quickNavLinks, link => document.getElementById(link.hash.slice(1))).filter(Boolean);
 
-    quickNavLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetId = link.getAttribute('href')?.replace('#', '');
-            const targetEl = document.getElementById(targetId);
-            if (targetEl) {
-                const topOffset = 70;
-                const elementPosition = targetEl.getBoundingClientRect().top + window.pageYOffset;
-                window.scrollTo({
-                    top: Math.max(0, elementPosition - topOffset),
-                    behavior: 'smooth'
-                });
-                quickNavLinks.forEach(l => l.classList.remove('is-active'));
-                link.classList.add('is-active');
+    function setActiveIntakeSection(id) {
+        quickNavLinks.forEach(link => {
+            const isActive = link.hash === `#${id}`;
+            link.classList.toggle('is-active', isActive);
+            if (isActive) {
+                link.setAttribute('aria-current', 'step');
+            } else {
+                link.removeAttribute('aria-current');
             }
         });
+        if (id === 'section-ingestion') updateIntakeReview();
+    }
+
+    quickNavLinks.forEach(link => {
+        link.addEventListener('click', () => setActiveIntakeSection(link.hash.slice(1)));
     });
 
     if ('IntersectionObserver' in window && navSections.length > 0) {
         const navObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    const id = entry.target.id;
-                    quickNavLinks.forEach(link => {
-                        const href = link.getAttribute('href');
-                        if (href === `#${id}`) {
-                            link.classList.add('is-active');
-                        } else {
-                            link.classList.remove('is-active');
-                        }
-                    });
+                    setActiveIntakeSection(entry.target.id);
                 }
             });
         }, {
@@ -4590,6 +4622,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderEvidenceQueue() {
+        updateIntakeReview();
         if (!queueContainer || !queueList || !countDisplay) return;
         const files = Array.from(evidenceDataTransfer.files);
         countDisplay.textContent = files.length;

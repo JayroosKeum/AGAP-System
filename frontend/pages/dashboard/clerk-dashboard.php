@@ -7,11 +7,21 @@ if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0),
     exit;
 }
 
+require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.php';
+$paanyayaQueue = [];
+$paanyayaQueueUnavailable = false;
+try {
+    $paanyayaQueue = (new PaanyayaPreparationService((new Database())->connect()))->queue();
+} catch (PDOException $exception) {
+    error_log('Clerk Paanyaya queue: ' . $exception->getMessage());
+    $paanyayaQueueUnavailable = true;
+}
 include '../../layouts/header.php';
 ?>
 
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/reports.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/reports.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/paanyaya-preparation.css?v=<?= filemtime(__DIR__ . '/../../assets/css/paanyaya-preparation.css') ?>">
 
 <div class="dashboard-layout">
 
@@ -38,6 +48,29 @@ include '../../layouts/header.php';
                 <h2 id="activeLisoTitle">LISOs on duty</h2>
             </div>
             <div id="activeLisoList" class="active-liso-list" aria-live="polite">Checking available Lupon Members…</div>
+        </section>
+
+        <section class="paanyaya-preparation" aria-labelledby="paanyaya-queue-title">
+            <h2 id="paanyaya-queue-title">Ready for Paanyaya</h2>
+            <?php if ($paanyayaQueueUnavailable): ?>
+                <p>The Paanyaya queue is currently unavailable.</p>
+            <?php elseif (!$paanyayaQueue): ?>
+                <p>No eligible walk-ins are waiting for Paanyaya preparation.</p>
+            <?php else: ?>
+                <ul class="paanyaya-prep-list">
+                    <?php foreach ($paanyayaQueue as $intake): ?>
+                        <li>
+                            <a href="../complaints/complaint-details.php?id=<?= (int) $intake['complaint_id'] ?>#paanyaya-preparation">
+                                <strong><?= htmlspecialchars($intake['intake_reference'] ?: 'Intake #' . $intake['complaint_id']) ?></strong>
+                                <?= htmlspecialchars($intake['complaint_title']) ?>
+                            </a>
+                            <span class="paanyaya-prep-status">
+                                <?= $intake['ready_at'] ? 'Ready for Release' : ($intake['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation') ?>
+                            </span>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
         </section>
 
         <section class="dashboard-overview" aria-label="Lupon Clerk Front-Desk Overview">

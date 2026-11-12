@@ -1,15 +1,15 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
 
 class CaseModel
 {
     private PDO $conn;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null)
     {
-        $database = new Database();
-        $this->conn = $database->connect();
+        $this->conn = $conn ?? (new Database())->connect();
     }
 
         public function getAll(): array
@@ -597,6 +597,10 @@ class CaseModel
 
         if ($case->fetch()) {
             return 'duplicate_case';
+        }
+
+        if (PaanyayaPreparationService::requiresPreparation($this->conn, (int) $complaintId)) {
+            return 'paanyaya_preparation_required';
         }
 
         return null;

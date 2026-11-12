@@ -12,27 +12,37 @@ require_once '../../../backend/services/CsrfService.php';
 
 $userId = (int) $_SESSION['user_id'];
 $db = (new Database())->connect();
+$dashboardUnavailable = false;
+$profile = [];
+$complaints = [];
 
-$profileStatement = $db->prepare(
-    'SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(" ", r.first_name, r.middle_name, r.last_name)), ""), NULLIF(TRIM(CONCAT_WS(" ", u.first_name, u.last_name)), ""), u.username) AS display_name
-     FROM users u
-     LEFT JOIN resident_user_profiles rup ON rup.user_id = u.user_id
-     LEFT JOIN residents r ON r.resident_id = rup.resident_id
-     WHERE u.user_id = ? LIMIT 1'
-);
-$profileStatement->execute([$userId]);
-$profile = $profileStatement->fetch(PDO::FETCH_ASSOC) ?: [];
+try {
+    $profileStatement = $db->prepare(
+        "SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)), ''),
+                         NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username) AS display_name
+         FROM users u
+         LEFT JOIN resident_user_profiles rup ON rup.user_id = u.user_id
+         LEFT JOIN residents r ON r.resident_id = rup.resident_id
+         WHERE u.user_id = ? LIMIT 1"
+    );
+    $profileStatement->execute([$userId]);
+    $profile = $profileStatement->fetch(PDO::FETCH_ASSOC) ?: [];
 
-$complaintsStatement = $db->prepare(
-    'SELECT c.complaint_id, c.intake_reference, c.complaint_number, c.complaint_title, c.status,
-            c.screening_decision, c.created_at, c.updated_at, cc.category_name
-     FROM complaints c
-     LEFT JOIN complaint_categories cc ON cc.category_id = c.category_id
-     WHERE c.submitted_by = ?
-     ORDER BY c.updated_at DESC, c.created_at DESC'
-);
-$complaintsStatement->execute([$userId]);
-$complaints = $complaintsStatement->fetchAll(PDO::FETCH_ASSOC);
+    $complaintsStatement = $db->prepare(
+        'SELECT c.complaint_id, c.intake_reference, c.complaint_number, c.complaint_title, c.status,
+                c.screening_decision, c.created_at, c.updated_at, cc.category_name
+         FROM complaints c
+         LEFT JOIN complaint_categories cc ON cc.category_id = c.category_id
+         WHERE c.submitted_by = ?
+         ORDER BY c.updated_at DESC, c.created_at DESC'
+    );
+    $complaintsStatement->execute([$userId]);
+    $complaints = $complaintsStatement->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $exception) {
+    error_log('Resident dashboard query failed: ' . $exception->getMessage());
+    http_response_code(503);
+    $dashboardUnavailable = true;
+}
 
 $summary = ['total' => count($complaints), 'pending' => 0, 'needs_information' => 0, 'in_progress' => 0];
 foreach ($complaints as $complaint) {
@@ -80,7 +90,9 @@ $recentComplaints = array_slice($complaints, 0, 5);
             <span><strong>AGAP</strong><small>Resident Portal</small></span>
         </a>
         <div class="resident-topbar-actions">
-            <span class="resident-topbar-name">Signed in as <?= htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8') ?></span>
+            <?php if (!$dashboardUnavailable): ?>
+                <span class="resident-topbar-name">Signed in as <?= htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8') ?></span>
+            <?php endif; ?>
             <form method="post" action="../../../backend/api/auth/logout.php">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8') ?>">
                 <button type="submit" class="resident-signout">Sign out</button>
@@ -89,6 +101,13 @@ $recentComplaints = array_slice($complaints, 0, 5);
     </header>
 
     <main class="resident-dashboard-shell">
+        <?php if ($dashboardUnavailable): ?>
+            <section class="resident-panel resident-concerns-panel" aria-labelledby="resident-dashboard-title">
+                <h1 id="resident-dashboard-title">Resident dashboard unavailable</h1>
+                <p>We couldn’t load your profile or concerns. Try again shortly. If the problem continues, contact the barangay office.</p>
+                <a class="resident-secondary-action" href="dashboard.php">Try again</a>
+            </section>
+        <?php else: ?>
         <section class="resident-hero" aria-labelledby="resident-dashboard-title">
             <div>
                 <p class="resident-dashboard-eyebrow">Barangay Tumana, Marikina City</p>
@@ -163,6 +182,7 @@ $recentComplaints = array_slice($complaints, 0, 5);
                     <?php endforeach; ?>
                 </div>
             </section>
+        <?php endif; ?>
         <?php endif; ?>
     </main>
     <footer class="resident-dashboard-footer"><span>AGAP Resident Portal</span><span>Personal information is visible only to authorized barangay personnel handling your concern.</span></footer>

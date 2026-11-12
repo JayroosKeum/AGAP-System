@@ -7,12 +7,9 @@ class AuditService
 {
     private $conn;
 
-    public function __construct()
+    public function __construct(?PDO $connection = null)
     {
-        $database = new Database();
-
-        $this->conn =
-            $database->connect();
+        $this->conn = $connection ?? (new Database())->connect();
     }
 
     public function log(

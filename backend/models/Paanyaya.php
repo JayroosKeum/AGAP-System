@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/PDFService.php';
 require_once __DIR__ . '/../services/AuditService.php';
+require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
 
 class Paanyaya
 {
@@ -126,6 +127,9 @@ class Paanyaya
         $complaint = null;
 
         if ($complaintId > 0) {
+            if (PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
+                return ['success' => false, 'message' => 'Prepare this walk-in invitation from the original intake record.'];
+            }
             $cStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status, paanyaya_attempt_count, max_paanyaya_reached, resolved_without_docketing FROM complaints WHERE complaint_id = ? LIMIT 1');
             $cStmt->execute([$complaintId]);
             $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
@@ -1774,6 +1778,9 @@ class Paanyaya
      */
     public function issueStage(int $complaintId, string $stageType, array $data, ?int $userId = null): array
     {
+        if (PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Prepare this walk-in invitation from the original intake record.'];
+        }
         if (!in_array($stageType, [self::STAGE_1, self::STAGE_2], true)) {
             return ['success' => false, 'message' => 'Invalid Paanyaya stage specified.'];
         }

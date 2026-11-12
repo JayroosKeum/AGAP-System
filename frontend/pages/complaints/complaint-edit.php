@@ -769,6 +769,7 @@ include __DIR__ . '/../../layouts/header.php';
                             <div class="form-group">
                                 <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
                                 <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe in detail what occurred, when, and the circumstances surrounding the incident..."><?php echo htmlspecialchars($effNarrative); ?></textarea>
+                                <?php include __DIR__ . '/tabs/narrative-dictation.php'; ?>
                                 <div class="ai-narrative-actions">
                                     <div class="ai-narrative-tools">
                                         <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
