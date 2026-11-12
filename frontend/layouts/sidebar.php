@@ -131,20 +131,17 @@ $dashboardLink = [1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/cl
             <details class="nav-group"<?php echo $isGroupActive(['users', 'settings']) ? ' open' : ''; ?> data-nav-group="administration">
                 <summary>Administration</summary>
                 <div class="nav-group-links">
-                    <?php if ($roleId === 1): ?>
-                        <a href="../users/user-list.php"<?php echo $isActive(['user-list.php'], 'users'); ?> title="Users and roles">
+                    <?php if (in_array($roleId, [1, 2, 5], true) || in_array($roleName, ['Administrator', 'Secretary', 'Lupon Clerk'], true)): ?>
+                        <?php
+                        $isAdminNav = ($roleId === 1 || $roleName === 'Administrator');
+                        $usersNavHref = $isAdminNav ? '../users/user-list.php' : '../users/user-list.php?tab=residents';
+                        $usersNavLabel = $isAdminNav ? 'Users & Residents' : 'Resident Verification';
+                        ?>
+                        <a href="<?php echo $usersNavHref; ?>"<?php echo $isActive(['user-list.php', 'resident-verification.php'], 'users'); ?> title="<?php echo htmlspecialchars($usersNavLabel, ENT_QUOTES, 'UTF-8'); ?>">
                             <span class="nav-icon" aria-hidden="true">
                                 <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
                             </span>
-                            <span class="nav-link-label">Users and roles</span>
-                        </a>
-                    <?php endif; ?>
-                    <?php if (in_array($roleId, [1, 2, 5], true) || in_array($roleName, ['Administrator', 'Secretary', 'Lupon Clerk'], true)): ?>
-                        <a href="../users/resident-verification.php"<?php echo $isActive(['resident-verification.php'], 'users'); ?> title="Resident Verification">
-                            <span class="nav-icon" aria-hidden="true">
-                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"></path><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-                            </span>
-                            <span class="nav-link-label">Resident Verification</span>
+                            <span class="nav-link-label"><?php echo htmlspecialchars($usersNavLabel, ENT_QUOTES, 'UTF-8'); ?></span>
                         </a>
                     <?php endif; ?>
                     <a href="../settings/index.php"<?php echo $isActive(['index.php'], 'settings'); ?> title="Settings">

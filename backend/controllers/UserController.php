@@ -14,9 +14,14 @@ class UserController {
         $this->audit = new AuditService();
     }
 
-    public function index(): array
+    public function index(bool $staffOnly = false): array
     {
-        return $this->user->getAll();
+        return $this->user->getAll($staffOnly);
+    }
+
+    public function staffRoles(): array
+    {
+        return $this->user->getStaffRoles();
     }
 
     public function create(array $data, int $actorId): array

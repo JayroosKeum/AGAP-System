@@ -1,26 +1,105 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const WIDGET_STORAGE_KEY = 'agap_pb_enabled_widgets_v1';
+    const DEFAULT_WIDGETS = [
+        'widget-hearings',
+        'widget-calendar',
+        'widget-analytics',
+        'widget-demographics',
+        'widget-paanyaya',
+        'widget-bulletin',
+        'widget-audit'
+    ];
+
+    const WIDGET_CATALOG = [
+        {
+            id: 'widget-hearings',
+            title: "Today's Mediation & Hearing Queue",
+            description: 'Manage live court room docket, Quick Attendance, Standby, and PB Unavailable rescheduling.',
+            tag: '#Mediation',
+            thumbType: 'queue'
+        },
+        {
+            id: 'widget-calendar',
+            title: 'Session & Hearing Calendar',
+            description: 'Interactive month calendar highlighting formal hearings and Paanyaya sessions.',
+            tag: '#Schedule',
+            thumbType: 'calendar'
+        },
+        {
+            id: 'widget-analytics',
+            title: 'Dispute Categories & Purok Hotspots',
+            description: 'Identify recurring community grievances and Puroks needing peace & order focus.',
+            tag: '#PeaceAndOrder',
+            thumbType: 'bars'
+        },
+        {
+            id: 'widget-demographics',
+            title: 'Participant Demographics',
+            description: 'Review Complainant and Respondent breakdown by gender and age bracket.',
+            tag: '#Demographics',
+            thumbType: 'donut'
+        },
+        {
+            id: 'widget-paanyaya',
+            title: 'Paanyaya Stage 0 Invitations',
+            description: 'Track pre-docketing informal dialogues that boost LTIA settlement efficiency.',
+            tag: '#Diversion',
+            thumbType: 'mail'
+        },
+        {
+            id: 'widget-bulletin',
+            title: 'Barangay News & Announcements',
+            description: 'Publish and manage public bulletins shown across staff and resident portals.',
+            tag: '#Bulletin',
+            thumbType: 'news'
+        },
+        {
+            id: 'widget-audit',
+            title: 'Security & Governance Audit Trail',
+            description: 'Monitor staff sign-ins, resident verifications, and case status changes.',
+            tag: '#Audit',
+            thumbType: 'shield'
+        }
+    ];
+
+    const loadSavedWidgets = () => {
+        try {
+            const raw = localStorage.getItem(WIDGET_STORAGE_KEY);
+            if (!raw) return new Set(DEFAULT_WIDGETS);
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                return new Set(parsed.filter((id) => WIDGET_CATALOG.some((w) => w.id === id)));
+            }
+        } catch (e) {}
+        return new Set(DEFAULT_WIDGETS);
+    };
+
     const state = {
         period: 'all',
         offset: 0,
         isLoading: false,
-        allRawCases: [],
-        activeCaseFilter: 'all',
+        dashboardData: null,
+        activePeriodData: null,
+        activeDocketTab: 'priority',
+        docketSearch: '',
         activeStatTarget: null,
-        cases: [],
         casesPage: 1,
-        casesPerPage: 10,
+        casesPerPage: 8,
         hearings: [],
         hearingsPage: 1,
-        hearingsPerPage: 10,
+        hearingsPerPage: 8,
         hearingsPeriodLabel: '',
         currentPeriodLabel: 'All Time',
         calendarCursor: new Date(),
         calendarHearings: [],
         selectedDate: null,
-        isSavingQueue: false
+        isSavingQueue: false,
+        enabledWidgets: loadSavedWidgets(),
+        activeQuickAttHearing: null,
+        activeQuickAttHearingId: null,
+        activeQuickAttData: null
     };
 
-    // Check URL search params for initial tab selection
     const urlParams = new URLSearchParams(window.location.search);
     const initialPeriod = urlParams.get('period') || urlParams.get('tab');
     if (['all', 'weekly', 'monthly', 'quarterly', 'annual'].includes(initialPeriod)) {
@@ -32,15 +111,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const escapeHtml = (text) => {
-        if (!text) return '';
+        if (text === null || text === undefined) return '';
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text);
         return div.innerHTML;
     };
 
-    const setText = (id, value) => {
-        const element = document.getElementById(id);
-        if (element) element.textContent = Number(value || 0).toLocaleString();
+    const setElText = (id, text) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
+    };
+
+    const setNumericText = (id, value) => {
+        setElText(id, Number(value || 0).toLocaleString());
     };
 
     const setMessage = (message = '', isError = false) => {
@@ -57,6 +140,18 @@ document.addEventListener('DOMContentLoaded', () => {
         return item;
     };
 
+    const getCsrfToken = () => {
+        return document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
+            || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            || window.agapCsrfToken
+            || '';
+    };
+
+    const getTodayDateStr = () => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
     const getStatusClass = (status) => {
         const s = String(status || '').toLowerCase();
         if (s.includes('settled')) return 'status-settled';
@@ -70,88 +165,54 @@ document.addEventListener('DOMContentLoaded', () => {
         return 'status-default';
     };
 
-    const formatDateTime = (value) => {
-        if (!value) return '—';
-        const date = new Date(String(value).replace(' ', 'T'));
-        return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-    };
-
     const formatDateOnly = (value) => {
         if (!value) return '—';
         const date = new Date(String(value).slice(0, 10) + 'T00:00:00');
-        return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+        return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
     const formatDateClean = (value) => {
         if (!value) return '';
-        const d = new Date(String(value).includes(' ') ? String(value).replace(' ', 'T') : (String(value).length === 10 ? String(value) + 'T00:00:00' : String(value)));
-        return Number.isNaN(d.getTime()) ? String(value) : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-    };
-
-    // Database values may be returned as either "YYYY-MM-DD HH:MM:SS" or
-    // ISO "YYYY-MM-DDTHH:MM:SS". Calendar matching must use the date part
-    // only, otherwise valid ISO hearing records never receive a marker.
-    const getHearingDateKey = (value) => {
-        const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}/);
-        return match ? match[0] : '';
-    };
-
-    const addListItem = (container, title, details, badge, linkUrl = null) => {
-        const item = document.createElement('article');
-        item.className = 'dashboard-list-item';
-        const content = document.createElement('div');
-        const heading = document.createElement('h3');
-        if (linkUrl) {
-            const link = document.createElement('a');
-            link.href = linkUrl;
-            link.textContent = title;
-            link.className = 'dashboard-list-link';
-            heading.appendChild(link);
-        } else {
-            heading.textContent = title;
-        }
-        const description = document.createElement('p');
-        description.textContent = details;
-        content.append(heading, description);
-        item.appendChild(content);
-        if (badge) {
-            const tag = document.createElement('span');
-            tag.className = `status-badge ${getStatusClass(badge)}`;
-            tag.textContent = badge;
-            item.appendChild(tag);
-        }
-        container.appendChild(item);
-    };
-
-    const getTodayDateStr = () => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    };
-
-    const getCsrfToken = () => {
-        return document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
-            || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-            || window.agapCsrfToken
-            || '';
+        const raw = String(value);
+        const normalized = raw.includes(' ') ? raw.replace(' ', 'T') : (raw.length === 10 ? raw + 'T00:00:00' : raw);
+        const d = new Date(normalized);
+        return Number.isNaN(d.getTime()) ? raw : d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
     const formatTimeOnly = (raw) => {
         if (!raw) return '';
         const d = new Date(typeof raw === 'string' && raw.includes(' ') ? raw.replace(' ', 'T') : raw);
-        if (!isNaN(d.getTime())) {
+        if (!Number.isNaN(d.getTime())) {
             return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
         }
         if (typeof raw === 'string' && raw.includes(':')) {
             const parts = raw.split(':');
             let h = parseInt(parts[0], 10);
             const m = parts[1] || '00';
-            if (!isNaN(h)) {
+            if (!Number.isNaN(h)) {
                 const ampm = h >= 12 ? 'PM' : 'AM';
                 h = h % 12 || 12;
                 return `${h}:${m} ${ampm}`;
             }
         }
-        return raw;
+        return String(raw);
+    };
+
+    const timeAgo = (dateStr) => {
+        if (!dateStr) return '';
+        const d = new Date(String(dateStr).replace(' ', 'T'));
+        if (Number.isNaN(d.getTime())) return String(dateStr);
+        const diffSec = Math.floor((Date.now() - d.getTime()) / 1000);
+        if (diffSec < 60) return 'Just now';
+        if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+        if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+        if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`;
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    };
+
+    const getHearingDateKey = (value) => {
+        const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}/);
+        return match ? match[0] : '';
     };
 
     const isActiveQueueSession = (session) => {
@@ -161,119 +222,948 @@ document.addEventListener('DOMContentLoaded', () => {
             && queueStatus !== 'Concluded';
     };
 
-    const addPaanyayaItem = (container, item, displayIndex = 0) => {
-        const art = document.createElement('article');
-        art.className = 'dashboard-list-item';
-        art.dataset.id = item.paanyaya_id || item.id || '';
-        art.dataset.type = 'paanyaya';
-        art.dataset.sessionId = item.session_id || '';
-        art.dataset.queueDate = String(item.scheduled_date || getTodayDateStr()).slice(0, 10);
-        art.style.cssText = 'padding: 14px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;';
-
-        const content = document.createElement('div');
-        content.className = 'dashboard-list-content';
-        content.style.flex = '1';
-
-        const timeStr = item.scheduled_date ? `${formatDateClean(item.scheduled_date)}${item.scheduled_time ? ' · ' + formatTimeOnly(item.scheduled_time) : ''}` : (formatTimeOnly(item.scheduled_time) || 'Scheduled');
-        const invitee = item.invitee_name || 'Inanyayahan';
-        const complainant = item.complainant_name || 'Nagpaanyaya';
-        const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Pre-Docketed';
-
-        const headerRow = document.createElement('div');
-        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;';
-
-        const timeBadge = document.createElement('span');
-        timeBadge.className = 'agenda-time-pill';
-        timeBadge.style.cssText = 'font-size: 0.78rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 8px; border-radius: 4px; white-space: nowrap;';
-        timeBadge.textContent = timeStr;
-
-        const heading = document.createElement('h3');
-        heading.style.cssText = 'margin: 0; font-size: 0.94rem; font-weight: 700; color: #0f172a;';
-        heading.textContent = `${complaintRef} · Paanyaya Invitation`;
-
-                const dragHandle = document.createElement('span');
-        dragHandle.className = 'drag-handle';
-        dragHandle.title = 'I-drag para baguhin ang docket sequence';
-        dragHandle.innerHTML = '&#8942;&#8942;';
-
-        const seqBadge = document.createElement('span');
-        seqBadge.className = 'queue-seq-badge';
-        seqBadge.textContent = `#${displayIndex + 1}`;
-
-        headerRow.append(dragHandle, seqBadge, timeBadge, heading);
-
-        const inviteeRow = document.createElement('div');
-        inviteeRow.style.cssText = 'font-size: 0.86rem; color: #1e293b; margin-bottom: 4px; line-height: 1.4;';
-        inviteeRow.innerHTML = `<span style="color: #166534; font-weight: 700;">Nagpaanyaya:</span> <strong>${escapeHtml(complainant)}</strong> <span style="color: #94a3b8; font-weight: 600; margin: 0 4px;">•</span> <span style="color: #6366f1; font-weight: 700;">Inanyayahan:</span> <strong>${escapeHtml(invitee)}</strong>`;
-
-        const detailsRow = document.createElement('p');
-        detailsRow.style.cssText = 'font-size: 0.78rem; color: #64748b; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
-        detailsRow.innerHTML = `<span>${escapeHtml(item.venue || 'Tanggapan ng Barangay Tumana')}</span>${item.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(item.complaint_title)}</span>` : ''}`;
-
-        content.append(headerRow, inviteeRow, detailsRow);
-        art.appendChild(content);
-
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-left: 12px; flex-shrink: 0;';
-
-        const statusPill = document.createElement('span');
-        statusPill.style.cssText = 'font-size: 0.74rem; font-weight: 700; padding: 3px 9px; border-radius: 9999px; background: #e0e7ff; color: #3730a3; white-space: nowrap;';
-        statusPill.textContent = item.status || 'Scheduled';
-        actions.appendChild(statusPill);
-
-        const viewLink = document.createElement('a');
-        viewLink.className = 'btn-open-case';
-        viewLink.style.cssText = 'padding: 6px 12px; font-size: 11.5px; font-weight: 600;';
-        viewLink.textContent = 'Paanyaya';
-        viewLink.href = item.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : `../paanyaya/index.php`;
-        actions.appendChild(viewLink);
-
-        art.appendChild(actions);
-        bindQueueDragAndDrop(art, container);
-        container.appendChild(art);
+    // =========================================================================
+    // Add Widget Drawer & Layout Persistence
+    // =========================================================================
+    const saveEnabledWidgets = () => {
+        try {
+            localStorage.setItem(WIDGET_STORAGE_KEY, JSON.stringify([...state.enabledWidgets]));
+        } catch (e) {}
     };
 
-    const renderPaanyayas = (paanyayas) => {
-        const container = document.getElementById('todayPaanyayas');
-        if (!container) return;
-        container.replaceChildren();
+    const getWidgetThumbSvg = (type) => {
+        switch (type) {
+            case 'bars':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="6" y="22" width="7" height="14" rx="2.5" fill="#cbd5e1"/><rect x="18" y="10" width="7" height="26" rx="2.5" fill="#2563eb"/><rect x="30" y="16" width="7" height="20" rx="2.5" fill="#93c5fd"/></svg>';
+            case 'donut':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><circle cx="22" cy="22" r="13" stroke="#e2e8f0" stroke-width="6"/><circle cx="22" cy="22" r="13" stroke="#16a34a" stroke-width="6" stroke-dasharray="52 82" stroke-linecap="round" transform="rotate(-90 22 22)"/></svg>';
+            case 'calendar':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="7" y="10" width="30" height="26" rx="5" stroke="#1b6553" stroke-width="2.2"/><path d="M7 18h30" stroke="#1b6553" stroke-width="2.2"/><circle cx="16" cy="25" r="2.2" fill="#2563eb"/><circle cx="25" cy="25" r="2.2" fill="#16a34a"/></svg>';
+            case 'mail':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="7" y="12" width="30" height="20" rx="4" stroke="#4f46e5" stroke-width="2.2"/><path d="M8 14l14 10 14-10" stroke="#4f46e5" stroke-width="2.2" stroke-linecap="round"/></svg>';
+            case 'news':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="8" y="9" width="28" height="26" rx="4" stroke="#059669" stroke-width="2.2"/><path d="M14 17h16M14 23h16M14 29h10" stroke="#059669" stroke-width="2.2" stroke-linecap="round"/></svg>';
+            case 'shield':
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><path d="M22 7l12 5v9c0 8.5-5.2 14.2-12 16-6.8-1.8-12-7.5-12-16v-9l12-5z" stroke="#334155" stroke-width="2.2"/><path d="M17 22l3.5 3.5L27 19" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+            default:
+                return '<svg width="42" height="42" viewBox="0 0 44 44" fill="none"><rect x="7" y="10" width="30" height="7" rx="3" fill="#2563eb"/><rect x="7" y="20" width="30" height="6" rx="3" fill="#cbd5e1"/><rect x="7" y="29" width="22" height="6" rx="3" fill="#e2e8f0"/></svg>';
+        }
+    };
 
-        const items = (paanyayas || []).filter(isActiveQueueSession);
-        if (!items.length) {
-            return container.appendChild(emptyState('No informal Paanyaya invitations scheduled for today.'));
+    const applyWidgetVisibility = () => {
+        document.querySelectorAll('.pb-widget-card[data-widget-id]').forEach((card) => {
+            const id = card.getAttribute('data-widget-id');
+            card.classList.toggle('is-hidden-widget', !state.enabledWidgets.has(id));
+        });
+    };
+
+    const renderWidgetDrawerCatalog = () => {
+        const list = document.getElementById('addWidgetCatalogList');
+        if (!list) return;
+        list.innerHTML = WIDGET_CATALOG.map((w) => {
+            const isSelected = state.enabledWidgets.has(w.id);
+            return `
+                <article class="pb-drawer-card">
+                    <div class="pb-drawer-thumb">${getWidgetThumbSvg(w.thumbType)}</div>
+                    <div class="pb-drawer-card-info">
+                        <h3>${escapeHtml(w.title)}</h3>
+                        <p>${escapeHtml(w.description)}</p>
+                        <div class="pb-drawer-card-foot">
+                            <span class="pb-drawer-tag">${escapeHtml(w.tag)}</span>
+                            <button type="button" class="pb-drawer-select-btn ${isSelected ? 'is-selected' : ''}" data-toggle-widget="${escapeHtml(w.id)}">
+                                ${isSelected ? 'Added ✓' : 'Select'}
+                            </button>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }).join('');
+
+        list.querySelectorAll('[data-toggle-widget]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-toggle-widget');
+                if (state.enabledWidgets.has(id)) {
+                    state.enabledWidgets.delete(id);
+                } else {
+                    state.enabledWidgets.add(id);
+                }
+                saveEnabledWidgets();
+                applyWidgetVisibility();
+                renderWidgetDrawerCatalog();
+            });
+        });
+    };
+
+    const initWidgetDrawer = () => {
+        const overlay = document.getElementById('addWidgetDrawerOverlay');
+        const openBtn = document.getElementById('btnOpenWidgetDrawer');
+        const closeBtn = document.getElementById('btnCloseWidgetDrawer');
+        const doneBtn = document.getElementById('btnDoneWidgetDrawer');
+        const resetBtn = document.getElementById('btnResetWidgetsDefault');
+
+        const openDrawer = () => {
+            renderWidgetDrawerCatalog();
+            if (overlay) {
+                overlay.style.display = 'flex';
+                overlay.setAttribute('aria-hidden', 'false');
+            }
+        };
+        const closeDrawer = () => {
+            if (overlay) {
+                overlay.style.display = 'none';
+                overlay.setAttribute('aria-hidden', 'true');
+            }
+        };
+
+        openBtn?.addEventListener('click', openDrawer);
+        closeBtn?.addEventListener('click', closeDrawer);
+        doneBtn?.addEventListener('click', closeDrawer);
+        overlay?.addEventListener('click', (e) => {
+            if (e.target === overlay) closeDrawer();
+        });
+        resetBtn?.addEventListener('click', () => {
+            state.enabledWidgets = new Set(DEFAULT_WIDGETS);
+            saveEnabledWidgets();
+            applyWidgetVisibility();
+            renderWidgetDrawerCatalog();
+        });
+
+        document.querySelectorAll('[data-hide-widget]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const id = btn.getAttribute('data-hide-widget');
+                state.enabledWidgets.delete(id);
+                saveEnabledWidgets();
+                applyWidgetVisibility();
+            });
+        });
+
+        applyWidgetVisibility();
+    };
+
+    // =========================================================================
+    // Executive Charts: Trend Line SVG, Weekday Bar Chart, Segmented Tick Gauge
+    // =========================================================================
+    const renderTrendChart = (series) => {
+        const svg = document.getElementById('captainTrendChartSvg');
+        const wrap = document.getElementById('captainTrendChartWrap');
+        const tooltip = document.getElementById('captainTrendTooltip');
+        if (!svg || !wrap) return;
+
+        const points = Array.isArray(series) && series.length > 0
+            ? series
+            : [{ label: 'Current', filed: 0, resolved: 0, previous_filed: 0 }];
+
+        const W = 540;
+        const H = 168;
+        const padL = 32;
+        const padR = 14;
+        const padT = 14;
+        const padB = 26;
+        const chartW = W - padL - padR;
+        const chartH = H - padT - padB;
+
+        const maxVal = Math.max(
+            4,
+            ...points.map((p) => Math.max(Number(p.filed || 0), Number(p.resolved || 0), Number(p.previous_filed || 0)))
+        );
+        const yNiceMax = Math.ceil(maxVal * 1.15);
+
+        const xAt = (idx) => points.length === 1 ? padL + chartW / 2 : padL + (idx / (points.length - 1)) * chartW;
+        const yAt = (val) => padT + chartH - (Number(val || 0) / yNiceMax) * chartH;
+
+        const buildPath = (key) => {
+            return points.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${xAt(idx).toFixed(1)} ${yAt(p[key]).toFixed(1)}`).join(' ');
+        };
+
+        const filedPath = buildPath('filed');
+        const resolvedPath = buildPath('resolved');
+        const prevPath = buildPath('previous_filed');
+        const areaPath = `${filedPath} L ${xAt(points.length - 1).toFixed(1)} ${(padT + chartH).toFixed(1)} L ${xAt(0).toFixed(1)} ${(padT + chartH).toFixed(1)} Z`;
+
+        const yTicks = [0, 0.5, 1].map((frac) => {
+            const val = Math.round(yNiceMax * frac);
+            const y = yAt(val);
+            return `
+                <line x1="${padL}" y1="${y.toFixed(1)}" x2="${W - padR}" y2="${y.toFixed(1)}" stroke="#e9eef4" stroke-dasharray="3 3" stroke-width="1"/>
+                <text x="${padL - 8}" y="${(y + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="#94a3b8" font-weight="600">${val}</text>
+            `;
+        }).join('');
+
+        const labelStep = points.length > 8 ? Math.ceil(points.length / 6) : 1;
+        const xLabels = points.map((p, idx) => {
+            if (idx !== 0 && idx !== points.length - 1 && idx % labelStep !== 0) return '';
+            return `<text x="${xAt(idx).toFixed(1)}" y="${H - 6}" text-anchor="middle" font-size="10" fill="#94a3b8" font-weight="600">${escapeHtml(p.label)}</text>`;
+        }).join('');
+
+        const hoverStrips = points.map((p, idx) => {
+            const cx = xAt(idx);
+            const stripW = points.length === 1 ? chartW : chartW / Math.max(1, points.length - 1);
+            const rx = Math.max(padL, cx - stripW / 2);
+            return `<rect x="${rx.toFixed(1)}" y="${padT}" width="${stripW.toFixed(1)}" height="${chartH}" fill="transparent" class="pb-trend-hit" data-pt-idx="${idx}" style="cursor:crosshair;"/>`;
+        }).join('');
+
+        svg.innerHTML = `
+            <defs>
+                <linearGradient id="pbTrendAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#2563eb" stop-opacity="0.22"/>
+                    <stop offset="100%" stop-color="#2563eb" stop-opacity="0.0"/>
+                </linearGradient>
+            </defs>
+            ${yTicks}
+            ${xLabels}
+            <path d="${prevPath}" fill="none" stroke="#cbd5e1" stroke-width="1.8" stroke-dasharray="4 4" stroke-linecap="round"/>
+            <path d="${areaPath}" fill="url(#pbTrendAreaGrad)"/>
+            <path d="${filedPath}" fill="none" stroke="#2563eb" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="${resolvedPath}" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <line id="pbTrendGuideLine" x1="0" y1="${padT}" x2="0" y2="${padT + chartH}" stroke="#94a3b8" stroke-dasharray="3 3" stroke-width="1" style="display:none;"/>
+            <circle id="pbTrendFocusFiled" cx="0" cy="0" r="4.5" fill="#2563eb" stroke="#ffffff" stroke-width="2" style="display:none;"/>
+            <circle id="pbTrendFocusResolved" cx="0" cy="0" r="4" fill="#16a34a" stroke="#ffffff" stroke-width="2" style="display:none;"/>
+            ${hoverStrips}
+        `;
+
+        const guide = svg.querySelector('#pbTrendGuideLine');
+        const dotFiled = svg.querySelector('#pbTrendFocusFiled');
+        const dotResolved = svg.querySelector('#pbTrendFocusResolved');
+
+        svg.querySelectorAll('.pb-trend-hit').forEach((hit) => {
+            hit.addEventListener('mouseenter', () => {
+                const idx = parseInt(hit.getAttribute('data-pt-idx'), 10);
+                const pt = points[idx];
+                if (!pt) return;
+                const cx = xAt(idx);
+                const cyF = yAt(pt.filed);
+                const cyR = yAt(pt.resolved);
+                if (guide) {
+                    guide.setAttribute('x1', cx.toFixed(1));
+                    guide.setAttribute('x2', cx.toFixed(1));
+                    guide.style.display = 'block';
+                }
+                if (dotFiled) {
+                    dotFiled.setAttribute('cx', cx.toFixed(1));
+                    dotFiled.setAttribute('cy', cyF.toFixed(1));
+                    dotFiled.style.display = 'block';
+                }
+                if (dotResolved) {
+                    dotResolved.setAttribute('cx', cx.toFixed(1));
+                    dotResolved.setAttribute('cy', cyR.toFixed(1));
+                    dotResolved.style.display = 'block';
+                }
+                if (tooltip) {
+                    tooltip.innerHTML = `
+                        <strong>${escapeHtml(pt.label)}</strong>
+                        <div class="pb-trend-tooltip-row"><span style="color:#93c5fd;">● Filed</span><b>${Number(pt.filed || 0)}</b></div>
+                        <div class="pb-trend-tooltip-row"><span style="color:#86efac;">● Resolved</span><b>${Number(pt.resolved || 0)}</b></div>
+                        <div class="pb-trend-tooltip-row"><span style="color:#94a3b8;">◌ Prior</span><b>${Number(pt.previous_filed || 0)}</b></div>
+                    `;
+                    const leftPct = Math.min(84, Math.max(16, (cx / W) * 100));
+                    const topPct = Math.max(22, (Math.min(cyF, cyR) / H) * 100);
+                    tooltip.style.left = `${leftPct}%`;
+                    tooltip.style.top = `${topPct}%`;
+                    tooltip.style.display = 'block';
+                }
+            });
+        });
+
+        wrap.onmouseleave = () => {
+            if (guide) guide.style.display = 'none';
+            if (dotFiled) dotFiled.style.display = 'none';
+            if (dotResolved) dotResolved.style.display = 'none';
+            if (tooltip) tooltip.style.display = 'none';
+        };
+    };
+
+    const renderWeekdayActivity = (items) => {
+        const container = document.getElementById('captainWeekdayBars');
+        const peakTag = document.getElementById('peakDaySummaryTag');
+        if (!container) return;
+
+        const list = Array.isArray(items) && items.length ? items : [
+            { label: 'Sun', total_count: 0, hearings_count: 0, complaints_count: 0, is_peak: false },
+            { label: 'Mon', total_count: 0, hearings_count: 0, complaints_count: 0, is_peak: false },
+            { label: 'Tue', total_count: 0, hearings_count: 0, complaints_count: 0, is_peak: true },
+            { label: 'Wed', total_count: 0, hearings_count: 0, complaints_count: 0, is_peak: false },
+            { label: 'Thu', total_count: 0, hearings_count: 0, complaints_count: 0, is_peak: false },
+            { label: 'Fri', total_count: 0, hearings_count: 0, complaints_count: 0, is_peak: false },
+            { label: 'Sat', total_count: 0, hearings_count: 0, complaints_count: 0, is_peak: false }
+        ];
+
+        const maxCount = Math.max(1, ...list.map((d) => Number(d.total_count || 0)));
+        const peakItem = list.find((d) => d.is_peak) || list[0];
+        if (peakTag && peakItem) {
+            peakTag.textContent = `Peak: ${peakItem.label} (${Number(peakItem.total_count || 0)})`;
         }
 
-        items.forEach((item, idx) => addPaanyayaItem(container, item, idx));
+        container.innerHTML = list.map((d) => {
+            const total = Number(d.total_count || 0);
+            const pct = total > 0 ? Math.max(16, Math.round((total / maxCount) * 100)) : 12;
+            const titleText = `${d.label}: ${d.hearings_count || 0} hearing(s), ${d.complaints_count || 0} filing(s)`;
+            return `
+                <div class="pb-weekday-col ${d.is_peak ? 'is-peak' : ''}" title="${escapeHtml(titleText)}">
+                    <div class="pb-weekday-bar" style="height:${pct}%;">
+                        ${d.is_peak ? `<span class="pb-weekday-tooltip">${total.toLocaleString()}</span>` : ''}
+                    </div>
+                    <span class="pb-weekday-label">${escapeHtml(d.label)}</span>
+                </div>
+            `;
+        }).join('');
+    };
+
+    const renderSettlementGauge = (data) => {
+        const cap = data.captain_summary || {};
+        const totalCases = Number(data.total_cases || 0);
+        const settledFormal = Number(data.settled_cases || 0);
+        const paanyayaResolved = Number(cap.paanyaya_resolved || 0);
+        const totalResolvedAll = Number(cap.total_resolved_all ?? (settledFormal + paanyayaResolved));
+        const rate = Number(cap.overall_resolution_rate_pct ?? (totalCases > 0 ? Math.round((settledFormal / totalCases) * 100) : 0));
+        const clampedRate = Math.max(0, Math.min(100, rate));
+
+        setElText('bentoAdminGaugePct', `${clampedRate}%`);
+        setElText('bentoAdminGaugeSub', `${totalResolvedAll} resolved (${settledFormal} formal · ${paanyayaResolved} Paanyaya)`);
+        const gap = Math.max(0, 80 - clampedRate);
+        setElText(
+            'captainGaugeTargetNote',
+            clampedRate >= 80
+                ? 'Exceeding 80% LTIA benchmark'
+                : `${gap}% to 80% LTIA target · ₱${Number(cap.ltia_estimated_savings || 0).toLocaleString()} saved`
+        );
+
+        const group = document.getElementById('captainGaugeTicks');
+        if (!group) return;
+        const totalTicks = 28;
+        const activeTicks = Math.round((clampedRate / 100) * totalTicks);
+        const cx = 105;
+        const cy = 102;
+        const rInner = 68;
+        const rOuter = 88;
+        let ticksHtml = '';
+
+        for (let i = 0; i < totalTicks; i++) {
+            const angleDeg = 180 - (i / (totalTicks - 1)) * 180;
+            const rad = (angleDeg * Math.PI) / 180;
+            const x1 = cx + rInner * Math.cos(rad);
+            const y1 = cy - rInner * Math.sin(rad);
+            const x2 = cx + rOuter * Math.cos(rad);
+            const y2 = cy - rOuter * Math.sin(rad);
+            const isActive = i < activeTicks;
+            const strokeColor = isActive ? (i >= Math.floor(totalTicks * 0.65) ? '#16a34a' : '#22c55e') : '#e2e8f0';
+            ticksHtml += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${strokeColor}" stroke-width="4.5" stroke-linecap="round"/>`;
+        }
+        group.innerHTML = ticksHtml;
+    };
+
+    // =========================================================================
+    // Executive KPI Row & Overview Stage Strip
+    // =========================================================================
+    const renderExecutiveHeaderAndKpis = (data) => {
+        const cap = data.captain_summary || {};
+        const info = data.captain_info || {};
+        if (info.captain_name) {
+            setElText('pbCaptainDisplayName', info.captain_name);
+        }
+
+        const totalDisputes = Number(cap.total_disputes ?? data.total_cases ?? 0);
+        const totalCases = Number(data.total_cases || 0);
+        const totalPaanyaya = Number(data.paanyaya_complaints || 0);
+        const pbMediation = Number(cap.pb_mediation_active ?? data.mediation_cases ?? 0);
+        const medDueSoon = Number(cap.pb_mediation_due_soon || 0);
+        const medOverdue = Number(cap.pb_mediation_overdue || 0);
+        const actionTotal = Number(cap.action_required_total || 0);
+        const resolvedTotal = Number(cap.total_resolved_all ?? data.settled_cases ?? 0);
+        const ltiaSavings = Number(cap.ltia_estimated_savings ?? (resolvedTotal * 9500));
+
+        setNumericText('kpiTotalDisputes', totalDisputes);
+        setElText('kpiTotalDisputesSub', `${totalCases} formal docketed · ${totalPaanyaya} Paanyaya records`);
+
+        const deltaEl = document.getElementById('kpiDisputesDelta');
+        const overviewDeltaEl = document.getElementById('overviewDeltaBadge');
+        const deltaPct = cap.disputes_delta_pct;
+        const applyDeltaBadge = (el) => {
+            if (!el) return;
+            el.classList.remove('is-positive', 'is-negative', 'is-neutral', 'is-amber');
+            if (deltaPct === null || deltaPct === undefined) {
+                el.classList.add('is-neutral');
+                el.textContent = 'Baseline';
+            } else if (Number(deltaPct) >= 0) {
+                el.classList.add('is-positive');
+                el.textContent = `↗ +${deltaPct}%`;
+            } else {
+                el.classList.add('is-negative');
+                el.textContent = `↘ ${deltaPct}%`;
+            }
+        };
+        applyDeltaBadge(deltaEl);
+        applyDeltaBadge(overviewDeltaEl);
+
+        setNumericText('kpiPbMediation', pbMediation);
+        const medPill = document.getElementById('kpiMediationRiskPill');
+        if (medPill) {
+            medPill.classList.remove('is-positive', 'is-negative', 'is-neutral', 'is-amber');
+            if (medOverdue > 0) {
+                medPill.classList.add('is-negative');
+                medPill.textContent = `${medOverdue} overdue`;
+            } else if (medDueSoon > 0) {
+                medPill.classList.add('is-amber');
+                medPill.textContent = `${medDueSoon} due in 7d`;
+            } else {
+                medPill.classList.add('is-positive');
+                medPill.textContent = 'All within 15d';
+            }
+        }
+        setElText('kpiPbMediationSub', `${Number(data.hearings_today || 0)} hearings today · ${Number(data.hearings_this_week || 0)} next 7d`);
+
+        setNumericText('kpiCaptainActions', actionTotal);
+        const actPill = document.getElementById('kpiCaptainActionsPill');
+        if (actPill) {
+            actPill.classList.remove('is-positive', 'is-negative', 'is-neutral', 'is-amber');
+            if (actionTotal > 0) {
+                actPill.classList.add('is-amber');
+                actPill.textContent = 'Review needed';
+            } else {
+                actPill.classList.add('is-positive');
+                actPill.textContent = 'All clear';
+            }
+        }
+        const pendingResCount = Number(cap.pending_resident_verifications || 0);
+        setElText(
+            'kpiCaptainActionsSub',
+            `${Number(cap.pending_screening || 0)} screening · ${pendingResCount} verify · ${Number(cap.pending_pb_attestations || 0)} attest · ${Number(cap.pending_transmittals || 0)} transmittals`
+        );
+
+        const verifyBadge = document.getElementById('shortcutVerifyBadge');
+        if (verifyBadge) {
+            verifyBadge.textContent = String(pendingResCount);
+            verifyBadge.style.display = pendingResCount > 0 ? 'inline-flex' : 'none';
+        }
+
+        setNumericText('kpiResolvedTotal', resolvedTotal);
+        setElText('kpiLtiaSavingsPill', `₱${ltiaSavings.toLocaleString()} saved`);
+        setElText('kpiResolvedSub', `${Number(data.settled_cases || 0)} formal settled · ${Number(cap.paanyaya_resolved || 0)} via Paanyaya`);
+
+        // Overview hero metrics & bottom stage strip
+        setElText('overviewLtiaHeadline', `₱${ltiaSavings.toLocaleString()}`);
+        setNumericText('overviewHearingsToday', data.hearings_today);
+        setNumericText('overviewHearingsWeek', data.hearings_this_week);
+        setElText('overviewSummonsSla', `${Number(cap.summons_sla_pct ?? 100)}%`);
+
+        const stagePaanyaya = Number(data.active_paanyaya || 0);
+        const stageMed = Number(data.mediation_cases || 0);
+        const stageCon = Number(data.pangkat_conciliations || 0);
+        const stageSettled = resolvedTotal;
+        const stageDenom = Math.max(1, stagePaanyaya + stageMed + stageCon + stageSettled);
+
+        setNumericText('stageCountPaanyaya', stagePaanyaya);
+        setNumericText('stageCountMediation', stageMed);
+        setNumericText('stageCountConciliation', stageCon);
+        setNumericText('stageCountSettled', stageSettled);
+
+        const setBarWidth = (id, count) => {
+            const el = document.getElementById(id);
+            if (el) el.style.width = `${Math.max(4, Math.round((count / stageDenom) * 100))}%`;
+        };
+        setBarWidth('stageBarPaanyaya', stagePaanyaya);
+        setBarWidth('stageBarMediation', stageMed);
+        setBarWidth('stageBarConciliation', stageCon);
+        setBarWidth('stageBarSettled', stageSettled);
+
+        setElText(
+            'overviewExtraOutcomesChip',
+            `${Number(data.cfa_cases || 0)} CFA Issued · ${Number(data.archived_cases || 0)} Archived · ${Number(cap.active_lupon_members || 0)} Lupon Active`
+        );
+
+        // Hidden compatibility counters
+        setNumericText('totalCases', data.total_cases);
+        setNumericText('pendingReview', data.pending_review);
+        setNumericText('hearingsToday', data.hearings_today);
+        setNumericText('hearingsThisWeek', data.hearings_this_week);
+        setNumericText('paanyayaComplaints', data.paanyaya_complaints);
+        setNumericText('activeMediations', data.active_mediations);
+        setNumericText('settledCases', data.settled_cases);
+        setNumericText('archivedCases', data.archived_cases);
+        setNumericText('cfaCases', data.cfa_cases);
+        setNumericText('deadlinesDue', data.deadlines_due);
+    };
+
+    // =========================================================================
+    // Captain's Docket & Priority Action Table (5 Tabs + Search + Pagination)
+    // =========================================================================
+    const getFilteredDocketRows = () => {
+        const d = state.dashboardData || {};
+        const q = state.docketSearch.trim().toLowerCase();
+        let rows = [];
+
+        if (state.activeDocketTab === 'priority') {
+            rows = d.priority_actions || [];
+        } else if (state.activeDocketTab === 'cases') {
+            rows = d.cases || [];
+            if (state.activeStatTarget === 'active-mediation') {
+                rows = rows.filter((c) => c.case_status === 'Mediation' || c.case_status === 'Conciliation');
+            } else if (state.activeStatTarget === 'settled-cases') {
+                rows = rows.filter((c) => c.case_status === 'Settled');
+            }
+        } else if (state.activeDocketTab === 'screening') {
+            rows = d.pending_complaints || [];
+        } else if (state.activeDocketTab === 'residents') {
+            rows = d.pending_verifications || [];
+        } else if (state.activeDocketTab === 'transmittals') {
+            rows = d.transmittals_due || [];
+        }
+
+        if (!q) return rows;
+        return rows.filter((item) => JSON.stringify(item).toLowerCase().includes(q));
+    };
+
+    const renderCaptainDocketTable = () => {
+        const d = state.dashboardData || {};
+        const thead = document.getElementById('captainDocketThead');
+        const tbody = document.getElementById('periodCasesTableBody');
+        const countBadge = document.getElementById('periodCaseCountBadge');
+        const paginationWrap = document.getElementById('casesTablePagination');
+        const infoEl = document.getElementById('casesPaginationInfo');
+        const prevBtn = document.getElementById('casesPrevPageBtn');
+        const nextBtn = document.getElementById('casesNextPageBtn');
+        const pageNums = document.getElementById('casesPageNumbers');
+        if (!thead || !tbody) return;
+
+        setElText('tabCountPriority', (d.priority_actions || []).length);
+        setElText('tabCountCases', (d.cases || []).length);
+        setElText('tabCountScreening', (d.pending_complaints || []).length);
+        setElText('tabCountResidents', (d.pending_verifications || []).length);
+        setElText('tabCountTransmittals', (d.transmittals_due || []).length);
+
+        const headersByTab = {
+            priority: ['Urgency', 'Item / Reference', 'Details / Purok', 'Deadline / Date', 'Action'],
+            cases: ['Case #', 'Title & Parties', 'Type / Purok', 'Stage / Deadline', 'Action'],
+            screening: ['Status', 'Complaint # & Title', 'Source / Purok', 'Date Filed', 'Action'],
+            residents: ['Profile Status', 'Resident Name', 'Email / Contact', 'Purok & Address', 'Action'],
+            transmittals: ['Attestation / Transmittal', 'Case # & Title', 'Settlement Date', '10-Day / Repudiation', 'Action']
+        };
+
+        const cols = headersByTab[state.activeDocketTab] || headersByTab.cases;
+        thead.innerHTML = `<tr>${cols.map((c, idx) => `<th${idx === cols.length - 1 ? ' style="text-align:right;"' : ''}>${escapeHtml(c)}</th>`).join('')}</tr>`;
+
+        const allRows = getFilteredDocketRows();
+        if (countBadge) {
+            countBadge.textContent = `${allRows.length} item${allRows.length === 1 ? '' : 's'}`;
+        }
+
+        const total = allRows.length;
+        if (total === 0) {
+            tbody.innerHTML = `<tr><td colspan="${cols.length}" class="pb-table-empty">No matching records in this view.</td></tr>`;
+            if (paginationWrap) paginationWrap.style.display = 'none';
+            return;
+        }
+
+        const totalPages = Math.max(1, Math.ceil(total / state.casesPerPage));
+        if (state.casesPage > totalPages) state.casesPage = totalPages;
+        if (state.casesPage < 1) state.casesPage = 1;
+
+        const startIdx = (state.casesPage - 1) * state.casesPerPage;
+        const endIdx = Math.min(startIdx + state.casesPerPage, total);
+        const pageItems = allRows.slice(startIdx, endIdx);
+
+        tbody.innerHTML = pageItems.map((item) => {
+            if (state.activeDocketTab === 'priority') {
+                const urgClass = item.urgency === 'critical' ? 'is-critical' : (item.urgency === 'warning' ? 'is-warning' : 'is-info');
+                return `
+                    <tr>
+                        <td><span class="pb-urgency-pill ${urgClass}">${escapeHtml(item.badge || 'Action')}</span></td>
+                        <td><strong>${escapeHtml(item.title)}</strong></td>
+                        <td><span style="color:#475569;">${escapeHtml(item.subtitle || '—')}</span></td>
+                        <td><span style="color:#64748b; font-size:0.77rem;">${escapeHtml(item.meta || '—')}</span></td>
+                        <td style="text-align:right;"><a href="${escapeHtml(item.link_url || '#')}" class="pb-row-action-btn">${escapeHtml(item.action_label || 'Open')}</a></td>
+                    </tr>
+                `;
+            }
+
+            if (state.activeDocketTab === 'screening') {
+                return `
+                    <tr>
+                        <td><span class="pb-urgency-pill is-warning">${escapeHtml(item.status || 'Under Review')}</span></td>
+                        <td>
+                            <div style="font-weight:700; color:#0f172a;">#${escapeHtml(item.complaint_number || item.complaint_id)} · ${escapeHtml(item.complaint_title || 'Complaint')}</div>
+                        </td>
+                        <td>${escapeHtml(item.complaint_source || 'Walk-in')}${item.incident_purok ? ' · ' + escapeHtml(item.incident_purok) : ''}</td>
+                        <td>${formatDateOnly(item.filed_date)}</td>
+                        <td style="text-align:right;"><a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" class="pb-row-action-btn">Screen</a></td>
+                    </tr>
+                `;
+            }
+
+            if (state.activeDocketTab === 'residents') {
+                const pillClass = item.profile_complete ? 'is-warning' : 'is-info';
+                const pillText = item.profile_complete ? 'Ready to Verify' : 'Incomplete Profile';
+                const addrText = [item.purok, item.address].filter(Boolean).join(' — ') || 'Not provided yet';
+                return `
+                    <tr>
+                        <td><span class="pb-urgency-pill ${pillClass}">${pillText}</span></td>
+                        <td>
+                            <div style="font-weight:700; color:#0f172a;">${escapeHtml(item.full_name || item.username)}</div>
+                            <div style="font-size:0.74rem; color:#64748b;">@${escapeHtml(item.username)}</div>
+                        </td>
+                        <td>
+                            <div>${escapeHtml(item.email || '—')}</div>
+                            <div style="font-size:0.74rem; color:#64748b;">${escapeHtml(item.contact_no || 'No mobile')}</div>
+                        </td>
+                        <td>${escapeHtml(addrText)}</td>
+                        <td style="text-align:right;"><a href="../users/resident-verification.php" class="pb-row-action-btn">Review</a></td>
+                    </tr>
+                `;
+            }
+
+            if (state.activeDocketTab === 'transmittals') {
+                const needsAttest = Number(item.pb_attested || 0) === 0;
+                const badgeClass = needsAttest ? 'is-warning' : (item.transmittal_status === 'Transmitted' || item.transmittal_status === 'Acknowledged' ? 'is-success' : 'is-info');
+                const badgeText = needsAttest ? 'Needs PB Attestation' : `Transmittal: ${item.transmittal_status || 'Pending'}`;
+                const deadlineText = item.ten_day_expiry_date
+                    ? `10d due ${formatDateOnly(item.ten_day_expiry_date)}`
+                    : (item.repudiation_deadline ? `Repudiation ends ${formatDateOnly(item.repudiation_deadline)}` : '—');
+                return `
+                    <tr>
+                        <td><span class="pb-urgency-pill ${badgeClass}">${escapeHtml(badgeText)}</span></td>
+                        <td>
+                            <div style="font-weight:700; color:#0f172a;">Case #${escapeHtml(item.case_number || item.case_id)}</div>
+                            <div style="font-size:0.74rem; color:#64748b;">${escapeHtml(item.complaint_title || 'Amicable Settlement')}</div>
+                        </td>
+                        <td>${formatDateOnly(item.settlement_date)}</td>
+                        <td>${escapeHtml(deadlineText)}</td>
+                        <td style="text-align:right;"><a href="../cases/case-details.php?id=${encodeURIComponent(item.case_id)}" class="pb-row-action-btn">${needsAttest ? 'Attest' : 'Manage'}</a></td>
+                    </tr>
+                `;
+            }
+
+            // Default: Case Register
+            const caseNum = item.case_number || `Case #${item.case_id}`;
+            const parties = [
+                item.complainant_names ? `By: ${item.complainant_names}` : '',
+                item.respondent_names ? `vs. ${item.respondent_names}` : ''
+            ].filter(Boolean).join(' · ');
+            const typePill = item.case_type === 'Criminal'
+                ? '<span class="type-pill type-criminal">Criminal</span>'
+                : '<span class="type-pill type-civil">Civil</span>';
+            const statusClass = getStatusClass(item.case_status);
+            const deadlineNote = item.mediation_deadline_date
+                ? `<div style="font-size:0.72rem; color:#64748b; margin-top:3px;">${item.is_paused ? 'Paused · ' : ''}Due ${formatDateOnly(item.mediation_deadline_date)}</div>`
+                : `<div style="font-size:0.72rem; color:#64748b; margin-top:3px;">Filed ${formatDateOnly(item.docket_date)}</div>`;
+
+            return `
+                <tr>
+                    <td><a href="../cases/case-details.php?id=${encodeURIComponent(item.case_id)}" class="case-number-link">${escapeHtml(caseNum)}</a></td>
+                    <td>
+                        <div class="case-title-text">${escapeHtml(item.complaint_title || 'Untitled Case')}</div>
+                        ${parties ? `<div class="case-parties-sub">${escapeHtml(parties)}</div>` : ''}
+                    </td>
+                    <td>
+                        ${typePill}
+                        ${item.incident_purok ? `<div class="case-category-sub">${escapeHtml(item.incident_purok)}</div>` : ''}
+                    </td>
+                    <td>
+                        <span class="status-badge ${statusClass}">${escapeHtml(item.case_status || 'Docketed')}</span>
+                        ${deadlineNote}
+                    </td>
+                    <td style="text-align:right;"><a href="../cases/case-details.php?id=${encodeURIComponent(item.case_id)}" class="pb-row-action-btn">Open Case</a></td>
+                </tr>
+            `;
+        }).join('');
+
+        if (paginationWrap) {
+            paginationWrap.style.display = totalPages > 1 ? 'flex' : 'none';
+        }
+        if (infoEl) {
+            infoEl.textContent = `Showing ${startIdx + 1} to ${endIdx} of ${total} item${total === 1 ? '' : 's'}`;
+        }
+        if (prevBtn) prevBtn.disabled = state.casesPage <= 1;
+        if (nextBtn) nextBtn.disabled = state.casesPage >= totalPages;
+        if (pageNums) {
+            pageNums.replaceChildren();
+            if (totalPages > 1) {
+                for (let i = 1; i <= totalPages; i++) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `page-num-btn ${i === state.casesPage ? 'is-active' : ''}`;
+                    btn.textContent = String(i);
+                    btn.addEventListener('click', () => {
+                        state.casesPage = i;
+                        renderCaptainDocketTable();
+                    });
+                    pageNums.appendChild(btn);
+                }
+            }
+        }
+    };
+
+    const setActiveDocketTab = (tabName) => {
+        state.activeDocketTab = tabName;
+        state.casesPage = 1;
+        document.querySelectorAll('.pb-docket-tab').forEach((btn) => {
+            const isMatch = btn.getAttribute('data-docket-tab') === tabName;
+            btn.classList.toggle('active', isMatch);
+            btn.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+        });
+        renderCaptainDocketTable();
+    };
+
+    // =========================================================================
+    // Captain AI Assistant (Live Local Insights + Optional Gemini KP Advisor)
+    // =========================================================================
+    const buildLocalAiAnswer = (kind) => {
+        const d = state.dashboardData || {};
+        const cap = d.captain_summary || {};
+        const analytics = d.analytics || {};
+        const topCat = analytics.top_categories?.[0];
+        const topPurok = analytics.purok_hotspots?.[0];
+        const actions = d.priority_actions || [];
+
+        if (kind === 'risks') {
+            return `
+                <strong>SLA &amp; Statutory Deadline Check:</strong><br>
+                • <strong>${Number(cap.pb_mediation_overdue || 0)}</strong> mediation clock(s) overdue, <strong>${Number(cap.pb_mediation_due_soon || 0)}</strong> due within 7 days, <strong>${Number(cap.pb_mediation_paused || 0)}</strong> paused.<br>
+                • <strong>${Number(cap.pangkat_convening_overdue || 0)}</strong> Pangkat panel(s) past convening deadline.<br>
+                • <strong>${Number(cap.pending_pb_attestations || 0)}</strong> Amicable Settlement(s) awaiting PB attestation &amp; <strong>${Number(cap.pending_transmittals || 0)}</strong> 10-day MTC/DILG transmittals pending.<br>
+                • <strong>${Number(cap.unserved_summons || 0)}</strong> pending/unserved summons record(s) across active cases.
+            `;
+        }
+        if (kind === 'hotspots') {
+            const catList = (analytics.top_categories || []).slice(0, 3).map((c) => `${escapeHtml(c.display_name || c.category_name)} (${c.total})`).join(', ') || 'None recorded yet';
+            const purokList = (analytics.purok_hotspots || []).slice(0, 3).map((p) => `${escapeHtml(p.purok_name)} (${p.total})`).join(', ') || 'No purok hotspot data';
+            return `
+                <strong>Peace &amp; Order Hotspots:</strong><br>
+                • <strong>Top Puroks:</strong> ${purokList}<br>
+                • <strong>Top Dispute Types:</strong> ${catList}<br>
+                Consider prioritizing Barangay Tanod visibility in ${escapeHtml(topPurok?.purok_name || 'high-volume areas')}.
+            `;
+        }
+        if (kind === 'council') {
+            return `
+                <strong>Sangguniang Barangay Talking Points (${escapeHtml(state.currentPeriodLabel)}):</strong><br>
+                • Handled <strong>${Number(cap.total_disputes || 0)}</strong> community disputes (${Number(d.total_cases || 0)} formal cases, ${Number(d.paanyaya_complaints || 0)} Stage 0 Paanyaya).<br>
+                • Resolved <strong>${Number(cap.total_resolved_all || 0)}</strong> disputes amicably (${Number(cap.overall_resolution_rate_pct || 0)}% overall rate), generating <strong>₱${Number(cap.ltia_estimated_savings || 0).toLocaleString()}</strong> in estimated LTIA court-fee savings.<br>
+                • Summons Next-Working-Day SLA stands at <strong>${Number(cap.summons_sla_pct ?? 100)}%</strong>.
+            `;
+        }
+        // Default: Today's Executive Brief
+        const topAction = actions[0] ? `${escapeHtml(actions[0].badge)}: ${escapeHtml(actions[0].title)}` : 'No urgent overdue actions right now.';
+        return `
+            <strong>Captain's Executive Brief:</strong><br>
+            • <strong>${Number(d.hearings_today || 0)}</strong> hearing(s) today (${Number(d.hearings_this_week || 0)} in next 7 days) &amp; <strong>${Number(cap.pb_mediation_active || 0)}</strong> active PB Mediation cases.<br>
+            • <strong>${Number(cap.action_required_total || 0)}</strong> items need attention (${Number(cap.pending_screening || 0)} complaint reviews, ${Number(cap.pending_resident_verifications || 0)} resident verifications, ${Number(cap.pending_pb_attestations || 0)} PB attestations).<br>
+            • <strong>Top Priority:</strong> ${topAction}<br>
+            • <strong>Lead Issue:</strong> ${escapeHtml(topCat?.display_name || topCat?.category_name || 'N/A')} in ${escapeHtml(topPurok?.purok_name || 'Barangay Tumana')}.
+        `;
+    };
+
+    const showAiResponse = (htmlContent) => {
+        const orbWrap = document.getElementById('captainAiOrbWrap');
+        const box = document.getElementById('captainAiResponseBox');
+        if (orbWrap) orbWrap.style.display = 'none';
+        if (box) {
+            box.innerHTML = htmlContent;
+            box.style.display = 'block';
+        }
+    };
+
+    const initCaptainAiAssistant = () => {
+        const form = document.getElementById('captainAiForm');
+        const input = document.getElementById('captainAiInput');
+        const resetBtn = document.getElementById('btnCaptainAiReset');
+        const consentCheck = document.getElementById('captainAiGeminiConsent');
+
+        document.querySelectorAll('.pb-ai-chip').forEach((chip) => {
+            chip.addEventListener('click', () => {
+                const promptKey = chip.getAttribute('data-ai-prompt') || 'brief';
+                showAiResponse(buildLocalAiAnswer(promptKey));
+            });
+        });
+
+        resetBtn?.addEventListener('click', () => {
+            const orbWrap = document.getElementById('captainAiOrbWrap');
+            const box = document.getElementById('captainAiResponseBox');
+            if (orbWrap) orbWrap.style.display = 'flex';
+            if (box) {
+                box.innerHTML = '';
+                box.style.display = 'none';
+            }
+            if (input) input.value = '';
+        });
+
+        form?.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const q = (input?.value || '').trim();
+            if (!q) return;
+            const lower = q.toLowerCase();
+
+            // Answer barangay telemetry questions locally & instantly without external AI calls
+            if (!consentCheck?.checked) {
+                if (lower.includes('deadline') || lower.includes('overdue') || lower.includes('sla')) {
+                    showAiResponse(buildLocalAiAnswer('risks'));
+                    return;
+                }
+                if (lower.includes('purok') || lower.includes('hotspot') || lower.includes('issue') || lower.includes('crime')) {
+                    showAiResponse(buildLocalAiAnswer('hotspots'));
+                    return;
+                }
+                if (lower.includes('council') || lower.includes('ltia') || lower.includes('saving') || lower.includes('report')) {
+                    showAiResponse(buildLocalAiAnswer('council'));
+                    return;
+                }
+                if (lower.includes('brief') || lower.includes('today') || lower.includes('summary') || lower.includes('status')) {
+                    showAiResponse(buildLocalAiAnswer('brief'));
+                    return;
+                }
+                showAiResponse(`${buildLocalAiAnswer('brief')}<div style="margin-top:8px; padding-top:8px; border-top:1px dashed #cbd5e1; color:#64748b;">Tip: Check the Gemini consent box below to ask open-ended R.A. 7160 legal/procedural questions.</div>`);
+                return;
+            }
+
+            showAiResponse('<span style="color:#64748b;">Consulting AGAP Gemini KP Advisor...</span>');
+            try {
+                const res = await fetch('../../../backend/api/ai/chatbot.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json; charset=utf-8',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': getCsrfToken()
+                    },
+                    body: JSON.stringify({
+                        message: q,
+                        external_ai_consent: true
+                    })
+                });
+                const payload = await res.json().catch(() => ({}));
+                if (!res.ok || !payload.success) {
+                    throw new Error(payload.message || 'Gemini AI advisor is currently unavailable.');
+                }
+                const replyHtml = escapeHtml(payload.reply || '').replace(/\n/g, '<br>');
+                showAiResponse(`<strong>AGAP KP Advisor:</strong><br>${replyHtml}`);
+            } catch (err) {
+                showAiResponse(`<span style="color:#b91c1c;">${escapeHtml(err.message)}</span><div style="margin-top:8px;">${buildLocalAiAnswer('brief')}</div>`);
+            }
+        });
+    };
+
+    // =========================================================================
+    // Analytics, Audit Feed, Paanyaya, Hearings & Queue Reordering
+    // =========================================================================
+    const renderAnalytics = (analyticsData) => {
+        if (!analyticsData) return;
+
+        const catContainer = document.getElementById('analyticsTopCategories');
+        if (catContainer) {
+            const categories = analyticsData.top_categories || [];
+            if (categories.length === 0) {
+                catContainer.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; text-align: center; padding: 14px;">No categorized complaints recorded yet.</div>';
+            } else {
+                const maxCat = Math.max(...categories.map((c) => Number(c.total || 0)), 1);
+                catContainer.innerHTML = categories.map((c) => {
+                    const pct = Math.round((Number(c.total || 0) / maxCat) * 100);
+                    return `
+                        <div class="analytics-bar-item">
+                            <div class="analytics-bar-header">
+                                <span class="analytics-bar-label" title="${escapeHtml(c.category_name)}">${escapeHtml(c.display_name || c.category_name)}</span>
+                                <span class="analytics-bar-count">${c.total} case${Number(c.total) === 1 ? '' : 's'}</span>
+                            </div>
+                            <div class="analytics-bar-track">
+                                <div class="analytics-bar-fill" style="width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        const purokContainer = document.getElementById('analyticsPurokHotspots');
+        if (purokContainer) {
+            const puroks = analyticsData.purok_hotspots || [];
+            if (puroks.length === 0) {
+                purokContainer.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; text-align: center; padding: 14px;">No purok location data recorded yet.</div>';
+            } else {
+                const maxPurok = Math.max(...puroks.map((p) => Number(p.total || 0)), 1);
+                purokContainer.innerHTML = puroks.map((p) => {
+                    const totalVal = Number(p.total || 0);
+                    const pct = Math.round((totalVal / maxPurok) * 100);
+                    return `
+                        <div class="analytics-bar-item">
+                            <div class="analytics-bar-header">
+                                <span class="analytics-bar-label">${escapeHtml(p.purok_name)}</span>
+                                <span class="analytics-bar-count" style="color: #ea580c;">${totalVal} dispute${totalVal === 1 ? '' : 's'}</span>
+                            </div>
+                            <div class="analytics-bar-track">
+                                <div class="analytics-bar-fill hotspot-fill" style="width: ${pct}%;"></div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        const genderContainer = document.getElementById('analyticsGenderBreakdown');
+        if (genderContainer) {
+            const genders = analyticsData.gender_breakdown || { Male: 0, Female: 0, Other: 0 };
+            const totalG = (genders.Male || 0) + (genders.Female || 0) + (genders.Other || 0);
+            const malePct = totalG > 0 ? Math.round(((genders.Male || 0) / totalG) * 100) : 0;
+            const femalePct = totalG > 0 ? Math.round(((genders.Female || 0) / totalG) * 100) : 0;
+
+            genderContainer.innerHTML = `
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Female Parties</span>
+                    <span class="demo-value" style="color: #db2777;">${genders.Female || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${femalePct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Male Parties</span>
+                    <span class="demo-value" style="color: #2563eb;">${genders.Male || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${malePct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Total Participants</span>
+                    <span class="demo-value">${totalG}</span>
+                </div>
+            `;
+        }
+
+        const ageContainer = document.getElementById('analyticsAgeDistribution');
+        if (ageContainer) {
+            const age = analyticsData.age_distribution || { youth: 0, adults: 0, seniors: 0, total: 0 };
+            const youthPct = age.total > 0 ? Math.round((age.youth / age.total) * 100) : 0;
+            const adultPct = age.total > 0 ? Math.round((age.adults / age.total) * 100) : 0;
+            const seniorPct = age.total > 0 ? Math.round((age.seniors / age.total) * 100) : 0;
+
+            ageContainer.innerHTML = `
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Youth (18 – 29 yrs)</span>
+                    <span class="demo-value" style="color: #0284c7;">${age.youth} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${youthPct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Adults (30 – 59 yrs)</span>
+                    <span class="demo-value" style="color: #16a34a;">${age.adults} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${adultPct}%)</small></span>
+                </div>
+                <div class="demographic-stat-pill">
+                    <span class="demo-label">Senior Citizens (60+ yrs)</span>
+                    <span class="demo-value" style="color: #9333ea;">${age.seniors} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${seniorPct}%)</small></span>
+                </div>
+            `;
+        }
+    };
+
+    const renderAuditFeed = (feed) => {
+        const container = document.getElementById('captainAuditFeedList');
+        if (!container) return;
+        const items = Array.isArray(feed) ? feed : [];
+        if (!items.length) {
+            container.innerHTML = '<div class="pb-table-empty">No recent audit logs recorded.</div>';
+            return;
+        }
+        container.innerHTML = items.map((log) => `
+            <div class="audit-feed-item">
+                <div class="audit-feed-icon" aria-hidden="true">🛡️</div>
+                <div class="audit-feed-body">
+                    <div class="audit-feed-header">
+                        <span class="audit-feed-user">${escapeHtml(log.user_name || 'System')} <small style="font-weight:500; color:#64748b;">(${escapeHtml(log.role_name || 'Staff')})</small></span>
+                        <span class="audit-feed-time">${escapeHtml(timeAgo(log.audit_date))}</span>
+                    </div>
+                    <p class="audit-feed-action">${escapeHtml(log.action)} · <span style="color:#64748b;">${escapeHtml(log.module_name || 'System')}</span></p>
+                </div>
+            </div>
+        `).join('');
     };
 
     let draggedHearingCard = null;
-
-    const bindQueueDragAndDrop = (card, container) => {
-        card.draggable = true;
-        card.addEventListener('dragstart', (e) => {
-            draggedHearingCard = card;
-            card.classList.add('is-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', card.dataset.index || '0');
-        });
-        card.addEventListener('dragend', () => {
-            card.classList.remove('is-dragging');
-            container.querySelectorAll('.dashboard-list-item').forEach(c => c.classList.remove('drag-over'));
-            if (draggedHearingCard) {
-                draggedHearingCard = null;
-                saveReorderedSequence(container);
-            }
-        });
-        card.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            if (!draggedHearingCard || draggedHearingCard === card) return;
-            const bounds = card.getBoundingClientRect();
-            card.parentNode.insertBefore(draggedHearingCard, e.clientY - bounds.top > bounds.height / 2 ? card.nextSibling : card);
-            card.classList.add('drag-over');
-        });
-        card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
-    };
 
     const saveReorderedSequence = async (container) => {
         if (state.isSavingQueue) return;
@@ -283,8 +1173,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const orderNum = newIdx + 1;
             const seqBadge = el.querySelector('.queue-seq-badge');
             if (seqBadge) seqBadge.textContent = `#${orderNum}`;
-            el.dataset.index = newIdx;
-
+            el.dataset.index = String(newIdx);
             itemsPayload.push({
                 type: el.dataset.type || 'hearing',
                 id: parseInt(el.dataset.id, 10),
@@ -292,12 +1181,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 order: orderNum
             });
         });
-
         if (itemsPayload.length === 0) return;
 
         const queueDate = items[0]?.dataset.queueDate || getTodayDateStr();
         state.isSavingQueue = true;
-        items.forEach(item => { item.draggable = false; });
+        items.forEach((item) => { item.draggable = false; });
         try {
             const res = await fetch('../../../backend/api/hearings/queue.php', {
                 method: 'POST',
@@ -314,7 +1202,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = await res.json().catch(() => ({}));
             if (data.success) {
                 if (Array.isArray(data.updated_items)) {
-                    data.updated_items.forEach(up => {
+                    data.updated_items.forEach((up) => {
                         const card = container.querySelector(`.dashboard-list-item[data-type="${up.type}"][data-id="${up.id}"]`);
                         if (card) {
                             const timePill = card.querySelector('.agenda-time-pill');
@@ -324,37 +1212,134 @@ document.addEventListener('DOMContentLoaded', () => {
                                     : up.formatted_time;
                             }
                         }
-                        if (up.type === 'hearing' && Array.isArray(state.hearings)) {
-                            const matchH = state.hearings.find(h => h.hearing_id == up.id);
-                            if (matchH) {
-                                matchH.hearing_date = up.hearing_date;
-                                matchH.queue_order = up.order;
-                            }
-                            const calendarHearing = state.calendarHearings.find(h => h.hearing_id == up.id);
-                            if (calendarHearing) {
-                                calendarHearing.hearing_date = up.hearing_date;
-                                calendarHearing.queue_order = up.order;
-                            }
-                        }
                     });
                 }
-                // Re-read the authoritative schedule so the dashboard,
-                // calendar, and later-opened case workspaces use the same
-                // recalculated time, not just the moved card's temporary UI.
                 renderDashboardCalendar();
                 window.dispatchEvent(new CustomEvent('agap:hearing-schedule-updated', { detail: data }));
                 setTimeout(fetchDashboardData, 0);
-                console.log(`Docket sequence and live times updated (#1 - #${itemsPayload.length})`);
-                window.dispatchEvent(new CustomEvent('agap:queue-reordered', { detail: data }));
             }
         } catch (err) {
             console.error('Error saving hearing sequence:', err);
         } finally {
             state.isSavingQueue = false;
-            items.forEach(item => { item.draggable = true; });
+            items.forEach((item) => { item.draggable = true; });
         }
     };
 
+    const bindQueueDragAndDrop = (card, container) => {
+        card.draggable = true;
+        card.addEventListener('dragstart', (e) => {
+            draggedHearingCard = card;
+            card.classList.add('is-dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', card.dataset.index || '0');
+        });
+        card.addEventListener('dragend', () => {
+            card.classList.remove('is-dragging');
+            container.querySelectorAll('.dashboard-list-item').forEach((c) => c.classList.remove('drag-over'));
+            if (draggedHearingCard) {
+                draggedHearingCard = null;
+                saveReorderedSequence(container);
+            }
+        });
+        card.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (!draggedHearingCard || draggedHearingCard === card) return;
+            const bounds = card.getBoundingClientRect();
+            card.parentNode.insertBefore(draggedHearingCard, e.clientY - bounds.top > bounds.height / 2 ? card.nextSibling : card);
+            card.classList.add('drag-over');
+        });
+        card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
+    };
+
+    const addPaanyayaItem = (container, item, displayIndex = 0) => {
+        const art = document.createElement('article');
+        art.className = 'dashboard-list-item';
+        art.dataset.id = item.paanyaya_id || item.id || '';
+        art.dataset.type = 'paanyaya';
+        art.dataset.sessionId = item.session_id || '';
+        art.dataset.queueDate = String(item.scheduled_date || getTodayDateStr()).slice(0, 10);
+        art.style.cssText = 'padding: 12px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;';
+
+        const content = document.createElement('div');
+        content.className = 'dashboard-list-content';
+        content.style.flex = '1';
+
+        const timeStr = item.scheduled_date
+            ? `${formatDateClean(item.scheduled_date)}${item.scheduled_time ? ' · ' + formatTimeOnly(item.scheduled_time) : ''}`
+            : (formatTimeOnly(item.scheduled_time) || 'Scheduled');
+        const invitee = item.invitee_name || 'Inanyayahan';
+        const complainant = item.complainant_name || 'Nagpaanyaya';
+        const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Pre-Docketed';
+
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;';
+
+        const dragHandle = document.createElement('span');
+        dragHandle.className = 'drag-handle';
+        dragHandle.title = 'I-drag para baguhin ang docket sequence';
+        dragHandle.innerHTML = '&#8942;&#8942;';
+
+        const seqBadge = document.createElement('span');
+        seqBadge.className = 'queue-seq-badge';
+        seqBadge.textContent = `#${displayIndex + 1}`;
+
+        const timeBadge = document.createElement('span');
+        timeBadge.className = 'agenda-time-pill';
+        timeBadge.style.cssText = 'font-size: 0.76rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 8px; border-radius: 5px; white-space: nowrap;';
+        timeBadge.textContent = timeStr;
+
+        const heading = document.createElement('h3');
+        heading.style.cssText = 'margin: 0; font-size: 0.9rem; font-weight: 700; color: #0f172a;';
+        heading.textContent = `${complaintRef} · Paanyaya Invitation`;
+
+        headerRow.append(dragHandle, seqBadge, timeBadge, heading);
+
+        const inviteeRow = document.createElement('div');
+        inviteeRow.style.cssText = 'font-size: 0.83rem; color: #1e293b; margin-bottom: 4px; line-height: 1.4;';
+        inviteeRow.innerHTML = `<span style="color: #166534; font-weight: 700;">Nagpaanyaya:</span> <strong>${escapeHtml(complainant)}</strong> <span style="color: #94a3b8; margin: 0 4px;">•</span> <span style="color: #4f46e5; font-weight: 700;">Inanyayahan:</span> <strong>${escapeHtml(invitee)}</strong>`;
+
+        const detailsRow = document.createElement('p');
+        detailsRow.style.cssText = 'font-size: 0.76rem; color: #64748b; margin: 0;';
+        detailsRow.innerHTML = `<span>${escapeHtml(item.venue || 'Tanggapan ng Barangay Tumana')}</span>${item.complaint_title ? ` • <span>${escapeHtml(item.complaint_title)}</span>` : ''}`;
+
+        content.append(headerRow, inviteeRow, detailsRow);
+        art.appendChild(content);
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-shrink: 0;';
+
+        const statusPill = document.createElement('span');
+        statusPill.style.cssText = 'font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 9999px; background: #e0e7ff; color: #3730a3; white-space: nowrap;';
+        statusPill.textContent = item.status || 'Scheduled';
+
+        const viewLink = document.createElement('a');
+        viewLink.className = 'btn-open-case';
+        viewLink.style.cssText = 'padding: 5px 12px; font-size: 11.5px; font-weight: 600;';
+        viewLink.textContent = 'Paanyaya';
+        viewLink.href = item.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : '../paanyaya/index.php';
+
+        actions.append(statusPill, viewLink);
+        art.appendChild(actions);
+        bindQueueDragAndDrop(art, container);
+        container.appendChild(art);
+    };
+
+    const renderPaanyayas = (paanyayas) => {
+        const container = document.getElementById('todayPaanyayas');
+        if (!container) return;
+        container.replaceChildren();
+        const items = (paanyayas || []).filter(isActiveQueueSession);
+        if (!items.length) {
+            return container.appendChild(emptyState('No active Paanyaya invitations scheduled in this timeframe.'));
+        }
+        items.slice(0, 10).forEach((item, idx) => addPaanyayaItem(container, item, idx));
+    };
+
+    // =========================================================================
+    // Punong Barangay Unavailable & Quick Attendance
+    // =========================================================================
     const openPbChoiceModal = (hearingsList, onConfirm) => {
         let modal = document.getElementById('agapPbChoiceModal');
         if (!modal) {
@@ -390,21 +1375,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const totalCount = hearingsList.length;
-        const afternoonCount = hearingsList.filter(h => {
+        const afternoonCount = hearingsList.filter((h) => {
             const m = String(h.hearing_date || '').match(/\s(\d{2}):/);
             return m ? parseInt(m[1], 10) >= 12 : true;
         }).length;
 
         modal.querySelector('#pbChoiceSummary').textContent = `Mayroong ${totalCount} aktibong hearing ngayong araw (${afternoonCount} sa hapon 1:00–5:00 PM). Piliin kung pang-hapon lang o buong araw ang ililipat sa susunod na Martes (awtomatikong mag-iisyu ng KP Form 8 at 9):`;
-
-        modal.querySelector('#pbBtnAfternoonOnly').onclick = () => {
-            modal.style.display = 'none';
-            onConfirm('afternoon');
-        };
-        modal.querySelector('#pbBtnWholeDay').onclick = () => {
-            modal.style.display = 'none';
-            onConfirm('all');
-        };
+        modal.querySelector('#pbBtnAfternoonOnly').onclick = () => { modal.style.display = 'none'; onConfirm('afternoon'); };
+        modal.querySelector('#pbBtnWholeDay').onclick = () => { modal.style.display = 'none'; onConfirm('all'); };
         modal.style.display = 'flex';
     };
 
@@ -439,197 +1417,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const addHearingItem = (container, hearing, displayIndex = 0) => {
-        const item = document.createElement('article');
-        item.className = 'dashboard-list-item clerk-agenda-item';
-        item.dataset.index = displayIndex;
-        item.dataset.id = hearing.hearing_id;
-        item.dataset.type = 'hearing';
-        item.dataset.queueDate = String(hearing.hearing_date || getTodayDateStr()).slice(0, 10);
-        item.style.cssText = 'padding: 14px 12px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-radius: 8px; transition: background 0.15s, transform 0.15s; margin-bottom: 4px;';
-
-        bindQueueDragAndDrop(item, container);
-
-        const content = document.createElement('div');
-        content.className = 'dashboard-list-content';
-        content.style.flex = '1';
-
-        const scheduledTimeStr = formatTimeOnly(hearing.hearing_date) || 'Scheduled';
-        const hearingTypeStr = `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
-        const caseNumberStr = hearing.case_number ? `Case #${hearing.case_number}` : 'Case';
-
-        const compName = hearing.complainant_names || 'Complainant';
-        const respName = hearing.respondent_names || 'Respondent';
-
-        // Title Row: Scheduled Time + Case # and Hearing Type
-        const headerRow = document.createElement('div');
-        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;';
-
-        const timeBadge = document.createElement('span');
-        timeBadge.className = 'agenda-time-pill';
-        timeBadge.style.cssText = 'font-size: 0.78rem; font-weight: 700; color: #0f172a; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; white-space: nowrap;';
-        timeBadge.textContent = scheduledTimeStr;
-
-        const heading = document.createElement('h3');
-        heading.style.cssText = 'margin: 0; font-size: 0.92rem; font-weight: 700; color: #0f172a;';
-        heading.textContent = `${caseNumberStr} · ${hearingTypeStr}`;
-
-                const dragHandle = document.createElement('span');
-        dragHandle.className = 'drag-handle';
-        dragHandle.title = 'I-drag para baguhin ang docket sequence';
-        dragHandle.innerHTML = '&#8942;&#8942;';
-
-        const seqBadge = document.createElement('span');
-        seqBadge.className = 'queue-seq-badge';
-        seqBadge.textContent = `#${displayIndex + 1}`;
-
-        headerRow.append(dragHandle, seqBadge, timeBadge, heading);
-
-        // Parties Row: (C) Complainant vs (R) Respondent
-        const partiesRow = document.createElement('div');
-        partiesRow.style.cssText = 'font-size: 0.84rem; color: #1e293b; margin-bottom: 4px; line-height: 1.4;';
-        partiesRow.innerHTML = `<span style="color: #166534; font-weight: 700;">(C)</span> ${escapeHtml(compName)} <span style="color: #94a3b8; font-weight: 600; margin: 0 4px;">vs.</span> <span style="color: #991b1b; font-weight: 700;">(R)</span> ${escapeHtml(respName)}`;
-
-        // Venue & Title Row
-        const venueRow = document.createElement('p');
-        venueRow.style.cssText = 'font-size: 0.78rem; color: #64748b; margin: 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;';
-        venueRow.innerHTML = `<span>${escapeHtml(hearing.venue || 'Lupon Court Room')}</span>${hearing.complaint_title ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
-
-        content.append(headerRow, partiesRow, venueRow);
-        item.appendChild(content);
-
-        // Actions Container
-        const actions = document.createElement('div');
-        actions.className = 'hearing-card-actions';
-        actions.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: 12px;';
-
-        // Queue & Attendance Evaluation
-        const rawQueue = (hearing.queue_status || '').trim();
-        const rawStatus = (hearing.status || '').trim();
-        const normQueue = rawQueue.toLowerCase().replace(/[\s-]+/g, '_');
-        const normStatus = rawStatus.toLowerCase().replace(/[\s-]+/g, '_');
-
-        const isConcluded = normQueue === 'concluded' || normStatus === 'concluded' || normStatus === 'completed';
-        const isInSession = normQueue === 'in_session';
-        const isStandby = normQueue === 'standby' || normQueue === 'on_standby';
-
-        const compCheckedIn = ['present', 'late'].includes((hearing.complainant_attendance || '').toLowerCase());
-        const respCheckedIn = ['present', 'late'].includes((hearing.respondent_attendance || '').toLowerCase());
-        const isCompleteAndReady = (compCheckedIn && respCheckedIn) || normQueue === 'ready' || normQueue === 'ready_for_hearing';
-
-        // 1-Hour Grace Period & Countdown Calculation
-        const hDate = new Date(hearing.hearing_date ? hearing.hearing_date.replace(' ', 'T') : '');
-        const nowD = new Date();
-        const diffMinutes = (!isNaN(hDate.getTime()) && nowD > hDate) ? Math.floor((nowD - hDate) / 60000) : 0;
-
-        let badgeBg = '#f1f5f9', badgeColor = '#475569', badgeBorder = '#cbd5e1', badgeLabel = 'Scheduled';
-
-        if (isInSession) {
-            badgeBg = '#dbeafe'; badgeColor = '#1e40af'; badgeBorder = '#93c5fd';
-            const startFormatted = formatTimeOnly(hearing.actual_start_time);
-            badgeLabel = startFormatted ? `In Session (Started: ${startFormatted})` : 'In Session';
-        } else if (isConcluded) {
-            badgeBg = '#f3e8ff'; badgeColor = '#7e22ce'; badgeBorder = '#d8b4fe';
-            badgeLabel = 'Concluded';
-        } else if (isStandby) {
-            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a';
-            badgeLabel = 'On Standby';
-        } else if (isCompleteAndReady) {
-            badgeBg = '#dcfce7'; badgeColor = '#15803d'; badgeBorder = '#86efac';
-            badgeLabel = 'Complete & Ready';
-        } else if (diffMinutes >= 60) {
-            badgeBg = '#fee2e2'; badgeColor = '#991b1b'; badgeBorder = '#fca5a5';
-            badgeLabel = `1-Hour Expired (${diffMinutes}m late)`;
-        } else if (diffMinutes > 0) {
-            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a';
-            badgeLabel = `Grace Period (${60 - diffMinutes}m left)`;
-        } else {
-            badgeBg = '#f1f5f9'; badgeColor = '#475569'; badgeBorder = '#cbd5e1';
-            badgeLabel = 'Scheduled';
-        }
-
-        const statusPill = document.createElement('span');
-        statusPill.className = 'hearing-status-pill';
-        statusPill.style.cssText = `font-size: 0.74rem; font-weight: 700; padding: 4px 10px; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;`;
-        statusPill.textContent = badgeLabel;
-        actions.appendChild(statusPill);
-
-        // Button 1: ▶ Call to Session / Start Hearing
-        if (isCompleteAndReady && !isInSession && !isConcluded) {
-            const startBtn = document.createElement('button');
-            startBtn.type = 'button';
-            startBtn.className = 'btn-action-start-hearing';
-            startBtn.style.cssText = 'background: #15803d; color: #ffffff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
-            startBtn.innerHTML = '▶ Call to Session / Start Hearing';
-            startBtn.title = 'Both parties are checked in. Click to start the live hearing session.';
-            startBtn.addEventListener('click', () => handleStartHearing(hearing.hearing_id, hearing.case_number));
-            actions.appendChild(startBtn);
-        }
-
-        // Button 2: ⏸️ Put on Standby / ▶ Resume from Standby
-        if (!isConcluded && !isInSession) {
-            const standbyBtn = document.createElement('button');
-            standbyBtn.type = 'button';
-            standbyBtn.className = 'btn-action-standby-hearing';
-            if (isStandby) {
-                standbyBtn.style.cssText = 'background: #fffbeb; color: #b45309; border: 1.5px solid #b45309; border-radius: 6px; padding: 5px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
-                standbyBtn.innerHTML = '▶ Resume from Standby';
-                standbyBtn.title = 'Resume from standby and return to active queue.';
-            } else {
-                standbyBtn.style.cssText = 'background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
-                standbyBtn.innerHTML = '⏸️ Put on Standby';
-                standbyBtn.title = 'Put on standby to free Lupon Court Room for other ready cases.';
-            }
-            standbyBtn.addEventListener('click', () => handleToggleStandby(hearing.hearing_id, isStandby));
-            actions.appendChild(standbyBtn);
-        }
-
-        // Button 3: Quick Attendance / Check-In
-        if (!isConcluded) {
-            const attBtn = document.createElement('button');
-            attBtn.type = 'button';
-            attBtn.className = 'btn-action-quick-att';
-            attBtn.style.cssText = 'background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 6px; padding: 6px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; transition: all .15s ease;';
-            attBtn.innerHTML = 'Quick Attendance';
-            attBtn.title = 'Quick Attendance / Check-In for Complainant & Respondent';
-            attBtn.addEventListener('click', () => openQuickAttendanceModal(hearing));
-            actions.appendChild(attBtn);
-        }
-
-        // Button 4: Open Case
-        const openCaseBtn = document.createElement('a');
-        openCaseBtn.className = 'btn-open-case';
-        openCaseBtn.innerHTML = 'Open Case';
-        if (hearing.complaint_id) {
-            openCaseBtn.href = `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}`;
-        } else if (hearing.case_id) {
-            openCaseBtn.href = `../cases/case-details.php?id=${encodeURIComponent(hearing.case_id)}`;
-        } else {
-            openCaseBtn.href = '#';
-        }
-        openCaseBtn.title = 'View full case and complaint record';
-        actions.appendChild(openCaseBtn);
-
-        item.appendChild(actions);
-        container.appendChild(item);
-    };
-
     const handleStartHearing = async (hearingId, caseNumber) => {
-        if (!confirm(`Simulan na ba ang sesyon para sa ${caseNumber ? `Case #${caseNumber}` : 'ang kasong ito'}?`)) {
-            return;
-        }
+        if (!confirm(`Simulan na ba ang sesyon para sa ${caseNumber ? `Case #${caseNumber}` : 'ang kasong ito'}?`)) return;
         try {
             const res = await fetch('../../../backend/api/hearings/queue.php', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-Token': getCsrfToken()
-                },
-                body: JSON.stringify({
-                    action: 'start_session',
-                    hearing_id: hearingId
-                })
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                body: JSON.stringify({ action: 'start_session', hearing_id: hearingId })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
@@ -639,29 +1433,18 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(data.message || 'Nagsimula na ang sesyon sa Lupon Court Room.');
             fetchDashboardData();
         } catch (err) {
-            console.error(err);
             alert('May naganap na error sa pagsisimula ng sesyon.');
         }
     };
 
     const handleToggleStandby = async (hearingId, isCurrentlyStandby) => {
         const actionLabel = isCurrentlyStandby ? 'ibalik mula sa Standby' : 'ilagay sa Standby';
-        if (!confirm(`Nais mo bang ${actionLabel} ang pagdinig na ito?`)) {
-            return;
-        }
+        if (!confirm(`Nais mo bang ${actionLabel} ang pagdinig na ito?`)) return;
         try {
             const res = await fetch('../../../backend/api/hearings/queue.php', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-Token': getCsrfToken()
-                },
-                body: JSON.stringify({
-                    action: 'standby',
-                    hearing_id: hearingId,
-                    standby: isCurrentlyStandby ? 0 : 1
-                })
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                body: JSON.stringify({ action: 'standby', hearing_id: hearingId, standby: isCurrentlyStandby ? 0 : 1 })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
@@ -670,7 +1453,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             fetchDashboardData();
         } catch (err) {
-            console.error(err);
             alert('May naganap na error sa pag-update ng standby status.');
         }
     };
@@ -678,9 +1460,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const checkDashboardCompAbsence = () => {
         const compRadios = document.querySelectorAll('input[name^="quick_att_party_"][data-party-type="Complainant"]:checked');
         let anyAbsent = false;
-        compRadios.forEach(r => {
-            if (r.value === 'Absent') anyAbsent = true;
-        });
+        compRadios.forEach((r) => { if (r.value === 'Absent') anyAbsent = true; });
         const notice = document.getElementById('quickCompAbsentNotice');
         if (notice) notice.style.display = anyAbsent ? 'block' : 'none';
     };
@@ -688,38 +1468,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const renderQuickAttendanceParties = (parties, defaultCompAtt = 'Present', defaultRespAtt = 'Present') => {
         const container = document.getElementById('quickAttPartiesContainer');
         if (!container) return;
-
         if (!parties || parties.length === 0) {
             container.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; padding: 12px; text-align: center;">Walang nakatalang panig para sa pagdinig na ito.</div>';
             return;
         }
-
-        container.innerHTML = parties.map(p => {
+        container.innerHTML = parties.map((p) => {
             const isComp = (p.party_type === 'Complainant');
             let st = p.attendance_status;
-            if (!st || st === 'Pending' || st === 'Not Recorded') {
-                st = isComp ? defaultCompAtt : defaultRespAtt;
-            }
+            if (!st || st === 'Pending' || st === 'Not Recorded') st = isComp ? defaultCompAtt : defaultRespAtt;
             if (st !== 'Late' && st !== 'Absent') st = 'Present';
-
-            const roleBadgeStyle = isComp
-                ? 'background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;'
-                : 'background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8;';
+            const roleBadgeStyle = isComp ? 'background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;' : 'background: #fdf2f8; color: #be185d; border: 1px solid #fbcfe8;';
             const roleLabel = isComp ? 'Nagpaanyaya (Complainant)' : 'Inanyayahan (Respondent)';
             const partyName = p.resident_name || p.full_name || (isComp ? 'Complainant' : 'Respondent');
-
             return `
                 <div class="quick-att-party-card" style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px;">
                     <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 8px;">
                         <div style="min-width: 0;">
-                            <div style="font-size: 0.94rem; font-weight: 700; color: #0f172a; line-height: 1.35;">
-                                ${escapeHtml(partyName)}
-                            </div>
+                            <div style="font-size: 0.94rem; font-weight: 700; color: #0f172a;">${escapeHtml(partyName)}</div>
                             ${p.address ? `<div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">${escapeHtml(p.address)}</div>` : ''}
                         </div>
-                        <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; ${roleBadgeStyle}">
-                            ${roleLabel}
-                        </span>
+                        <span style="font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; white-space: nowrap; ${roleBadgeStyle}">${roleLabel}</span>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 7px; font-size: 0.84rem;">
                         <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 6px 10px; border-radius: 6px; background: #f0fdf4; border: 1px solid #bbf7d0;">
@@ -738,44 +1506,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }).join('');
-
-        container.querySelectorAll('input[type="radio"]').forEach(r => {
-            r.addEventListener('change', checkDashboardCompAbsence);
-        });
+        container.querySelectorAll('input[type="radio"]').forEach((r) => r.addEventListener('change', checkDashboardCompAbsence));
         checkDashboardCompAbsence();
     };
 
     const openQuickAttendanceModal = async (hearing) => {
         const modal = document.getElementById('quickDashboardAttendanceModal');
         if (!modal) return;
-
         state.activeQuickAttHearing = hearing;
         state.activeQuickAttHearingId = hearing.hearing_id;
         state.activeQuickAttData = null;
 
-        const caseBadge = document.getElementById('quickAttCaseNumBadge');
-        if (caseBadge) caseBadge.textContent = hearing.case_number ? `Case #${hearing.case_number}` : 'Case';
-
-        const typeEl = document.getElementById('quickAttHearingType');
-        if (typeEl) typeEl.textContent = `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
-
-        const timeEl = document.getElementById('quickAttHearingTime');
-        if (timeEl) timeEl.textContent = formatTimeOnly(hearing.hearing_date);
-
-        const venueEl = document.getElementById('quickAttHearingVenue');
-        if (venueEl) venueEl.textContent = hearing.venue || 'Lupon Court Room';
-
+        setElText('quickAttCaseNumBadge', hearing.case_number ? `Case #${hearing.case_number}` : 'Case');
+        setElText('quickAttHearingType', `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`);
+        setElText('quickAttHearingTime', formatTimeOnly(hearing.hearing_date));
+        setElText('quickAttHearingVenue', hearing.venue || 'Lupon Court Room');
         const remarksEl = document.getElementById('quickAttRemarks');
         if (remarksEl) remarksEl.value = hearing.attendance_notes || '';
 
         const container = document.getElementById('quickAttPartiesContainer');
-        if (container) {
-            container.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b; font-size: 0.85rem;">Kinukuha ang talaan ng mga panig...</div>';
-        }
-
+        if (container) container.innerHTML = '<div style="text-align: center; padding: 20px; color: #64748b; font-size: 0.85rem;">Kinukuha ang talaan ng mga panig...</div>';
         const notice = document.getElementById('quickCompAbsentNotice');
         if (notice) notice.style.display = 'none';
-
         modal.style.display = 'flex';
 
         const compVal = hearing.complainant_attendance || 'Present';
@@ -786,21 +1538,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const json = await res.json();
             if (json.success && json.data) {
                 state.activeQuickAttData = json.data;
-                const parties = json.data.parties || [];
-                renderQuickAttendanceParties(parties, compVal, respVal);
+                renderQuickAttendanceParties(json.data.parties || [], compVal, respVal);
             } else {
                 throw new Error(json.message || 'Failed to fetch parties');
             }
         } catch (err) {
-            console.error('Error fetching hearing attendance:', err);
             const fallbackParties = [];
-            const compNames = (hearing.complainant_names || 'Complainant').split(',').map(s => s.trim()).filter(Boolean);
-            const respNames = (hearing.respondent_names || 'Respondent').split(',').map(s => s.trim()).filter(Boolean);
             let fakeId = 1;
-            compNames.forEach(name => {
+            (hearing.complainant_names || 'Complainant').split(',').map((s) => s.trim()).filter(Boolean).forEach((name) => {
                 fallbackParties.push({ resident_id: fakeId++, party_type: 'Complainant', resident_name: name, attendance_status: compVal });
             });
-            respNames.forEach(name => {
+            (hearing.respondent_names || 'Respondent').split(',').map((s) => s.trim()).filter(Boolean).forEach((name) => {
                 fallbackParties.push({ resident_id: fakeId++, party_type: 'Respondent', resident_name: name, attendance_status: respVal });
             });
             renderQuickAttendanceParties(fallbackParties, compVal, respVal);
@@ -818,16 +1566,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitQuickAttendance = async () => {
         const hearingId = state.activeQuickAttHearingId;
         if (!hearingId) return;
-
         const remarks = (document.getElementById('quickAttRemarks')?.value || '').trim();
-        const parties = (state.activeQuickAttData && state.activeQuickAttData.parties) ? state.activeQuickAttData.parties : [];
-
+        const parties = state.activeQuickAttData?.parties || [];
         let partyRecords = [];
         let compOverall = 'Present';
         let respOverall = 'Present';
 
         if (parties.length > 0) {
-            partyRecords = parties.map(p => {
+            partyRecords = parties.map((p) => {
                 const checked = document.querySelector(`input[name="quick_att_party_${p.resident_id}"]:checked`);
                 const st = checked ? checked.value : (p.attendance_status || 'Present');
                 const isPresentOrLate = (st === 'Present' || st === 'Late');
@@ -840,47 +1586,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     verification_status: isPresentOrLate ? 'Verified Served' : 'Pending'
                 };
             });
-
-            const compStatuses = partyRecords.filter(p => p.party_type === 'Complainant').map(p => p.attendance_status);
-            const respStatuses = partyRecords.filter(p => p.party_type === 'Respondent').map(p => p.attendance_status);
-
-            if (compStatuses.length > 0) {
-                if (compStatuses.every(s => s === 'Absent')) compOverall = 'Absent';
-                else if (compStatuses.some(s => s === 'Late')) compOverall = 'Late';
-                else compOverall = 'Present';
-            }
-            if (respStatuses.length > 0) {
-                if (respStatuses.every(s => s === 'Absent')) respOverall = 'Absent';
-                else if (respStatuses.some(s => s === 'Late')) respOverall = 'Late';
-                else respOverall = 'Present';
-            }
+            const compStatuses = partyRecords.filter((p) => p.party_type === 'Complainant').map((p) => p.attendance_status);
+            const respStatuses = partyRecords.filter((p) => p.party_type === 'Respondent').map((p) => p.attendance_status);
+            if (compStatuses.length > 0) compOverall = compStatuses.every((s) => s === 'Absent') ? 'Absent' : (compStatuses.some((s) => s === 'Late') ? 'Late' : 'Present');
+            if (respStatuses.length > 0) respOverall = respStatuses.every((s) => s === 'Absent') ? 'Absent' : (respStatuses.some((s) => s === 'Late') ? 'Late' : 'Present');
         }
 
         const saveBtn = document.getElementById('quickAttSaveBtn');
-        if (saveBtn) {
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Isinesave...';
-        }
-
+        if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Isinesave...'; }
         try {
-            const payload = {
-                hearing_id: hearingId,
-                complainant_attendance: compOverall,
-                respondent_attendance: respOverall,
-                attendance_notes: remarks,
-                session_remarks: remarks,
-                remarks: remarks,
-                parties: partyRecords
-            };
-
             const res = await fetch('../../../backend/api/hearings/attendance.php', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-Token': getCsrfToken()
-                },
-                body: JSON.stringify(payload)
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+                body: JSON.stringify({
+                    hearing_id: hearingId,
+                    complainant_attendance: compOverall,
+                    respondent_attendance: respOverall,
+                    attendance_notes: remarks,
+                    session_remarks: remarks,
+                    remarks,
+                    parties: partyRecords
+                })
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
@@ -891,133 +1617,161 @@ document.addEventListener('DOMContentLoaded', () => {
             alert('Matagumpay na naitala ang attendance!');
             fetchDashboardData();
         } catch (err) {
-            console.error(err);
             alert('May naganap na error sa pag-save ng attendance.');
         } finally {
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.textContent = 'I-save ang Attendance';
-            }
+            if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'I-save ang Attendance'; }
         }
     };
 
     const initQuickAttendanceModal = () => {
-        const closeBtn = document.getElementById('quickAttCloseBtn');
-        const cancelBtn = document.getElementById('quickAttCancelBtn');
-        const saveBtn = document.getElementById('quickAttSaveBtn');
+        document.getElementById('quickAttCloseBtn')?.addEventListener('click', closeQuickAttendanceModal);
+        document.getElementById('quickAttCancelBtn')?.addEventListener('click', closeQuickAttendanceModal);
+        document.getElementById('quickAttSaveBtn')?.addEventListener('click', submitQuickAttendance);
         const modal = document.getElementById('quickDashboardAttendanceModal');
-        const remarksEl = document.getElementById('quickAttRemarks');
-
-        if (closeBtn) closeBtn.addEventListener('click', closeQuickAttendanceModal);
-        if (cancelBtn) cancelBtn.addEventListener('click', closeQuickAttendanceModal);
-        if (saveBtn) saveBtn.addEventListener('click', submitQuickAttendance);
-
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal) closeQuickAttendanceModal();
-            });
-        }
-
-        // Helper pills
-        const helperPills = document.querySelectorAll('.btn-att-helper-pill');
-        helperPills.forEach(pill => {
-            pill.addEventListener('click', () => {
-                const remark = pill.getAttribute('data-remark') || '';
-                if (!remarksEl || !remark) return;
-                const current = remarksEl.value.trim();
-                if (!current) {
-                    remarksEl.value = remark;
-                } else if (!current.includes(remark)) {
-                    remarksEl.value = `${current}; ${remark}`;
-                }
-            });
-        });
+        modal?.addEventListener('click', (e) => { if (e.target === modal) closeQuickAttendanceModal(); });
     };
 
-    const selectCalendarDate = (dateStr) => {
-        state.selectedDate = dateStr;
+    const addHearingItem = (container, hearing, displayIndex = 0) => {
+        const item = document.createElement('article');
+        item.className = 'dashboard-list-item clerk-agenda-item';
+        item.dataset.index = String(displayIndex);
+        item.dataset.id = hearing.hearing_id;
+        item.dataset.type = 'hearing';
+        item.dataset.queueDate = String(hearing.hearing_date || getTodayDateStr()).slice(0, 10);
+        item.style.cssText = 'padding: 13px 14px; border: 1px solid #eef2f6; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-radius: 10px; margin-bottom: 8px; background: #ffffff;';
 
-        const todayStr = getTodayDateStr();
-        const isToday = (dateStr === todayStr);
+        bindQueueDragAndDrop(item, container);
 
-        // Filter hearings from state.calendarHearings for this date
-        const matchingHearings = (state.calendarHearings || []).filter(h => {
-            if (!isActiveQueueSession(h)) return false;
-            if (!h.hearing_date) return false;
-            return getHearingDateKey(h.hearing_date) === dateStr;
-        });
+        const content = document.createElement('div');
+        content.className = 'dashboard-list-content';
+        content.style.flex = '1';
 
-        const formattedDate = formatDateOnly(dateStr);
-        const heading = document.getElementById('hearingsPanelHeading');
-        const sub = document.getElementById('hearingsPanelSub');
-        const countBadge = document.getElementById('periodHearingCountBadge');
+        const scheduledTimeStr = formatTimeOnly(hearing.hearing_date) || 'Scheduled';
+        const hearingTypeStr = `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
+        const caseNumberStr = hearing.case_number ? `Case #${hearing.case_number}` : 'Case';
 
-        if (isToday) {
-            if (heading) heading.textContent = "Today's hearings";
-            if (sub) sub.textContent = 'Sessions scheduled for today.';
-        } else {
-            if (heading) heading.textContent = `Hearings (${formattedDate})`;
-            if (sub) sub.textContent = `Sessions scheduled for ${formattedDate}.`;
+        const headerRow = document.createElement('div');
+        headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;';
+
+        const dragHandle = document.createElement('span');
+        dragHandle.className = 'drag-handle';
+        dragHandle.title = 'I-drag para baguhin ang docket sequence';
+        dragHandle.innerHTML = '&#8942;&#8942;';
+
+        const seqBadge = document.createElement('span');
+        seqBadge.className = 'queue-seq-badge';
+        seqBadge.textContent = `#${displayIndex + 1}`;
+
+        const timeBadge = document.createElement('span');
+        timeBadge.className = 'agenda-time-pill';
+        timeBadge.style.cssText = 'font-size: 0.76rem; font-weight: 700; color: #0f172a; background: #e2e8f0; padding: 2px 8px; border-radius: 5px; white-space: nowrap;';
+        timeBadge.textContent = scheduledTimeStr;
+
+        const heading = document.createElement('h3');
+        heading.style.cssText = 'margin: 0; font-size: 0.9rem; font-weight: 700; color: #0f172a;';
+        heading.textContent = `${caseNumberStr} · ${hearingTypeStr}`;
+
+        headerRow.append(dragHandle, seqBadge, timeBadge, heading);
+
+        const partiesRow = document.createElement('div');
+        partiesRow.style.cssText = 'font-size: 0.83rem; color: #1e293b; margin-bottom: 4px;';
+        partiesRow.innerHTML = `<span style="color: #166534; font-weight: 700;">(C)</span> ${escapeHtml(hearing.complainant_names || 'Complainant')} <span style="color: #94a3b8; margin: 0 4px;">vs.</span> <span style="color: #991b1b; font-weight: 700;">(R)</span> ${escapeHtml(hearing.respondent_names || 'Respondent')}`;
+
+        const venueRow = document.createElement('p');
+        venueRow.style.cssText = 'font-size: 0.76rem; color: #64748b; margin: 0;';
+        venueRow.innerHTML = `<span>${escapeHtml(hearing.venue || 'Lupon Court Room')}</span>${hearing.complaint_title ? ` • <span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
+
+        content.append(headerRow, partiesRow, venueRow);
+        item.appendChild(content);
+
+        const actions = document.createElement('div');
+        actions.className = 'hearing-card-actions';
+        actions.style.cssText = 'display: flex; align-items: center; gap: 7px; flex-wrap: wrap; justify-content: flex-end;';
+
+        const normQueue = (hearing.queue_status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+        const normStatus = (hearing.status || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+        const isConcluded = normQueue === 'concluded' || normStatus === 'concluded' || normStatus === 'completed';
+        const isInSession = normQueue === 'in_session';
+        const isStandby = normQueue === 'standby' || normQueue === 'on_standby';
+        const compCheckedIn = ['present', 'late'].includes((hearing.complainant_attendance || '').toLowerCase());
+        const respCheckedIn = ['present', 'late'].includes((hearing.respondent_attendance || '').toLowerCase());
+        const isCompleteAndReady = (compCheckedIn && respCheckedIn) || normQueue === 'ready' || normQueue === 'ready_for_hearing';
+
+        const hDate = new Date(hearing.hearing_date ? String(hearing.hearing_date).replace(' ', 'T') : '');
+        const nowD = new Date();
+        const diffMinutes = (!Number.isNaN(hDate.getTime()) && nowD > hDate) ? Math.floor((nowD - hDate) / 60000) : 0;
+
+        let badgeBg = '#f1f5f9', badgeColor = '#475569', badgeBorder = '#cbd5e1', badgeLabel = 'Scheduled';
+        if (isInSession) {
+            badgeBg = '#dbeafe'; badgeColor = '#1e40af'; badgeBorder = '#93c5fd';
+            const startFormatted = formatTimeOnly(hearing.actual_start_time);
+            badgeLabel = startFormatted ? `In Session (${startFormatted})` : 'In Session';
+        } else if (isConcluded) {
+            badgeBg = '#f3e8ff'; badgeColor = '#7e22ce'; badgeBorder = '#d8b4fe';
+            badgeLabel = 'Concluded';
+        } else if (isStandby) {
+            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a';
+            badgeLabel = 'On Standby';
+        } else if (isCompleteAndReady) {
+            badgeBg = '#dcfce7'; badgeColor = '#15803d'; badgeBorder = '#86efac';
+            badgeLabel = 'Complete & Ready';
+        } else if (diffMinutes >= 60) {
+            badgeBg = '#fee2e2'; badgeColor = '#991b1b'; badgeBorder = '#fca5a5';
+            badgeLabel = `1-Hour Expired (${diffMinutes}m late)`;
+        } else if (diffMinutes > 0) {
+            badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a';
+            badgeLabel = `Grace Period (${60 - diffMinutes}m left)`;
         }
 
-        if (countBadge) {
-            const count = matchingHearings.length;
-            if (count > 0) {
-                countBadge.textContent = `${count} hearing${count === 1 ? '' : 's'}`;
-                countBadge.style.display = 'inline-block';
+        const statusPill = document.createElement('span');
+        statusPill.className = 'hearing-status-pill';
+        statusPill.style.cssText = `font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 9999px; background: ${badgeBg}; color: ${badgeColor}; border: 1px solid ${badgeBorder}; white-space: nowrap;`;
+        statusPill.textContent = badgeLabel;
+        actions.appendChild(statusPill);
+
+        if (isCompleteAndReady && !isInSession && !isConcluded) {
+            const startBtn = document.createElement('button');
+            startBtn.type = 'button';
+            startBtn.className = 'btn-action-start-hearing';
+            startBtn.textContent = '▶ Start Session';
+            startBtn.addEventListener('click', () => handleStartHearing(hearing.hearing_id, hearing.case_number));
+            actions.appendChild(startBtn);
+        }
+
+        if (!isConcluded && !isInSession) {
+            const standbyBtn = document.createElement('button');
+            standbyBtn.type = 'button';
+            standbyBtn.className = 'btn-action-standby-hearing';
+            if (isStandby) {
+                standbyBtn.style.cssText = 'background: #fffbeb; color: #b45309; border: 1.5px solid #b45309; padding: 5px 10px; font-weight: 700;';
+                standbyBtn.textContent = '▶ Resume';
             } else {
-                countBadge.style.display = 'none';
+                standbyBtn.style.cssText = 'background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 5px 10px; font-weight: 600;';
+                standbyBtn.textContent = '⏸ Standby';
             }
+            standbyBtn.addEventListener('click', () => handleToggleStandby(hearing.hearing_id, isStandby));
+            actions.appendChild(standbyBtn);
         }
 
-        matchingHearings.sort((a, b) => {
-            return new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0);
-        });
-        state.hearings = matchingHearings;
-        state.hearingsPage = 1;
-        state.hearingsPeriodLabel = isToday ? 'today' : formattedDate;
-        renderHearingsPage();
-
-        // Update selected state in calendar grid
-        const allDays = document.querySelectorAll('.dash-cal-day');
-        allDays.forEach(cell => {
-            cell.classList.toggle('is-selected', cell.dataset.date === dateStr);
-        });
-    };
-
-    const renderHearings = (hearings, periodLabel) => {
-        const sortedHearings = [...(hearings || []).filter(isActiveQueueSession)].sort((a, b) => {
-            return new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0);
-        });
-        state.hearings = sortedHearings;
-        state.hearingsPage = 1;
-        state.hearingsPeriodLabel = periodLabel;
-
-        const heading = document.getElementById('hearingsPanelHeading');
-        const sub = document.getElementById('hearingsPanelSub');
-        const countBadge = document.getElementById('periodHearingCountBadge');
-
-        if (state.period === 'all') {
-            state.selectedDate = getTodayDateStr();
-            if (heading) heading.textContent = "Today's hearings";
-            if (sub) sub.textContent = 'Sessions scheduled for today.';
-        } else {
-            state.selectedDate = null;
-            if (heading) heading.textContent = `Hearings (${periodLabel})`;
-            if (sub) sub.textContent = `Sessions scheduled within this timeframe.`;
+        if (!isConcluded) {
+            const attBtn = document.createElement('button');
+            attBtn.type = 'button';
+            attBtn.className = 'btn-action-quick-att';
+            attBtn.textContent = 'Quick Attendance';
+            attBtn.addEventListener('click', () => openQuickAttendanceModal(hearing));
+            actions.appendChild(attBtn);
         }
 
-        if (countBadge) {
-            const count = state.hearings.length;
-            if (count > 0 && state.period !== 'all') {
-                countBadge.textContent = `${count} hearing${count === 1 ? '' : 's'}`;
-                countBadge.style.display = 'inline-block';
-            } else {
-                countBadge.style.display = 'none';
-            }
-        }
+        const openCaseBtn = document.createElement('a');
+        openCaseBtn.className = 'btn-open-case';
+        openCaseBtn.textContent = 'Open Case';
+        openCaseBtn.href = hearing.case_id
+            ? `../cases/case-details.php?id=${encodeURIComponent(hearing.case_id)}`
+            : (hearing.complaint_id ? `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}` : '#');
+        actions.appendChild(openCaseBtn);
 
-        renderHearingsPage();
+        item.appendChild(actions);
+        container.appendChild(item);
     };
 
     const renderHearingsPage = () => {
@@ -1030,7 +1784,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!container) return;
 
         container.replaceChildren();
-
         const totalHearings = (state.hearings || []).length;
         if (!totalHearings) {
             if (paginationWrap) paginationWrap.style.display = 'none';
@@ -1038,7 +1791,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const emptyLabel = state.selectedDate
                 ? (state.selectedDate === todayStr ? 'today' : (formatDateOnly(state.selectedDate) || 'this date'))
                 : (state.period === 'all' ? 'today' : (state.hearingsPeriodLabel || 'this timeframe'));
-            return container.appendChild(emptyState(`No active hearings are scheduled for ${emptyLabel}.`));
+            return container.appendChild(emptyState(`No active hearings scheduled for ${emptyLabel}.`));
         }
 
         const totalPages = Math.max(1, Math.ceil(totalHearings / state.hearingsPerPage));
@@ -1047,23 +1800,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const startIndex = (state.hearingsPage - 1) * state.hearingsPerPage;
         const endIndex = Math.min(startIndex + state.hearingsPerPage, totalHearings);
-        const pageItems = state.hearings.slice(startIndex, endIndex);
+        state.hearings.slice(startIndex, endIndex).forEach((hearing, idx) => addHearingItem(container, hearing, startIndex + idx));
 
-        pageItems.forEach((hearing, idx) => addHearingItem(container, hearing, startIndex + idx));
-
-        // Pagination UI: Only show 10 at a time
-        if (paginationWrap) {
-            paginationWrap.style.display = totalPages > 1 ? 'flex' : 'none';
-        }
-        if (infoEl) {
-            infoEl.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${totalHearings} hearing${totalHearings === 1 ? '' : 's'}`;
-        }
-        if (prevBtn) {
-            prevBtn.disabled = state.hearingsPage <= 1;
-        }
-        if (nextBtn) {
-            nextBtn.disabled = state.hearingsPage >= totalPages;
-        }
+        if (paginationWrap) paginationWrap.style.display = totalPages > 1 ? 'flex' : 'none';
+        if (infoEl) infoEl.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${totalHearings} hearing${totalHearings === 1 ? '' : 's'}`;
+        if (prevBtn) prevBtn.disabled = state.hearingsPage <= 1;
+        if (nextBtn) nextBtn.disabled = state.hearingsPage >= totalPages;
         if (pageNumbersContainer) {
             pageNumbersContainer.replaceChildren();
             if (totalPages > 1) {
@@ -1071,411 +1813,72 @@ document.addEventListener('DOMContentLoaded', () => {
                     const btn = document.createElement('button');
                     btn.type = 'button';
                     btn.className = `page-num-btn ${i === state.hearingsPage ? 'is-active' : ''}`;
-                    btn.textContent = i;
-                    btn.addEventListener('click', () => {
-                        state.hearingsPage = i;
-                        renderHearingsPage();
-                    });
+                    btn.textContent = String(i);
+                    btn.addEventListener('click', () => { state.hearingsPage = i; renderHearingsPage(); });
                     pageNumbersContainer.appendChild(btn);
                 }
             }
         }
     };
 
-    const renderDeadlines = (deadlines, periodLabel) => {
-        const container = document.getElementById('mediationDeadlines');
-        const heading = document.getElementById('deadlinesPanelHeading');
-        const sub = document.getElementById('deadlinesPanelSub');
-        if (!container) return;
-        container.replaceChildren();
+    const renderHearings = (hearings, periodLabel) => {
+        state.hearings = [...(hearings || []).filter(isActiveQueueSession)].sort((a, b) => new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0));
+        state.hearingsPage = 1;
+        state.hearingsPeriodLabel = periodLabel;
+
+        const heading = document.getElementById('hearingsPanelHeading');
+        const sub = document.getElementById('hearingsPanelSub');
+        const countBadge = document.getElementById('periodHearingCountBadge');
 
         if (state.period === 'all') {
-            if (heading) heading.textContent = 'Upcoming mediation deadlines';
-            if (sub) sub.textContent = 'Active cases due within the next seven days.';
+            state.selectedDate = getTodayDateStr();
+            if (heading) heading.textContent = "Today's Hearings";
+            if (sub) sub.textContent = 'Scheduled formal sessions & Lupon Court Room queue (drag to reorder)';
         } else {
-            if (heading) heading.textContent = `Mediation deadlines (${periodLabel})`;
-            if (sub) sub.textContent = `Active cases due within this timeframe.`;
+            state.selectedDate = null;
+            if (heading) heading.textContent = `Hearings (${periodLabel})`;
+            if (sub) sub.textContent = 'Sessions scheduled within this timeframe';
         }
 
-        if (!deadlines || !deadlines.length) {
-            return container.appendChild(emptyState(
-                state.period === 'all'
-                    ? 'No mediation or conciliation deadlines are due within seven days.'
-                    : `No mediation or conciliation deadlines are due in ${periodLabel}.`
-            ));
-        }
-
-        deadlines.forEach((caseItem) => addListItem(
-            container,
-            caseItem.case_number || 'Case',
-            `Deadline: ${formatDateOnly(caseItem.mediation_deadline_date)}`,
-            caseItem.case_status,
-            caseItem.case_id ? `../cases/case-details.php?id=${caseItem.case_id}` : null
-        ));
-    };
-
-    const renderStatuses = (statuses, periodLabel) => {
-        const container = document.getElementById('statusTotals');
-        const titleSpan = document.getElementById('statusPeriodTitle');
-        if (titleSpan) titleSpan.textContent = periodLabel;
-        if (!container) return;
-        container.replaceChildren();
-
-        if (!statuses || !statuses.length) {
-            return container.appendChild(emptyState(`No case status data recorded for ${periodLabel}.`));
-        }
-
-        statuses.forEach((status) => {
-            const item = document.createElement('div');
-            item.className = 'status-total';
-            const label = document.createElement('span');
-            label.textContent = status.status;
-            const total = document.createElement('strong');
-            total.textContent = Number(status.total || 0).toLocaleString();
-            item.append(label, total);
-            container.appendChild(item);
-        });
-    };
-
-    const renderCasesPage = () => {
-        const tbody = document.getElementById('periodCasesTableBody');
-        const paginationWrap = document.getElementById('casesTablePagination');
-        const infoEl = document.getElementById('casesPaginationInfo');
-        const prevBtn = document.getElementById('casesPrevPageBtn');
-        const nextBtn = document.getElementById('casesNextPageBtn');
-        const pageNumbersContainer = document.getElementById('casesPageNumbers');
-        if (!tbody) return;
-
-        tbody.replaceChildren();
-
-        const totalCases = (state.cases || []).length;
-        if (totalCases === 0) {
-            const row = document.createElement('tr');
-            row.innerHTML = `<td colspan="6" class="dashboard-empty-row"><p>No cases recorded for ${escapeHtml(state.currentPeriodLabel || 'this timeframe')}.</p></td>`;
-            tbody.appendChild(row);
-            if (paginationWrap) paginationWrap.style.display = 'none';
-            return;
-        }
-
-        const totalPages = Math.max(1, Math.ceil(totalCases / state.casesPerPage));
-        if (state.casesPage > totalPages) state.casesPage = totalPages;
-        if (state.casesPage < 1) state.casesPage = 1;
-
-        const startIndex = (state.casesPage - 1) * state.casesPerPage;
-        const endIndex = Math.min(startIndex + state.casesPerPage, totalCases);
-        const pageItems = state.cases.slice(startIndex, endIndex);
-
-        pageItems.forEach((caseItem) => {
-            const tr = document.createElement('tr');
-            tr.className = 'dashboard-case-row';
-
-            const caseNum = caseItem.case_number || `Case #${caseItem.case_id}`;
-            const title = caseItem.complaint_title || 'Untitled Complaint';
-            const parties = [
-                caseItem.complainant_names ? `By: ${caseItem.complainant_names}` : '',
-                caseItem.respondent_names ? `vs. ${caseItem.respondent_names}` : ''
-            ].filter(Boolean).join(' · ');
-
-            const typeBadge = caseItem.case_type === 'Criminal'
-                ? '<span class="type-pill type-criminal">Criminal</span>'
-                : '<span class="type-pill type-civil">Civil</span>';
-
-            const statusClass = getStatusClass(caseItem.case_status);
-            const statusBadge = `<span class="status-badge ${statusClass}">${escapeHtml(caseItem.case_status || 'Docketed')}</span>`;
-            const docketDate = formatDateOnly(caseItem.docket_date);
-
-            tr.innerHTML = `
-                <td class="case-col-number">
-                    <a href="../cases/case-details.php?id=${encodeURIComponent(caseItem.case_id)}" class="case-number-link">
-                        ${escapeHtml(caseNum)}
-                    </a>
-                </td>
-                <td class="case-col-title">
-                    <div class="case-title-text">${escapeHtml(title)}</div>
-                    ${parties ? `<div class="case-parties-sub">${escapeHtml(parties)}</div>` : ''}
-                    ${caseItem.category_name ? `<div class="case-category-sub">${escapeHtml(caseItem.category_name)}</div>` : ''}
-                </td>
-                <td class="case-col-type">${typeBadge}</td>
-                <td class="case-col-status">${statusBadge}</td>
-                <td class="case-col-date">${escapeHtml(docketDate)}</td>
-                <td class="case-col-action" style="text-align:right;">
-                    <a href="../cases/case-details.php?id=${encodeURIComponent(caseItem.case_id)}" class="btn-action-view">
-                        View Details
-                    </a>
-                </td>
-            `;
-
-            tbody.appendChild(tr);
-        });
-
-        // Pagination UI (only show 10 at a time)
-        if (paginationWrap) {
-            paginationWrap.style.display = totalCases > 0 ? 'flex' : 'none';
-        }
-        if (infoEl) {
-            infoEl.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${totalCases} case${totalCases === 1 ? '' : 's'}`;
-        }
-        if (prevBtn) {
-            prevBtn.disabled = state.casesPage <= 1;
-        }
-        if (nextBtn) {
-            nextBtn.disabled = state.casesPage >= totalPages;
-        }
-        if (pageNumbersContainer) {
-            pageNumbersContainer.replaceChildren();
-            if (totalPages > 1) {
-                for (let i = 1; i <= totalPages; i++) {
-                    const btn = document.createElement('button');
-                    btn.type = 'button';
-                    btn.className = `page-num-btn ${i === state.casesPage ? 'is-active' : ''}`;
-                    btn.textContent = i;
-                    btn.addEventListener('click', () => {
-                        state.casesPage = i;
-                        renderCasesPage();
-                    });
-                    pageNumbersContainer.appendChild(btn);
-                }
-            }
-        }
-    };
-
-    const updateStatCardsActiveUI = () => {
-        document.querySelectorAll('.stat-card[data-target-stat]').forEach(card => {
-            const isActive = card.dataset.targetStat === state.activeStatTarget;
-            card.classList.toggle('is-active', isActive);
-            card.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-        });
-    };
-
-    const scrollToElement = (id) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    };
-
-    const flashHighlight = (id) => {
-        const el = document.getElementById(id);
-        if (el) {
-            el.classList.remove('panel-highlight-flash');
-            void el.offsetWidth;
-            el.classList.add('panel-highlight-flash');
-        }
-    };
-
-    const applyCaseFilter = (filterType, targetStat, titleLabel) => {
-        if (state.activeStatTarget === targetStat) {
-            resetCaseFilter();
-            return;
-        }
-        state.activeStatTarget = targetStat;
-        state.activeCaseFilter = filterType;
-        state.casesPage = 1;
-        updateStatCardsActiveUI();
-
-        if (filterType === 'all') {
-            state.cases = state.allRawCases || [];
-        } else if (filterType === 'Archived') {
-            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Archived');
-        } else if (filterType === 'Mediation') {
-            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Mediation' || c.case_status === 'Conciliation');
-        } else if (filterType === 'Settled') {
-            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Settled');
-        }
-
-        const titleSpan = document.getElementById('casesPanelHeaderTitle');
-        const descP = document.getElementById('casesPeriodDescription');
-        const countBadge = document.getElementById('periodCaseCountBadge');
-        const resetBtn = document.getElementById('btnResetCaseFilter');
-
-        if (titleSpan) titleSpan.textContent = titleLabel || 'Case Register';
-        if (descP) descP.textContent = filterType === 'all' 
-            ? `Recorded dispute cases for ${state.currentPeriodLabel}.`
-            : `Showing ${filterType} dispute cases recorded for ${state.currentPeriodLabel}.`;
         if (countBadge) {
-            const count = state.cases.length;
-            countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
-        }
-        if (resetBtn) resetBtn.style.display = filterType === 'all' ? 'none' : 'inline-block';
-
-        renderCasesPage();
-        scrollToElement('dashboardCasesPanel');
-        flashHighlight('dashboardCasesPanel');
-    };
-
-    const resetCaseFilter = () => {
-        state.activeStatTarget = null;
-        state.activeCaseFilter = 'all';
-        state.casesPage = 1;
-        state.cases = state.allRawCases || [];
-        updateStatCardsActiveUI();
-
-        const titleSpan = document.getElementById('casesPanelHeaderTitle');
-        const descP = document.getElementById('casesPeriodDescription');
-        const countBadge = document.getElementById('periodCaseCountBadge');
-        const resetBtn = document.getElementById('btnResetCaseFilter');
-
-        if (titleSpan) titleSpan.textContent = 'Case Register';
-        if (descP) descP.textContent = `Recorded dispute cases for ${state.currentPeriodLabel}.`;
-        if (countBadge) {
-            const count = state.cases.length;
-            countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
-        }
-        if (resetBtn) resetBtn.style.display = 'none';
-
-        renderCasesPage();
-    };
-
-    const renderCasesTable = (cases, periodLabel) => {
-        state.allRawCases = cases || [];
-        state.casesPage = 1;
-        state.currentPeriodLabel = periodLabel;
-
-        if (state.activeCaseFilter === 'Archived') {
-            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Archived');
-        } else if (state.activeCaseFilter === 'Mediation') {
-            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Mediation' || c.case_status === 'Conciliation');
-        } else if (state.activeCaseFilter === 'Settled') {
-            state.cases = (state.allRawCases || []).filter(c => c.case_status === 'Settled');
-        } else {
-            state.cases = state.allRawCases || [];
-        }
-
-        const titleSpan = document.getElementById('casesPeriodTitle');
-        const headerTitle = document.getElementById('casesPanelHeaderTitle');
-        const descP = document.getElementById('casesPeriodDescription');
-        const countBadge = document.getElementById('periodCaseCountBadge');
-        const resetBtn = document.getElementById('btnResetCaseFilter');
-
-        if (titleSpan) titleSpan.textContent = periodLabel;
-        if (headerTitle) {
-            if (state.activeCaseFilter === 'Archived') headerTitle.textContent = 'Case Register — Archived Cases';
-            else if (state.activeCaseFilter === 'Mediation') headerTitle.textContent = 'Case Register — Active Mediation / Conciliation';
-            else if (state.activeCaseFilter === 'Settled') headerTitle.textContent = 'Case Register — Settled Cases';
-            else headerTitle.textContent = 'Case Register';
-        }
-        if (descP) descP.textContent = state.activeCaseFilter === 'all'
-            ? `Recorded dispute cases for ${periodLabel}.`
-            : `Showing ${state.activeCaseFilter} cases for ${periodLabel}.`;
-        if (countBadge) {
-            const count = state.cases.length;
-            countBadge.textContent = `${count} case${count === 1 ? '' : 's'}`;
-        }
-        if (resetBtn) resetBtn.style.display = state.activeCaseFilter === 'all' ? 'none' : 'inline-block';
-
-        renderCasesPage();
-    };
-
-    // Bind Stat Card Click Handlers
-    const initStatCardClickHandlers = () => {
-
-        const btnReset = document.getElementById('btnResetCaseFilter');
-        if (btnReset) {
-            btnReset.addEventListener('click', resetCaseFilter);
-        }
-    };
-
-        const renderAnalytics = (analyticsData) => {
-        if (!analyticsData) return;
-
-        // 1. Top Categories
-        const catContainer = document.getElementById('analyticsTopCategories');
-        if (catContainer) {
-            const categories = analyticsData.top_categories || [];
-            if (categories.length === 0) {
-                catContainer.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; text-align: center; padding: 14px;">No categorized complaints recorded yet.</div>';
+            const count = state.hearings.length;
+            if (count > 0) {
+                countBadge.textContent = `${count} hearing${count === 1 ? '' : 's'}`;
+                countBadge.style.display = 'inline-block';
             } else {
-                const maxCat = Math.max(...categories.map(c => c.total), 1);
-                catContainer.innerHTML = categories.map(c => {
-                    const pct = Math.round((c.total / maxCat) * 100);
-                    return `
-                        <div class="analytics-bar-item">
-                            <div class="analytics-bar-header">
-                                <span class="analytics-bar-label" title="${escapeHtml(c.category_name)}">${escapeHtml(c.display_name || c.category_name)}</span>
-                                <span class="analytics-bar-count">${c.total} case${c.total === 1 ? '' : 's'}</span>
-                            </div>
-                            <div class="analytics-bar-track">
-                                <div class="analytics-bar-fill" style="width: ${pct}%;"></div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
+                countBadge.style.display = 'none';
             }
         }
+        renderHearingsPage();
+    };
 
-        // 2. Purok Hotspots
-        const purokContainer = document.getElementById('analyticsPurokHotspots');
-        if (purokContainer) {
-            const puroks = analyticsData.purok_hotspots || [];
-            if (puroks.length === 0) {
-                purokContainer.innerHTML = '<div style="color: #64748b; font-size: 0.85rem; text-align: center; padding: 14px;">No purok location data recorded yet.</div>';
-            } else {
-                const maxPurok = Math.max(...puroks.map(p => Number(p.total)), 1);
-                purokContainer.innerHTML = puroks.map(p => {
-                    const totalVal = Number(p.total);
-                    const pct = Math.round((totalVal / maxPurok) * 100);
-                    return `
-                        <div class="analytics-bar-item">
-                            <div class="analytics-bar-header">
-                                <span class="analytics-bar-label">${escapeHtml(p.purok_name)}</span>
-                                <span class="analytics-bar-count" style="color: #ea580c;">${totalVal} dispute${totalVal === 1 ? '' : 's'}</span>
-                            </div>
-                            <div class="analytics-bar-track">
-                                <div class="analytics-bar-fill hotspot-fill" style="width: ${pct}%;"></div>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            }
+    // =========================================================================
+    // Calendar & Full Calendar Modal
+    // =========================================================================
+    const selectCalendarDate = (dateStr) => {
+        state.selectedDate = dateStr;
+        const todayStr = getTodayDateStr();
+        const isToday = (dateStr === todayStr);
+        const matchingHearings = (state.calendarHearings || []).filter((h) => isActiveQueueSession(h) && getHearingDateKey(h.hearing_date) === dateStr);
+
+        const formattedDate = formatDateOnly(dateStr);
+        setElText('hearingsPanelHeading', isToday ? "Today's Hearings" : `Hearings (${formattedDate})`);
+        setElText('hearingsPanelSub', isToday ? 'Sessions scheduled for today.' : `Sessions scheduled for ${formattedDate}.`);
+
+        const countBadge = document.getElementById('periodHearingCountBadge');
+        if (countBadge) {
+            countBadge.textContent = `${matchingHearings.length} hearing${matchingHearings.length === 1 ? '' : 's'}`;
+            countBadge.style.display = matchingHearings.length > 0 ? 'inline-block' : 'none';
         }
 
-        // 3. Gender Breakdown
-        const genderContainer = document.getElementById('analyticsGenderBreakdown');
-        if (genderContainer) {
-            const genders = analyticsData.gender_breakdown || { Male: 0, Female: 0 };
-            const totalG = (genders.Male || 0) + (genders.Female || 0) + (genders.Other || 0);
-            const malePct = totalG > 0 ? Math.round(((genders.Male || 0) / totalG) * 100) : 0;
-            const femalePct = totalG > 0 ? Math.round(((genders.Female || 0) / totalG) * 100) : 0;
+        state.hearings = matchingHearings.sort((a, b) => new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0));
+        state.hearingsPage = 1;
+        state.hearingsPeriodLabel = isToday ? 'today' : formattedDate;
+        renderHearingsPage();
 
-            genderContainer.innerHTML = `
-                <div class="demographic-stat-pill">
-                    <span class="demo-label">Female Parties</span>
-                    <span class="demo-value" style="color: #db2777;">${genders.Female || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${femalePct}%)</small></span>
-                </div>
-                <div class="demographic-stat-pill">
-                    <span class="demo-label">Male Parties</span>
-                    <span class="demo-value" style="color: #2563eb;">${genders.Male || 0} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${malePct}%)</small></span>
-                </div>
-                <div class="demographic-stat-pill">
-                    <span class="demo-label">Total Individuals Registered</span>
-                    <span class="demo-value">${totalG}</span>
-                </div>
-            `;
-        }
-
-        // 4. Age Distribution
-        const ageContainer = document.getElementById('analyticsAgeDistribution');
-        if (ageContainer) {
-            const age = analyticsData.age_distribution || { youth: 0, adults: 0, seniors: 0, total: 0 };
-            const youthPct = age.total > 0 ? Math.round((age.youth / age.total) * 100) : 0;
-            const adultPct = age.total > 0 ? Math.round((age.adults / age.total) * 100) : 0;
-            const seniorPct = age.total > 0 ? Math.round((age.seniors / age.total) * 100) : 0;
-
-            ageContainer.innerHTML = `
-                <div class="demographic-stat-pill">
-                    <span class="demo-label">Youth (18 – 29 yrs)</span>
-                    <span class="demo-value" style="color: #0284c7;">${age.youth} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${youthPct}%)</small></span>
-                </div>
-                <div class="demographic-stat-pill">
-                    <span class="demo-label">Adults (30 – 59 yrs)</span>
-                    <span class="demo-value" style="color: #16a34a;">${age.adults} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${adultPct}%)</small></span>
-                </div>
-                <div class="demographic-stat-pill">
-                    <span class="demo-label">Senior Citizens (60+ yrs)</span>
-                    <span class="demo-value" style="color: #9333ea;">${age.seniors} <small style="font-size: 0.75rem; color: #64748b; font-weight: 500;">(${seniorPct}%)</small></span>
-                </div>
-            `;
-        }
+        document.querySelectorAll('.dash-cal-day').forEach((cell) => {
+            cell.classList.toggle('is-selected', cell.dataset.date === dateStr);
+        });
     };
 
     const renderDashboardCalendar = () => {
@@ -1486,15 +1889,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const cursor = state.calendarCursor;
         const year = cursor.getFullYear();
         const month = cursor.getMonth();
-
-        if (monthDisplay) {
-            monthDisplay.textContent = cursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-        }
-
+        if (monthDisplay) monthDisplay.textContent = cursor.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
         grid.replaceChildren();
 
-        // Weekday headers
-        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
+        ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach((day) => {
             const header = document.createElement('div');
             header.className = 'dash-cal-weekday';
             header.textContent = day;
@@ -1502,22 +1900,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const todayStr = getTodayDateStr();
-
         const firstDayIdx = new Date(year, month, 1).getDay();
         const totalDays = new Date(year, month + 1, 0).getDate();
         const prevMonthTotalDays = new Date(year, month, 0).getDate();
 
-        // Index hearings by date: YYYY-MM-DD
         const hearingsByDate = {};
-        (state.calendarHearings || []).forEach(h => {
-            if (!h.hearing_date) return;
+        (state.calendarHearings || []).forEach((h) => {
             const datePart = getHearingDateKey(h.hearing_date);
             if (!datePart) return;
             if (!hearingsByDate[datePart]) hearingsByDate[datePart] = [];
             hearingsByDate[datePart].push(h);
         });
 
-        // Previous month filler days
         for (let i = firstDayIdx - 1; i >= 0; i--) {
             const prevDayNum = prevMonthTotalDays - i;
             const prevMonthDate = new Date(year, month - 1, prevDayNum);
@@ -1525,8 +1919,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cell = document.createElement('div');
             cell.className = 'dash-cal-day is-other-month';
             cell.dataset.date = prevDateStr;
-            cell.textContent = prevDayNum;
-            cell.title = `Go to ${formatDateOnly(prevDateStr)}`;
+            cell.textContent = String(prevDayNum);
             cell.addEventListener('click', () => {
                 state.calendarCursor = new Date(year, month - 1, 1);
                 renderDashboardCalendar();
@@ -1535,24 +1928,17 @@ document.addEventListener('DOMContentLoaded', () => {
             grid.appendChild(cell);
         }
 
-        // Current month days
         for (let day = 1; day <= totalDays; day++) {
             const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
             const cell = document.createElement('div');
             cell.className = 'dash-cal-day';
             cell.dataset.date = dateStr;
-
             const dayNum = document.createElement('span');
-            dayNum.textContent = day;
+            dayNum.textContent = String(day);
             cell.appendChild(dayNum);
 
-            if (dateStr === todayStr) {
-                cell.classList.add('is-today');
-            }
-
-            if (dateStr === state.selectedDate) {
-                cell.classList.add('is-selected');
-            }
+            if (dateStr === todayStr) cell.classList.add('is-today');
+            if (dateStr === state.selectedDate) cell.classList.add('is-selected');
 
             const dayHearings = hearingsByDate[dateStr] || [];
             if (dayHearings.length > 0) {
@@ -1560,32 +1946,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dot = document.createElement('span');
                 dot.className = 'dash-cal-hearing-dot';
                 cell.appendChild(dot);
-
-                const countText = `${dayHearings.length} hearing session${dayHearings.length > 1 ? 's' : ''}`;
-                const details = dayHearings.map(h => `${h.case_number || 'Case'}: ${h.hearing_type || 'Session'}`).join(' | ');
-                cell.title = `${countText}: ${details} (Click to view hearings)`;
-            } else {
-                cell.title = `Click to view hearings for ${formatDateOnly(dateStr)}`;
+                cell.title = `${dayHearings.length} session(s) scheduled — click to view`;
             }
-
-            cell.addEventListener('click', () => {
-                selectCalendarDate(dateStr);
-            });
-
+            cell.addEventListener('click', () => selectCalendarDate(dateStr));
             grid.appendChild(cell);
         }
 
-        // Fill remaining days of the last row
-        const totalCells = firstDayIdx + totalDays;
-        const remaining = (7 - (totalCells % 7)) % 7;
+        const remaining = (7 - ((firstDayIdx + totalDays) % 7)) % 7;
         for (let nextDay = 1; nextDay <= remaining; nextDay++) {
             const nextMonthDate = new Date(year, month + 1, nextDay);
             const nextDateStr = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}-${String(nextMonthDate.getDate()).padStart(2, '0')}`;
             const cell = document.createElement('div');
             cell.className = 'dash-cal-day is-other-month';
             cell.dataset.date = nextDateStr;
-            cell.textContent = nextDay;
-            cell.title = `Go to ${formatDateOnly(nextDateStr)}`;
+            cell.textContent = String(nextDay);
             cell.addEventListener('click', () => {
                 state.calendarCursor = new Date(year, month + 1, 1);
                 renderDashboardCalendar();
@@ -1603,7 +1977,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const hearings = (state.calendarHearings || [])
             .filter(isActiveQueueSession)
-            .filter(h => getHearingDateKey(h.hearing_date))
+            .filter((h) => getHearingDateKey(h.hearing_date))
             .sort((a, b) => new Date(String(a.hearing_date).replace(' ', 'T')) - new Date(String(b.hearing_date).replace(' ', 'T')));
 
         if (subtitle) subtitle.textContent = `${hearings.length} scheduled session${hearings.length === 1 ? '' : 's'}`;
@@ -1613,10 +1987,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const byDate = new Map();
-        hearings.forEach(hearing => {
-            const dateKey = getHearingDateKey(hearing.hearing_date);
-            if (!byDate.has(dateKey)) byDate.set(dateKey, []);
-            byDate.get(dateKey).push(hearing);
+        hearings.forEach((h) => {
+            const k = getHearingDateKey(h.hearing_date);
+            if (!byDate.has(k)) byDate.set(k, []);
+            byDate.get(k).push(h);
         });
 
         byDate.forEach((dayHearings, dateKey) => {
@@ -1627,122 +2001,53 @@ document.addEventListener('DOMContentLoaded', () => {
             heading.textContent = formatDateOnly(dateKey);
             section.appendChild(heading);
 
-            dayHearings.forEach(hearing => {
+            dayHearings.forEach((h) => {
                 const card = document.createElement('article');
                 card.style.cssText = 'padding:11px 12px; border:1px solid #e2e8f0; border-radius:8px; background:#fff; margin-top:7px;';
-                const title = document.createElement('strong');
-                title.style.cssText = 'display:block; font-size:.87rem; color:#0f172a;';
-                title.textContent = `${hearing.case_number ? `Case ${hearing.case_number}` : 'Case'} · ${hearing.hearing_type || 'Hearing'}`;
-                const detail = document.createElement('div');
-                detail.style.cssText = 'font-size:.8rem; color:#64748b; margin-top:4px;';
-                detail.textContent = `${formatTimeOnly(hearing.hearing_date)} · ${hearing.venue || 'Lupon Court Room'}`;
-                card.append(title, detail);
+                card.innerHTML = `<strong style="display:block; font-size:.87rem; color:#0f172a;">${escapeHtml(h.case_number ? `Case ${h.case_number}` : 'Case')} · ${escapeHtml(h.hearing_type || 'Hearing')}</strong><div style="font-size:.8rem; color:#64748b; margin-top:4px;">${escapeHtml(formatTimeOnly(h.hearing_date))} · ${escapeHtml(h.venue || 'Lupon Court Room')}</div>`;
                 section.appendChild(card);
             });
             content.appendChild(section);
         });
     };
 
-    const openFullCalendarModal = () => {
-        const modal = document.getElementById('dashboardFullCalendarModal');
-        if (!modal) return;
-        renderFullCalendarSummary();
+    // =========================================================================
+    // Settlement Details Modal ("Show details" on Gauge)
+    // =========================================================================
+    const openSettlementDetailsModal = () => {
+        const modal = document.getElementById('settlementDetailsModal');
+        const body = document.getElementById('settlementDetailsBody');
+        if (!modal || !body) return;
+        const d = state.dashboardData || {};
+        const cap = d.captain_summary || {};
+        body.innerHTML = `
+            <div class="report-summary" style="margin-bottom:16px;">
+                <div class="summary-card"><strong>${Number(d.settled_cases || 0)}</strong><span>Formal Amicable Settlements</span></div>
+                <div class="summary-card"><strong>${Number(cap.paanyaya_resolved || 0)}</strong><span>Resolved at Paanyaya Stage 0</span></div>
+                <div class="summary-card"><strong>${Number(cap.overall_resolution_rate_pct || 0)}%</strong><span>Overall Resolution Rate</span></div>
+                <div class="summary-card"><strong>₱${Number(cap.ltia_estimated_savings || 0).toLocaleString()}</strong><span>Est. LTIA Court Savings</span></div>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px;">
+                    <div style="font-size:0.78rem; color:#64748b; font-weight:700;">PB Attestation Status</div>
+                    <div style="font-size:1.1rem; font-weight:800; color:#0f172a; margin-top:4px;">${Number(cap.pending_pb_attestations || 0)} awaiting PB attestation</div>
+                </div>
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px;">
+                    <div style="font-size:0.78rem; color:#64748b; font-weight:700;">10-Day MTC / DILG Transmittals</div>
+                    <div style="font-size:1.1rem; font-weight:800; color:#0f172a; margin-top:4px;">${Number(cap.pending_transmittals || 0)} pending transmittal</div>
+                </div>
+            </div>
+            <div style="margin-top:16px; display:flex; gap:10px; justify-content:flex-end;">
+                <a href="../documents/settlements.php" class="pb-row-action-btn" style="padding:8px 14px;">Open Amicable Settlements</a>
+                <a href="../reports/report-list.php" class="pb-row-action-btn" style="background:#1b6553; padding:8px 14px;">LTIA &amp; Transmittals</a>
+            </div>
+        `;
         modal.style.display = 'flex';
     };
 
-    const closeFullCalendarModal = () => {
-        const modal = document.getElementById('dashboardFullCalendarModal');
-        if (modal) modal.style.display = 'none';
-    };
-
-    const updateCardSubtitles = (period, periodLabel) => {
-        const labels = {
-            all: {
-                totalSub: 'All recorded cases',
-                reviewSub: 'Needs review or information',
-                hearingsLabel: 'Hearings today',
-                hearingsSub: 'Scheduled sessions today',
-                archivedSub: 'Closed and archived records',
-                deadlinesSub: 'Mediation deadlines within 7 days',
-                activeSub: 'Mediation or conciliation cases',
-                weekHearingsLabel: "This week's hearings",
-                weekHearingsSub: 'Next 7 calendar days',
-                paanyayaSub: 'Undocketed complaints in Paanyaya',
-                settledSub: 'Resolved through settlement'
-            },
-            weekly: {
-                totalSub: 'Docketed this week',
-                reviewSub: 'Filed this week pending review',
-                hearingsLabel: 'Hearings in week',
-                hearingsSub: 'Sessions in selected week',
-                archivedSub: 'Archived this week',
-                deadlinesSub: 'Due within selected week',
-                activeSub: 'Active mediation in week',
-                weekHearingsLabel: 'Total week hearings',
-                weekHearingsSub: 'Active sessions this week',
-                paanyayaSub: 'Paanyaya created this week',
-                settledSub: 'Settled within this week'
-            },
-            monthly: {
-                totalSub: 'Docketed this month',
-                reviewSub: 'Filed this month pending review',
-                hearingsLabel: 'Hearings in month',
-                hearingsSub: 'Sessions in selected month',
-                archivedSub: 'Archived this month',
-                deadlinesSub: 'Due within selected month',
-                activeSub: 'Active mediation in month',
-                weekHearingsLabel: 'Total month hearings',
-                weekHearingsSub: 'Active sessions this month',
-                paanyayaSub: 'Paanyaya created this month',
-                settledSub: 'Settled within this month'
-            },
-            quarterly: {
-                totalSub: 'Docketed this quarter',
-                reviewSub: 'Filed this quarter pending review',
-                hearingsLabel: 'Hearings in quarter',
-                hearingsSub: 'Sessions in selected quarter',
-                archivedSub: 'Archived this quarter',
-                deadlinesSub: 'Due within selected quarter',
-                activeSub: 'Active mediation in quarter',
-                weekHearingsLabel: 'Total quarter hearings',
-                weekHearingsSub: 'Active sessions this quarter',
-                paanyayaSub: 'Paanyaya created this quarter',
-                settledSub: 'Settled within this quarter'
-            },
-            annual: {
-                totalSub: 'Docketed this year',
-                reviewSub: 'Filed this year pending review',
-                hearingsLabel: 'Hearings in year',
-                hearingsSub: 'Sessions in selected year',
-                archivedSub: 'Archived this year',
-                deadlinesSub: 'Due within selected year',
-                activeSub: 'Active mediation in year',
-                weekHearingsLabel: 'Total year hearings',
-                weekHearingsSub: 'Active sessions this year',
-                paanyayaSub: 'Paanyaya created this year',
-                settledSub: 'Settled within this year'
-            }
-        };
-
-        const config = labels[period] || labels.all;
-        const setEl = (id, text) => {
-            const el = document.getElementById(id);
-            if (el) el.textContent = text;
-        };
-
-        setEl('totalCasesSub', config.totalSub);
-        setEl('pendingReviewSub', config.reviewSub);
-        setEl('hearingsTodayLabel', config.hearingsLabel);
-        setEl('hearingsTodaySub', config.hearingsSub);
-        setEl('archivedCasesSub', config.archivedSub);
-        setEl('deadlinesDueSub', config.deadlinesSub);
-        setEl('activeMediationsSub', config.activeSub);
-        setEl('hearingsThisWeekLabel', config.weekHearingsLabel);
-        setEl('hearingsThisWeekSub', config.weekHearingsSub);
-        setEl('paanyayaComplaintsSub', config.paanyayaSub || config.draftsSub);
-        setEl('settledCasesSub', config.settledSub);
-    };
-
+    // =========================================================================
+    // Main Fetch & Period Controls
+    // =========================================================================
     const updateControls = (period, data) => {
         const navButtons = document.getElementById('periodNavButtons');
         const labelDisplay = document.getElementById('periodLabelDisplay');
@@ -1751,29 +2056,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (labelDisplay) labelDisplay.textContent = data.period_label || 'All Time';
         if (rangeDisplay) {
-            if (data.start_date && data.end_date) {
-                rangeDisplay.textContent = `${formatDateOnly(data.start_date)} – ${formatDateOnly(data.end_date)}`;
-            } else {
-                rangeDisplay.textContent = data.period_sublabel || 'All recorded data in the system';
-            }
+            rangeDisplay.textContent = (data.start_date && data.end_date)
+                ? `${formatDateOnly(data.start_date)} – ${formatDateOnly(data.end_date)}`
+                : (data.period_sublabel || 'All recorded data in the system');
         }
-
-        if (navButtons) {
-            navButtons.style.display = period === 'all' ? 'none' : 'inline-flex';
-        }
-
+        if (navButtons) navButtons.style.display = period === 'all' ? 'none' : 'inline-flex';
         if (currentBtnText) {
-            if (period === 'weekly') currentBtnText.textContent = 'This Week';
-            else if (period === 'monthly') currentBtnText.textContent = 'This Month';
-            else if (period === 'quarterly') currentBtnText.textContent = 'This Quarter';
-            else if (period === 'annual') currentBtnText.textContent = 'This Year';
-            else currentBtnText.textContent = 'Current';
+            currentBtnText.textContent = { weekly: 'This Week', monthly: 'This Month', quarterly: 'This Quarter', annual: 'This Year' }[period] || 'Current';
         }
-
-        const currentBtn = document.getElementById('currentPeriodBtn');
-        if (currentBtn) {
-            currentBtn.classList.toggle('is-current-active', state.offset === 0);
-        }
+        document.getElementById('currentPeriodBtn')?.classList.toggle('is-current-active', state.offset === 0);
     };
 
     const updateUrl = () => {
@@ -1784,47 +2075,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 url.searchParams.delete('offset');
             } else {
                 url.searchParams.set('period', state.period);
-                if (state.offset !== 0) {
-                    url.searchParams.set('offset', state.offset);
-                } else {
-                    url.searchParams.delete('offset');
-                }
+                if (state.offset !== 0) url.searchParams.set('offset', String(state.offset));
+                else url.searchParams.delete('offset');
             }
             window.history.replaceState({}, '', url);
-        } catch (e) {
-            // Browser without history API fallback
-        }
+        } catch (e) {}
     };
 
     const fetchDashboardData = () => {
         if (state.isLoading) return;
         state.isLoading = true;
-
         const overviewEl = document.querySelector('.dashboard-overview');
         if (overviewEl) overviewEl.classList.add('is-loading');
 
-        const params = new URLSearchParams({
-            period: state.period,
-            offset: state.offset
-        });
-
+        const params = new URLSearchParams({ period: state.period, offset: String(state.offset) });
         setMessage('');
 
         fetch(`../../../backend/api/dashboard/statistics.php?${params.toString()}`, {
-            headers: { Accept: 'application/json' }
+            headers: { Accept: 'application/json' },
+            cache: 'no-store'
         })
             .then(async (response) => {
                 const payload = await response.json().catch(() => ({}));
-                if (!response.ok || (payload.success === false)) {
+                if (!response.ok || payload.success === false) {
                     throw new Error(payload.message || 'Unable to load the dashboard.');
                 }
                 return payload.data || payload;
             })
             .then((data) => {
                 const periodLabel = data.period_label || 'Selected Period';
+                state.dashboardData = data;
+                state.currentPeriodLabel = periodLabel;
                 state.activePeriodData = {
                     period: state.period,
-                    periodLabel: periodLabel,
+                    periodLabel,
                     periodSublabel: data.period_sublabel || '',
                     startDate: data.start_date || null,
                     endDate: data.end_date || null,
@@ -1836,71 +2120,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     todayHearings: data.today_hearings || []
                 };
 
-                setText('totalCases', data.total_cases);
-                setText('pendingReview', data.pending_review);
-                setText('hearingsToday', data.hearings_today);
-                setText('archivedCases', data.archived_cases);
-                setText('deadlinesDue', data.deadlines_due);
-                setText('activeMediations', data.active_mediations);
-                setText('hearingsThisWeek', data.hearings_this_week);
-                setText('paanyayaComplaints', (data.paanyaya_complaints != null && data.paanyaya_complaints > 0) ? data.paanyaya_complaints : (data.active_paanyaya ?? data.paanyaya_complaints ?? 0));
-                setText('settledCases', data.settled_cases);
-
-                // Hydrate Bento Case Stage & Settlement Gauge visuals
-                const totalCasesNum = Number(data.total_cases || 0);
-                const medCasesNum = Number(data.active_mediations || 0);
-                const conCasesNum = Number(data.pangkat_conciliations || 0);
-                const settledCasesNum = Number(data.settled_cases || 0);
-                const otherCasesNum = Math.max(0, totalCasesNum - (medCasesNum + conCasesNum + settledCasesNum));
-                const denomNum = Math.max(1, totalCasesNum);
-
-                const setElText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-                const setElW = (id, pct) => { const el = document.getElementById(id); if (el) el.style.width = `${pct}%`; };
-                setElText('bentoAdminStageTotal', totalCasesNum.toLocaleString());
-                setElText('bentoAdminMedCount', medCasesNum.toLocaleString());
-                setElText('bentoAdminConCount', conCasesNum.toLocaleString());
-                setElText('bentoAdminSetCount', settledCasesNum.toLocaleString());
-                setElText('bentoAdminCfaCount', otherCasesNum.toLocaleString());
-                setElW('bentoAdminSegMed', Math.round((medCasesNum / denomNum) * 100));
-                setElW('bentoAdminSegCon', Math.round((conCasesNum / denomNum) * 100));
-                setElW('bentoAdminSegSet', Math.round((settledCasesNum / denomNum) * 100));
-                setElW('bentoAdminSegCfa', Math.round((otherCasesNum / denomNum) * 100));
-
-                const rate = totalCasesNum > 0 ? Math.round((settledCasesNum / totalCasesNum) * 100) : 0;
-                setElText('bentoAdminGaugePct', `${rate}%`);
-                setElText('bentoAdminGaugeSub', `${settledCasesNum} of ${totalCasesNum} resolved amicably`);
-                const arc = document.getElementById('bentoAdminGaugeArc');
-                if (arc) {
-                    const maxDash = 126;
-                    arc.setAttribute('stroke-dashoffset', String(Math.round(maxDash - (maxDash * Math.min(100, rate) / 100))));
-                }
-
-                updateCardSubtitles(state.period, periodLabel);
-                updateControls(state.period, data);
-
-                // Render Analytics Summary
-                if (data.analytics) {
-                    renderAnalytics(data.analytics);
-                }
+                renderExecutiveHeaderAndKpis(data);
+                renderTrendChart(data.trend_series || []);
+                renderWeekdayActivity(data.weekday_activity || []);
+                renderSettlementGauge(data);
+                renderCaptainDocketTable();
+                renderAnalytics(data.analytics);
+                renderAuditFeed(data.audit_feed || []);
 
                 state.calendarHearings = data.calendar_hearings || [];
                 renderHearings(data.today_hearings || [], periodLabel);
                 renderPaanyayas(data.today_paanyayas || []);
-                renderDeadlines(data.mediation_deadlines || [], periodLabel);
-                renderStatuses(data.status_totals || [], periodLabel);
-                renderCasesTable(data.cases || [], periodLabel);
                 renderDashboardCalendar();
 
+                updateControls(state.period, data);
                 updateUrl();
             })
             .catch((error) => {
                 console.error('Dashboard Error:', error);
                 setMessage(error.message || 'Unable to load the dashboard data. Please try again.', true);
                 renderHearings([], 'Error');
-                renderDeadlines([], 'Error');
-                renderStatuses([], 'Error');
-                renderCasesTable([], 'Error');
-                state.calendarHearings = [];
                 renderDashboardCalendar();
             })
             .finally(() => {
@@ -1909,149 +2148,150 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     };
 
-    // Tab buttons event binding
+    // =========================================================================
+    // Event Bindings: Tabs, KPI Cards, Dropdowns, Modals
+    // =========================================================================
     const tabButtons = document.querySelectorAll('.period-tab');
-    tabButtons.forEach((btn) => {
-        btn.addEventListener('click', () => {
-            const period = btn.dataset.period;
-            if (state.period === period && state.offset === 0) return;
-
-            state.period = period;
-            state.offset = 0; // Reset offset to current timeframe when switching tabs
-
-            tabButtons.forEach((b) => {
-                const isActive = b === btn;
-                b.classList.toggle('active', isActive);
-                b.setAttribute('aria-selected', isActive ? 'true' : 'false');
-            });
-
-            fetchDashboardData();
-        });
-    });
-
-    // Period Navigation buttons binding
-    const prevBtn = document.getElementById('prevPeriodBtn');
-    if (prevBtn) {
-        prevBtn.addEventListener('click', () => {
-            state.offset -= 1;
-            fetchDashboardData();
-        });
-    }
-
-    const nextBtn = document.getElementById('nextPeriodBtn');
-    if (nextBtn) {
-        nextBtn.addEventListener('click', () => {
-            state.offset += 1;
-            fetchDashboardData();
-        });
-    }
-
-    const currentBtn = document.getElementById('currentPeriodBtn');
-    if (currentBtn) {
-        currentBtn.addEventListener('click', () => {
-            if (state.offset === 0) return;
-            state.offset = 0;
-            fetchDashboardData();
-        });
-    }
-
-    // Hearings Panel Pagination buttons binding
-    const hearingsPrevBtn = document.getElementById('hearingsPrevPageBtn');
-    if (hearingsPrevBtn) {
-        hearingsPrevBtn.addEventListener('click', () => {
-            if (state.hearingsPage > 1) {
-                state.hearingsPage -= 1;
-                renderHearingsPage();
-            }
-        });
-    }
-
-    const hearingsNextBtn = document.getElementById('hearingsNextPageBtn');
-    if (hearingsNextBtn) {
-        hearingsNextBtn.addEventListener('click', () => {
-            const totalPages = Math.ceil((state.hearings || []).length / state.hearingsPerPage);
-            if (state.hearingsPage < totalPages) {
-                state.hearingsPage += 1;
-                renderHearingsPage();
-            }
-        });
-    }
-
-    // Cases Table Pagination buttons binding
-    const casesPrevBtn = document.getElementById('casesPrevPageBtn');
-    if (casesPrevBtn) {
-        casesPrevBtn.addEventListener('click', () => {
-            if (state.casesPage > 1) {
-                state.casesPage -= 1;
-                renderCasesPage();
-            }
-        });
-    }
-
-    const casesNextBtn = document.getElementById('casesNextPageBtn');
-    if (casesNextBtn) {
-        casesNextBtn.addEventListener('click', () => {
-            const totalPages = Math.ceil((state.cases || []).length / state.casesPerPage);
-            if (state.casesPage < totalPages) {
-                state.casesPage += 1;
-                renderCasesPage();
-            }
-        });
-    }
-
-    // Calendar Navigation buttons binding
-    const calPrevBtn = document.getElementById('dashCalPrevBtn');
-    if (calPrevBtn) {
-        calPrevBtn.addEventListener('click', () => {
-            state.calendarCursor = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() - 1, 1);
-            renderDashboardCalendar();
-        });
-    }
-
-    const calNextBtn = document.getElementById('dashCalNextBtn');
-    if (calNextBtn) {
-        calNextBtn.addEventListener('click', () => {
-            state.calendarCursor = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 1, 1);
-            renderDashboardCalendar();
-        });
-    }
-
-    const calTodayBtn = document.getElementById('dashCalTodayBtn');
-    if (calTodayBtn) {
-        calTodayBtn.addEventListener('click', () => {
-            state.calendarCursor = new Date();
-            renderDashboardCalendar();
-            selectCalendarDate(getTodayDateStr());
-        });
-    }
-
-    const fullCalendarBtn = document.getElementById('dashCalFullBtn');
-    const fullCalendarModal = document.getElementById('dashboardFullCalendarModal');
-    if (fullCalendarBtn) fullCalendarBtn.addEventListener('click', openFullCalendarModal);
-    document.getElementById('dashboardFullCalendarClose')?.addEventListener('click', closeFullCalendarModal);
-    document.getElementById('dashboardFullCalendarCloseFooter')?.addEventListener('click', closeFullCalendarModal);
-    if (fullCalendarModal) {
-        fullCalendarModal.addEventListener('click', (event) => {
-            if (event.target === fullCalendarModal) closeFullCalendarModal();
-        });
-    }
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && fullCalendarModal?.style.display !== 'none') closeFullCalendarModal();
-    });
-
-    // Set initial active tab state
     tabButtons.forEach((btn) => {
         const isActive = btn.dataset.period === state.period;
         btn.classList.toggle('active', isActive);
         btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+
+        btn.addEventListener('click', () => {
+            const period = btn.dataset.period;
+            if (state.period === period && state.offset === 0) return;
+            state.period = period;
+            state.offset = 0;
+            tabButtons.forEach((b) => {
+                const match = b === btn;
+                b.classList.toggle('active', match);
+                b.setAttribute('aria-selected', match ? 'true' : 'false');
+            });
+            fetchDashboardData();
+        });
     });
 
-    // =========================================================================
-    // Reports and Export Dropdown & Modal Logic
-    // =========================================================================
+    document.getElementById('prevPeriodBtn')?.addEventListener('click', () => { state.offset -= 1; fetchDashboardData(); });
+    document.getElementById('nextPeriodBtn')?.addEventListener('click', () => { state.offset += 1; fetchDashboardData(); });
+    document.getElementById('currentPeriodBtn')?.addEventListener('click', () => {
+        if (state.offset === 0) return;
+        state.offset = 0;
+        fetchDashboardData();
+    });
+
+    // Docket Tabs & Search
+    document.querySelectorAll('.pb-docket-tab').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            state.activeStatTarget = null;
+            document.querySelectorAll('.pb-kpi-card').forEach((c) => c.classList.remove('is-active'));
+            const resetBtn = document.getElementById('btnResetCaseFilter');
+            if (resetBtn) resetBtn.style.display = 'none';
+            setActiveDocketTab(btn.getAttribute('data-docket-tab') || 'priority');
+        });
+    });
+
+    document.getElementById('captainDocketSearchInput')?.addEventListener('input', (e) => {
+        state.docketSearch = e.target.value || '';
+        state.casesPage = 1;
+        renderCaptainDocketTable();
+    });
+
+    document.getElementById('btnResetCaseFilter')?.addEventListener('click', () => {
+        state.activeStatTarget = null;
+        state.docketSearch = '';
+        const searchInp = document.getElementById('captainDocketSearchInput');
+        if (searchInp) searchInp.value = '';
+        document.querySelectorAll('.pb-kpi-card').forEach((c) => c.classList.remove('is-active'));
+        const resetBtn = document.getElementById('btnResetCaseFilter');
+        if (resetBtn) resetBtn.style.display = 'none';
+        renderCaptainDocketTable();
+    });
+
+    // KPI Card click -> Focus appropriate Docket Tab
+    document.querySelectorAll('.pb-kpi-card[data-target-stat]').forEach((card) => {
+        const activateCard = () => {
+            const target = card.getAttribute('data-target-stat');
+            document.querySelectorAll('.pb-kpi-card').forEach((c) => c.classList.toggle('is-active', c === card));
+            state.activeStatTarget = target;
+            const resetBtn = document.getElementById('btnResetCaseFilter');
+
+            if (target === 'captain-actions') {
+                if (resetBtn) resetBtn.style.display = 'none';
+                setActiveDocketTab('priority');
+            } else if (target === 'settled-cases') {
+                if (resetBtn) resetBtn.style.display = 'inline-block';
+                setActiveDocketTab('cases');
+            } else if (target === 'active-mediation') {
+                if (resetBtn) resetBtn.style.display = 'inline-block';
+                setActiveDocketTab('cases');
+            } else {
+                if (resetBtn) resetBtn.style.display = 'none';
+                setActiveDocketTab('cases');
+            }
+            document.getElementById('dashboardCasesPanel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+        card.addEventListener('click', activateCard);
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                activateCard();
+            }
+        });
+    });
+
+    // Pagination buttons
+    document.getElementById('casesPrevPageBtn')?.addEventListener('click', () => {
+        if (state.casesPage > 1) { state.casesPage -= 1; renderCaptainDocketTable(); }
+    });
+    document.getElementById('casesNextPageBtn')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(getFilteredDocketRows().length / state.casesPerPage);
+        if (state.casesPage < totalPages) { state.casesPage += 1; renderCaptainDocketTable(); }
+    });
+    document.getElementById('hearingsPrevPageBtn')?.addEventListener('click', () => {
+        if (state.hearingsPage > 1) { state.hearingsPage -= 1; renderHearingsPage(); }
+    });
+    document.getElementById('hearingsNextPageBtn')?.addEventListener('click', () => {
+        const totalPages = Math.ceil((state.hearings || []).length / state.hearingsPerPage);
+        if (state.hearingsPage < totalPages) { state.hearingsPage += 1; renderHearingsPage(); }
+    });
+
+    // Calendar buttons
+    document.getElementById('dashCalPrevBtn')?.addEventListener('click', () => {
+        state.calendarCursor = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() - 1, 1);
+        renderDashboardCalendar();
+    });
+    document.getElementById('dashCalNextBtn')?.addEventListener('click', () => {
+        state.calendarCursor = new Date(state.calendarCursor.getFullYear(), state.calendarCursor.getMonth() + 1, 1);
+        renderDashboardCalendar();
+    });
+    document.getElementById('dashCalTodayBtn')?.addEventListener('click', () => {
+        state.calendarCursor = new Date();
+        renderDashboardCalendar();
+        selectCalendarDate(getTodayDateStr());
+    });
+
+    const fullCalendarModal = document.getElementById('dashboardFullCalendarModal');
+    const closeFullCal = () => { if (fullCalendarModal) fullCalendarModal.style.display = 'none'; };
+    document.getElementById('dashCalFullBtn')?.addEventListener('click', () => {
+        if (!fullCalendarModal) return;
+        renderFullCalendarSummary();
+        fullCalendarModal.style.display = 'flex';
+    });
+    document.getElementById('dashboardFullCalendarClose')?.addEventListener('click', closeFullCal);
+    document.getElementById('dashboardFullCalendarCloseFooter')?.addEventListener('click', closeFullCal);
+    fullCalendarModal?.addEventListener('click', (e) => { if (e.target === fullCalendarModal) closeFullCal(); });
+
+    // Settlement details modal
+    const settlementModal = document.getElementById('settlementDetailsModal');
+    const closeSettlementModal = () => { if (settlementModal) settlementModal.style.display = 'none'; };
+    document.getElementById('btnShowSettlementDetails')?.addEventListener('click', openSettlementDetailsModal);
+    document.getElementById('settlementDetailsClose')?.addEventListener('click', closeSettlementModal);
+    document.getElementById('settlementDetailsCloseFooter')?.addEventListener('click', closeSettlementModal);
+    settlementModal?.addEventListener('click', (e) => { if (e.target === settlementModal) closeSettlementModal(); });
+
+    // Export / Report Dropdown
     const dropdownGenToggle = document.getElementById('btnGenerateReportToggle');
     const menuGenerate = document.getElementById('menuGenerateReport');
-
     const closeAllDropdowns = () => {
         if (menuGenerate) menuGenerate.classList.remove('is-open');
         if (dropdownGenToggle) {
@@ -2059,590 +2299,43 @@ document.addEventListener('DOMContentLoaded', () => {
             dropdownGenToggle.closest('.dash-dropdown')?.classList.remove('is-open');
         }
     };
-
-    if (dropdownGenToggle && menuGenerate) {
-        dropdownGenToggle.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isOpen = menuGenerate.classList.contains('is-open');
-            closeAllDropdowns();
-            if (!isOpen) {
-                menuGenerate.classList.add('is-open');
-                dropdownGenToggle.setAttribute('aria-expanded', 'true');
-                dropdownGenToggle.closest('.dash-dropdown')?.classList.add('is-open');
-            }
-        });
-    }
-
-
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.dash-dropdown')) {
-            closeAllDropdowns();
+    dropdownGenToggle?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isOpen = menuGenerate?.classList.contains('is-open');
+        closeAllDropdowns();
+        if (!isOpen && menuGenerate) {
+            menuGenerate.classList.add('is-open');
+            dropdownGenToggle.setAttribute('aria-expanded', 'true');
+            dropdownGenToggle.closest('.dash-dropdown')?.classList.add('is-open');
         }
     });
-
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.dash-dropdown')) closeAllDropdowns();
+    });
+    menuGenerate?.querySelectorAll('.dash-dropdown-item').forEach((item) => {
+        item.addEventListener('click', closeAllDropdowns);
+    });
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeAllDropdowns();
-            closeReportModal();
-            closeKpModal();
+            closeFullCal();
+            closeSettlementModal();
+            const drawerOverlay = document.getElementById('addWidgetDrawerOverlay');
+            if (drawerOverlay && drawerOverlay.style.display !== 'none') {
+                drawerOverlay.style.display = 'none';
+            }
         }
     });
 
-    const getReportTypeForActivePeriod = () => {
-        switch (state.period) {
-            case 'weekly': return 'Weekly';
-            case 'monthly': return 'Monthly';
-            case 'quarterly': return 'Quarterly';
-            case 'annual': return 'Annual';
-            case 'all': default: return 'All Time';
-        }
-    };
-
-    const getActiveReportParams = (overrideType = null) => {
-        const ap = state.activePeriodData || {};
-        const type = overrideType || getReportTypeForActivePeriod();
-        return {
-            type,
-            year: ap.year || new Date().getFullYear(),
-            month: ap.month || (new Date().getMonth() + 1),
-            quarter: ap.quarter || Math.ceil((new Date().getMonth() + 1) / 3),
-            start_date: ap.startDate || '',
-            end_date: ap.endDate || '',
-            period_label: ap.periodLabel || 'Report'
-        };
-    };
-
-    // Modal elements for Report Preview
-    const reportModal = document.getElementById('reportPreviewModal');
-    const modalCloseBtn = document.getElementById('modalCloseBtn');
-    const modalCloseFooterBtn = document.getElementById('modalCloseFooterBtn');
-    const modalPrintBtn = document.getElementById('modalPrintBtn');
-    const modalLoading = document.getElementById('modalLoading');
-    const modalContent = document.getElementById('modalContent');
-
-    const openReportModal = () => {
-        if (reportModal) {
-            reportModal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-        }
-    };
-
-    const closeReportModal = () => {
-        if (reportModal) {
-            reportModal.style.display = 'none';
-            document.body.style.overflow = '';
-        }
-    };
-
-    if (modalCloseBtn) modalCloseBtn.addEventListener('click', closeReportModal);
-    if (modalCloseFooterBtn) modalCloseFooterBtn.addEventListener('click', closeReportModal);
-    if (reportModal) {
-        reportModal.addEventListener('click', (e) => {
-            if (e.target === reportModal) closeReportModal();
-        });
-    }
-
-    const renderReportPreview = (report) => {
-        const titleEl = document.getElementById('modalReportTitle');
-        const subEl = document.getElementById('modalReportSubtitle');
-        const badgeEl = document.getElementById('modalPeriodBadge');
-
-        if (titleEl) titleEl.textContent = `${report.type} Report: ${report.period_label}`;
-        if (subEl) {
-            const count = (report.cases || []).length;
-            subEl.textContent = `${count} case record${count === 1 ? '' : 's'} included · Docketed activity and status overview`;
-        }
-        if (badgeEl) badgeEl.textContent = report.type;
-
-        // Render Summary Cards
-        const cardsContainer = document.getElementById('modalSummaryCards');
-        if (cardsContainer) {
-            cardsContainer.replaceChildren();
-            const totals = report.totals || {};
-            const keyMetrics = [
-                { key: 'cases_docketed', label: 'Cases Docketed' },
-                { key: 'complaints_filed', label: 'Complaints Filed' },
-                { key: 'settled_cases', label: 'Settled Cases' },
-                { key: 'arbitration_cases', label: 'Arbitration Cases' },
-                { key: 'cfa_issued_cases', label: 'CFA Issued' },
-                { key: 'archived_cases', label: 'Archived Cases' },
-                { key: 'hearings_scheduled', label: 'Hearings' }
-            ];
-            keyMetrics.forEach(({ key, label }) => {
-                const card = document.createElement('div');
-                card.className = 'summary-card';
-                const count = document.createElement('strong');
-                count.textContent = Number(totals[key] ?? 0).toLocaleString();
-                const text = document.createElement('span');
-                text.textContent = label;
-                card.append(count, text);
-                cardsContainer.appendChild(card);
-            });
-        }
-
-        // Render Status Totals
-        const statusEl = document.getElementById('modalStatusTotals');
-        if (statusEl) {
-            statusEl.replaceChildren();
-            const statuses = Object.entries(report.status_totals || {});
-            if (!statuses.length) {
-                statusEl.textContent = 'No cases recorded in this period.';
-            } else {
-                const list = document.createElement('ul');
-                list.className = 'totals-list';
-                statuses.forEach(([name, count]) => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `<span>${escapeHtml(name)}</span><strong>${Number(count).toLocaleString()}</strong>`;
-                    list.appendChild(li);
-                });
-                statusEl.appendChild(list);
-            }
-        }
-
-        // Render Categories
-        const catEl = document.getElementById('modalCategoryTotals');
-        if (catEl) {
-            catEl.replaceChildren();
-            const categories = report.categories || [];
-            if (!categories.length) {
-                catEl.textContent = 'No complaint categories recorded in this period.';
-            } else {
-                const list = document.createElement('ul');
-                list.className = 'totals-list';
-                categories.forEach(item => {
-                    const li = document.createElement('li');
-                    li.innerHTML = `<span>${escapeHtml(item.category_name)}</span><strong>${Number(item.total).toLocaleString()}</strong>`;
-                    list.appendChild(li);
-                });
-                catEl.appendChild(list);
-            }
-        }
-
-        // Render Cases Details Table
-        const casesBody = document.getElementById('modalReportCases');
-        if (casesBody) {
-            casesBody.replaceChildren();
-            const cases = report.cases || [];
-            if (!cases.length) {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="8" class="dashboard-empty-row" style="text-align:center; padding:24px; color:#64748b;">No cases docketed in this period.</td>`;
-                casesBody.appendChild(tr);
-            } else {
-                cases.forEach(item => {
-                    const tr = document.createElement('tr');
-                    const resolution = item.cfa_issuance_date ? `CFA: ${item.cfa_issuance_date}` : item.award_date ? `Award: ${item.award_date}` : item.settlement_date ? `Settlement: ${item.settlement_date}` : item.archived_date ? `Archived: ${item.archived_date}` : '—';
-                    tr.innerHTML = `
-                        <td><strong>${escapeHtml(item.case_number)}</strong></td>
-                        <td>${escapeHtml(item.complaint_title || item.complaint_number || '—')}</td>
-                        <td>${escapeHtml(item.category_name || '—')}</td>
-                        <td>${escapeHtml(item.case_type || '—')}</td>
-                        <td><span class="badge ${getStatusClass(item.case_status)}">${escapeHtml(item.case_status || '—')}</span></td>
-                        <td>${formatDateOnly(item.docket_date)}</td>
-                        <td>${Number(item.hearing_count || 0)}</td>
-                        <td>${escapeHtml(resolution)}</td>
-                    `;
-                    casesBody.appendChild(tr);
-                });
-            }
-        }
-    };
-
-    // Action 1: Preview Report
-    const previewBtn = document.getElementById('itemPreviewReport');
-    if (previewBtn) {
-        previewBtn.addEventListener('click', async () => {
-            closeAllDropdowns();
-            openReportModal();
-            if (modalLoading) {
-                modalLoading.innerHTML = '<div class="dash-spinner"></div><span>Generating report preview...</span>';
-                modalLoading.style.display = 'flex';
-            }
-            if (modalContent) modalContent.style.display = 'none';
-
-            const params = getActiveReportParams();
-            try {
-                const query = new URLSearchParams(params);
-                const res = await fetch(`../../../backend/api/reports/generate.php?${query.toString()}`);
-                const result = await res.json().catch(() => ({}));
-                if (!res.ok || !result.success) {
-                    throw new Error(result.message || 'Unable to generate report preview.');
-                }
-                renderReportPreview(result.data);
-                if (modalLoading) modalLoading.style.display = 'none';
-                if (modalContent) modalContent.style.display = 'block';
-            } catch (err) {
-                if (modalLoading) {
-                    modalLoading.innerHTML = `<p style="color:#ef4444; font-weight:600;">Failed to load preview: ${escapeHtml(err.message)}</p>`;
-                    modalLoading.style.display = 'flex';
-                }
-            }
-        });
-    }
-
-    // Action 2: Print Report
-    const printAction = () => {
-        const params = getActiveReportParams();
-        const query = new URLSearchParams(params);
-        window.open(`../../../backend/api/reports/print.php?${query.toString()}`, '_blank', 'width=950,height=750,noopener,noreferrer');
-    };
-
-    const printItemBtn = document.getElementById('itemPrintReport');
-    if (printItemBtn) {
-        printItemBtn.addEventListener('click', () => {
-            closeAllDropdowns();
-            printAction();
-        });
-    }
-    if (modalPrintBtn) {
-        modalPrintBtn.addEventListener('click', printAction);
-    }
-
-    // Action 3: DILG Report
-    const dilgItemBtn = document.getElementById('itemDilgReport');
-    if (dilgItemBtn) {
-        dilgItemBtn.addEventListener('click', () => {
-            closeAllDropdowns();
-            const ap = state.activePeriodData || {};
-            const query = new URLSearchParams({
-                type: 'DILG',
-                year: ap.year || new Date().getFullYear()
-            });
-            window.open(`../../../backend/api/reports/print.php?${query.toString()}`, '_blank', 'width=950,height=750,noopener,noreferrer');
-        });
-    }
-
-    // Action 3B: 1-Click Monthly Council Meeting Brief (1-Page Printable Executive Summary)
-    const openMonthlyCouncilBrief = (autoPrint = true) => {
-        closeAllDropdowns();
-        const ap = state.activePeriodData || {};
-        const now = new Date();
-        const yearVal = ap.year || now.getFullYear();
-        const monthVal = ap.month || (now.getMonth() + 1);
-        const query = new URLSearchParams({
-            year: String(yearVal),
-            month: String(monthVal)
-        });
-        if (state.period === 'monthly' && ap.startDate && ap.endDate) {
-            query.set('start_date', ap.startDate);
-            query.set('end_date', ap.endDate);
-            if (ap.periodLabel) query.set('period_label', ap.periodLabel);
-        }
-        if (autoPrint) {
-            query.set('autoprint', '1');
-        }
-        window.open(`../../../backend/api/reports/council_brief.php?${query.toString()}`, '_blank', 'width=1020,height=820,noopener,noreferrer');
-    };
-    window.openMonthlyCouncilBrief = openMonthlyCouncilBrief;
-
-    document.getElementById('btnOneClickCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
-    document.getElementById('itemCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
-    document.getElementById('btnBulletinCouncilBrief')?.addEventListener('click', () => openMonthlyCouncilBrief(true));
-
-    // =========================================================================
-    // KP Monitoring Form Modal Logic
-    // =========================================================================
-    const kpModal = document.getElementById('kpMonitoringModal');
-    const kpCloseBtn = document.getElementById('kpCloseBtn');
-    const kpCloseFooterBtn = document.getElementById('kpCloseFooterBtn');
-    const kpPrintBtn = document.getElementById('kpPrintBtn');
-    const kpExportExcelBtn = document.getElementById('kpExportExcelBtn');
-    const kpLoading = document.getElementById('kpLoading');
-    const kpPrintableArea = document.getElementById('kpPrintableArea');
-
-    let kpCurrentCases = [];
-
-    const openKpModal = () => {
-        if (kpModal) {
-            kpModal.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
-        }
-    };
-
-    const closeKpModal = () => {
-        if (kpModal) {
-            kpModal.style.display = 'none';
-            document.body.style.overflow = '';
-        }
-    };
-
-    if (kpCloseBtn) kpCloseBtn.addEventListener('click', closeKpModal);
-    if (kpCloseFooterBtn) kpCloseFooterBtn.addEventListener('click', closeKpModal);
-    if (kpModal) {
-        kpModal.addEventListener('click', (e) => {
-            if (e.target === kpModal) closeKpModal();
-        });
-    }
-
-    // Dynamic auto-recalculation for KP Monitoring Form
-    const recalculateKpTotals = () => {
-        const crim = Number(document.getElementById('kpInCriminal')?.value) || 0;
-        const civ = Number(document.getElementById('kpInCivil')?.value) || 0;
-        const oth = Number(document.getElementById('kpInOthers')?.value) || 0;
-        const totalFiled = crim + civ + oth;
-        const elTotalFiled = document.getElementById('kpTotalFiledDisplay');
-        if (elTotalFiled) elTotalFiled.textContent = totalFiled.toLocaleString();
-
-        const med = Number(document.getElementById('kpInMediation')?.value) || 0;
-        const con = Number(document.getElementById('kpInConciliation')?.value) || 0;
-        const arb = Number(document.getElementById('kpInArbitration')?.value) || 0;
-        const totalSettled = med + con + arb;
-        const elTotalSettled = document.getElementById('kpTotalSettledDisplay');
-        if (elTotalSettled) elTotalSettled.textContent = totalSettled.toLocaleString();
-
-        const rep = Number(document.getElementById('kpInRepudiated')?.value) || 0;
-        const drp = Number(document.getElementById('kpInDropped')?.value) || 0;
-        const pnd = Number(document.getElementById('kpInPending')?.value) || 0;
-        const dsm = Number(document.getElementById('kpInDismissed')?.value) || 0;
-        const crt = Number(document.getElementById('kpInCertified')?.value) || 0;
-        const ref = Number(document.getElementById('kpInReferred')?.value) || 0;
-        const totalUnsettled = rep + drp + pnd + dsm + crt + ref;
-        const elTotalUnsettled = document.getElementById('kpTotalUnsettledDisplay');
-        if (elTotalUnsettled) elTotalUnsettled.textContent = totalUnsettled.toLocaleString();
-
-        const savings = totalSettled * 9500;
-        const elSavings = document.getElementById('kpSavingsDisplay');
-        if (elSavings) {
-            elSavings.textContent = `PHP ${savings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-        }
-    };
-
-    // Attach listeners on cell number inputs
-    document.querySelectorAll('.kp-cell-num').forEach(inp => {
-        inp.addEventListener('input', recalculateKpTotals);
-        inp.addEventListener('change', recalculateKpTotals);
-    });
-
-    const populateKpMonitoringData = (data) => {
-        const meta = data.meta || {};
-        const summary = data.summary || {};
-        const cases = data.cases || [];
-        kpCurrentCases = cases;
-
-        const setVal = (id, val) => {
-            const el = document.getElementById(id);
-            if (el && val !== undefined && val !== null) el.value = val;
-        };
-        const setText = (id, txt) => {
-            const el = document.getElementById(id);
-            if (el && txt !== undefined && txt !== null) el.textContent = txt;
-        };
-
-        setVal('kpRegionInput', meta.region || 'NCR');
-        setVal('kpCityInput', meta.city || 'MARIKINA');
-        setVal('kpBarangayInput', meta.barangay || 'TUMANA');
-        setVal('kpQuarterInput', meta.quarter_label || 'Quarter 1');
-        setVal('kpCyInput', meta.cy || new Date().getFullYear());
-        setVal('kpDateAccomplishedInput', meta.date_accomplished || '');
-        setText('kpMonthDisplay', meta.month_label || '');
-
-        setVal('kpInCriminal', summary.criminal ?? 0);
-        setVal('kpInCivil', summary.civil ?? 0);
-        setVal('kpInOthers', summary.others ?? 0);
-
-        setVal('kpInMediation', summary.mediation ?? 0);
-        setVal('kpInConciliation', summary.conciliation ?? 0);
-        setVal('kpInArbitration', summary.arbitration ?? 0);
-
-        setVal('kpInRepudiated', summary.repudiated ?? 0);
-        setVal('kpInDropped', summary.dropped ?? 0);
-        setVal('kpInPending', summary.pending ?? 0);
-        setVal('kpInDismissed', summary.dismissed ?? 0);
-        setVal('kpInCertified', summary.certified ?? 0);
-        setVal('kpInReferred', summary.referred ?? 0);
-
-        setVal('kpPreparedByInput', meta.prepared_by || 'LUPON MEMBER / SECRETARY');
-        setVal('kpNotedByInput', meta.noted_by || 'HON. AKIKO LYNNE CENTENO');
-        setVal('kpAttestedByInput', meta.attested_by || 'PAMELA CONSULTA');
-
-        setText('kpEntriesCount', `Showing ${cases.length} entries`);
-        const tbody = document.getElementById('kpCasesTbody');
-        if (tbody) {
-            tbody.replaceChildren();
-            if (!cases.length) {
-                const tr = document.createElement('tr');
-                tr.innerHTML = `<td colspan="21" class="dashboard-empty-row" style="text-align:center; padding:24px; color:#64748b;">No cases docketed in this period.</td>`;
-                tbody.appendChild(tr);
-            } else {
-                cases.forEach(c => {
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td><strong>${escapeHtml(c.case_number || '—')}</strong></td>
-                        <td>${escapeHtml(c.complaint_number || '—')}</td>
-                        <td>${escapeHtml(c.case_type || '—')}</td>
-                        <td>${escapeHtml(c.category_name || '—')}</td>
-                        <td>${escapeHtml(c.complaint_title || '—')}</td>
-                        <td>${escapeHtml(c.complainant_name || '—')}</td>
-                        <td>${escapeHtml(c.respondent_name || '—')}</td>
-                        <td>${formatDateOnly(c.incident_date)}</td>
-                        <td>${formatDateOnly(c.docket_date)}</td>
-                        <td>${formatDateOnly(c.summons_issue_date)}</td>
-                        <td>${formatDateOnly(c.summons_serve_date)}</td>
-                        <td>${escapeHtml(c.officer_name || '—')}</td>
-                        <td>${escapeHtml(c.summons_status || '—')}</td>
-                        <td>${escapeHtml(c.summons_sla || '—')}</td>
-                        <td>${Number(c.mediation_sessions || 0)}</td>
-                        <td>${Number(c.conciliation_sessions || 0)}</td>
-                        <td>${formatDateOnly(c.settlement_date)}</td>
-                        <td>${escapeHtml(c.compliance_status || '—')}</td>
-                        <td>${formatDateOnly(c.cfa_issuance_date)}</td>
-                        <td>${escapeHtml(c.cfa_reason || '—')}</td>
-                        <td><span class="badge ${getStatusClass(c.case_status)}">${escapeHtml(c.case_status || '—')}</span></td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            }
-        }
-
-        recalculateKpTotals();
-    };
-
-    // Action 5: KP Monitoring Form Click
-    const kpItemBtn = document.getElementById('itemKpMonitoring');
-    if (kpItemBtn) {
-        kpItemBtn.addEventListener('click', async () => {
-            closeAllDropdowns();
-            openKpModal();
-
-            if (kpLoading) {
-                kpLoading.innerHTML = '<div class="dash-spinner"></div><span>Loading KP Monitoring Form data...</span>';
-                kpLoading.style.display = 'flex';
-            }
-            if (kpPrintableArea) kpPrintableArea.style.display = 'none';
-
-            const ap = state.activePeriodData || {};
-            const query = new URLSearchParams({
-                year: ap.year || new Date().getFullYear(),
-                month: ap.month || (new Date().getMonth() + 1),
-                start_date: ap.startDate || '',
-                end_date: ap.endDate || ''
-            });
-
-            try {
-                const res = await fetch(`../../../backend/api/reports/kp_monitoring.php?${query.toString()}`);
-                const result = await res.json().catch(() => ({}));
-                if (!res.ok || !result.success) {
-                    throw new Error(result.message || 'Unable to load KP Monitoring data.');
-                }
-                populateKpMonitoringData(result);
-                if (kpLoading) kpLoading.style.display = 'none';
-                if (kpPrintableArea) kpPrintableArea.style.display = 'block';
-            } catch (err) {
-                if (kpLoading) {
-                    kpLoading.innerHTML = `<p style="color:#ef4444; font-weight:600;">Failed to load KP Monitoring Form: ${escapeHtml(err.message)}</p>`;
-                    kpLoading.style.display = 'flex';
-                }
-            }
-        });
-    }
-
-    // Print KP Monitoring Form
-    if (kpPrintBtn) {
-        kpPrintBtn.addEventListener('click', () => {
-            window.print();
-        });
-    }
-
-    // Export KP Monitoring Form to Excel (.xlsx)
-    if (kpExportExcelBtn) {
-        kpExportExcelBtn.addEventListener('click', async () => {
-            const getVal = (id) => (document.getElementById(id)?.value ?? '');
-            const getNum = (id) => (Number(document.getElementById(id)?.value) || 0);
-
-            const crim = getNum('kpInCriminal');
-            const civ = getNum('kpInCivil');
-            const oth = getNum('kpInOthers');
-            const totalFiled = crim + civ + oth;
-
-            const med = getNum('kpInMediation');
-            const con = getNum('kpInConciliation');
-            const arb = getNum('kpInArbitration');
-            const totalSettled = med + con + arb;
-
-            const rep = getNum('kpInRepudiated');
-            const drp = getNum('kpInDropped');
-            const pnd = getNum('kpInPending');
-            const dsm = getNum('kpInDismissed');
-            const crt = getNum('kpInCertified');
-            const ref = getNum('kpInReferred');
-            const totalUnsettled = rep + drp + pnd + dsm + crt + ref;
-
-            const savings = totalSettled * 9500;
-
-            const meta = {
-                region: getVal('kpRegionInput') || 'NCR',
-                city: getVal('kpCityInput') || 'MARIKINA',
-                barangay: getVal('kpBarangayInput') || 'TUMANA',
-                quarter_label: getVal('kpQuarterInput') || 'Quarter 1',
-                cy: getVal('kpCyInput') || new Date().getFullYear(),
-                date_accomplished: getVal('kpDateAccomplishedInput') || '',
-                month_label: document.getElementById('kpMonthDisplay')?.textContent || 'KP-Report',
-                prepared_by: getVal('kpPreparedByInput') || 'LUPON MEMBER / SECRETARY',
-                noted_by: getVal('kpNotedByInput') || 'HON. AKIKO LYNNE CENTENO',
-                attested_by: getVal('kpAttestedByInput') || 'PAMELA CONSULTA'
-            };
-
-            const summary = {
-                civil: civ,
-                criminal: crim,
-                others: oth,
-                total_filed: totalFiled,
-                mediation: med,
-                conciliation: con,
-                arbitration: arb,
-                total_settled: totalSettled,
-                repudiated: rep,
-                dropped: drp,
-                pending: pnd,
-                dismissed: dsm,
-                certified: crt,
-                referred: ref,
-                total_unsettled: totalUnsettled,
-                savings: savings.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-            };
-
-            const ap = state.activePeriodData || {};
-            const payload = {
-                format: 'kp_monitoring_excel',
-                start_date: ap.startDate || '',
-                end_date: ap.endDate || '',
-                meta,
-                summary,
-                cases: kpCurrentCases
-            };
-
-            if (window.agapNotify) window.agapNotify('Generating KP Monitoring Excel workbook (.xlsx)...', 'info', 'Export');
-            try {
-                const res = await fetch('../../../backend/api/reports/export.php', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await res.json().catch(() => ({}));
-                if (!res.ok || !result.success) {
-                    throw new Error(result.message || 'Unable to generate KP Monitoring Excel workbook.');
-                }
-                if (window.agapNotify) window.agapNotify(result.message || 'KP Monitoring Excel workbook exported successfully.', 'success', 'Export Complete');
-                window.location.assign(result.download_url);
-            } catch (err) {
-                if (window.agapNotify) window.agapNotify(err.message, 'error', 'Export Failed');
-            }
-        });
-    }
-
-    // Initialize Quick Attendance / Check-In Modal
+    initWidgetDrawer();
+    initCaptainAiAssistant();
     initQuickAttendanceModal();
 
-    // Initialize Top KPI Stat Cards Click Navigation & Filtering
-    initStatCardClickHandlers();
-
-    // Auto-refresh countdown timers and queue statuses every 60 seconds
     setInterval(() => {
         if (!document.hidden && !state.isLoading && (state.hearings || []).length > 0) {
             renderHearingsPage();
         }
     }, 60000);
 
-    // Initial load
     fetchDashboardData();
 });
-

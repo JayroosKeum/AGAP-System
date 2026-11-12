@@ -400,32 +400,57 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                         </div>
                     </div>
 
-                    <!-- Staff-Unified 5-Card KPI Grid (.stat-card from dashboard.css) -->
+                    <!-- Staff-Unified 5-Card KPI Grid (Mobile: unified 2-column icon-tile card) -->
                     <div class="rd-stats-grid" aria-label="Complaint summary counts">
                         <button type="button" class="stat-card" data-kpi-filter="new">
-                            <p>New / Filed</p>
-                            <h2 id="kpiCountNew">0</h2>
-                            <span>For review &amp; intake</span>
+                            <span class="rd-kpi-icon rd-kpi-icon-amber" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            </span>
+                            <div class="rd-kpi-text">
+                                <p>New / Filed</p>
+                                <h2 id="kpiCountNew">0</h2>
+                                <span>For review &amp; intake</span>
+                            </div>
                         </button>
                         <button type="button" class="stat-card" data-kpi-filter="ongoing">
-                            <p>Approved &amp; Ongoing</p>
-                            <h2 id="kpiCountOngoing">0</h2>
-                            <span>Approved, Paanyaya &amp; mediation</span>
+                            <span class="rd-kpi-icon rd-kpi-icon-green" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+                            </span>
+                            <div class="rd-kpi-text">
+                                <p>Approved &amp; Ongoing</p>
+                                <h2 id="kpiCountOngoing">0</h2>
+                                <span>Approved, Paanyaya &amp; mediation</span>
+                            </div>
                         </button>
                         <button type="button" class="stat-card" data-kpi-filter="conciliation">
-                            <p>Conciliation</p>
-                            <h2 id="kpiCountConciliation">0</h2>
-                            <span>Pangkat &amp; arbitration sessions</span>
+                            <span class="rd-kpi-icon rd-kpi-icon-blue" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+                            </span>
+                            <div class="rd-kpi-text">
+                                <p>Conciliation</p>
+                                <h2 id="kpiCountConciliation">0</h2>
+                                <span>Pangkat &amp; arbitration sessions</span>
+                            </div>
                         </button>
                         <button type="button" class="stat-card" data-kpi-filter="settled">
-                            <p>Settled / CFA</p>
-                            <h2 id="kpiCountSettled">0</h2>
-                            <span>Amicable, arbitration &amp; CFA</span>
+                            <span class="rd-kpi-icon rd-kpi-icon-purple" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                            </span>
+                            <div class="rd-kpi-text">
+                                <p>Settled / CFA</p>
+                                <h2 id="kpiCountSettled">0</h2>
+                                <span>Amicable, arbitration &amp; CFA</span>
+                            </div>
                         </button>
                         <button type="button" class="stat-card" data-kpi-filter="cancelled">
-                            <p>Drafts &amp; Closed</p>
-                            <h2 id="kpiCountCancelled">0</h2>
-                            <span>Drafts, repudiated &amp; dismissed</span>
+                            <span class="rd-kpi-icon rd-kpi-icon-slate" aria-hidden="true">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+                            </span>
+                            <div class="rd-kpi-text">
+                                <p>Drafts &amp; Closed</p>
+                                <h2 id="kpiCountCancelled">0</h2>
+                                <span>Drafts, repudiated &amp; dismissed</span>
+                            </div>
                         </button>
                     </div>
 

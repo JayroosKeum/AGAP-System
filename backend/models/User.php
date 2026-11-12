@@ -260,7 +260,7 @@ class User {
         return (bool) $stmt->fetchColumn();
     }
 
-    public function getAll(): array
+    public function getAll(bool $staffOnly = false): array
     {
         $stmt = $this->db->query(
             "SELECT u.user_id, u.first_name, u.last_name, u.username, u.email, u.contact_no,
@@ -268,10 +268,21 @@ class User {
                     CASE WHEN u.email_verification_token IS NOT NULL AND u.status = 'Inactive' THEN 1 ELSE 0 END AS pending_verification,
                     CASE WHEN u.password_hash IS NOT NULL AND u.password_hash <> '' THEN 1 ELSE 0 END AS has_password
              FROM users u
-             INNER JOIN roles r ON r.role_id = u.role_id
+             INNER JOIN roles r ON r.role_id = u.role_id" . ($staffOnly ? " WHERE r.role_name <> 'Resident' " : " ") . "
              ORDER BY u.last_name, u.first_name"
         );
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function getStaffRoles(): array
+    {
+        $stmt = $this->db->query(
+            "SELECT role_id, role_name
+             FROM roles
+             WHERE role_name <> 'Resident'
+             ORDER BY role_id ASC"
+        );
+        return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
     }
 
     public function roleExists(int $roleId): bool

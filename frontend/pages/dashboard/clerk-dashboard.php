@@ -33,7 +33,7 @@ include '../../layouts/header.php';
             </div>
             <div class="top-quick-actions" aria-label="Clerk quick access actions">
                 <a href="../complaints/complaint-create.php" class="btn-top-primary" id="btnClerkNewIntake">+ Walk-in Intake</a>
-                <a href="../users/resident-verification.php" class="btn-top-secondary">Verify Residents</a>
+                <a href="../users/user-list.php?tab=residents" class="btn-top-secondary">Verify Residents</a>
                 <a href="../paanyaya/index.php" class="btn-top-secondary" id="btnClerkIssuePaanyaya">Paanyaya Queue</a>
                 <a href="../reports/report-list.php" class="btn-top-secondary" id="btnClerkPrintRepo">LTIA &amp; Transmittals</a>
             </div>
