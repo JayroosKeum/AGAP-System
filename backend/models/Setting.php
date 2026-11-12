@@ -398,8 +398,22 @@ class Setting
         $lang = in_array(trim((string)($data['preferred_language'] ?? '')), ['en', 'fil'], true) ? trim((string)$data['preferred_language']) : 'fil';
         $hasPurok = array_key_exists('purok', $data);
         $hasAddress = array_key_exists('address', $data);
+        $hasIsTenant = array_key_exists('is_tenant', $data) && $data['is_tenant'] !== '' && $data['is_tenant'] !== null;
         $purok = $hasPurok ? (trim((string)$data['purok']) ?: null) : null;
         $address = $hasAddress ? (trim((string)$data['address']) ?: null) : null;
+        $isTenant = null;
+        if ($hasIsTenant) {
+            if (!in_array((string)$data['is_tenant'], ['0', '1', '2'], true)) {
+                return ['success' => false, 'message' => 'Please select a valid residency status (Resident, Tenant / Renter, or Non-Resident).'];
+            }
+            $isTenant = (int)$data['is_tenant'];
+        } elseif ($hasPurok && strcasecmp((string)$purok, 'Non-Resident') === 0) {
+            $isTenant = 2;
+        }
+        if ($isTenant === 2 && ($purok === null || $purok === '')) {
+            $purok = 'Non-Resident';
+            $hasPurok = true;
+        }
 
         if (!ValidationService::name($fn, 100, true)) {
             return ['success' => false, 'message' => 'Please enter a valid first name (letters only, up to 100 characters).'];
@@ -474,6 +488,12 @@ class Setting
                         $resSets[] = 'purok = ?';
                         $resParams[] = $purok;
                     }
+                    if ($isTenant !== null) {
+                        $resSets[] = 'is_tenant = ?';
+                        $resParams[] = $isTenant;
+                        $resSets[] = 'barangay = ?';
+                        $resParams[] = ($isTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0) ? 'Outside Tumana' : 'Tumana';
+                    }
                     if ($hasAddress) {
                         $resSets[] = 'address = ?';
                         $resSets[] = 'house_street = ?';
@@ -486,11 +506,13 @@ class Setting
                     $resStmt->execute($resParams);
                     $_SESSION['resident_id'] = $targetResidentId;
                 } else {
+                    $resolvedTenant = $isTenant ?? ((strcasecmp((string)$purok, 'Non-Resident') === 0) ? 2 : 0);
+                    $resolvedBrgy = ($resolvedTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0) ? 'Outside Tumana' : 'Tumana';
                     $insRes = $this->conn->prepare("
                         INSERT INTO residents (
                             first_name, middle_name, last_name, contact_no, email, preferred_contact,
                             address, house_street, barangay, city_municipality, purok, is_tenant, residency_verified
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Tumana', 'Marikina City', ?, 0, 0)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Marikina City', ?, ?, 0)
                     ");
                     $insRes->execute([
                         $fn,
@@ -501,7 +523,9 @@ class Setting
                         $contact ? 'SMS' : 'Email',
                         $address,
                         $address,
+                        $resolvedBrgy,
                         $purok,
+                        $resolvedTenant,
                     ]);
                     $_SESSION['resident_id'] = (int) $this->conn->lastInsertId();
                 }

@@ -27,6 +27,7 @@ if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO'
 
 $roleName = agapGetRoleName($rbacDb);
 $isLuponReadOnly = ($roleName === 'Lupon Member' || $roleId === 3);
+$canScreenClassification = agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'], $rbacDb);
 $canAuthorizePastDate = $roleId === 1;
 $lisoCategories = [];
 try {
@@ -182,6 +183,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <?php endif; ?>
                 <script>
                     window.__agapLuponReadOnly = <?php echo $isLuponReadOnly ? 'true' : 'false'; ?>;
+                    window.__agapCanScreenClassification = <?php echo $canScreenClassification ? 'true' : 'false'; ?>;
                 </script>
             </div>
         </div>
@@ -362,6 +364,8 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             <div id="lisoOrigNarrativePreview" style="font-size: 0.81rem; color: #334155; max-height: 115px; overflow-y: auto; white-space: pre-wrap; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px; margin-top: 3px;"></div>
                             <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-top: 8px;">Requested Relief / Settlement:</div>
                             <div id="lisoOrigResolutionPreview" style="font-size: 0.8rem; color: #475569; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 8px; margin-top: 3px;"></div>
+                            <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-top: 8px;">Jurisdiction &amp; Venue Check (R.A. 7160):</div>
+                            <div id="lisoOrigJurisdictionBox" style="font-size: 0.79rem; color: #334155; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 6px 8px; margin-top: 3px; white-space: pre-wrap;"></div>
                         </div>
 
                         <!-- Right: Advisory Check + Staff Verification -->
@@ -399,9 +403,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
                             <div style="display: grid; grid-template-columns: 1fr 125px; gap: 8px; margin-bottom: 8px;">
                                 <div>
-                                    <label for="lisoCategorySelect" style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 3px;">Confirmed Complaint Category 1</label>
+                                    <label for="lisoCategorySelect" style="display: block; font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 3px;">Confirmed Complaint Category 1 (Verify / Modify after Jurisdiction Check)</label>
                                     <select id="lisoCategorySelect" style="width: 100%; padding: 6px 8px; font-size: 0.8rem; border: 1px solid #cbd5e1; border-radius: 6px;">
-                                        <option value="">Keep submitted category</option>
+                                        <option value="">Keep submitted / current category</option>
                                         <?php foreach ($lisoCategories as $lCat): ?>
                                             <option value="<?php echo (int) $lCat['category_id']; ?>"><?php echo htmlspecialchars((string) $lCat['category_name']); ?></option>
                                         <?php endforeach; ?>
@@ -441,7 +445,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
                             <label style="display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-size: 0.78rem; font-weight: 600; color: #92400e; cursor: pointer;">
                                 <input type="checkbox" id="lisoConfirmClassificationCheck" style="margin-top: 2px;">
-                                <span>Mandatory Human Confirmation: I independently reviewed the resident's original input and confirm the selected category, case type, and complaint title before saving.</span>
+                                <span>Mandatory Human Confirmation: I independently checked jurisdiction under R.A. 7160 against the resident's input and confirm or corrected the selected category, case type, and complaint title before saving.</span>
                             </label>
                         </div>
                     </div>

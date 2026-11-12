@@ -161,10 +161,12 @@ if ($escalatePaanyayaId > 0) {
         $old['complainant_address'] = $escalatePaanyaya['complainant_address'] ?? '';
         $old['complainant_contact_no'] = $escalatePaanyaya['complainant_contact_no'] ?? '';
         $old['complainant_purok'] = $escalatePaanyaya['complainant_purok'] ?? '';
+        $old['complainant_is_tenant'] = strcasecmp(trim((string)$old['complainant_purok']), 'Non-Resident') === 0 ? '2' : '0';
         $old['respondent_resident_id'] = $escalatePaanyaya['invitee_resident_id'] ?? '';
         $old['respondent_address'] = $escalatePaanyaya['invitee_address'] ?? '';
         $old['respondent_contact_no'] = $escalatePaanyaya['invitee_contact_no'] ?? '';
         $old['respondent_purok'] = $escalatePaanyaya['invitee_purok'] ?? '';
+        $old['respondent_is_tenant'] = strcasecmp(trim((string)$old['respondent_purok']), 'Non-Resident') === 0 ? '2' : '0';
 
         $cName = trim((string)($escalatePaanyaya['complainant_name'] ?? ''));
         if ($cName !== '') {
@@ -184,28 +186,31 @@ if ($escalatePaanyayaId > 0) {
             $old['respondent_name'] = $rName;
         }
 
-        if (!empty($old['complainant_first_name']) && !empty($old['complainant_last_name'])) {
+        $matchResidentForOld = static function(string $prefix) use (&$old, $residents): void {
+            $targetId = (int)($old[$prefix . '_resident_id'] ?? 0);
+            $firstName = trim((string)($old[$prefix . '_first_name'] ?? ''));
+            $lastName = trim((string)($old[$prefix . '_last_name'] ?? ''));
             foreach ($residents as $r) {
-                if (strcasecmp($r['first_name'], $old['complainant_first_name']) === 0 && strcasecmp($r['last_name'], $old['complainant_last_name']) === 0) {
-                    $old['complainant_resident_id'] = $r['resident_id'];
-                    $old['complainant_address'] = $r['address'];
-                    $old['complainant_contact_no'] = $r['contact_no'];
-                    $old['complainant_purok'] = $r['purok'];
+                $idMatch = $targetId > 0 && (int)$r['resident_id'] === $targetId;
+                $nameMatch = $firstName !== '' && $lastName !== ''
+                    && strcasecmp((string)$r['first_name'], $firstName) === 0
+                    && strcasecmp((string)$r['last_name'], $lastName) === 0;
+                if ($idMatch || $nameMatch) {
+                    $old[$prefix . '_resident_id'] = $r['resident_id'];
+                    if (trim((string)($old[$prefix . '_address'] ?? '')) === '') $old[$prefix . '_address'] = $r['address'] ?? '';
+                    if (trim((string)($old[$prefix . '_contact_no'] ?? '')) === '') $old[$prefix . '_contact_no'] = $r['contact_no'] ?? '';
+                    if (trim((string)($old[$prefix . '_purok'] ?? '')) === '') $old[$prefix . '_purok'] = $r['purok'] ?? '';
+                    $isTen = (string)($r['is_tenant'] ?? '0');
+                    if (strcasecmp(trim((string)($old[$prefix . '_purok'] ?? '')), 'Non-Resident') === 0) {
+                        $isTen = '2';
+                    }
+                    $old[$prefix . '_is_tenant'] = $isTen;
                     break;
                 }
             }
-        }
-        if (!empty($old['respondent_first_name']) && !empty($old['respondent_last_name'])) {
-            foreach ($residents as $r) {
-                if (strcasecmp($r['first_name'], $old['respondent_first_name']) === 0 && strcasecmp($r['last_name'], $old['respondent_last_name']) === 0) {
-                    $old['respondent_resident_id'] = $r['resident_id'];
-                    $old['respondent_address'] = $r['address'];
-                    $old['respondent_contact_no'] = $r['contact_no'];
-                    $old['respondent_purok'] = $r['purok'];
-                    break;
-                }
-            }
-        }
+        };
+        $matchResidentForOld('complainant');
+        $matchResidentForOld('respondent');
     }
 }
 
@@ -1297,9 +1302,9 @@ include '../../layouts/header.php';
                         <div class="party-field-col">
                             <label for="modalIsTenant">Residency Status <span class="required-mark">*</span></label>
                             <select id="modalIsTenant" required>
-                                <option value="0">Permanent Resident</option>
-                                <option value="1">Tenant / Renter</option>
-                                <option value="2">Non-Resident</option>
+                                <option value="0">Resident (Permanent — Tumana)</option>
+                                <option value="1">Resident (Tenant / Renter — Tumana)</option>
+                                <option value="2">Non-Resident (Outside Tumana)</option>
                             </select>
                         </div>
                     </div>
@@ -3534,7 +3539,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (errors.length > 0) {
         if (window.AgapFieldValidator) {
             const modalCheck = window.AgapFieldValidator.collectPartyModalErrors({
                 firstName,
@@ -3751,6 +3755,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_is_tenant[]" value="${escapeHtml(String(p.is_tenant ?? (p.purok === 'Non-Resident' ? '2' : '0')))}">
                     <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
                     <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
@@ -3770,6 +3775,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_is_tenant[]" value="${escapeHtml(String(p.is_tenant ?? (p.purok === 'Non-Resident' ? '2' : '0')))}">
                     <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
                     <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
@@ -3777,6 +3783,17 @@ document.addEventListener('DOMContentLoaded', () => {
             addContainer.innerHTML = html;
             document.dispatchEvent(new CustomEvent('agap:parties-updated'));
         }
+    }
+
+    function getResidencyPillHtml(p) {
+        const isTen = String(p?.is_tenant ?? (p?.purok === 'Non-Resident' ? '2' : '0'));
+        if (isTen === '2' || p?.purok === 'Non-Resident') {
+            return '<span class="party-role-pill" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-size: 0.68rem;">Non-Resident</span>';
+        }
+        if (isTen === '1') {
+            return '<span class="party-role-pill" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 0.68rem;">Resident • Tenant</span>';
+        }
+        return '<span class="party-role-pill" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.68rem;">Resident</span>';
     }
 
     function renderParties() {
@@ -3835,6 +3852,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <div class="party-summary-title-row">
                                         <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                         <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${getResidencyPillHtml(c)}
                                     </div>
                                 </div>
                             </div>
@@ -3931,6 +3949,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <div class="party-summary-title-row">
                                         <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                         <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${getResidencyPillHtml(r)}
                                         ${exceptionPill}
                                     </div>
                                 </div>

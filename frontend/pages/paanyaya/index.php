@@ -26,7 +26,7 @@ $dbConn = (new Database())->connect();
 $residentsForLookup = [];
 try {
     $rStmt = $dbConn->query("
-        SELECT resident_id, first_name, middle_name, last_name, suffix, purok, address, contact_no, email, home_latitude, home_longitude
+        SELECT resident_id, first_name, middle_name, last_name, suffix, purok, is_tenant, address, contact_no, email, home_latitude, home_longitude
         FROM residents
         ORDER BY last_name ASC, first_name ASC
     ");
@@ -39,7 +39,7 @@ try {
 $purokOptions = [
     'Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7',
     'Purok 8', 'Purok 9', 'Purok 10', 'Purok 11', 'Purok 12', 'Purok 13', 'Purok 14',
-    'Doña Petra', 'Sitio', 'Non-Resident (Outside Barangay Tumana)'
+    'Doña Petra', 'Sitio', 'Non-Resident'
 ];
 
 // Count summary across grouped cases
@@ -49,10 +49,10 @@ $countScheduled = 0;
 $countCompleted = 0;
 $countCancelled = 0;
 foreach ($allList as $item) {
-    $st = $item['display_status'] ?? 'Scheduled';
-    if (in_array($st, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true)) $countScheduled++;
-    elseif (in_array($st, ['Done', 'Completed', 'Resolved', 'Settled', 'Dismissed', 'Archived'], true)) $countCompleted++;
-    elseif (in_array($st, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true)) $countCancelled++;
+    $st = (string) ($item['display_status'] ?? '1st Paanyaya');
+    if (in_array($st, ['1st Paanyaya', '2nd Paanyaya', 'Scheduled', 'Pending'], true)) $countScheduled++;
+    elseif (str_starts_with($st, 'Settled') || in_array($st, ['Resolved', 'Settled'], true)) $countCompleted++;
+    elseif (in_array($st, ['Escalated', 'Dismissed', 'Cancelled', 'Failed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Archived'], true)) $countCancelled++;
 }
 
 include '../../layouts/header.php';
@@ -224,28 +224,51 @@ include '../../layouts/header.php';
 }
 .paanyaya-table {
     width: 100%;
+    min-width: 760px;
     border-collapse: collapse;
-    font-size: 0.88rem;
+    font-size: 0.86rem;
     text-align: left;
+    border: none;
 }
-.paanyaya-table th {
+.agap-list-shell .paanyaya-table th,
+.agap-list-shell .paanyaya-table td {
+    border-top: none;
+    border-left: none;
+    border-right: none;
+}
+.agap-list-shell .paanyaya-table thead th {
     background: #f8fafc;
-    padding: 11px 14px;
-    font-weight: 800;
-    color: #64748b;
-    border-bottom: 1px solid #e2e8f0;
+    padding: 11px 16px;
     font-size: 0.74rem;
+    font-weight: 700;
+    color: #64748b;
     text-transform: uppercase;
-    letter-spacing: 0.035em;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
 }
-.paanyaya-table td {
-    padding: 13px 14px;
-    border-bottom: 1px solid #edf2f7;
-    color: #334155;
+.agap-list-shell .paanyaya-table tbody td {
+    padding: 13px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
     vertical-align: middle;
 }
-.paanyaya-table tr:hover {
-    background: #fafbff;
+.agap-list-shell .paanyaya-table tbody tr:last-child td {
+    border-bottom: none;
+}
+.agap-list-shell .paanyaya-table tbody tr[data-paanyaya-row="1"]:hover {
+    background: #f8fafc;
+}
+.agap-list-shell .paanyaya-table tbody tr.paanyaya-dropdown-row:hover {
+    background: #f8fafc;
+}
+.agap-list-shell .paanyaya-table .sortable-th.sort-active-asc,
+.agap-list-shell .paanyaya-table .sortable-th.sort-active-desc {
+    color: #1b6553;
+}
+.agap-list-shell .paanyaya-table .sortable-th.sort-active-asc .sort-indicator,
+.agap-list-shell .paanyaya-table .sortable-th.sort-active-desc .sort-indicator {
+    color: #1b6553;
 }
 .status-pill-scheduled {
     background: #dbeafe;
@@ -486,6 +509,422 @@ include '../../layouts/header.php';
     margin-bottom: 16px;
 }
 
+/* Multi-Step Schedule & Send Paanyaya Wizard Modal */
+#schedulePaanyayaModal .modal-card.wiz-modal-card {
+    width: min(1060px, calc(100vw - 32px));
+    max-width: 1060px;
+    height: min(760px, 90vh);
+    max-height: 90vh;
+    border-radius: 16px;
+    background: #f8fafc;
+}
+#schedulePaanyayaModal .wiz-top-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 26px 14px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+#schedulePaanyayaModal .wiz-top-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-width: 0;
+}
+#schedulePaanyayaModal .wiz-top-back-btn {
+    width: 36px;
+    height: 36px;
+    border-radius: 9999px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #334155;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.15s ease;
+}
+#schedulePaanyayaModal .wiz-top-back-btn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+#schedulePaanyayaModal .wiz-top-title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+    line-height: 1.25;
+}
+#schedulePaanyayaModal .wiz-top-subtitle {
+    margin: 2px 0 0;
+    font-size: 0.82rem;
+    color: #64748b;
+}
+#schedulePaanyayaModal .wiz-shell {
+    display: grid;
+    grid-template-columns: 265px minmax(0, 1fr);
+    gap: 22px;
+    padding: 20px 26px 24px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    background: #f8fafc;
+}
+#schedulePaanyayaModal .wiz-sidebar {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 0;
+    overflow-y: auto;
+}
+#schedulePaanyayaModal .wiz-progress-title {
+    margin: 0 0 4px;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+#schedulePaanyayaModal .wiz-progress-meta {
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+#schedulePaanyayaModal .wiz-progress-track {
+    width: 100%;
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 9999px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+#schedulePaanyayaModal .wiz-progress-fill {
+    height: 100%;
+    width: 25%;
+    background: #1b6553;
+    border-radius: 9999px;
+    transition: width 0.22s ease;
+}
+#schedulePaanyayaModal .wiz-step-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+#schedulePaanyayaModal .wiz-step-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.16s ease;
+}
+#schedulePaanyayaModal .wiz-step-item:hover:not(.is-active) {
+    background: #f1f5f9;
+}
+#schedulePaanyayaModal .wiz-step-item.is-active {
+    background: #eef6f2;
+    border-color: #cde2d6;
+}
+#schedulePaanyayaModal .wiz-step-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 800;
+    flex-shrink: 0;
+    background: #e2e8f0;
+    color: #64748b;
+    transition: all 0.16s ease;
+}
+#schedulePaanyayaModal .wiz-step-item.is-active .wiz-step-num {
+    background: #1b6553;
+    color: #ffffff;
+}
+#schedulePaanyayaModal .wiz-step-item.is-completed .wiz-step-num {
+    background: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+#schedulePaanyayaModal .wiz-step-text {
+    min-width: 0;
+}
+#schedulePaanyayaModal .wiz-step-label {
+    display: block;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #475569;
+    line-height: 1.25;
+}
+#schedulePaanyayaModal .wiz-step-item.is-active .wiz-step-label {
+    color: #1b6553;
+}
+#schedulePaanyayaModal .wiz-step-item.is-completed .wiz-step-label {
+    color: #0f172a;
+}
+#schedulePaanyayaModal .wiz-step-sub {
+    display: block;
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#schedulePaanyayaModal .wiz-step-item.is-active .wiz-step-sub {
+    color: #1b6553;
+}
+#schedulePaanyayaModal .wiz-help-box {
+    background: #eff6ff;
+    border: 1px solid #dbeafe;
+    border-radius: 12px;
+    padding: 13px 14px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+#schedulePaanyayaModal .wiz-help-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 9999px;
+    border: 1.5px solid #2563eb;
+    color: #2563eb;
+    font-size: 0.74rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+#schedulePaanyayaModal .wiz-help-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #1e40af;
+    margin: 0 0 3px;
+}
+#schedulePaanyayaModal .wiz-help-desc {
+    font-size: 0.73rem;
+    color: #3b82f6;
+    line-height: 1.4;
+    margin: 0;
+}
+#schedulePaanyayaModal .wiz-main-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 4px 18px rgba(15, 23, 42, 0.04);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+#schedulePaanyayaModal .wiz-card-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 24px 28px;
+}
+#schedulePaanyayaModal .wiz-panel {
+    display: none;
+}
+#schedulePaanyayaModal .wiz-panel.is-active {
+    display: block;
+}
+#schedulePaanyayaModal .wiz-panel-head {
+    margin-bottom: 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f1f5f9;
+}
+#schedulePaanyayaModal .wiz-panel-head h4 {
+    margin: 0 0 4px;
+    font-size: 1.08rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+#schedulePaanyayaModal .wiz-panel-head p {
+    margin: 0;
+    font-size: 0.81rem;
+    color: #64748b;
+}
+#schedulePaanyayaModal .wiz-subhead {
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #475569;
+    margin: 16px 0 10px;
+}
+#schedulePaanyayaModal .form-control {
+    padding: 9px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 9px;
+    font-size: 0.86rem;
+    color: #0f172a;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+#schedulePaanyayaModal .form-control:focus {
+    border-color: #1b6553;
+    box-shadow: 0 0 0 3px rgba(27, 101, 83, 0.12);
+}
+#schedulePaanyayaModal .wiz-map-box {
+    margin-top: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 14px;
+}
+#schedulePaanyayaModal .wiz-card-foot {
+    padding: 14px 28px;
+    background: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-shrink: 0;
+}
+#schedulePaanyayaModal .wiz-btn-secondary {
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 9px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-family: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+}
+#schedulePaanyayaModal .wiz-btn-secondary:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+#schedulePaanyayaModal .wiz-btn-primary {
+    height: 38px;
+    padding: 0 18px;
+    border-radius: 9px;
+    border: 1px solid #1b6553;
+    background: #1b6553;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    transition: all 0.15s ease;
+}
+#schedulePaanyayaModal .wiz-btn-primary:hover {
+    background: #144d3f;
+    border-color: #144d3f;
+}
+#schedulePaanyayaModal .wiz-btn-primary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+#schedulePaanyayaModal .wiz-review-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+#schedulePaanyayaModal .wiz-review-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+#schedulePaanyayaModal .wiz-review-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+#schedulePaanyayaModal .wiz-review-card-title {
+    font-size: 0.78rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #475569;
+}
+#schedulePaanyayaModal .wiz-review-edit-btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #1b6553;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+#schedulePaanyayaModal .wiz-review-edit-btn:hover {
+    background: #eef6f2;
+    border-color: #1b6553;
+}
+#schedulePaanyayaModal .wiz-review-val {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 3px;
+}
+#schedulePaanyayaModal .wiz-review-sub {
+    font-size: 0.79rem;
+    color: #64748b;
+    line-height: 1.45;
+}
+@media (max-width: 860px) {
+    #schedulePaanyayaModal .modal-card.wiz-modal-card {
+        height: 92vh;
+    }
+    #schedulePaanyayaModal .wiz-shell {
+        grid-template-columns: 1fr;
+        padding: 14px 16px;
+        gap: 14px;
+        overflow-y: auto;
+    }
+    #schedulePaanyayaModal .wiz-sidebar {
+        overflow: visible;
+    }
+    #schedulePaanyayaModal .wiz-step-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    #schedulePaanyayaModal .wiz-help-box {
+        display: none;
+    }
+    #schedulePaanyayaModal .wiz-review-grid {
+        grid-template-columns: 1fr;
+    }
+    #schedulePaanyayaModal .wiz-card-body {
+        padding: 18px;
+    }
+    #schedulePaanyayaModal .wiz-card-foot {
+        padding: 12px 18px;
+    }
+}
+
 /* Attendance Pills */
 .attendance-party-box {
     background: #f8fafc;
@@ -614,6 +1053,444 @@ include '../../layouts/header.php';
     cursor: not-allowed !important;
     pointer-events: none !important;
 }
+.agap-btn-act.is-icon-btn {
+    padding: 6px 8px;
+}
+.agap-btn-act.is-icon-btn svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* Redesigned Paanyaya Dialogue Record Modal (Clean SaaS Form Card) */
+#paanyayaAttendanceModal .att-modal-card {
+    max-width: 650px;
+    border-radius: 16px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.24);
+}
+#paanyayaAttendanceModal .att-modal-head {
+    padding: 16px 24px;
+    background: #ffffff;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+#paanyayaAttendanceModal .att-modal-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+#paanyayaAttendanceModal .att-modal-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #475569;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+#paanyayaAttendanceModal .att-modal-head h3 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+#paanyayaAttendanceModal .att-modal-body {
+    padding: 18px 24px 20px;
+    background: #ffffff;
+}
+.att-overline-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.att-overline-label {
+    font-size: 0.69rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+.att-meta-pills {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.att-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 16px;
+    margin-bottom: 14px;
+}
+@media (max-width: 640px) {
+    .att-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+.att-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+.att-field-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #334155;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.att-field-hint {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #16a34a;
+}
+.att-input-shell {
+    min-height: 42px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    padding: 5px 8px 5px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    box-sizing: border-box;
+}
+.att-input-shell.is-readonly {
+    background: #f8fafc;
+    padding: 5px 12px;
+    justify-content: flex-start;
+    color: #334155;
+    font-size: 0.84rem;
+    font-weight: 500;
+}
+.att-party-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+.att-party-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 9999px;
+    background: #eef6f2;
+    color: #1b6553;
+    font-size: 0.68rem;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.att-party-avatar.is-respondent {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+.att-party-name {
+    font-size: 0.84rem;
+    font-weight: 600;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.att-seg-group {
+    display: inline-flex;
+    align-items: center;
+    background: #f1f5f9;
+    padding: 2px;
+    border-radius: 7px;
+    gap: 2px;
+    flex-shrink: 0;
+}
+.att-seg-pill {
+    position: relative;
+    margin: 0;
+    cursor: pointer;
+}
+.att-seg-pill input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.att-seg-text {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748b;
+    transition: all 0.14s ease;
+    user-select: none;
+    line-height: 1.2;
+}
+.att-seg-pill input[value="Present"]:checked + .att-seg-text {
+    background: #ffffff;
+    color: #15803d;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.att-seg-pill input[value="Absent"]:checked + .att-seg-text {
+    background: #ffffff;
+    color: #b91c1c;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+.att-clean-select,
+.att-clean-textarea {
+    width: 100%;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #0f172a;
+    font-family: inherit;
+    font-size: 0.86rem;
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.att-clean-select {
+    height: 42px;
+    padding: 0 12px;
+    font-weight: 500;
+    cursor: pointer;
+}
+.att-clean-textarea {
+    padding: 10px 12px;
+    resize: vertical;
+    line-height: 1.45;
+}
+.att-clean-select:focus,
+.att-clean-textarea:focus {
+    outline: none;
+    border-color: #1b6553;
+    box-shadow: 0 0 0 3px rgba(27, 101, 83, 0.12);
+}
+.att-outcome-section {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 14px 16px;
+}
+.att-outcome-rule-badge {
+    font-size: 0.71rem;
+    font-weight: 700;
+    color: #1b6553;
+    background: #eef6f2;
+    border: 1px solid #cde2d6;
+    padding: 2px 9px;
+    border-radius: 9999px;
+}
+.att-p2-drawer {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: #ffffff;
+    border: 1px dashed #cbd5e1;
+    border-radius: 10px;
+}
+#paanyayaAttendanceModal .att-modal-foot {
+    padding: 14px 24px;
+    background: #ffffff;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.att-foot-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.att-btn-ghost {
+    padding: 8px 16px;
+    border-radius: 9px;
+    border: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #334155;
+    font-family: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.att-btn-ghost:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+.att-btn-primary {
+    padding: 8px 18px;
+    border-radius: 9px;
+    border: 1px solid #1b6553;
+    background: #1b6553;
+    color: #ffffff;
+    font-family: inherit;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 6px rgba(27, 101, 83, 0.22);
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+.att-btn-primary:hover {
+    background: #102b2d;
+    border-color: #102b2d;
+}
+.att-btn-primary.is-danger {
+    background: #dc2626;
+    border-color: #dc2626;
+    box-shadow: 0 2px 6px rgba(220, 38, 38, 0.22);
+}
+.att-btn-primary.is-danger:hover {
+    background: #b91c1c;
+    border-color: #b91c1c;
+}
+
+/* Tabbed Paanyaya View Modal (Dialogue Details + KP Form) */
+.preview-tabs-bar {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    padding: 0 24px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+.preview-tab-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 12px 2px;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+.preview-tab-btn:hover {
+    color: #0f172a;
+}
+.preview-tab-btn.is-active {
+    color: #1b6553;
+}
+.preview-tab-btn.is-active::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 2px;
+    border-radius: 9999px;
+    background: #1b6553;
+}
+.preview-tab-pill {
+    font-size: 0.69rem;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 9999px;
+    background: #eef6f2;
+    color: #1b6553;
+    border: 1px solid #cde2d6;
+}
+#paanyayaPreviewModal .modal-card-large {
+    width: min(920px, calc(100vw - 32px));
+    max-width: 920px;
+    height: min(760px, 88vh);
+    max-height: 88vh;
+}
+#paanyayaPreviewModal .modal-head {
+    min-height: 68px;
+    box-sizing: border-box;
+}
+#paanyayaPreviewModal .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.prev-dialogue-wrap {
+    padding: 20px 24px 22px;
+    background: #ffffff;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+.prev-kp-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #525659;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.prev-notes-group {
+    flex: 1 1 auto;
+    min-height: 140px;
+}
+.prev-att-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+.prev-att-pill.is-present {
+    background: #dcfce7;
+    color: #15803d;
+}
+.prev-att-pill.is-absent {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+.prev-att-pill.is-pending {
+    background: #f1f5f9;
+    color: #64748b;
+}
+.prev-notes-box {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    color: #1e293b;
+    white-space: pre-wrap;
+    flex: 1 1 auto;
+    min-height: 120px;
+    box-sizing: border-box;
+}
 
 /* Case Grouping & Vertical Stepper Dropdown (modeled after step progression) */
 tr[data-paanyaya-row="1"] {
@@ -621,10 +1498,10 @@ tr[data-paanyaya-row="1"] {
     transition: background-color 0.14s ease;
 }
 tr[data-paanyaya-row="1"].is-expanded {
-    background: #f0f9ff !important;
+    background: #eef6f2 !important;
 }
 tr[data-paanyaya-row="1"].is-expanded td {
-    border-bottom: 1px solid #bae6fd !important;
+    border-bottom-color: #cde2d6 !important;
 }
 .paanyaya-status-dual {
     display: inline-flex;
@@ -654,10 +1531,10 @@ tr[data-paanyaya-row="1"].is-expanded td {
     width: 28px;
     height: 28px;
     flex-shrink: 0;
-    border-radius: 6px;
-    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    border: 1px solid #e2e8f0;
     background: #ffffff;
-    color: #475569;
+    color: #64748b;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -666,14 +1543,14 @@ tr[data-paanyaya-row="1"].is-expanded td {
     padding: 0;
 }
 .paanyaya-expand-btn:hover {
-    background: #f1f5f9;
-    border-color: #94a3b8;
+    background: #f8fafc;
+    border-color: #cbd5e1;
     color: #0f172a;
 }
 .paanyaya-expand-btn[aria-expanded="true"] {
-    background: #dcfce7;
-    border-color: #22c55e;
-    color: #15803d;
+    background: #eef6f2;
+    border-color: #cde2d6;
+    color: #1b6553;
 }
 .paanyaya-expand-btn svg {
     width: 14px;
@@ -712,6 +1589,9 @@ tr[data-paanyaya-row="1"].is-expanded td {
 .paanyaya-dropdown-row td.paanyaya-dropdown-cell {
     padding: 12px 20px 18px 56px;
     border-top: 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
     background: #f8fafc;
 }
 .paanyaya-stepper-card {
@@ -944,14 +1824,14 @@ tr[data-paanyaya-row="1"].is-expanded td {
                            class="agap-tab-item <?php echo in_array($statusFilter, ['Resolved', 'Completed', 'Settled', 'Done'], true) ? 'active' : ''; ?>"
                            data-status="Resolved"
                            id="paanyayaCardSettled">
-                            <span>Settled / Done</span>
+                            <span>Settled</span>
                             <span class="agap-tab-count"><?php echo $countCompleted; ?></span>
                         </a>
                         <a href="index.php?status=Cancelled<?php echo $searchFilter !== '' ? '&search=' . urlencode($searchFilter) : ''; ?>"
-                           class="agap-tab-item <?php echo in_array($statusFilter, ['Cancelled', 'Escalated', 'Failed'], true) ? 'active' : ''; ?>"
+                           class="agap-tab-item <?php echo in_array($statusFilter, ['Cancelled', 'Escalated', 'Dismissed', 'Failed'], true) ? 'active' : ''; ?>"
                            data-status="Cancelled"
                            id="paanyayaCardCancelled">
-                            <span>Cancelled / Escalated</span>
+                            <span>Escalated / Dismissed</span>
                             <span class="agap-tab-count"><?php echo $countCancelled; ?></span>
                         </a>
                     </nav>
@@ -978,36 +1858,55 @@ tr[data-paanyaya-row="1"].is-expanded td {
                     <span>Click any row to expand the Paanyaya progression, schedule details, and manage invitations.</span>
                 </div>
 
-                <!-- Bordered Table Card -->
+                <!-- Unified Expandable Case Table Workspace -->
                 <div class="agap-list-table-wrap">
-                    <table class="paanyaya-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 44px; text-align: center;" aria-label="Expand toggle"></th>
-                                <th>Complainant</th>
-                                <th>Respondent</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody id="paanyayaTbody">
-                            <?php if (empty($paanyayas)): ?>
-                                <tr id="paanyayaServerEmptyRow">
-                                    <td colspan="4" style="text-align: center; color: #64748b; padding: 40px 20px;">
-                                        <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a;">No Paanyaya invitations found</div>
-                                        <p style="font-size: 0.84rem; margin: 4px 0 0; color: #64748b;">Click "Schedule New Paanyaya" above to issue an informal invitation.</p>
-                                    </td>
+                    <div class="table-responsive" style="border: none; background: transparent;">
+                        <table class="data-table proof-table paanyaya-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 44px; text-align: center;" aria-label="Expand toggle"></th>
+                                    <th class="sortable-th" data-sort-key="ref" title="Click to sort by Record / KP Number">
+                                        <span class="th-content">KP Number <span class="sort-indicator" id="sortInd_paanyaya_ref">⇅</span></span>
+                                    </th>
+                                    <th class="sortable-th" data-sort-key="complainant" title="Click to sort by Complainant">
+                                        <span class="th-content">Complainant <span class="sort-indicator" id="sortInd_paanyaya_complainant">⇅</span></span>
+                                    </th>
+                                    <th class="sortable-th" data-sort-key="respondent" title="Click to sort by Respondent">
+                                        <span class="th-content">Respondent <span class="sort-indicator" id="sortInd_paanyaya_respondent">⇅</span></span>
+                                    </th>
+                                    <th class="sortable-th sort-active-desc" data-sort-key="date" title="Click to sort by Schedule Date">
+                                        <span class="th-content">Schedule Date <span class="sort-indicator" id="sortInd_paanyaya_date">▼</span></span>
+                                    </th>
+                                    <th class="sortable-th" data-sort-key="status" title="Click to sort by Status">
+                                        <span class="th-content">Status <span class="sort-indicator" id="sortInd_paanyaya_status">⇅</span></span>
+                                    </th>
                                 </tr>
+                            </thead>
+                            <tbody id="paanyayaTbody">
+                                <?php if (empty($paanyayas)): ?>
+                                    <tr id="paanyayaServerEmptyRow">
+                                        <td colspan="6" style="text-align: center; color: #64748b; padding: 40px 20px;">
+                                            <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a;">No Paanyaya invitations found</div>
+                                            <p style="font-size: 0.84rem; margin: 4px 0 0; color: #64748b;">Click "Schedule New Paanyaya" above to issue an informal invitation.</p>
+                                        </td>
+                                    </tr>
                             <?php else: ?>
                                 <?php
                                     $resolveBadgeVariant = static function (string $status): string {
-                                        if (in_array($status, ['Done', 'Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived', 'CFA Issued', 'RESPONDENT_DEFAULT'], true)) {
+                                        if (str_starts_with($status, 'Settled') || in_array($status, ['Resolved', 'Settled', 'CFA Issued', 'RESPONDENT_DEFAULT'], true)) {
                                             return 'is-green';
                                         }
                                         if (in_array($status, ['Escalated', 'DISMISSED_BARRED', 'Repudiated'], true)) {
                                             return 'is-purple';
                                         }
-                                        if (in_array($status, ['Cancelled', 'Failed'], true)) {
+                                        if (in_array($status, ['Dismissed', 'Cancelled', 'Failed'], true)) {
                                             return 'is-red';
+                                        }
+                                        if ($status === '2nd Paanyaya') {
+                                            return 'is-amber';
+                                        }
+                                        if (in_array($status, ['2nd Paanyaya Issued', 'Recorded'], true)) {
+                                            return 'is-slate';
                                         }
                                         return 'is-blue';
                                     };
@@ -1025,7 +1924,15 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                     ): string {
                                         $pid = (int)($row['paanyaya_id'] ?? 0);
                                         $cid = (int)($row['complaint_id'] ?? $linkedCid);
-                                        $cnum = (string)($row['complaint_number'] ?? '');
+                                        $rawRowStatus = trim((string)($row['status'] ?? $actionStatus));
+                                        $normRowStatus = strtolower($rawRowStatus);
+                                        $hasRecorded = !empty($row['attendance_recorded_at'])
+                                            || in_array($normRowStatus, ['completed', 'done', 'resolved', 'settled', 'dismissed', 'escalated'], true);
+                                        $allowDialogueRecord = ($pid > 0
+                                            && !in_array($normRowStatus, ['resolved', 'settled', 'completed', 'done', 'dismissed', 'escalated', 'cancelled'], true));
+                                        $attemptTitleLabel = $attemptNum >= 2 ? '2nd Paanyaya' : '1st Paanyaya';
+                                        $rowLinkedCaseId = (int)($row['linked_case_id'] ?? 0);
+                                        $rowCompNumber = (string)($row['complaint_number'] ?? '');
                                         ob_start();
                                         ?>
                                         <button type="button" class="agap-btn-act is-primary-soft btn-preview-modal"
@@ -1033,33 +1940,29 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                 data-complaint-id="<?php echo $cid; ?>"
                                                 data-attempt="<?php echo $attemptNum; ?>"
                                                 data-name="<?php echo htmlspecialchars($invLabel, ENT_QUOTES); ?>"
-                                                title="Preview Paanyaya Official Letter">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                                            <span>Letter</span>
+                                                data-recorded="<?php echo $hasRecorded ? '1' : '0'; ?>"
+                                                data-status="<?php echo htmlspecialchars($rawRowStatus, ENT_QUOTES); ?>"
+                                                title="<?php echo $hasRecorded ? 'View Dialogue Details &amp; KP Form' : 'View KP Form (Paanyaya Letter)'; ?>">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                            <span>View</span>
                                         </button>
-                                        <?php if ($includeStage && $linkedCid > 0): ?>
-                                            <a href="stage.php?complaint_id=<?php echo $linkedCid; ?>" class="agap-btn-act" title="Open the full Paanyaya stage workspace">
-                                                <span>Stage</span>
-                                            </a>
-                                        <?php endif; ?>
-                                        <?php if ($pid > 0): ?>
-                                            <button type="button" class="agap-btn-act btn-open-attendance"
+                                        <?php if ($allowDialogueRecord): ?>
+                                            <button type="button"
+                                                    class="agap-btn-act is-primary-soft is-icon-btn btn-open-attendance"
                                                     data-paanyaya-id="<?php echo $pid; ?>"
-                                                    data-complaint-id="<?php echo $linkedCid; ?>"
+                                                    data-complaint-id="<?php echo $cid; ?>"
+                                                    data-linked-case-id="<?php echo $rowLinkedCaseId; ?>"
                                                     data-invitee="<?php echo htmlspecialchars($invLabel, ENT_QUOTES); ?>"
                                                     data-complainant="<?php echo htmlspecialchars($compLabel, ENT_QUOTES); ?>"
                                                     data-date="<?php echo htmlspecialchars($dateLabel, ENT_QUOTES); ?>"
                                                     data-time="<?php echo htmlspecialchars($timeLabel, ENT_QUOTES); ?>"
-                                                    data-status="<?php echo htmlspecialchars($actionStatus, ENT_QUOTES); ?>"
+                                                    data-status="<?php echo htmlspecialchars($rawRowStatus, ENT_QUOTES); ?>"
                                                     data-attempt="<?php echo $attemptNum; ?>"
-                                                    data-complaint-number="<?php echo htmlspecialchars($cnum, ENT_QUOTES); ?>"
-                                                    title="Manage the Paanyaya stage, attendance, outcome, and escalation">
-                                                <span>Manage</span>
+                                                    data-complaint-number="<?php echo htmlspecialchars($rowCompNumber, ENT_QUOTES); ?>"
+                                                    title="Record <?php echo htmlspecialchars($attemptTitleLabel, ENT_QUOTES); ?> Dialogue, Notes &amp; Outcome"
+                                                    aria-label="Record <?php echo htmlspecialchars($attemptTitleLabel, ENT_QUOTES); ?> Dialogue, Notes and Outcome">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                             </button>
-                                        <?php elseif ($linkedCid > 0): ?>
-                                            <a href="stage.php?complaint_id=<?php echo $linkedCid; ?>" class="agap-btn-act" title="Manage formal Paanyaya stage">
-                                                <span>Manage Stage</span>
-                                            </a>
                                         <?php endif; ?>
                                         <?php
                                         return (string)ob_get_clean();
@@ -1106,16 +2009,32 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                         $searchBlob = strtolower(implode(' ', array_merge([
                                             $invName, $compName, $invAddrLine, $invContactLine, $compAddrLine,
                                             $displaySt, $rawWorkflowSt, (string)($p['complaint_number'] ?? ''),
-                                            $hasSecond ? '2nd paanyaya second done' : '1st paanyaya'
+                                            $hasSecond ? '2nd paanyaya second' : '1st paanyaya'
                                         ], $stepSearchTokens)));
 
                                         $linkedComplaintId = (int)($p['complaint_id'] ?: ($p['escalated_to_complaint_id'] ?? 0));
-                                        $latestAttempt = (int)($p['step_index'] ?? ($p['attempt_number'] ?? 1));
-                                        $latestStepLabel = (string)($p['step_label'] ?? ($latestAttempt === 2 ? '2nd Paanyaya' : ($latestAttempt === 3 ? '3rd Paanyaya' : '1st Paanyaya')));
+                                        $latestAttempt = min(2, max(1, (int)($p['step_index'] ?? ($p['attempt_number'] ?? 1))));
+                                        $latestStepLabel = (string)($p['step_label'] ?? ($latestAttempt >= 2 ? '2nd Paanyaya' : '1st Paanyaya'));
+                                        $recordRefLabel = !empty($p['complaint_number'])
+                                            ? (string)$p['complaint_number']
+                                            : ('PY-' . str_pad((string)(int)($p['paanyaya_id'] ?? 0), 4, '0', STR_PAD_LEFT));
+                                        $recordSubLabel = trim((string)($p['complaint_title'] ?? '')) !== ''
+                                            ? (string)$p['complaint_title']
+                                            : ($latestAttempt >= 2 ? '2nd Invitation' : '1st Invitation');
+                                        $schedDateTimeText = trim($d . ($t !== '' ? ', ' . $t : ''));
+                                        $schedSubLabel = trim((string)($p['venue'] ?? '')) !== ''
+                                            ? (string)$p['venue']
+                                            : 'Informal Dialogue';
+                                        $sortDateVal = trim((string)($p['scheduled_date'] ?? '0000-00-00')) . ' ' . trim((string)($p['scheduled_time'] ?? '00:00:00'));
                                     ?>
                                     <tr data-paanyaya-row="1"
                                         data-group-key="<?php echo htmlspecialchars($groupKey, ENT_QUOTES); ?>"
-                                        data-search="<?php echo htmlspecialchars($searchBlob, ENT_QUOTES); ?>">
+                                        data-search="<?php echo htmlspecialchars($searchBlob . ' ' . strtolower($recordRefLabel . ' ' . $recordSubLabel), ENT_QUOTES); ?>"
+                                        data-sort-ref="<?php echo htmlspecialchars(strtolower($recordRefLabel), ENT_QUOTES); ?>"
+                                        data-sort-complainant="<?php echo htmlspecialchars(strtolower($compName), ENT_QUOTES); ?>"
+                                        data-sort-respondent="<?php echo htmlspecialchars(strtolower($invName), ENT_QUOTES); ?>"
+                                        data-sort-date="<?php echo htmlspecialchars($sortDateVal, ENT_QUOTES); ?>"
+                                        data-sort-status="<?php echo htmlspecialchars(strtolower($displaySt), ENT_QUOTES); ?>">
                                         <td class="cell-expand" style="width: 44px; text-align: center;">
                                             <button type="button"
                                                     class="paanyaya-expand-btn"
@@ -1126,13 +2045,21 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                             </button>
                                         </td>
                                         <td>
+                                            <div class="agap-rec-id-wrap">
+                                                <span class="agap-rec-icon" aria-hidden="true">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                                </span>
+                                                <div>
+                                                    <span class="agap-rec-id-text" style="color: #1b6553;"><?php echo htmlspecialchars($recordRefLabel); ?></span>
+                                                    <span class="agap-person-sub" style="margin-top: 1px; max-width: 190px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo htmlspecialchars($recordSubLabel, ENT_QUOTES); ?>"><?php echo htmlspecialchars($recordSubLabel); ?></span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>
                                             <div class="agap-person-cell">
                                                 <span class="agap-person-avatar" aria-hidden="true"><?php echo htmlspecialchars($compInitials); ?></span>
                                                 <div class="agap-person-meta">
                                                     <span class="agap-person-name"><?php echo htmlspecialchars($compName); ?></span>
-                                                    <?php if ($compAddrLine !== '' || $compContactLine !== ''): ?>
-                                                        <span class="agap-person-sub"><?php echo htmlspecialchars(trim(implode(' · ', array_filter([$compAddrLine, $compContactLine])))); ?></span>
-                                                    <?php endif; ?>
                                                 </div>
                                             </div>
                                         </td>
@@ -1140,34 +2067,27 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                             <div class="agap-person-cell">
                                                 <span class="agap-person-avatar is-respondent" aria-hidden="true"><?php echo htmlspecialchars($invInitials); ?></span>
                                                 <div class="agap-person-meta">
-                                                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                                                        <span class="agap-person-name"><?php echo htmlspecialchars($invName); ?></span>
-                                                        <?php if (!empty($p['complaint_number'])): ?>
-                                                            <span class="paanyaya-case-chip">Case #<?php echo htmlspecialchars($p['complaint_number']); ?></span>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                    <?php if ($invAddrLine !== '' || $invContactLine !== ''): ?>
-                                                        <span class="agap-person-sub"><?php echo htmlspecialchars(trim(implode(' · ', array_filter([$invAddrLine, $invContactLine])))); ?></span>
-                                                    <?php endif; ?>
+                                                    <span class="agap-person-name"><?php echo htmlspecialchars($invName); ?></span>
                                                 </div>
                                             </div>
                                         </td>
                                         <td>
-                                            <div class="paanyaya-status-dual">
-                                                <span class="paanyaya-step-chip <?php echo ($hasSecond || $latestAttempt >= 2) ? 'is-multi' : ''; ?>">
-                                                    <?php echo htmlspecialchars($latestStepLabel); ?>
-                                                </span>
-                                                <span class="agap-pill-badge <?php echo $badgeVariant; ?>">
-                                                    <?php echo $displaySt === 'Done' ? '✓ Done' : htmlspecialchars($displaySt); ?>
-                                                </span>
+                                            <div style="display:flex; flex-direction:column; align-items:flex-start; gap:3px;">
+                                                <span style="font-weight: 700; color: #0f172a; font-size: 0.85rem; white-space: nowrap;"><?php echo htmlspecialchars($schedDateTimeText); ?></span>
+                                                <span class="agap-pill-badge is-blue" style="font-size: 0.7rem; padding: 2px 8px; max-width: 210px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="<?php echo htmlspecialchars($schedSubLabel, ENT_QUOTES); ?>"><?php echo htmlspecialchars($latestStepLabel); ?></span>
                                             </div>
+                                        </td>
+                                        <td>
+                                            <span class="agap-pill-badge <?php echo $badgeVariant; ?>">
+                                                <?php echo htmlspecialchars($displaySt); ?>
+                                            </span>
                                         </td>
                                     </tr>
                                     <tr class="paanyaya-dropdown-row"
                                         id="<?php echo htmlspecialchars($dropdownDomId, ENT_QUOTES); ?>"
                                         data-paanyaya-dropdown-for="<?php echo htmlspecialchars($groupKey, ENT_QUOTES); ?>"
                                         hidden>
-                                        <td colspan="4" class="paanyaya-dropdown-cell">
+                                        <td colspan="6" class="paanyaya-dropdown-cell">
                                             <div class="paanyaya-stepper-card">
                                                 <div class="paanyaya-stepper-header">
                                                     <div class="paanyaya-stepper-title">
@@ -1176,38 +2096,34 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                             <span class="paanyaya-case-chip">Case #<?php echo htmlspecialchars($p['complaint_number']); ?></span>
                                                         <?php endif; ?>
                                                         <?php if ($hasSecond): ?>
-                                                            <span class="paanyaya-series-pill"><?php echo max(2, $itemCount); ?> Connected Invitations</span>
+                                                            <span class="paanyaya-series-pill">2 Connected Invitations</span>
                                                         <?php endif; ?>
                                                     </div>
                                                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                                                         <span style="font-size: 0.76rem; color: #64748b; font-weight: 600;">
                                                             <?php echo htmlspecialchars($workflowStage); ?>
                                                         </span>
-                                                        <?php if ($linkedComplaintId > 0): ?>
-                                                            <a href="stage.php?complaint_id=<?php echo $linkedComplaintId; ?>" class="agap-btn-act" title="Open the full Paanyaya stage workspace">
-                                                                <span>Stage Workspace</span>
-                                                            </a>
-                                                        <?php endif; ?>
                                                     </div>
                                                 </div>
                                                 <div class="paanyaya-vstepper">
                                                     <?php
                                                         $showUpcomingSecond = (
                                                             count($items) === 1
-                                                            && !in_array($displaySt, ['Done', 'Resolved', 'Completed', 'Settled', 'Cancelled', 'Escalated', 'Dismissed', 'Archived', 'CFA Issued'], true)
+                                                            && !str_starts_with($displaySt, 'Settled')
+                                                            && !in_array($displaySt, ['Resolved', 'Settled', 'Cancelled', 'Escalated', 'Dismissed', 'Archived', 'CFA Issued'], true)
                                                         );
                                                     ?>
-                                                    <?php foreach ($items as $item): ?>
+                                                    <?php foreach (array_slice($items, 0, 2) as $item): ?>
                                                         <?php
-                                                            $stepNum = (int)($item['step_index'] ?? ($item['attempt_number'] ?? 1));
-                                                            $stepLabel = (string)($item['step_label'] ?? ($stepNum === 2 ? '2nd Paanyaya' : '1st Paanyaya'));
+                                                            $stepNum = min(2, max(1, (int)($item['step_index'] ?? ($item['attempt_number'] ?? 1))));
+                                                            $stepLabel = (string)($item['step_label'] ?? ($stepNum >= 2 ? '2nd Paanyaya' : '1st Paanyaya'));
                                                             $isStepCurrent = !empty($item['is_latest']);
                                                             $stepClass = $isStepCurrent ? 'is-current' : 'is-done';
 
                                                             $itemDate = !empty($item['scheduled_date']) ? date('M j, Y', strtotime($item['scheduled_date'])) : '—';
                                                             $itemTime = !empty($item['scheduled_time']) ? date('g:i A', strtotime($item['scheduled_time'])) : '';
                                                             $itemRawStatus = (string)($item['status'] ?? 'Scheduled');
-                                                            $itemDispStatus = (string)($item['step_display_status'] ?? ($isStepCurrent ? $itemRawStatus : 'Done'));
+                                                            $itemDispStatus = (string)($item['step_display_status'] ?? ($isStepCurrent ? $itemRawStatus : '2nd Paanyaya Issued'));
                                                             $itemActionStatus = $isStepCurrent ? $itemRawStatus : $itemDispStatus;
                                                             $itemBadgeVariant = $resolveBadgeVariant($itemDispStatus);
                                                             $itemLinkedCid = (int)($item['complaint_id'] ?: ($item['escalated_to_complaint_id'] ?? $linkedComplaintId));
@@ -1237,7 +2153,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                                                 <span class="paanyaya-vstep-recent-pill">Most Recent</span>
                                                                             <?php endif; ?>
                                                                             <span class="agap-pill-badge <?php echo $itemBadgeVariant; ?>">
-                                                                                <?php echo $itemDispStatus === 'Done' ? '✓ Done' : htmlspecialchars($itemDispStatus); ?>
+                                                                                <?php echo htmlspecialchars($itemDispStatus); ?>
                                                                             </span>
                                                                         </div>
                                                                         <div class="paanyaya-vstep-sub">
@@ -1245,8 +2161,11 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                                             <?php if (!empty($item['complainant_attended']) || !empty($item['invitee_attended'])): ?>
                                                                                 <span>Attendance: <?php echo htmlspecialchars((string)($item['complainant_attended'] ?? 'Pending')); ?> / <?php echo htmlspecialchars((string)($item['invitee_attended'] ?? 'Pending')); ?></span>
                                                                             <?php endif; ?>
-                                                                            <?php if (!empty($item['outcome_notes'])): ?>
-                                                                                <span><?php echo htmlspecialchars(mb_strimwidth(trim((string)$item['outcome_notes']), 0, 90, '...', 'UTF-8')); ?></span>
+                                                                            <?php
+                                                                                $stepNotes = trim((string)(($item['dialogue_notes'] ?? '') !== '' ? $item['dialogue_notes'] : ($item['outcome_notes'] ?? ($item['salaysay'] ?? ''))));
+                                                                                if ($stepNotes !== ''):
+                                                                            ?>
+                                                                                <span>Notes: <?php echo htmlspecialchars(mb_strimwidth($stepNotes, 0, 90, '...', 'UTF-8')); ?></span>
                                                                             <?php endif; ?>
                                                                         </div>
                                                                     </div>
@@ -1271,7 +2190,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                                             <span class="agap-pill-badge" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">Pending</span>
                                                                         </div>
                                                                         <div class="paanyaya-vstep-sub">
-                                                                            <span>Not yet scheduled — will mark this case Done once issued.</span>
+                                                                            <span>Not yet scheduled.</span>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -1286,6 +2205,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                             <?php endif; ?>
                         </tbody>
                     </table>
+                    </div>
                 </div>
 
                 <!-- Pagination & Items Per Page Footer -->
@@ -1311,282 +2231,405 @@ tr[data-paanyaya-row="1"].is-expanded td {
      MODAL 1: SCHEDULE NEW PAANYAYA (With Salaysay Statement Narrative Field)
      ========================================================================= -->
 <div class="modal-overlay" id="schedulePaanyayaModal">
-    <div class="modal-card" style="max-width: 1120px; width: 95vw; max-height: 92vh;">
-        <div class="modal-head">
-            <h3>✉️ Schedule &amp; Send Paanyaya Invitation</h3>
-            <button type="button" class="modal-close-btn" id="modalCloseBtn">&times;</button>
-        </div>
-        <form id="schedulePaanyayaForm">
-            <div class="modal-body">
-                <div class="paanyaya-parties-grid">
-                <!-- 1. COMPLAINANT (NAGPAANYAYA) -->
-                <div class="party-section-card">
-                    <div class="modal-section-title" style="justify-content: space-between; margin-bottom: 10px;">
-                        <span style="color: #166534;">1. Details of Complainant (Nagpaanyaya)</span>
-                        <span style="font-size: 0.74rem; font-weight: 600; color: #15803d; background: #dcfce7; padding: 2px 8px; border-radius: 999px;">Required</span>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label for="schedCompResidentSelect" style="font-size: 0.78rem; color: #475569;">Quick Fill from Resident Directory (Optional)</label>
-                        <select id="schedCompResidentSelect" class="form-control" style="font-size: 0.85rem; background: #ffffff;">
-                            <option value="">-- Search / Select Existing Resident Profile or Type Manually Below --</option>
-                            <?php foreach ($residentsForLookup as $rItem): ?>
-                                <?php
-                                    $rFull = trim(implode(' ', array_filter([$rItem['first_name'] ?? '', $rItem['middle_name'] ?? '', $rItem['last_name'] ?? '', $rItem['suffix'] ?? ''])));
-                                    $rDisp = ($rItem['last_name'] ?? '') . ', ' . ($rItem['first_name'] ?? '') . (!empty($rItem['middle_name']) ? ' ' . $rItem['middle_name'] : '');
-                                    $rAddrDisp = trim(implode(', ', array_filter([$rItem['address'] ?? '', $rItem['purok'] ?? ''])));
-                                ?>
-                                <option value="<?php echo (int)$rItem['resident_id']; ?>"
-                                        data-first="<?php echo htmlspecialchars($rItem['first_name'] ?? '', ENT_QUOTES); ?>"
-                                        data-middle="<?php echo htmlspecialchars($rItem['middle_name'] ?? '', ENT_QUOTES); ?>"
-                                        data-last="<?php echo htmlspecialchars($rItem['last_name'] ?? '', ENT_QUOTES); ?>"
-                                        data-address="<?php echo htmlspecialchars($rItem['address'] ?? '', ENT_QUOTES); ?>"
-                                        data-purok="<?php echo htmlspecialchars($rItem['purok'] ?? '', ENT_QUOTES); ?>"
-                                        data-contact="<?php echo htmlspecialchars($rItem['contact_no'] ?? '', ENT_QUOTES); ?>"
-                                        data-email="<?php echo htmlspecialchars($rItem['email'] ?? '', ENT_QUOTES); ?>"
-                                        data-lat="<?php echo htmlspecialchars((string)($rItem['home_latitude'] ?? ''), ENT_QUOTES); ?>"
-                                        data-lng="<?php echo htmlspecialchars((string)($rItem['home_longitude'] ?? ''), ENT_QUOTES); ?>">
-                                    <?php echo htmlspecialchars($rDisp . ($rAddrDisp ? ' — ' . $rAddrDisp : '')); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <input type="hidden" id="schedComplainantResidentId" name="complainant_resident_id" value="">
-                    </div>
-
-                    <div class="form-row-3" style="margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedComplainantFirstName">First Name</label>
-                            <input type="text" id="schedComplainantFirstName" name="complainant_first_name" class="form-control" placeholder="First name" required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedComplainantMiddleName">Middle Name</label>
-                            <input type="text" id="schedComplainantMiddleName" name="complainant_middle_name" class="form-control" placeholder="Middle name (optional)">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedComplainantLastName">Last Name</label>
-                            <input type="text" id="schedComplainantLastName" name="complainant_last_name" class="form-control" placeholder="Last name" required>
-                        </div>
-                    </div>
-
-                    <div class="form-row" style="margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
-                                <label for="schedComplainantAddress" style="margin-bottom:0;">House No. / Street Address</label>
-                                <button type="button" id="btnPinCompAddress" style="padding:2px 8px; font-size:0.72rem; font-weight:600; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:6px; cursor:pointer;">📍 Pin on Map</button>
-                            </div>
-                            <input type="text" id="schedComplainantAddress" name="complainant_address" class="form-control" placeholder="e.g. Blk 4 Lot 12 Champagne St." required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedComplainantPurok">Purok / Zone</label>
-                            <select id="schedComplainantPurok" name="complainant_purok" class="form-control" required>
-                                <option value="">Select Purok / Zone...</option>
-                                <?php foreach ($purokOptions as $pOpt): ?>
-                                    <option value="<?php echo htmlspecialchars($pOpt); ?>"><?php echo htmlspecialchars($pOpt); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row" style="margin-bottom: 0;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <label for="schedComplainantContact" style="margin-bottom: 0; white-space: nowrap;">Contact Number <span style="color:#ef4444;" id="compContactReqStar">*</span></label>
-                                <label style="margin-bottom: 0; font-size: 0.74rem; font-weight: 500; color: #64748b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    <input type="checkbox" id="chkCompNoContact"> No contact no.
-                                </label>
-                            </div>
-                            <input type="text" id="schedComplainantContact" name="complainant_contact_no" class="form-control" placeholder="09XX-XXX-XXXX" required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedComplainantEmail">Email Address <span style="font-size: 0.74rem; color: #64748b; font-weight: normal;">(Optional)</span></label>
-                            <input type="email" id="schedComplainantEmail" name="complainant_email" class="form-control" placeholder="name@example.com">
-                        </div>
-                        <div style="grid-column: 1 / -1; margin-top: 4px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px;">
-                            <input type="hidden" id="compLocationLat" name="complainant_latitude" value="">
-                            <input type="hidden" id="compLocationLng" name="complainant_longitude" value="">
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-                                <div style="font-size: 0.78rem; font-weight: 700; color: #065f46; display: flex; align-items: center; gap: 5px;">
-                                    📍 Pin Complainant Residence Location on Map
-                                </div>
-                                <div style="display: flex; gap: 6px;">
-                                    <button type="button" id="compRecenterMapBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; border-radius: 6px; cursor: pointer;">Recenter Tumana</button>
-                                    <button type="button" id="compClearPinBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; border-radius: 6px; cursor: pointer;">Clear Pin</button>
-                                </div>
-                            </div>
-                            <div style="font-size: 0.72rem; color: #64748b; margin-bottom: 6px;">
-                                Click on the map or drag the pin to auto-populate the Complainant's Street Address and Purok/Zone.
-                            </div>
-                            <div id="compLocationMap" style="width: 100%; height: 215px; border-radius: 8px; border: 1px solid #cbd5e1; z-index: 1;"></div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.73rem;">
-                                <span id="compMapStatus" style="color: #64748b;">No pin placed yet. Click on map to auto-fill address.</span>
-                                <span id="compMapCoords" style="font-family: monospace; color: #475569; font-weight: 600;"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2. PERSON BEING INVITED (INANYAYAHAN) -->
-                <div class="party-section-card">
-                    <div class="modal-section-title" style="justify-content: space-between; margin-bottom: 10px;">
-                        <span style="color: #1e40af;">2. Details of Person Being Invited (Inanyayahan)</span>
-                        <span style="font-size: 0.74rem; font-weight: 600; color: #1d4ed8; background: #dbeafe; padding: 2px 8px; border-radius: 999px;">Required for Delivery</span>
-                    </div>
-
-                    <div class="form-group" style="margin-bottom: 12px;">
-                        <label for="schedInvResidentSelect" style="font-size: 0.78rem; color: #475569;">Quick Fill from Resident Directory (Optional)</label>
-                        <select id="schedInvResidentSelect" class="form-control" style="font-size: 0.85rem; background: #ffffff;">
-                            <option value="">-- Search / Select Existing Resident Profile or Type Manually Below --</option>
-                            <?php foreach ($residentsForLookup as $rItem): ?>
-                                <?php
-                                    $rDisp = ($rItem['last_name'] ?? '') . ', ' . ($rItem['first_name'] ?? '') . (!empty($rItem['middle_name']) ? ' ' . $rItem['middle_name'] : '');
-                                    $rAddrDisp = trim(implode(', ', array_filter([$rItem['address'] ?? '', $rItem['purok'] ?? ''])));
-                                ?>
-                                <option value="<?php echo (int)$rItem['resident_id']; ?>"
-                                        data-first="<?php echo htmlspecialchars($rItem['first_name'] ?? '', ENT_QUOTES); ?>"
-                                        data-middle="<?php echo htmlspecialchars($rItem['middle_name'] ?? '', ENT_QUOTES); ?>"
-                                        data-last="<?php echo htmlspecialchars($rItem['last_name'] ?? '', ENT_QUOTES); ?>"
-                                        data-address="<?php echo htmlspecialchars($rItem['address'] ?? '', ENT_QUOTES); ?>"
-                                        data-purok="<?php echo htmlspecialchars($rItem['purok'] ?? '', ENT_QUOTES); ?>"
-                                        data-contact="<?php echo htmlspecialchars($rItem['contact_no'] ?? '', ENT_QUOTES); ?>"
-                                        data-email="<?php echo htmlspecialchars($rItem['email'] ?? '', ENT_QUOTES); ?>"
-                                        data-lat="<?php echo htmlspecialchars((string)($rItem['home_latitude'] ?? ''), ENT_QUOTES); ?>"
-                                        data-lng="<?php echo htmlspecialchars((string)($rItem['home_longitude'] ?? ''), ENT_QUOTES); ?>">
-                                    <?php echo htmlspecialchars($rDisp . ($rAddrDisp ? ' — ' . $rAddrDisp : '')); ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                        <input type="hidden" id="schedInviteeResidentId" name="invitee_resident_id" value="">
-                    </div>
-
-                    <div class="form-row-3" style="margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedInviteeFirstName">First Name</label>
-                            <input type="text" id="schedInviteeFirstName" name="invitee_first_name" class="form-control" placeholder="First name" required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedInviteeMiddleName">Middle Name</label>
-                            <input type="text" id="schedInviteeMiddleName" name="invitee_middle_name" class="form-control" placeholder="Middle name (optional)">
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedInviteeLastName">Last Name</label>
-                            <input type="text" id="schedInviteeLastName" name="invitee_last_name" class="form-control" placeholder="Last name" required>
-                        </div>
-                    </div>
-
-                    <div class="form-row" style="margin-bottom: 12px;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
-                                <label for="schedInviteeAddress" style="margin-bottom:0;">House No. / Street Address (Delivery)</label>
-                                <button type="button" id="btnPinInvAddress" style="padding:2px 8px; font-size:0.72rem; font-weight:600; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:6px; cursor:pointer;">📍 Pin on Map</button>
-                            </div>
-                            <input type="text" id="schedInviteeAddress" name="invitee_address" class="form-control" placeholder="e.g. #45 Road 1 Ext., Doña Petra" required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedInviteePurok">Purok / Zone</label>
-                            <select id="schedInviteePurok" name="invitee_purok" class="form-control" required>
-                                <option value="">Select Purok / Zone...</option>
-                                <?php foreach ($purokOptions as $pOpt): ?>
-                                    <option value="<?php echo htmlspecialchars($pOpt); ?>"><?php echo htmlspecialchars($pOpt); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-row" style="margin-bottom: 0;">
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <label for="schedInviteeContact" style="margin-bottom: 0; white-space: nowrap;">Contact Number <span style="color:#ef4444;" id="invContactReqStar">*</span></label>
-                                <label style="margin-bottom: 0; font-size: 0.74rem; font-weight: 500; color: #64748b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
-                                    <input type="checkbox" id="chkInvNoContact"> Unknown / None
-                                </label>
-                            </div>
-                            <input type="text" id="schedInviteeContact" name="invitee_contact_no" class="form-control" placeholder="09XX-XXX-XXXX" required>
-                        </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                            <label for="schedInviteeEmail">Email Address <span style="font-size: 0.74rem; color: #64748b; font-weight: normal;">(Optional)</span></label>
-                            <input type="email" id="schedInviteeEmail" name="invitee_email" class="form-control" placeholder="name@example.com">
-                        </div>
-                        <div style="grid-column: 1 / -1; margin-top: 4px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px;">
-                            <input type="hidden" id="invLocationLat" name="invitee_latitude" value="">
-                            <input type="hidden" id="invLocationLng" name="invitee_longitude" value="">
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
-                                <div style="font-size: 0.78rem; font-weight: 700; color: #1e40af; display: flex; align-items: center; gap: 5px;">
-                                    📍 Pin Respondent / Invitee Residence Location on Map
-                                </div>
-                                <div style="display: flex; gap: 6px;">
-                                    <button type="button" id="invRecenterMapBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; border-radius: 6px; cursor: pointer;">Recenter Tumana</button>
-                                    <button type="button" id="invClearPinBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; border-radius: 6px; cursor: pointer;">Clear Pin</button>
-                                </div>
-                            </div>
-                            <div style="font-size: 0.72rem; color: #64748b; margin-bottom: 6px;">
-                                Click on the map or drag the pin to auto-populate the Respondent's Street Address and Purok/Zone.
-                            </div>
-                            <div id="invLocationMap" style="width: 100%; height: 215px; border-radius: 8px; border: 1px solid #cbd5e1; z-index: 1;"></div>
-                            <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.73rem;">
-                                <span id="invMapStatus" style="color: #64748b;">No pin placed yet. Click on map to auto-fill address.</span>
-                                <span id="invMapCoords" style="font-family: monospace; color: #475569; font-weight: 600;"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                </div><!-- /.paanyaya-parties-grid -->
-
-                <!-- 3. LOCATION PINNING (BARANGAY TUMANA MAP) -->
-                <div class="party-section-card" style="display: none;">
-                    <div class="modal-section-title" style="justify-content: space-between; margin-bottom: 10px;">
-                        <span style="color: #0f766e;">3. Location Pinning (Invitee / Incident Location in Barangay Tumana)</span>
-                        <span style="font-size: 0.74rem; font-weight: 600; color: #0f766e; background: #ccfbf1; padding: 2px 8px; border-radius: 999px;">Interactive Map Pinning</span>
-                    </div>
-                    <input type="hidden" id="paanyayaLocationLat" name="location_latitude" value="">
-                    <input type="hidden" id="paanyayaLocationLng" name="location_longitude" value="">
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px;">
-                        <div style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem;">
-                            <span style="font-weight: 700; color: #334155;">📍 Location Coordinates:</span>
-                            <span id="paanyayaLocationCoords" style="color: #64748b; font-family: monospace;">Click on the map to pin location</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <button type="button" id="paanyayaRecenterMapBtn" class="btn-action-view" style="padding: 5px 12px; font-size: 0.78rem;">Recenter</button>
-                            <button type="button" id="paanyayaClearPinBtn" class="btn-action-view" style="padding: 5px 12px; font-size: 0.78rem;">Clear pin</button>
-                        </div>
-                    </div>
-                    <div id="paanyayaLocationMap" style="width: 100%; height: 260px; border-radius: 10px; border: 1px solid #cbd5e1; z-index: 1;"></div>
-                    <div style="font-size: 0.74rem; color: #64748b; margin-top: 6px;">
-                        Click anywhere inside the highlighted Barangay Tumana boundary (or drag the marker) to pin the delivery/incident location and auto-fill the street address if empty.
-                    </div>
-                </div>
-
-                <!-- 4. SCHEDULE & VENUE -->
-                <div class="form-row-3" style="margin-bottom: 14px;">
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="schedDate">Scheduled Date</label>
-                        <input type="date" id="schedDate" name="scheduled_date" class="form-control" min="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="schedTime">Scheduled Time</label>
-                        <input type="time" id="schedTime" name="scheduled_time" class="form-control" value="14:00" required>
-                    </div>
-                    <div class="form-group" style="margin-bottom: 0;">
-                        <label for="schedVenue">Venue / Tanggapan</label>
-                        <input type="text" id="schedVenue" name="venue" class="form-control" value="Tanggapan ng Barangay Tumana" required>
-                    </div>
-                </div>
-
-                <!-- 4. SALAYSAY (STATEMENT / DISPUTE NARRATIVE) -->
-                <div class="form-group" style="margin-bottom: 4px;">
-                    <label for="schedSalaysay" style="display: flex; justify-content: space-between; align-items: center;">
-                        <span>Salaysay (Statement / Reason for Invitation)</span>
-                        <span style="font-size: 0.74rem; color: #16a34a; font-weight: 600;">Required · Inilalagay sa Liham at Mediation</span>
-                    </label>
-                    <textarea id="schedSalaysay" name="salaysay" class="form-control" rows="3" placeholder="Ilarawan ang buod ng sumbong, dahilan ng pag-anyaya, o salaysay ng nagpaanyaya..." required></textarea>
-                    <div style="font-size: 0.74rem; color: #64748b; margin-top: 4px;">
-                        Ito ay ilalagay sa opisyal na Paanyaya letter at awtomatikong ililipat sa Pormal na Mediation kapag inakyat ang kaso.
-                    </div>
+    <div class="modal-card wiz-modal-card">
+        <div class="wiz-top-header">
+            <div class="wiz-top-left">
+                <button type="button" class="wiz-top-back-btn" id="wizTopBackBtn" aria-label="Close modal">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+                </button>
+                <div>
+                    <h3 class="wiz-top-title">Schedule &amp; Send Paanyaya</h3>
+                    <p class="wiz-top-subtitle">Issue a Stage 0 informal dialogue invitation in Barangay Tumana.</p>
                 </div>
             </div>
-            <div class="modal-foot">
-                <button type="button" class="btn-action-view" id="modalCancelBtn">Cancel</button>
-                <button type="submit" class="btn-new-paanyaya" id="btnSubmitPaanyaya">Save &amp; Generate Paanyaya</button>
+            <button type="button" class="modal-close-btn" id="modalCloseBtn" aria-label="Close">&times;</button>
+        </div>
+
+        <form id="schedulePaanyayaForm" novalidate>
+            <div class="wiz-shell">
+                <!-- Left Step Progress Sidebar -->
+                <aside class="wiz-sidebar" aria-label="Paanyaya registration progress">
+                    <div>
+                        <h4 class="wiz-progress-title">Paanyaya Progress</h4>
+                        <div class="wiz-progress-meta" id="wizStepCountLabel">Step 1 of 4</div>
+                        <div class="wiz-progress-track">
+                            <div class="wiz-progress-fill" id="wizProgressFill"></div>
+                        </div>
+
+                        <div class="wiz-step-list" role="tablist">
+                            <button type="button" class="wiz-step-item is-active" data-wiz-step="1">
+                                <span class="wiz-step-num" data-wiz-num="1">1</span>
+                                <span class="wiz-step-text">
+                                    <span class="wiz-step-label">Complainant</span>
+                                    <span class="wiz-step-sub">Nagpaanyaya &amp; location</span>
+                                </span>
+                            </button>
+                            <button type="button" class="wiz-step-item" data-wiz-step="2">
+                                <span class="wiz-step-num" data-wiz-num="2">2</span>
+                                <span class="wiz-step-text">
+                                    <span class="wiz-step-label">Respondent</span>
+                                    <span class="wiz-step-sub">Inanyayahan delivery info</span>
+                                </span>
+                            </button>
+                            <button type="button" class="wiz-step-item" data-wiz-step="3">
+                                <span class="wiz-step-num" data-wiz-num="3">3</span>
+                                <span class="wiz-step-text">
+                                    <span class="wiz-step-label">Schedule &amp; Salaysay</span>
+                                    <span class="wiz-step-sub">Date, venue &amp; reason</span>
+                                </span>
+                            </button>
+                            <button type="button" class="wiz-step-item" data-wiz-step="4">
+                                <span class="wiz-step-num" data-wiz-num="4">4</span>
+                                <span class="wiz-step-text">
+                                    <span class="wiz-step-label">Review &amp; Submit</span>
+                                    <span class="wiz-step-sub">Verify &amp; generate notice</span>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="wiz-help-box">
+                        <span class="wiz-help-icon" aria-hidden="true">i</span>
+                        <div>
+                            <div class="wiz-help-title">Stage 0 Paanyaya Guide</div>
+                            <p class="wiz-help-desc">Quick-fill from the resident directory or pin on the Tumana map to auto-fill address and purok details.</p>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Right Step Card -->
+                <div class="wiz-main-card">
+                    <div class="wiz-card-body">
+                        <!-- STEP 1: COMPLAINANT (NAGPAANYAYA) -->
+                        <div class="wiz-panel is-active" id="wizPanel1" data-wiz-panel="1">
+                            <div class="wiz-panel-head">
+                                <h4>Complainant Information (Nagpaanyaya)</h4>
+                                <p>Provide the initial details of the complainant requesting this informal dialogue.</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="schedCompResidentSelect">Quick Fill from Resident Directory (Optional)</label>
+                                <select id="schedCompResidentSelect" class="form-control">
+                                    <option value="">-- Search / Select Existing Resident Profile or Type Manually Below --</option>
+                                    <?php foreach ($residentsForLookup as $rItem): ?>
+                                        <?php
+                                            $rDisp = ($rItem['last_name'] ?? '') . ', ' . ($rItem['first_name'] ?? '') . (!empty($rItem['middle_name']) ? ' ' . $rItem['middle_name'] : '');
+                                            $rAddrDisp = trim(implode(', ', array_filter([$rItem['address'] ?? '', $rItem['purok'] ?? ''])));
+                                        ?>
+                                        <option value="<?php echo (int)$rItem['resident_id']; ?>"
+                                                data-first="<?php echo htmlspecialchars($rItem['first_name'] ?? '', ENT_QUOTES); ?>"
+                                                data-middle="<?php echo htmlspecialchars($rItem['middle_name'] ?? '', ENT_QUOTES); ?>"
+                                                data-last="<?php echo htmlspecialchars($rItem['last_name'] ?? '', ENT_QUOTES); ?>"
+                                                data-address="<?php echo htmlspecialchars($rItem['address'] ?? '', ENT_QUOTES); ?>"
+                                                data-purok="<?php echo htmlspecialchars($rItem['purok'] ?? '', ENT_QUOTES); ?>"
+                                                data-is-tenant="<?php echo (int)($rItem['is_tenant'] ?? 0); ?>"
+                                                data-contact="<?php echo htmlspecialchars($rItem['contact_no'] ?? '', ENT_QUOTES); ?>"
+                                                data-email="<?php echo htmlspecialchars($rItem['email'] ?? '', ENT_QUOTES); ?>"
+                                                data-lat="<?php echo htmlspecialchars((string)($rItem['home_latitude'] ?? ''), ENT_QUOTES); ?>"
+                                                data-lng="<?php echo htmlspecialchars((string)($rItem['home_longitude'] ?? ''), ENT_QUOTES); ?>">
+                                            <?php echo htmlspecialchars($rDisp . ($rAddrDisp ? ' — ' . $rAddrDisp : '')); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="hidden" id="schedComplainantResidentId" name="complainant_resident_id" value="">
+                            </div>
+
+                            <div class="form-row-3" style="margin-bottom: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedComplainantFirstName">First Name</label>
+                                    <input type="text" id="schedComplainantFirstName" name="complainant_first_name" class="form-control" placeholder="First name" required>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedComplainantMiddleName">Middle Name</label>
+                                    <input type="text" id="schedComplainantMiddleName" name="complainant_middle_name" class="form-control" placeholder="Middle name (optional)">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedComplainantLastName">Last Name</label>
+                                    <input type="text" id="schedComplainantLastName" name="complainant_last_name" class="form-control" placeholder="Last name" required>
+                                </div>
+                            </div>
+
+                            <div class="wiz-subhead">Location &amp; Contact Details</div>
+                            <div class="form-row" style="margin-bottom: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedComplainantIsTenant">Residency Status <span style="color:#ef4444;">*</span></label>
+                                    <select id="schedComplainantIsTenant" name="complainant_is_tenant" class="form-control" required>
+                                        <option value="0">Resident (Permanent — Tumana)</option>
+                                        <option value="1">Resident (Tenant / Renter — Tumana)</option>
+                                        <option value="2">Non-Resident (Outside Barangay Tumana)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedComplainantPurok">Purok / Zone</label>
+                                    <select id="schedComplainantPurok" name="complainant_purok" class="form-control" required>
+                                        <option value="">Select Purok / Zone...</option>
+                                        <?php foreach ($purokOptions as $pOpt): ?>
+                                            <option value="<?php echo htmlspecialchars($pOpt); ?>"><?php echo htmlspecialchars($pOpt === 'Non-Resident' ? 'Non-Resident (Outside Barangay Tumana)' : $pOpt); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 14px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+                                    <label for="schedComplainantAddress" style="margin-bottom:0;">House No. / Street Address</label>
+                                    <button type="button" id="btnPinCompAddress" style="padding:2px 8px; font-size:0.72rem; font-weight:600; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:6px; cursor:pointer;">📍 Pin on Map</button>
+                                </div>
+                                <input type="text" id="schedComplainantAddress" name="complainant_address" class="form-control" placeholder="e.g. Blk 4 Lot 12 Champagne St." required>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <label for="schedComplainantContact" style="margin-bottom: 0; white-space: nowrap;">Contact Number <span style="color:#ef4444;" id="compContactReqStar">*</span></label>
+                                        <label style="margin-bottom: 0; font-size: 0.74rem; font-weight: 500; color: #64748b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                                            <input type="checkbox" id="chkCompNoContact"> No contact no.
+                                        </label>
+                                    </div>
+                                    <input type="text" id="schedComplainantContact" name="complainant_contact_no" class="form-control" placeholder="09XX-XXX-XXXX" required>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedComplainantEmail">Email Address <span style="font-size: 0.74rem; color: #64748b; font-weight: normal;">(Optional)</span></label>
+                                    <input type="email" id="schedComplainantEmail" name="complainant_email" class="form-control" placeholder="name@example.com">
+                                </div>
+                            </div>
+
+                            <div class="wiz-map-box">
+                                <input type="hidden" id="compLocationLat" name="complainant_latitude" value="">
+                                <input type="hidden" id="compLocationLng" name="complainant_longitude" value="">
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+                                    <div style="font-size: 0.79rem; font-weight: 700; color: #1b6553; display: flex; align-items: center; gap: 5px;">
+                                        📍 Pin Complainant Residence Location on Map
+                                    </div>
+                                    <div style="display: flex; gap: 6px;">
+                                        <button type="button" id="compRecenterMapBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; border-radius: 6px; cursor: pointer;">Recenter Tumana</button>
+                                        <button type="button" id="compClearPinBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; border-radius: 6px; cursor: pointer;">Clear Pin</button>
+                                    </div>
+                                </div>
+                                <div id="compLocationMap" style="width: 100%; height: 195px; border-radius: 8px; border: 1px solid #cbd5e1; z-index: 1;"></div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.73rem;">
+                                    <span id="compMapStatus" style="color: #64748b;">No pin placed yet. Click on map to auto-fill address.</span>
+                                    <span id="compMapCoords" style="font-family: monospace; color: #475569; font-weight: 600;"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- STEP 2: RESPONDENT / INVITEE (INANYAYAHAN) -->
+                        <div class="wiz-panel" id="wizPanel2" data-wiz-panel="2">
+                            <div class="wiz-panel-head">
+                                <h4>Person Being Invited (Inanyayahan)</h4>
+                                <p>Enter accurate identity and delivery details for the person receiving this invitation.</p>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="schedInvResidentSelect">Quick Fill from Resident Directory (Optional)</label>
+                                <select id="schedInvResidentSelect" class="form-control">
+                                    <option value="">-- Search / Select Existing Resident Profile or Type Manually Below --</option>
+                                    <?php foreach ($residentsForLookup as $rItem): ?>
+                                        <?php
+                                            $rDisp = ($rItem['last_name'] ?? '') . ', ' . ($rItem['first_name'] ?? '') . (!empty($rItem['middle_name']) ? ' ' . $rItem['middle_name'] : '');
+                                            $rAddrDisp = trim(implode(', ', array_filter([$rItem['address'] ?? '', $rItem['purok'] ?? ''])));
+                                        ?>
+                                        <option value="<?php echo (int)$rItem['resident_id']; ?>"
+                                                data-first="<?php echo htmlspecialchars($rItem['first_name'] ?? '', ENT_QUOTES); ?>"
+                                                data-middle="<?php echo htmlspecialchars($rItem['middle_name'] ?? '', ENT_QUOTES); ?>"
+                                                data-last="<?php echo htmlspecialchars($rItem['last_name'] ?? '', ENT_QUOTES); ?>"
+                                                data-address="<?php echo htmlspecialchars($rItem['address'] ?? '', ENT_QUOTES); ?>"
+                                                data-purok="<?php echo htmlspecialchars($rItem['purok'] ?? '', ENT_QUOTES); ?>"
+                                                data-is-tenant="<?php echo (int)($rItem['is_tenant'] ?? 0); ?>"
+                                                data-contact="<?php echo htmlspecialchars($rItem['contact_no'] ?? '', ENT_QUOTES); ?>"
+                                                data-email="<?php echo htmlspecialchars($rItem['email'] ?? '', ENT_QUOTES); ?>"
+                                                data-lat="<?php echo htmlspecialchars((string)($rItem['home_latitude'] ?? ''), ENT_QUOTES); ?>"
+                                                data-lng="<?php echo htmlspecialchars((string)($rItem['home_longitude'] ?? ''), ENT_QUOTES); ?>">
+                                            <?php echo htmlspecialchars($rDisp . ($rAddrDisp ? ' — ' . $rAddrDisp : '')); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="hidden" id="schedInviteeResidentId" name="invitee_resident_id" value="">
+                            </div>
+
+                            <div class="form-row-3" style="margin-bottom: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedInviteeFirstName">First Name</label>
+                                    <input type="text" id="schedInviteeFirstName" name="invitee_first_name" class="form-control" placeholder="First name" required>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedInviteeMiddleName">Middle Name</label>
+                                    <input type="text" id="schedInviteeMiddleName" name="invitee_middle_name" class="form-control" placeholder="Middle name (optional)">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedInviteeLastName">Last Name</label>
+                                    <input type="text" id="schedInviteeLastName" name="invitee_last_name" class="form-control" placeholder="Last name" required>
+                                </div>
+                            </div>
+
+                            <div class="wiz-subhead">Delivery Location &amp; Contact Details</div>
+                            <div class="form-row" style="margin-bottom: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedInviteeIsTenant">Residency Status <span style="color:#ef4444;">*</span></label>
+                                    <select id="schedInviteeIsTenant" name="invitee_is_tenant" class="form-control" required>
+                                        <option value="0">Resident (Permanent — Tumana)</option>
+                                        <option value="1">Resident (Tenant / Renter — Tumana)</option>
+                                        <option value="2">Non-Resident (Outside Barangay Tumana)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedInviteePurok">Purok / Zone</label>
+                                    <select id="schedInviteePurok" name="invitee_purok" class="form-control" required>
+                                        <option value="">Select Purok / Zone...</option>
+                                        <?php foreach ($purokOptions as $pOpt): ?>
+                                            <option value="<?php echo htmlspecialchars($pOpt); ?>"><?php echo htmlspecialchars($pOpt === 'Non-Resident' ? 'Non-Resident (Outside Barangay Tumana)' : $pOpt); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 14px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+                                    <label for="schedInviteeAddress" style="margin-bottom:0;">House No. / Street Address (Delivery)</label>
+                                    <button type="button" id="btnPinInvAddress" style="padding:2px 8px; font-size:0.72rem; font-weight:600; border:1px solid #bfdbfe; background:#eff6ff; color:#1d4ed8; border-radius:6px; cursor:pointer;">📍 Pin on Map</button>
+                                </div>
+                                <input type="text" id="schedInviteeAddress" name="invitee_address" class="form-control" placeholder="e.g. #45 Road 1 Ext., Doña Petra" required>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 0;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                        <label for="schedInviteeContact" style="margin-bottom: 0; white-space: nowrap;">Contact Number <span style="color:#ef4444;" id="invContactReqStar">*</span></label>
+                                        <label style="margin-bottom: 0; font-size: 0.74rem; font-weight: 500; color: #64748b; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                                            <input type="checkbox" id="chkInvNoContact"> Unknown / None
+                                        </label>
+                                    </div>
+                                    <input type="text" id="schedInviteeContact" name="invitee_contact_no" class="form-control" placeholder="09XX-XXX-XXXX" required>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedInviteeEmail">Email Address <span style="font-size: 0.74rem; color: #64748b; font-weight: normal;">(Optional)</span></label>
+                                    <input type="email" id="schedInviteeEmail" name="invitee_email" class="form-control" placeholder="name@example.com">
+                                </div>
+                            </div>
+
+                            <div class="wiz-map-box">
+                                <input type="hidden" id="invLocationLat" name="invitee_latitude" value="">
+                                <input type="hidden" id="invLocationLng" name="invitee_longitude" value="">
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+                                    <div style="font-size: 0.79rem; font-weight: 700; color: #1e40af; display: flex; align-items: center; gap: 5px;">
+                                        📍 Pin Respondent / Invitee Residence Location on Map
+                                    </div>
+                                    <div style="display: flex; gap: 6px;">
+                                        <button type="button" id="invRecenterMapBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #cbd5e1; background: #ffffff; color: #334155; border-radius: 6px; cursor: pointer;">Recenter Tumana</button>
+                                        <button type="button" id="invClearPinBtn" style="padding: 3px 8px; font-size: 0.72rem; font-weight: 600; border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; border-radius: 6px; cursor: pointer;">Clear Pin</button>
+                                    </div>
+                                </div>
+                                <div id="invLocationMap" style="width: 100%; height: 195px; border-radius: 8px; border: 1px solid #cbd5e1; z-index: 1;"></div>
+                                <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.73rem;">
+                                    <span id="invMapStatus" style="color: #64748b;">No pin placed yet. Click on map to auto-fill address.</span>
+                                    <span id="invMapCoords" style="font-family: monospace; color: #475569; font-weight: 600;"></span>
+                                </div>
+                            </div>
+
+                            <!-- Legacy Hidden Map Fallback Inputs -->
+                            <div style="display: none;">
+                                <input type="hidden" id="paanyayaLocationLat" name="location_latitude" value="">
+                                <input type="hidden" id="paanyayaLocationLng" name="location_longitude" value="">
+                                <span id="paanyayaLocationCoords"></span>
+                                <button type="button" id="paanyayaRecenterMapBtn"></button>
+                                <button type="button" id="paanyayaClearPinBtn"></button>
+                                <div id="paanyayaLocationMap"></div>
+                            </div>
+                        </div>
+
+                        <!-- STEP 3: SCHEDULE, VENUE & SALAYSAY -->
+                        <div class="wiz-panel" id="wizPanel3" data-wiz-panel="3">
+                            <div class="wiz-panel-head">
+                                <h4>Schedule, Venue &amp; Salaysay</h4>
+                                <p>Set when and where the informal dialogue will take place and state the reason for invitation.</p>
+                            </div>
+
+                            <div class="form-row" style="margin-bottom: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedDate">Scheduled Date</label>
+                                    <input type="date" id="schedDate" name="scheduled_date" class="form-control" min="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedTime">Scheduled Time</label>
+                                    <input type="time" id="schedTime" name="scheduled_time" class="form-control" value="14:00" required>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="schedVenue">Venue / Tanggapan</label>
+                                <input type="text" id="schedVenue" name="venue" class="form-control" value="Tanggapan ng Barangay Tumana" required>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <label for="schedSalaysay">Salaysay (Statement / Reason for Invitation)</label>
+                                <textarea id="schedSalaysay" name="salaysay" class="form-control" rows="7" placeholder="Ilarawan ang buod ng sumbong, dahilan ng pag-anyaya, o salaysay ng nagpaanyaya..." required></textarea>
+                                <div style="font-size: 0.76rem; color: #64748b; margin-top: 6px;">
+                                    Ito ay ilalagay sa opisyal na Paanyaya letter at awtomatikong ililipat sa Pormal na Mediation kapag inakyat ang kaso.
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- STEP 4: REVIEW & SUBMIT -->
+                        <div class="wiz-panel" id="wizPanel4" data-wiz-panel="4">
+                            <div class="wiz-panel-head">
+                                <h4>Review &amp; Confirm Invitation</h4>
+                                <p>Please review all details below before generating the official 1st Paanyaya letter.</p>
+                            </div>
+
+                            <div class="wiz-review-grid">
+                                <div class="wiz-review-card">
+                                    <div class="wiz-review-card-head">
+                                        <span class="wiz-review-card-title">Complainant (Nagpaanyaya)</span>
+                                        <button type="button" class="wiz-review-edit-btn" data-wiz-jump="1">Edit</button>
+                                    </div>
+                                    <div class="wiz-review-val" id="revCompName">—</div>
+                                    <div class="wiz-review-sub" id="revCompDetails">—</div>
+                                </div>
+
+                                <div class="wiz-review-card">
+                                    <div class="wiz-review-card-head">
+                                        <span class="wiz-review-card-title">Respondent (Inanyayahan)</span>
+                                        <button type="button" class="wiz-review-edit-btn" data-wiz-jump="2">Edit</button>
+                                    </div>
+                                    <div class="wiz-review-val" id="revInvName">—</div>
+                                    <div class="wiz-review-sub" id="revInvDetails">—</div>
+                                </div>
+                            </div>
+
+                            <div class="wiz-review-card" style="margin-bottom: 14px;">
+                                <div class="wiz-review-card-head">
+                                    <span class="wiz-review-card-title">Dialogue Schedule &amp; Venue</span>
+                                    <button type="button" class="wiz-review-edit-btn" data-wiz-jump="3">Edit</button>
+                                </div>
+                                <div class="wiz-review-val" id="revSchedDateTime">—</div>
+                                <div class="wiz-review-sub" id="revSchedVenue">—</div>
+                            </div>
+
+                            <div class="wiz-review-card">
+                                <div class="wiz-review-card-head">
+                                    <span class="wiz-review-card-title">Salaysay / Reason for Invitation</span>
+                                    <button type="button" class="wiz-review-edit-btn" data-wiz-jump="3">Edit</button>
+                                </div>
+                                <div class="wiz-review-sub" id="revSalaysay" style="color: #1e293b; white-space: pre-wrap;">—</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="wiz-card-foot">
+                        <div>
+                            <button type="button" class="wiz-btn-secondary" id="modalCancelBtn">Cancel</button>
+                            <button type="button" class="wiz-btn-secondary" id="btnWizPrev" style="display: none;">&larr; Previous</button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <button type="button" class="wiz-btn-primary" id="btnWizNext">
+                                <span>Next Step</span>
+                                <span aria-hidden="true">&rarr;</span>
+                            </button>
+                            <button type="submit" class="wiz-btn-primary" id="btnSubmitPaanyaya" style="display: none;">Save &amp; Generate Paanyaya</button>
+                        </div>
+                    </div>
+                </div>
             </div>
         </form>
     </div>
@@ -1597,30 +2640,129 @@ tr[data-paanyaya-row="1"].is-expanded td {
      ========================================================================= -->
 <div class="modal-overlay" id="paanyayaPreviewModal">
     <div class="modal-card modal-card-large">
-        <div class="modal-head">
+        <div class="modal-head" style="background: #ffffff; border-bottom: 1px solid #f1f5f9;">
             <div>
-                <h3 id="previewModalTitle">✉️ Paanyaya Letter Preview</h3>
-                <div id="previewModalSubtitle" style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Official Barangay Tumana Invitation</div>
+                <h3 id="previewModalTitle" style="margin: 0; font-size: 1rem; color: #0f172a;">Paanyaya Record View</h3>
+                <div id="previewModalSubtitle" style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Official Barangay Tumana KP Record</div>
             </div>
             <div style="display: flex; align-items: center; gap: 8px;">
-                <button type="button" class="btn-action-print" id="btnPrintFromModal" title="Print Letter">
-                    🖨️ Print
-                </button>
-                <a href="#" target="_blank" class="btn-action-view" id="btnDownloadFromModal" title="Download PDF">
-                    ⬇️ Download PDF
-                </a>
-                <button type="button" class="modal-close-btn" id="previewModalCloseBtn">&times;</button>
+                <div id="previewKpActions" style="display: inline-flex; align-items: center; gap: 8px;">
+                    <button type="button" class="btn-action-print" id="btnPrintFromModal" title="Print KP Form">
+                        Print
+                    </button>
+                    <a href="#" target="_blank" class="btn-action-view" id="btnDownloadFromModal" title="Download PDF">
+                        Download PDF
+                    </a>
+                </div>
+                <button type="button" class="modal-close-btn" id="previewModalCloseBtn" aria-label="Close modal">&times;</button>
             </div>
         </div>
-        <div class="modal-body" style="padding: 0; background: #525659;">
-            <div id="previewLoadingNotice" style="padding: 40px 20px; text-align: center; color: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;">
-                <div style="font-size: 1.8rem;">⏳</div>
-                <div style="font-weight: 600;">Naglo-load ng Paanyaya Letter...</div>
-            </div>
-            <iframe id="paanyayaPreviewIframe" src="" style="width: 100%; height: 65vh; min-height: 500px; border: none; display: none;"></iframe>
+
+        <!-- Tabs shown after dialogue has been recorded -->
+        <div id="previewModalTabs" class="preview-tabs-bar" role="tablist" style="display: none;">
+            <button type="button" class="preview-tab-btn is-active" id="btnPreviewTabDialogue" data-preview-tab="dialogue" role="tab" aria-selected="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                <span>Dialogue Details</span>
+                <span class="preview-tab-pill" id="previewTabRecordedPill">Recorded</span>
+            </button>
+            <button type="button" class="preview-tab-btn" id="btnPreviewTabKpForm" data-preview-tab="kp-form" role="tab" aria-selected="false">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span>KP Form</span>
+            </button>
         </div>
-        <div class="modal-foot">
-            <button type="button" class="btn-action-view" id="previewModalCloseFootBtn">Close</button>
+
+        <div class="modal-body" style="padding: 0; background: #ffffff;">
+            <!-- Tab 1: Recorded Dialogue Details -->
+            <div id="previewTabDialoguePanel" class="prev-dialogue-wrap" style="display: none;">
+                <div id="previewDialogueLoading" style="padding: 36px 20px; text-align: center; color: #64748b; font-size: 0.88rem;">
+                    Loading dialogue details...
+                </div>
+                <div id="previewDialogueContent" style="display: none; flex-direction: column; min-height: 100%;">
+                    <div class="att-overline-row">
+                        <span class="att-overline-label">Recorded Dialogue Summary</span>
+                        <div class="att-meta-pills">
+                            <span id="prevAttemptBadge" class="status-pill-scheduled" style="font-size: 0.72rem; padding: 2px 9px;">1st Paanyaya</span>
+                            <span id="prevStatusBadge" class="status-pill-scheduled" style="font-size: 0.72rem; padding: 2px 9px;">Scheduled</span>
+                            <span id="prevCaseChip" class="paanyaya-case-chip" style="display: none;">Case #—</span>
+                        </div>
+                    </div>
+
+                    <div class="att-form-grid">
+                        <div class="att-field-group">
+                            <label class="att-field-label">Nagpaanyaya (Complainant)</label>
+                            <div class="att-input-shell">
+                                <div class="att-party-chip">
+                                    <span class="att-party-avatar" id="prevCompInitials" aria-hidden="true">NP</span>
+                                    <div style="min-width: 0; flex: 1;">
+                                        <div class="att-party-name" id="prevCompName">Nagpaanyaya</div>
+                                        <div id="prevCompSub" style="font-size: 0.72rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none;"></div>
+                                    </div>
+                                </div>
+                                <span id="prevCompAttPill" class="prev-att-pill is-pending">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="att-field-group">
+                            <label class="att-field-label">Inanyayahan (Respondent)</label>
+                            <div class="att-input-shell">
+                                <div class="att-party-chip">
+                                    <span class="att-party-avatar is-respondent" id="prevInvInitials" aria-hidden="true">IN</span>
+                                    <div style="min-width: 0; flex: 1;">
+                                        <div class="att-party-name" id="prevInvName">Inanyayahan</div>
+                                        <div id="prevInvSub" style="font-size: 0.72rem; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none;"></div>
+                                    </div>
+                                </div>
+                                <span id="prevInvAttPill" class="prev-att-pill is-pending">Pending</span>
+                            </div>
+                        </div>
+
+                        <div class="att-field-group">
+                            <label class="att-field-label">Schedule Date &amp; Venue</label>
+                            <div class="att-input-shell is-readonly">
+                                <span id="prevScheduleText" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">—</span>
+                            </div>
+                        </div>
+
+                        <div class="att-field-group">
+                            <label class="att-field-label">Dialogue Recorded</label>
+                            <div class="att-input-shell is-readonly">
+                                <span id="prevRecordedAt" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">—</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="att-field-group prev-notes-group" style="margin-bottom: 14px;">
+                        <label class="att-field-label"><span>Notes</span></label>
+                        <div id="prevNotesText" class="prev-notes-box">No notes recorded.</div>
+                    </div>
+
+                    <div class="att-outcome-section" style="flex-shrink: 0;">
+                        <div class="att-field-label" style="margin-bottom: 4px;">
+                            <span>Outcome</span>
+                            <span class="att-outcome-rule-badge" id="prevOutcomeBadge">Dialogue Recorded</span>
+                        </div>
+                        <div id="prevOutcomeTitle" style="font-size: 0.9rem; font-weight: 700; color: #0f172a;">—</div>
+                        <div id="prevOutcomeSub" style="font-size: 0.79rem; color: #64748b; margin-top: 2px;"></div>
+                        <div id="prevViewMediationWrap" style="display: none; margin-top: 10px;">
+                            <a id="prevViewMediationLink" href="#" class="att-btn-primary" style="text-decoration: none;">
+                                View Formal Case in Mediation &rarr;
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: KP Form (Paanyaya Letter Preview) -->
+            <div id="previewTabKpFormPanel" class="prev-kp-wrap">
+                <div id="previewLoadingNotice" style="padding: 40px 20px; text-align: center; color: #ffffff; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; flex: 1 1 auto;">
+                    <div style="font-size: 1.8rem;">&#9203;</div>
+                    <div style="font-weight: 600;">Loading KP Form...</div>
+                </div>
+                <iframe id="paanyayaPreviewIframe" src="" style="width: 100%; height: 100%; flex: 1 1 auto; min-height: 0; border: none; display: none;"></iframe>
+            </div>
+        </div>
+        <div class="modal-foot" style="background: #ffffff; border-top: 1px solid #f1f5f9;">
+            <button type="button" class="att-btn-ghost" id="previewModalCloseFootBtn">Close</button>
         </div>
     </div>
 </div>
@@ -1629,145 +2771,141 @@ tr[data-paanyaya-row="1"].is-expanded td {
      MODAL 3: ATTENDANCE TRACKING & SEAMLESS ESCALATION MODAL
      ========================================================================= -->
 <div class="modal-overlay" id="paanyayaAttendanceModal">
-    <div class="modal-card">
-        <div class="modal-head">
-            <div>
-                <h3>📋 Paanyaya Stage</h3>
-                <div style="font-size: 0.8rem; color: #64748b; margin-top: 2px;">Stage 0 dialogue, attendance, outcome, and Mediation escalation</div>
+    <div class="modal-card att-modal-card">
+        <div class="modal-head att-modal-head">
+            <div class="att-modal-title-wrap">
+                <span class="att-modal-icon" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                </span>
+                <h3>Paanyaya Dialogue Record</h3>
             </div>
-            <button type="button" class="modal-close-btn" id="attendanceModalCloseBtn">&times;</button>
+            <button type="button" class="modal-close-btn" id="attendanceModalCloseBtn" aria-label="Close modal">&times;</button>
         </div>
         <form id="attendanceActionForm">
             <input type="hidden" id="attPaanyayaId" name="paanyaya_id" value="">
             <input type="hidden" id="attComplaintId" name="complaint_id" value="">
 
-            <div class="modal-body">
-                <!-- Case Info Pill Strip -->
-                <div style="background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <span style="font-size: 0.82rem; font-weight: 700; color: #1e293b;" id="attInviteeLabel">Inanyayahan: —</span>
-                        <span class="status-pill-scheduled" id="attStatusBadge">Scheduled</span>
+            <div class="modal-body att-modal-body">
+                <!-- Top Overline & Meta Pills (Matches "PROJECT DETAILS" row) -->
+                <div class="att-overline-row">
+                    <span class="att-overline-label">Dialogue Details</span>
+                    <div class="att-meta-pills">
+                        <span id="attAttemptBadge" class="status-pill-scheduled" style="font-size: 0.72rem; padding: 2px 9px;">1st Paanyaya</span>
+                        <span class="status-pill-scheduled" id="attStatusBadge" style="font-size: 0.72rem; padding: 2px 9px;">Scheduled</span>
                     </div>
-                    <div style="font-size: 0.82rem; color: #475569;" id="attComplainantLabel">Nagpaanyaya: —</div>
-                    <div style="font-size: 0.78rem; color: #64748b; margin-top: 4px;" id="attScheduleLabel">Iskedyul: —</div>
                 </div>
 
                 <!-- Status Lock Notice Banner -->
-                <div id="attLockNoticeBanner" style="display: none; margin-bottom: 14px; border-radius: 8px; padding: 12px 14px; font-size: 0.82rem; line-height: 1.45;"></div>
+                <div id="attLockNoticeBanner" style="display: none; margin-bottom: 14px; border-radius: 10px; padding: 11px 14px; font-size: 0.81rem; line-height: 1.45;"></div>
 
-                <!-- 1. Complainant Attendance Tracking -->
-                <div class="attendance-party-box">
-                    <div class="attendance-party-head">
-                        <div class="attendance-party-label">Nagpaanyaya (Complainant)</div>
-                        <div class="attendance-party-name" id="attCompNameDisplay">Nagpaanyaya</div>
+                <!-- 2-Col Grid: Parties Attendance + Schedule Date & Time -->
+                <div class="att-form-grid">
+                    <!-- Row 1, Col 1: Nagpaanyaya (Complainant) Attendance -->
+                    <div class="att-field-group">
+                        <label class="att-field-label">Nagpaanyaya (Complainant)</label>
+                        <div class="att-input-shell">
+                            <div class="att-party-chip">
+                                <span class="att-party-avatar" id="attCompInitials" aria-hidden="true">NP</span>
+                                <span class="att-party-name" id="attCompNameDisplay" title="Nagpaanyaya">Nagpaanyaya</span>
+                            </div>
+                            <div class="att-seg-group" role="radiogroup" aria-label="Complainant attendance">
+                                <label class="att-seg-pill">
+                                    <input type="radio" name="complainant_attended" value="Present" checked>
+                                    <span class="att-seg-text">Present</span>
+                                </label>
+                                <label class="att-seg-pill">
+                                    <input type="radio" name="complainant_attended" value="Absent">
+                                    <span class="att-seg-text">Absent</span>
+                                </label>
+                            </div>
+                        </div>
                     </div>
-                    <div class="attendance-pills-row">
-                        <label class="attendance-radio-pill">
-                            <input type="radio" name="complainant_attended" value="Present" checked>
-                            <span class="attendance-pill-label">✓ Present</span>
-                        </label>
-                        <label class="attendance-radio-pill">
-                            <input type="radio" name="complainant_attended" value="Absent">
-                            <span class="attendance-pill-label">✕ Absent</span>
-                        </label>
+
+                    <!-- Row 1, Col 2: Inanyayahan (Respondent) Attendance -->
+                    <div class="att-field-group">
+                        <label class="att-field-label">Inanyayahan (Respondent)</label>
+                        <div class="att-input-shell">
+                            <div class="att-party-chip">
+                                <span class="att-party-avatar is-respondent" id="attInvInitials" aria-hidden="true">IN</span>
+                                <span class="att-party-name" id="attInvNameDisplay" title="Inanyayahan">Inanyayahan</span>
+                            </div>
+                            <div class="att-seg-group" role="radiogroup" aria-label="Respondent attendance">
+                                <label class="att-seg-pill">
+                                    <input type="radio" name="invitee_attended" value="Present">
+                                    <span class="att-seg-text">Present</span>
+                                </label>
+                                <label class="att-seg-pill">
+                                    <input type="radio" name="invitee_attended" value="Absent" checked>
+                                    <span class="att-seg-text">Absent</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Row 2 (Full Width): Schedule Date & Time -->
+                    <div class="att-field-group" style="grid-column: 1 / -1;">
+                        <label class="att-field-label">Schedule Date &amp; Time</label>
+                        <div class="att-input-shell is-readonly">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span id="attScheduleLabel" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">—</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- 2. Invitee (Respondent) Attendance Tracking -->
-                <div class="attendance-party-box">
-                    <div class="attendance-party-head">
-                        <div class="attendance-party-label">Inanyayahan (Invitee / Respondent)</div>
-                        <div class="attendance-party-name" id="attInvNameDisplay">Inanyayahan</div>
-                    </div>
-                    <div class="attendance-pills-row">
-                        <label class="attendance-radio-pill">
-                            <input type="radio" name="invitee_attended" value="Present">
-                            <span class="attendance-pill-label">✓ Present</span>
-                        </label>
-                        <label class="attendance-radio-pill">
-                            <input type="radio" name="invitee_attended" value="Absent" checked>
-                            <span class="attendance-pill-label">✕ Absent</span>
-                        </label>
-                    </div>
-                </div>
-
-                <!-- 3. Salaysay (Statement Narrative) -->
-                <div class="form-group">
-                    <label for="attSalaysay" style="display: flex; justify-content: space-between; align-items: center;">
-                        <span>Salaysay (Statement Narrative)</span>
-                        <span style="font-size: 0.74rem; color: #16a34a; font-weight: 600;">✓ Awtomatikong lilipat sa Mediation</span>
+                <!-- Unified Full-Width Notes Field (Salaysay + Minutes of the Meeting) -->
+                <div class="att-field-group" style="margin-bottom: 14px;">
+                    <label for="attNotes" class="att-field-label">
+                        <span>Notes</span>
+                        <span class="att-field-hint">Statement narrative &amp; minutes (transfers if escalated)</span>
                     </label>
-                    <textarea id="attSalaysay" name="salaysay" class="form-control" rows="3" placeholder="Salaysay ng nagpaanyaya ukol sa reklamo..."></textarea>
+                    <textarea id="attNotes" name="notes" class="att-clean-textarea" rows="4" placeholder="Record statement narrative (Salaysay), dialogue minutes, agreements, or remarks..."></textarea>
                 </div>
 
-                <!-- 4. Action Control Section (In Place of Tala ng Pag-uusap) -->
-                <div class="attendance-action-panel" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; margin-top: 6px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-size: 0.8rem; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em;">
-                            Aksyon / Hakbang sa Usapin
-                        </span>
-                        <span id="attAttemptBadge" class="status-pill-scheduled" style="font-size: 0.72rem; padding: 2px 8px;">Unang Paanyaya</span>
+                <!-- Bottom Outcome Section (Changes automatically based on Paanyaya attempt & attendance) -->
+                <div class="att-outcome-section" id="attOutcomeSection">
+                    <div class="att-field-group" style="margin-bottom: 0;">
+                        <label for="attOutcomeSelect" class="att-field-label">
+                            <span>Outcome</span>
+                            <span class="att-outcome-rule-badge" id="attRuleHint">1st Paanyaya</span>
+                        </label>
+                        <select id="attOutcomeSelect" name="outcome_action" class="att-clean-select">
+                            <option value="schedule_second_paanyaya">Schedule 2nd Paanyaya</option>
+                            <option value="resolve">Settlement</option>
+                        </select>
                     </div>
 
-                    <!-- Action Buttons -->
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                        <button type="button" class="btn-action-view" id="btnSaveAttendanceOnly" style="padding: 9px 12px; background: #ffffff; border: 1px solid #cbd5e1; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            💾 Save Attendance
-                        </button>
-                        <button type="button" class="btn-resolve-dialogue" id="btnResolveDialogue" style="padding: 9px 12px; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            🤝 Kasunduan (Settle)
-                        </button>
-                        <button type="button" class="btn-second-paanyaya" id="btnOpenSecondPaanyaya" style="padding: 9px 12px; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            📩 2nd Paanyaya
-                        </button>
-                        <button type="button" class="btn-escalate-mediation" id="btnEscalateMediation" style="padding: 9px 12px; font-weight: 600; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px;">
-                            ⚖️ Continue to Formal Complaint Details
-                        </button>
-                    </div>
-
-                    <!-- Inline 2nd Paanyaya Scheduling Form -->
-                    <div id="secondPaanyayaPanel" style="display: none; margin-top: 12px; padding: 12px; background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px;">
-                        <div style="font-size: 0.84rem; font-weight: 700; color: #1e40af; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
-                            <span>📅 Mag-iskedyul ng Ikalawang Paanyaya (2nd Paanyaya)</span>
-                            <span style="font-size: 0.72rem; color: #2563eb; background: #dbeafe; padding: 2px 6px; border-radius: 4px; font-weight: 600;">Attempt 2</span>
+                    <!-- Conditional Inline 2nd Paanyaya Schedule Drawer -->
+                    <div id="secondPaanyayaPanel" class="att-p2-drawer" style="display: none;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px;">
+                            <span style="font-size: 0.82rem; font-weight: 700; color: #0f172a;">Schedule 2nd Paanyaya (Attempt 2)</span>
+                            <span style="font-size: 0.72rem; color: #1b6553; background: #eef6f2; border: 1px solid #cde2d6; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">Final Attempt</span>
                         </div>
-                        <p style="font-size: 0.78rem; color: #1e3a8a; margin: 0 0 10px 0;">
-                            Awtomatikong itatala ang pagdalo sa Unang Paanyaya at lilikha ng opisyal na liham para sa <strong>Ikalawang Paanyaya</strong>.
-                        </p>
-                        <div class="form-row" style="margin-bottom: 10px;">
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label for="p2Date" style="font-size: 0.78rem; font-weight: 600; color: #1e40af;">Petsa ng 2nd Paanyaya</label>
-                                <input type="date" id="p2Date" class="form-control" style="font-size: 0.85rem; padding: 6px 10px; background: #ffffff;">
+                        <div class="form-row" style="margin-bottom: 0;">
+                            <div class="att-field-group">
+                                <label for="p2Date" class="att-field-label" style="font-size: 0.76rem;">Petsa ng 2nd Paanyaya</label>
+                                <input type="date" id="p2Date" class="form-control" style="font-size: 0.84rem; padding: 7px 10px; border-radius: 8px;">
                             </div>
-                            <div class="form-group" style="margin-bottom: 0;">
-                                <label for="p2Time" style="font-size: 0.78rem; font-weight: 600; color: #1e40af;">Oras ng 2nd Paanyaya</label>
-                                <input type="time" id="p2Time" value="14:00" class="form-control" style="font-size: 0.85rem; padding: 6px 10px; background: #ffffff;">
+                            <div class="att-field-group">
+                                <label for="p2Time" class="att-field-label" style="font-size: 0.76rem;">Oras ng 2nd Paanyaya</label>
+                                <input type="time" id="p2Time" value="14:00" class="form-control" style="font-size: 0.84rem; padding: 7px 10px; border-radius: 8px;">
                             </div>
                         </div>
-                        <div style="display: flex; justify-content: flex-end; gap: 8px;">
-                            <button type="button" class="btn-action-view" id="btnCancelP2" style="padding: 5px 12px; font-size: 0.8rem;">Bawiin</button>
-                            <button type="button" class="btn-action-print" id="btnConfirmP2" style="background: #2563eb; color: #ffffff; border-color: #1d4ed8; padding: 5px 14px; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
-                                ✓ Ilabas ang 2nd Paanyaya
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Notice if already in 2nd Paanyaya -->
-                    <div id="alreadySecondPaanyayaNotice" style="display: none; margin-top: 10px; padding: 8px 12px; background: #fef3c7; border: 1px solid #fde047; border-radius: 6px; font-size: 0.78rem; color: #854d0e;">
-                        ℹ️ Ang usaping ito ay nasa <strong>Ikalawang Paanyaya (Attempt 2)</strong> na. Alinsunod sa proseso ng Katarungang Pambarangay, dalawang paanyaya lamang ang pinahihintulutan bago ang pormal na Mediation. Kung walang kasunduan o hindi sumipot ang inanyayahan, mangyaring i-click ang <strong>Escalate to Mediation</strong>.
                     </div>
 
                     <!-- Escalated to Mediation Navigation Link -->
                     <div id="attViewMediationLinkWrap" style="display: none; margin-top: 12px;">
-                        <a id="attViewMediationLink" href="#" class="btn-escalate-mediation" style="display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; padding: 10px 14px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; box-shadow: 0 1px 3px rgba(124, 58, 237, 0.25);">
-                            ⚖️ Tingnan ang Pormal na Reklamo sa Mediation &rarr;
+                        <a id="attViewMediationLink" href="#" class="att-btn-primary" style="width: 100%; justify-content: center; text-decoration: none; box-sizing: border-box;">
+                            Tingnan ang Pormal na Reklamo sa Mediation &rarr;
                         </a>
                     </div>
                 </div>
             </div>
 
-            <div class="modal-foot">
-                <button type="button" class="btn-action-view" id="attendanceCancelBtn">Isara (Close)</button>
+            <div class="modal-foot att-modal-foot">
+                <button type="button" class="att-btn-ghost" id="attendanceCancelBtn">Cancel</button>
+                <div class="att-foot-right">
+                    <button type="button" class="att-btn-primary" id="btnConfirmOutcome">Save Record</button>
+                </div>
             </div>
         </form>
     </div>
@@ -1939,7 +3077,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     if (purokSelect) {
                         if (!insideTumana) {
-                            purokSelect.value = 'Non-Resident (Outside Barangay Tumana)';
+                            purokSelect.value = 'Non-Resident';
                         } else {
                             const fullText = `${streetLine} ${area} ${data.display_name || ''}`.toLowerCase();
                             if (fullText.includes('doña petra') || fullText.includes('dona petra')) {
@@ -1948,7 +3086,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 const purokMatch = fullText.match(/purok\s*([1-8])/i) || fullText.match(/zone\s*([1-8])/i);
                                 if (purokMatch && purokMatch[1]) {
                                     purokSelect.value = `Purok ${purokMatch[1]}`;
-                                } else if (!purokSelect.value || purokSelect.value === 'Non-Resident (Outside Barangay Tumana)') {
+                                } else if (!purokSelect.value || purokSelect.value === 'Non-Resident' || purokSelect.value.startsWith('Non-Resident')) {
                                     // Match nearest Purok coordinate inside Tumana
                                     let bestPurok = 'Purok 1';
                                     let bestDist = Infinity;
@@ -1964,6 +3102,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 }
                             }
                         }
+                        purokSelect.dispatchEvent(new Event('change'));
                     }
 
                     updateStatus(
@@ -1982,7 +3121,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 addrInput.value = `Pinned Residence (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
             }
             if (purokSelect && !insideTumana) {
-                purokSelect.value = 'Non-Resident (Outside Barangay Tumana)';
+                purokSelect.value = 'Non-Resident';
+                purokSelect.dispatchEvent(new Event('change'));
             }
             updateStatus('Residence location pinned on map', true);
         };
@@ -2156,10 +3296,11 @@ document.addEventListener('DOMContentLoaded', function() {
                         if (dispLower.includes('doña petra') || dispLower.includes('dona petra')) {
                             invPurokEl.value = 'Doña Petra';
                         } else if (!dispLower.includes('tumana')) {
-                            invPurokEl.value = 'Non-Resident (Outside Barangay Tumana)';
+                            invPurokEl.value = 'Non-Resident';
                         } else {
                             invPurokEl.value = 'Purok 1';
                         }
+                        invPurokEl.dispatchEvent(new Event('change'));
                     }
                 })
                 .catch(() => {});
@@ -2220,18 +3361,248 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     document.getElementById('paanyayaClearPinBtn')?.addEventListener('click', clearPaanyayaMapPin);
 
+    const wizStepButtons = Array.from(document.querySelectorAll('.wiz-step-item[data-wiz-step]'));
+    const wizPanels = Array.from(document.querySelectorAll('.wiz-panel[data-wiz-panel]'));
+    const wizStepCountLabel = document.getElementById('wizStepCountLabel');
+    const wizProgressFill = document.getElementById('wizProgressFill');
+    const btnWizPrev = document.getElementById('btnWizPrev');
+    const btnWizNext = document.getElementById('btnWizNext');
+    const wizTopBackBtn = document.getElementById('wizTopBackBtn');
+    const wizCardBody = document.querySelector('#schedulePaanyayaModal .wiz-card-body');
+    let currentWizStep = 1;
+
+    const validateWizStep = (step) => {
+        if (step === 1) {
+            const compFirst = document.getElementById('schedComplainantFirstName').value.trim();
+            const compLast = document.getElementById('schedComplainantLastName').value.trim();
+            const compAddr = document.getElementById('schedComplainantAddress').value.trim();
+            const compPurok = document.getElementById('schedComplainantPurok').value.trim();
+            const compContact = document.getElementById('schedComplainantContact').value.trim();
+            const compNoContact = document.getElementById('chkCompNoContact')?.checked;
+            if (!compFirst || !compLast) {
+                agapAlert('Please enter both First Name and Last Name of the complainant (nagpaanyaya).', 'warning');
+                return false;
+            }
+            if (!compAddr || !compPurok) {
+                agapAlert('Please enter the Street Address and Purok/Zone of the complainant (nagpaanyaya).', 'warning');
+                return false;
+            }
+            if (!compNoContact && !compContact) {
+                agapAlert('Please enter the Contact Number of the complainant or check "No contact no.".', 'warning');
+                return false;
+            }
+            return true;
+        }
+        if (step === 2) {
+            const invFirst = document.getElementById('schedInviteeFirstName').value.trim();
+            const invLast = document.getElementById('schedInviteeLastName').value.trim();
+            const invAddr = document.getElementById('schedInviteeAddress').value.trim();
+            const invPurok = document.getElementById('schedInviteePurok').value.trim();
+            const invContact = document.getElementById('schedInviteeContact').value.trim();
+            const invNoContact = document.getElementById('chkInvNoContact')?.checked;
+            if (!invFirst || !invLast) {
+                agapAlert('Please enter both First Name and Last Name of the person being invited (inanyayahan).', 'warning');
+                return false;
+            }
+            if (!invAddr || !invPurok) {
+                agapAlert('Please enter the Street Address and Purok/Zone of the person being invited (inanyayahan) for delivery.', 'warning');
+                return false;
+            }
+            if (!invNoContact && !invContact) {
+                agapAlert('Please enter the Contact Number of the invitee or check "Unknown / None".', 'warning');
+                return false;
+            }
+            return true;
+        }
+        if (step === 3) {
+            const date = schedDateInput?.value || '';
+            const time = schedTimeInput?.value || '';
+            const salaysay = document.getElementById('schedSalaysay')?.value.trim() || '';
+            if (!date || !time) {
+                agapAlert('Please provide both scheduled date and time.', 'warning');
+                return false;
+            }
+            if (!salaysay) {
+                agapAlert('Please provide the Salaysay (Statement / Reason for Invitation).', 'warning');
+                return false;
+            }
+            return true;
+        }
+        return true;
+    };
+
+    const formatResidencyStatusLabel = (val) => {
+        const s = String(val ?? '0');
+        if (s === '2') return 'Non-Resident (Outside Tumana)';
+        if (s === '1') return 'Resident (Tenant / Renter)';
+        return 'Resident (Permanent)';
+    };
+
+    const bindResidencyPurokSync = (tenantId, purokId) => {
+        const tenantEl = document.getElementById(tenantId);
+        const purokEl = document.getElementById(purokId);
+        if (!tenantEl || !purokEl) return;
+
+        tenantEl.addEventListener('change', () => {
+            if (tenantEl.value === '2') {
+                purokEl.value = 'Non-Resident';
+            } else if (purokEl.value === 'Non-Resident' || purokEl.value.startsWith('Non-Resident')) {
+                purokEl.value = '';
+            }
+        });
+        purokEl.addEventListener('change', () => {
+            if (purokEl.value === 'Non-Resident' || purokEl.value.startsWith('Non-Resident')) {
+                purokEl.value = 'Non-Resident';
+                tenantEl.value = '2';
+            } else if (purokEl.value !== '' && tenantEl.value === '2') {
+                tenantEl.value = '0';
+            }
+        });
+    };
+    bindResidencyPurokSync('schedComplainantIsTenant', 'schedComplainantPurok');
+    bindResidencyPurokSync('schedInviteeIsTenant', 'schedInviteePurok');
+
+    const populateWizReview = () => {
+        const compResStatus = formatResidencyStatusLabel(document.getElementById('schedComplainantIsTenant')?.value);
+        const compFull = [
+            document.getElementById('schedComplainantFirstName').value.trim(),
+            document.getElementById('schedComplainantMiddleName').value.trim(),
+            document.getElementById('schedComplainantLastName').value.trim()
+        ].filter(Boolean).join(' ') || '—';
+        const compAddr = [
+            document.getElementById('schedComplainantAddress').value.trim(),
+            document.getElementById('schedComplainantPurok').value.trim()
+        ].filter(Boolean).join(', ');
+        const compContact = document.getElementById('chkCompNoContact')?.checked
+            ? 'No contact number'
+            : (document.getElementById('schedComplainantContact').value.trim() || '—');
+        const compEmail = document.getElementById('schedComplainantEmail').value.trim();
+
+        const invResStatus = formatResidencyStatusLabel(document.getElementById('schedInviteeIsTenant')?.value);
+        const invFull = [
+            document.getElementById('schedInviteeFirstName').value.trim(),
+            document.getElementById('schedInviteeMiddleName').value.trim(),
+            document.getElementById('schedInviteeLastName').value.trim()
+        ].filter(Boolean).join(' ') || '—';
+        const invAddr = [
+            document.getElementById('schedInviteeAddress').value.trim(),
+            document.getElementById('schedInviteePurok').value.trim()
+        ].filter(Boolean).join(', ');
+        const invContact = document.getElementById('chkInvNoContact')?.checked
+            ? 'Unknown / None'
+            : (document.getElementById('schedInviteeContact').value.trim() || '—');
+        const invEmail = document.getElementById('schedInviteeEmail').value.trim();
+
+        const revCompName = document.getElementById('revCompName');
+        const revCompDetails = document.getElementById('revCompDetails');
+        const revInvName = document.getElementById('revInvName');
+        const revInvDetails = document.getElementById('revInvDetails');
+        const revSchedDateTime = document.getElementById('revSchedDateTime');
+        const revSchedVenue = document.getElementById('revSchedVenue');
+        const revSalaysay = document.getElementById('revSalaysay');
+
+        if (revCompName) revCompName.textContent = compFull;
+        if (revCompDetails) {
+            revCompDetails.textContent = [compResStatus, compAddr, compContact, compEmail].filter(Boolean).join(' · ') || '—';
+        }
+        if (revInvName) revInvName.textContent = invFull;
+        if (revInvDetails) {
+            revInvDetails.textContent = [invResStatus, invAddr, invContact, invEmail].filter(Boolean).join(' · ') || '—';
+        }
+        if (revSchedDateTime) {
+            revSchedDateTime.textContent = formatPreviewDateTime(schedDateInput?.value || '', schedTimeInput?.value || '');
+        }
+        if (revSchedVenue) {
+            revSchedVenue.textContent = document.getElementById('schedVenue')?.value.trim() || 'Tanggapan ng Barangay Tumana';
+        }
+        if (revSalaysay) {
+            revSalaysay.textContent = document.getElementById('schedSalaysay')?.value.trim() || '—';
+        }
+    };
+
+    const setWizStep = (step) => {
+        currentWizStep = Math.min(4, Math.max(1, Number(step) || 1));
+
+        wizPanels.forEach(panel => {
+            const pStep = Number(panel.dataset.wizPanel || '0');
+            panel.classList.toggle('is-active', pStep === currentWizStep);
+        });
+
+        wizStepButtons.forEach(btn => {
+            const bStep = Number(btn.dataset.wizStep || '0');
+            const isActive = bStep === currentWizStep;
+            const isDone = bStep < currentWizStep;
+            btn.classList.toggle('is-active', isActive);
+            btn.classList.toggle('is-completed', isDone);
+            const numBadge = btn.querySelector('[data-wiz-num]');
+            if (numBadge) {
+                numBadge.innerHTML = isDone ? '&#10003;' : String(bStep);
+            }
+        });
+
+        if (wizStepCountLabel) wizStepCountLabel.textContent = `Step ${currentWizStep} of 4`;
+        if (wizProgressFill) wizProgressFill.style.width = `${(currentWizStep / 4) * 100}%`;
+
+        if (cancelSchedBtn) cancelSchedBtn.style.display = currentWizStep === 1 ? 'inline-flex' : 'none';
+        if (btnWizPrev) btnWizPrev.style.display = currentWizStep > 1 ? 'inline-flex' : 'none';
+        if (btnWizNext) btnWizNext.style.display = currentWizStep < 4 ? 'inline-flex' : 'none';
+        if (submitSchedBtn) submitSchedBtn.style.display = currentWizStep === 4 ? 'inline-flex' : 'none';
+
+        if (wizCardBody) wizCardBody.scrollTop = 0;
+
+        if (currentWizStep === 1) {
+            compMapCtrl.initMap();
+        } else if (currentWizStep === 2) {
+            invMapCtrl.initMap();
+        } else if (currentWizStep === 4) {
+            populateWizReview();
+        }
+    };
+
     const openSchedModal = () => {
         updateMinDate();
         if (schedModal) schedModal.style.display = 'flex';
-        compMapCtrl.initMap();
-        invMapCtrl.initMap();
+        setWizStep(1);
         initPaanyayaLocationMap();
     };
     const closeSchedModal = () => { if (schedModal) schedModal.style.display = 'none'; };
 
     if (openSchedBtn) openSchedBtn.addEventListener('click', openSchedModal);
     if (closeSchedBtn) closeSchedBtn.addEventListener('click', closeSchedModal);
+    if (wizTopBackBtn) wizTopBackBtn.addEventListener('click', closeSchedModal);
     if (cancelSchedBtn) cancelSchedBtn.addEventListener('click', closeSchedModal);
+    if (btnWizPrev) {
+        btnWizPrev.addEventListener('click', () => {
+            if (currentWizStep > 1) setWizStep(currentWizStep - 1);
+        });
+    }
+    if (btnWizNext) {
+        btnWizNext.addEventListener('click', () => {
+            if (!validateWizStep(currentWizStep)) return;
+            if (currentWizStep < 4) setWizStep(currentWizStep + 1);
+        });
+    }
+    wizStepButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetStep = Number(btn.dataset.wizStep || '1');
+            if (targetStep === currentWizStep) return;
+            if (targetStep > currentWizStep) {
+                for (let s = currentWizStep; s < targetStep; s++) {
+                    if (!validateWizStep(s)) {
+                        setWizStep(s);
+                        return;
+                    }
+                }
+            }
+            setWizStep(targetStep);
+        });
+    });
+    document.querySelectorAll('[data-wiz-jump]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = Number(btn.dataset.wizJump || '1');
+            setWizStep(target);
+        });
+    });
     if (schedModal) {
         schedModal.addEventListener('click', (e) => {
             if (e.target === schedModal) closeSchedModal();
@@ -2250,8 +3621,17 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('schedComplainantLastName').value = opt.dataset.last || '';
             document.getElementById('schedComplainantAddress').value = opt.dataset.address || '';
             const purokSel = document.getElementById('schedComplainantPurok');
-            if (purokSel && opt.dataset.purok) {
-                purokSel.value = opt.dataset.purok;
+            const isTenantSel = document.getElementById('schedComplainantIsTenant');
+            const rawPurok = (opt.dataset.purok || '').trim();
+            const normPurok = rawPurok.toLowerCase().includes('non-resident') ? 'Non-Resident' : rawPurok;
+            const rawTenant = opt.dataset.isTenant ?? (normPurok === 'Non-Resident' ? '2' : '0');
+            if (isTenantSel) {
+                isTenantSel.value = ['0', '1', '2'].includes(String(rawTenant)) ? String(rawTenant) : (normPurok === 'Non-Resident' ? '2' : '0');
+            }
+            if (purokSel && normPurok) {
+                purokSel.value = normPurok;
+            } else if (purokSel && isTenantSel?.value === '2') {
+                purokSel.value = 'Non-Resident';
             }
             const contactInput = document.getElementById('schedComplainantContact');
             const chkNoContact = document.getElementById('chkCompNoContact');
@@ -2287,8 +3667,17 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('schedInviteeLastName').value = opt.dataset.last || '';
             document.getElementById('schedInviteeAddress').value = opt.dataset.address || '';
             const purokSel = document.getElementById('schedInviteePurok');
-            if (purokSel && opt.dataset.purok) {
-                purokSel.value = opt.dataset.purok;
+            const isTenantSel = document.getElementById('schedInviteeIsTenant');
+            const rawPurok = (opt.dataset.purok || '').trim();
+            const normPurok = rawPurok.toLowerCase().includes('non-resident') ? 'Non-Resident' : rawPurok;
+            const rawTenant = opt.dataset.isTenant ?? (normPurok === 'Non-Resident' ? '2' : '0');
+            if (isTenantSel) {
+                isTenantSel.value = ['0', '1', '2'].includes(String(rawTenant)) ? String(rawTenant) : (normPurok === 'Non-Resident' ? '2' : '0');
+            }
+            if (purokSel && normPurok) {
+                purokSel.value = normPurok;
+            } else if (purokSel && isTenantSel?.value === '2') {
+                purokSel.value = 'Non-Resident';
             }
             const contactInput = document.getElementById('schedInviteeContact');
             const chkNoContact = document.getElementById('chkInvNoContact');
@@ -2349,6 +3738,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const compLast = document.getElementById('schedComplainantLastName').value.trim();
             const compAddr = document.getElementById('schedComplainantAddress').value.trim();
             const compPurok = document.getElementById('schedComplainantPurok').value.trim();
+            const compIsTenant = document.getElementById('schedComplainantIsTenant')?.value ?? (compPurok === 'Non-Resident' ? '2' : '0');
             const compContact = document.getElementById('schedComplainantContact').value.trim();
             const compEmail = document.getElementById('schedComplainantEmail').value.trim();
             const compNoContact = document.getElementById('chkCompNoContact')?.checked;
@@ -2359,6 +3749,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const invLast = document.getElementById('schedInviteeLastName').value.trim();
             const invAddr = document.getElementById('schedInviteeAddress').value.trim();
             const invPurok = document.getElementById('schedInviteePurok').value.trim();
+            const invIsTenant = document.getElementById('schedInviteeIsTenant')?.value ?? (invPurok === 'Non-Resident' ? '2' : '0');
             const invContact = document.getElementById('schedInviteeContact').value.trim();
             const invEmail = document.getElementById('schedInviteeEmail').value.trim();
             const invNoContact = document.getElementById('chkInvNoContact')?.checked;
@@ -2368,38 +3759,16 @@ document.addEventListener('DOMContentLoaded', function() {
             const venue = document.getElementById('schedVenue').value.trim() || 'Tanggapan ng Barangay Tumana';
             const salaysay = document.getElementById('schedSalaysay').value.trim();
 
-            if (!compFirst || !compLast) {
-                agapAlert('Please enter both First Name and Last Name of the complainant (nagpaanyaya).', 'warning');
+            if (!validateWizStep(1)) {
+                setWizStep(1);
                 return;
             }
-            if (!compAddr || !compPurok) {
-                agapAlert('Please enter the Street Address and Purok/Zone of the complainant (nagpaanyaya).', 'warning');
+            if (!validateWizStep(2)) {
+                setWizStep(2);
                 return;
             }
-            if (!compNoContact && !compContact) {
-                agapAlert('Please enter the Contact Number of the complainant or check "No contact no.".', 'warning');
-                return;
-            }
-
-            if (!invFirst || !invLast) {
-                agapAlert('Please enter both First Name and Last Name of the person being invited (inanyayahan).', 'warning');
-                return;
-            }
-            if (!invAddr || !invPurok) {
-                agapAlert('Please enter the Street Address and Purok/Zone of the person being invited (inanyayahan) for delivery.', 'warning');
-                return;
-            }
-            if (!invNoContact && !invContact) {
-                agapAlert('Please enter the Contact Number of the invitee or check "Unknown / None".', 'warning');
-                return;
-            }
-
-            if (!date || !time) {
-                agapAlert('Please provide both scheduled date and time.', 'warning');
-                return;
-            }
-            if (!salaysay) {
-                agapAlert('Please provide the Salaysay (Statement / Reason for Invitation).', 'warning');
+            if (!validateWizStep(3)) {
+                setWizStep(3);
                 return;
             }
 
@@ -2418,6 +3787,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     complainant_name: complainantFullName,
                     complainant_address: compAddr,
                     complainant_purok: compPurok,
+                    complainant_is_tenant: compIsTenant,
                     complainant_contact_no: compContact,
                     complainant_email: compEmail,
                     invitee_resident_id: invResId,
@@ -2427,6 +3797,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     invitee_name: inviteeFullName,
                     invitee_address: invAddr,
                     invitee_purok: invPurok,
+                    invitee_is_tenant: invIsTenant,
                     invitee_contact_no: invContact,
                     invitee_email: invEmail,
                     complainant_latitude: document.getElementById('compLocationLat')?.value || '',
@@ -2479,7 +3850,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // =========================================================================
-    // 2. LETTER PREVIEW MODAL (Replaces Page Redirection)
+    // 2. TABBED PAANYAYA RECORD & KP FORM VIEW MODAL
     // =========================================================================
     const previewModal = document.getElementById('paanyayaPreviewModal');
     const previewIframe = document.getElementById('paanyayaPreviewIframe');
@@ -2490,6 +3861,231 @@ document.addEventListener('DOMContentLoaded', function() {
     const previewDownloadBtn = document.getElementById('btnDownloadFromModal');
     const previewTitle = document.getElementById('previewModalTitle');
     const previewSubtitle = document.getElementById('previewModalSubtitle');
+    const previewKpActions = document.getElementById('previewKpActions');
+    const previewModalTabs = document.getElementById('previewModalTabs');
+    const btnPreviewTabDialogue = document.getElementById('btnPreviewTabDialogue');
+    const btnPreviewTabKpForm = document.getElementById('btnPreviewTabKpForm');
+    const previewTabRecordedPill = document.getElementById('previewTabRecordedPill');
+    const previewTabDialoguePanel = document.getElementById('previewTabDialoguePanel');
+    const previewTabKpFormPanel = document.getElementById('previewTabKpFormPanel');
+    const previewDialogueLoading = document.getElementById('previewDialogueLoading');
+    const previewDialogueContent = document.getElementById('previewDialogueContent');
+
+    let userSwitchedPreviewTab = false;
+
+    function switchPreviewTab(tabName) {
+        const showDialogue = tabName === 'dialogue';
+        if (btnPreviewTabDialogue) {
+            btnPreviewTabDialogue.classList.toggle('is-active', showDialogue);
+            btnPreviewTabDialogue.setAttribute('aria-selected', showDialogue ? 'true' : 'false');
+        }
+        if (btnPreviewTabKpForm) {
+            btnPreviewTabKpForm.classList.toggle('is-active', !showDialogue);
+            btnPreviewTabKpForm.setAttribute('aria-selected', showDialogue ? 'false' : 'true');
+        }
+        if (previewTabDialoguePanel) previewTabDialoguePanel.style.display = showDialogue ? 'flex' : 'none';
+        if (previewTabKpFormPanel) previewTabKpFormPanel.style.display = showDialogue ? 'none' : 'flex';
+        if (previewKpActions) {
+            previewKpActions.style.visibility = showDialogue ? 'hidden' : 'visible';
+            previewKpActions.style.pointerEvents = showDialogue ? 'none' : 'auto';
+        }
+    }
+
+    if (btnPreviewTabDialogue) {
+        btnPreviewTabDialogue.addEventListener('click', () => {
+            userSwitchedPreviewTab = true;
+            switchPreviewTab('dialogue');
+        });
+    }
+    if (btnPreviewTabKpForm) {
+        btnPreviewTabKpForm.addEventListener('click', () => {
+            userSwitchedPreviewTab = true;
+            switchPreviewTab('kp-form');
+        });
+    }
+
+    function setPreviewAttendancePill(el, value) {
+        if (!el) return;
+        const val = String(value || '').trim();
+        if (val === 'Present') {
+            el.textContent = 'Present';
+            el.className = 'prev-att-pill is-present';
+        } else if (val === 'Absent') {
+            el.textContent = 'Absent';
+            el.className = 'prev-att-pill is-absent';
+        } else {
+            el.textContent = 'Pending';
+            el.className = 'prev-att-pill is-pending';
+        }
+    }
+
+    function formatPreviewDateTime(dateStr, timeStr) {
+        if (!dateStr) return '—';
+        try {
+            const dt = new Date(`${dateStr}T${timeStr || '00:00:00'}`);
+            if (!Number.isNaN(dt.getTime())) {
+                const datePart = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                if (timeStr) {
+                    const timePart = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    return `${datePart} · ${timePart}`;
+                }
+                return datePart;
+            }
+        } catch (err) {}
+        return `${dateStr} ${timeStr || ''}`.trim();
+    }
+
+    function formatRecordedTimestamp(ts) {
+        if (!ts) return '—';
+        try {
+            const dt = new Date(String(ts).replace(' ', 'T'));
+            if (!Number.isNaN(dt.getTime())) {
+                return dt.toLocaleString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: 'numeric', minute: '2-digit'
+                });
+            }
+        } catch (err) {}
+        return String(ts);
+    }
+
+    function renderPreviewDialogueDetails(row, fallbackAttempt = 1) {
+        const effAttempt = Math.min(2, Math.max(1, parseInt(row.attempt_number || fallbackAttempt, 10) || 1));
+        const rawStatus = String(row.status || 'Scheduled').trim();
+        const effStatus = String(row.current_workflow_status || rawStatus).trim();
+        const normEff = effStatus.toLowerCase();
+        const normRaw = rawStatus.toLowerCase();
+        const compName = row.complainant_name || 'Nagpaanyaya';
+        const invName = row.invitee_name || 'Inanyayahan';
+        const compAtt = row.complainant_attended || '';
+        const invAtt = row.invitee_attended || '';
+        const linkedCid = parseInt(row.complaint_id || row.escalated_to_complaint_id || 0, 10) || 0;
+        const linkedCaseId = parseInt(row.linked_case_id || 0, 10) || 0;
+
+        const prevAttemptBadge = document.getElementById('prevAttemptBadge');
+        const prevStatusBadge = document.getElementById('prevStatusBadge');
+        const prevCaseChip = document.getElementById('prevCaseChip');
+        const prevCompInitials = document.getElementById('prevCompInitials');
+        const prevCompName = document.getElementById('prevCompName');
+        const prevCompSub = document.getElementById('prevCompSub');
+        const prevCompAttPill = document.getElementById('prevCompAttPill');
+        const prevInvInitials = document.getElementById('prevInvInitials');
+        const prevInvName = document.getElementById('prevInvName');
+        const prevInvSub = document.getElementById('prevInvSub');
+        const prevInvAttPill = document.getElementById('prevInvAttPill');
+        const prevScheduleText = document.getElementById('prevScheduleText');
+        const prevRecordedAt = document.getElementById('prevRecordedAt');
+        const prevNotesText = document.getElementById('prevNotesText');
+        const prevOutcomeBadge = document.getElementById('prevOutcomeBadge');
+        const prevOutcomeTitle = document.getElementById('prevOutcomeTitle');
+        const prevOutcomeSub = document.getElementById('prevOutcomeSub');
+        const prevViewMediationWrap = document.getElementById('prevViewMediationWrap');
+        const prevViewMediationLink = document.getElementById('prevViewMediationLink');
+
+        if (prevAttemptBadge) {
+            prevAttemptBadge.textContent = effAttempt >= 2 ? '2nd Paanyaya' : '1st Paanyaya';
+            prevAttemptBadge.className = effAttempt >= 2 ? 'status-pill-escalated' : 'status-pill-scheduled';
+        }
+        if (prevStatusBadge) {
+            prevStatusBadge.textContent = effStatus;
+            applyModalStatusBadgeClass(prevStatusBadge, effStatus, linkedCaseId);
+        }
+        if (previewTabRecordedPill) {
+            const pillLabel = ['completed', 'done'].includes(normRaw)
+                ? 'Recorded'
+                : (['resolved', 'settled'].includes(normEff) ? 'Settled' : (normEff === 'dismissed' ? 'Dismissed' : (normEff === 'escalated' || linkedCaseId > 0 ? 'Escalated' : effStatus)));
+            previewTabRecordedPill.textContent = pillLabel;
+        }
+        if (prevCaseChip) {
+            if (row.complaint_number) {
+                prevCaseChip.textContent = `Case #${row.complaint_number}`;
+                prevCaseChip.style.display = 'inline-flex';
+            } else {
+                prevCaseChip.style.display = 'none';
+            }
+        }
+
+        if (prevCompInitials) prevCompInitials.textContent = getPartyInitials(compName, 'NP');
+        if (prevCompName) prevCompName.textContent = compName;
+        if (prevCompSub) {
+            const sub = [row.complainant_address, row.complainant_purok, row.complainant_contact_no].filter(Boolean).join(' · ');
+            prevCompSub.textContent = sub;
+            prevCompSub.style.display = sub ? 'block' : 'none';
+        }
+        setPreviewAttendancePill(prevCompAttPill, compAtt);
+
+        if (prevInvInitials) prevInvInitials.textContent = getPartyInitials(invName, 'IN');
+        if (prevInvName) prevInvName.textContent = invName;
+        if (prevInvSub) {
+            const sub = [row.invitee_address, row.invitee_purok, row.invitee_contact_no].filter(Boolean).join(' · ');
+            prevInvSub.textContent = sub;
+            prevInvSub.style.display = sub ? 'block' : 'none';
+        }
+        setPreviewAttendancePill(prevInvAttPill, invAtt);
+
+        if (prevScheduleText) {
+            const sched = formatPreviewDateTime(row.scheduled_date, row.scheduled_time);
+            const venue = row.venue ? ` · ${row.venue}` : '';
+            prevScheduleText.textContent = `${sched}${venue}`;
+        }
+        if (prevRecordedAt) {
+            prevRecordedAt.textContent = formatRecordedTimestamp(row.attendance_recorded_at || row.updated_at);
+        }
+
+        if (prevNotesText) {
+            const mergedNotes = mergeExistingNotes(row.salaysay, row.dialogue_notes);
+            if (mergedNotes) {
+                prevNotesText.textContent = mergedNotes;
+                prevNotesText.style.color = '#1e293b';
+                prevNotesText.style.fontStyle = 'normal';
+            } else {
+                prevNotesText.textContent = 'No notes recorded.';
+                prevNotesText.style.color = '#94a3b8';
+                prevNotesText.style.fontStyle = 'italic';
+            }
+        }
+
+        let outcomeBadgeText = 'Dialogue Recorded';
+        let outcomeTitleText = 'Proceeded with Meeting (Ongoing)';
+        let outcomeSubText = 'Attendance and dialogue notes were saved for this invitation.';
+
+        if (normEff === 'dismissed' || normRaw === 'dismissed') {
+            outcomeBadgeText = 'Closed · Dismissed';
+            outcomeTitleText = 'Dismissed (Complainant Absent)';
+            outcomeSubText = 'Closed at Paanyaya stage due to complainant non-appearance.';
+        } else if (['resolved', 'settled'].includes(normEff) || ['resolved', 'settled'].includes(normRaw)) {
+            outcomeBadgeText = 'Closed · Settled';
+            outcomeTitleText = 'Settlement Reached (Kasunduan — Settled)';
+            outcomeSubText = 'Parties reached an amicable settlement at the Paanyaya dialogue.';
+        } else if (normEff === 'escalated' || normRaw === 'escalated' || ['docketed', 'mediation', 'conciliation', 'arbitration', 'cfa issued'].includes(normEff) || linkedCaseId > 0) {
+            outcomeBadgeText = 'Escalated · Mediation';
+            outcomeTitleText = row.complaint_number
+                ? `Scheduled to Formal Mediation (Case #${row.complaint_number})`
+                : 'Scheduled to Formal Mediation';
+            outcomeSubText = 'Attendance records and notes were transferred to the formal Mediation case.';
+        } else if (['completed', 'done'].includes(normRaw)) {
+            outcomeBadgeText = 'Attempt Completed';
+            outcomeTitleText = effAttempt === 1 ? 'Completed — Issued 2nd Paanyaya' : 'Paanyaya Completed';
+            outcomeSubText = effAttempt === 1
+                ? '1st Paanyaya dialogue concluded and moved forward to 2nd Paanyaya.'
+                : 'This dialogue session has been completed.';
+        }
+
+        if (prevOutcomeBadge) prevOutcomeBadge.textContent = outcomeBadgeText;
+        if (prevOutcomeTitle) prevOutcomeTitle.textContent = outcomeTitleText;
+        if (prevOutcomeSub) prevOutcomeSub.textContent = outcomeSubText;
+
+        if (prevViewMediationWrap && prevViewMediationLink) {
+            const showMedLink = linkedCid > 0 && (normEff === 'escalated' || ['docketed', 'mediation', 'conciliation', 'arbitration', 'cfa issued'].includes(normEff) || linkedCaseId > 0);
+            prevViewMediationWrap.style.display = showMedLink ? 'block' : 'none';
+            if (showMedLink) {
+                prevViewMediationLink.href = `../complaints/complaint-details.php?id=${linkedCid}&tab=mediation`;
+            }
+        }
+
+        if (previewDialogueLoading) previewDialogueLoading.style.display = 'none';
+        if (previewDialogueContent) previewDialogueContent.style.display = 'flex';
+    }
 
     const closePreviewModal = () => {
         if (previewModal) previewModal.style.display = 'none';
@@ -2505,16 +4101,26 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.querySelectorAll('.btn-preview-modal').forEach(btn => {
-        btn.addEventListener('click', function(e) {
+        btn.addEventListener('click', async function(e) {
             e.preventDefault();
+            e.stopPropagation();
             const paanyayaId = parseInt(this.dataset.paanyayaId || '0', 10) || 0;
             const complaintId = parseInt(this.dataset.complaintId || '0', 10) || 0;
             const attempt = parseInt(this.dataset.attempt || '1', 10) || 1;
             const attemptQuery = attempt >= 2 ? `&attempt_number=${attempt}` : '';
             const invitee = this.dataset.name || 'Inanyayahan';
+            const initialRecorded = this.dataset.recorded === '1';
 
-            if (previewTitle) previewTitle.textContent = `✉️ Paanyaya Letter: ${invitee}`;
-            if (previewSubtitle) previewSubtitle.textContent = `Barangay Tumana Official Dialogue Invitation Letter`;
+            userSwitchedPreviewTab = false;
+
+            if (previewTitle) {
+                previewTitle.textContent = initialRecorded
+                    ? `Paanyaya Record: ${invitee}`
+                    : `KP Form (Paanyaya): ${invitee}`;
+            }
+            if (previewSubtitle) {
+                previewSubtitle.textContent = `${attempt >= 2 ? '2nd Paanyaya' : '1st Paanyaya'} · Barangay Tumana Official Record`;
+            }
 
             const previewUrl = (paanyayaId > 0)
                 ? `../../../backend/api/paanyaya/preview.php?paanyaya_id=${paanyayaId}&format=html${attemptQuery}`
@@ -2538,7 +4144,46 @@ document.addEventListener('DOMContentLoaded', function() {
                 previewIframe.src = previewUrl;
             }
 
+            if (previewDialogueLoading) previewDialogueLoading.style.display = 'block';
+            if (previewDialogueContent) previewDialogueContent.style.display = 'none';
+
+            if (previewModalTabs) {
+                previewModalTabs.style.display = initialRecorded ? 'flex' : 'none';
+            }
+            switchPreviewTab(initialRecorded ? 'dialogue' : 'kp-form');
+
             if (previewModal) previewModal.style.display = 'flex';
+
+            if (paanyayaId > 0) {
+                try {
+                    const res = await fetch(`../../../backend/api/paanyaya/attendance.php?paanyaya_id=${paanyayaId}`);
+                    const json = await res.json();
+                    if (json.success && json.data) {
+                        const row = json.data;
+                        const normStatus = String(row.status || '').trim().toLowerCase();
+                        const hasRecorded = Boolean(row.attendance_recorded_at)
+                            || ['completed', 'done', 'resolved', 'settled', 'dismissed', 'escalated'].includes(normStatus);
+
+                        renderPreviewDialogueDetails(row, attempt);
+
+                        if (previewModalTabs) {
+                            previewModalTabs.style.display = hasRecorded ? 'flex' : 'none';
+                        }
+                        if (previewTitle) {
+                            previewTitle.textContent = hasRecorded
+                                ? `Paanyaya Record: ${row.invitee_name || invitee}`
+                                : `KP Form (Paanyaya): ${row.invitee_name || invitee}`;
+                        }
+                        if (!userSwitchedPreviewTab) {
+                            switchPreviewTab(hasRecorded ? 'dialogue' : 'kp-form');
+                        }
+                    }
+                } catch (err) {
+                    console.warn('Could not load Paanyaya dialogue details:', err);
+                    if (previewModalTabs) previewModalTabs.style.display = 'none';
+                    if (!userSwitchedPreviewTab) switchPreviewTab('kp-form');
+                }
+            }
         });
     });
 
@@ -2559,25 +4204,25 @@ document.addEventListener('DOMContentLoaded', function() {
     const attCancelBtn = document.getElementById('attendanceCancelBtn');
     const attIdInput = document.getElementById('attPaanyayaId');
     const attComplaintIdInput = document.getElementById('attComplaintId');
-    const attInviteeLabel = document.getElementById('attInviteeLabel');
-    const attComplainantLabel = document.getElementById('attComplainantLabel');
     const attScheduleLabel = document.getElementById('attScheduleLabel');
     const attStatusBadge = document.getElementById('attStatusBadge');
     const attCompNameDisplay = document.getElementById('attCompNameDisplay');
     const attInvNameDisplay = document.getElementById('attInvNameDisplay');
-    const attSalaysayInput = document.getElementById('attSalaysay');
+    const attCompInitials = document.getElementById('attCompInitials');
+    const attInvInitials = document.getElementById('attInvInitials');
+    const attNotesInput = document.getElementById('attNotes');
     const attAttemptBadge = document.getElementById('attAttemptBadge');
+    const attOutcomeSelect = document.getElementById('attOutcomeSelect');
+    const attRuleHint = document.getElementById('attRuleHint');
 
     const btnSaveAttOnly = document.getElementById('btnSaveAttendanceOnly');
-    const btnResolveDiag = document.getElementById('btnResolveDialogue');
-    const btnEscalateMed = document.getElementById('btnEscalateMediation');
-    const btnOpenSecondPaanyaya = document.getElementById('btnOpenSecondPaanyaya');
+    const btnConfirmOutcome = document.getElementById('btnConfirmOutcome');
     const secondPaanyayaPanel = document.getElementById('secondPaanyayaPanel');
-    const alreadySecondPaanyayaNotice = document.getElementById('alreadySecondPaanyayaNotice');
     const p2DateInput = document.getElementById('p2Date');
     const p2TimeInput = document.getElementById('p2Time');
-    const btnCancelP2 = document.getElementById('btnCancelP2');
-    const btnConfirmP2 = document.getElementById('btnConfirmP2');
+
+    let currentAttAttempt = 1;
+    let currentAttLocked = false;
 
     const closeAttModal = () => { if (attModal) attModal.style.display = 'none'; };
     if (attCloseBtn) attCloseBtn.addEventListener('click', closeAttModal);
@@ -2586,6 +4231,27 @@ document.addEventListener('DOMContentLoaded', function() {
         attModal.addEventListener('click', (e) => {
             if (e.target === attModal) closeAttModal();
         });
+    }
+
+    function getPartyInitials(name, fallback = 'AG') {
+        const clean = String(name || '').trim();
+        if (!clean) return fallback;
+        const parts = clean.split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) {
+            return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+        }
+        return clean.slice(0, 2).toUpperCase();
+    }
+
+    function mergeExistingNotes(salaysay, dialogueNotes) {
+        const s = String(salaysay || '').trim();
+        const d = String(dialogueNotes || '').trim();
+        if (d && s) {
+            if (d === s || d.includes(s)) return d;
+            if (s.includes(d)) return s;
+            return `${s}\n\n${d}`;
+        }
+        return d || s || '';
     }
 
     function getSuggestedNextDate() {
@@ -2603,16 +4269,146 @@ document.addEventListener('DOMContentLoaded', function() {
         return `${year}-${month}-${day}`;
     }
 
+    /**
+     * Attendance-driven Outcome options:
+     * 1st Paanyaya: "Schedule 2nd Paanyaya" and "Settlement" only.
+     * 2nd Paanyaya: "Settlement", "Dismissed", and "Escalate to Mediation" only.
+     */
+    function getAttendanceOutcomeSpec(attempt, compAttended, invAttended) {
+        const isSecond = Number(attempt) >= 2;
+        const compPresent = compAttended === 'Present';
+        const invPresent = invAttended === 'Present';
+
+        if (!isSecond) {
+            if (compPresent && invPresent) {
+                return {
+                    hint: '1st Paanyaya · Both Present',
+                    defaultValue: 'resolve',
+                    options: [
+                        { value: 'resolve', label: 'Settlement' },
+                        { value: 'schedule_second_paanyaya', label: 'Schedule 2nd Paanyaya' }
+                    ]
+                };
+            }
+            const absentWho = (!compPresent && !invPresent)
+                ? 'Both Absent'
+                : (!compPresent ? 'Complainant Absent' : 'Respondent Absent');
+            return {
+                hint: `1st Paanyaya · ${absentWho} — Schedule 2nd Paanyaya`,
+                defaultValue: 'schedule_second_paanyaya',
+                options: [
+                    { value: 'schedule_second_paanyaya', label: 'Schedule 2nd Paanyaya' },
+                    { value: 'resolve', label: 'Settlement' }
+                ]
+            };
+        }
+
+        // 2nd Paanyaya
+        if (compPresent && invPresent) {
+            return {
+                hint: '2nd Paanyaya · Both Present',
+                defaultValue: 'resolve',
+                options: [
+                    { value: 'resolve', label: 'Settlement' },
+                    { value: 'escalate', label: 'Escalate to Mediation' },
+                    { value: 'dismiss', label: 'Dismissed' }
+                ]
+            };
+        }
+        if (compPresent && !invPresent) {
+            return {
+                hint: '2nd Paanyaya · Respondent Absent — Escalate to Mediation',
+                defaultValue: 'escalate',
+                options: [
+                    { value: 'escalate', label: 'Escalate to Mediation' },
+                    { value: 'resolve', label: 'Settlement' },
+                    { value: 'dismiss', label: 'Dismissed' }
+                ]
+            };
+        }
+        return {
+            hint: !invPresent
+                ? '2nd Paanyaya · Both Absent — Dismissed'
+                : '2nd Paanyaya · Complainant Absent — Dismissed',
+            defaultValue: 'dismiss',
+            options: [
+                { value: 'dismiss', label: 'Dismissed' },
+                { value: 'resolve', label: 'Settlement' },
+                { value: 'escalate', label: 'Escalate to Mediation' }
+            ]
+        };
+    }
+
+    function applyAttendanceOutcomeRules({ preserveSelection = false } = {}) {
+        if (!attOutcomeSelect || currentAttLocked) return;
+
+        const compAttended = getRadio('complainant_attended');
+        const invAttended = getRadio('invitee_attended');
+        const prevValue = attOutcomeSelect.value;
+        const spec = getAttendanceOutcomeSpec(currentAttAttempt, compAttended, invAttended);
+
+        attOutcomeSelect.innerHTML = '';
+        spec.options.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt.value;
+            o.textContent = opt.label;
+            attOutcomeSelect.appendChild(o);
+        });
+
+        const hasPrev = preserveSelection && spec.options.some(o => o.value === prevValue);
+        attOutcomeSelect.value = hasPrev ? prevValue : spec.defaultValue;
+
+        if (attRuleHint) {
+            attRuleHint.textContent = spec.hint;
+        }
+
+        syncOutcomeUi();
+    }
+
+    function syncOutcomeUi() {
+        const outcome = attOutcomeSelect ? attOutcomeSelect.value : 'schedule_second_paanyaya';
+        const isLocked = currentAttLocked || Boolean(attOutcomeSelect && attOutcomeSelect.disabled);
+
+        if (secondPaanyayaPanel) {
+            if (!isLocked && outcome === 'schedule_second_paanyaya') {
+                secondPaanyayaPanel.style.display = 'block';
+                if (p2DateInput) {
+                    const today = new Date().toISOString().split('T')[0];
+                    p2DateInput.min = today;
+                    if (!p2DateInput.value) {
+                        p2DateInput.value = getSuggestedNextDate();
+                    }
+                }
+            } else {
+                secondPaanyayaPanel.style.display = 'none';
+            }
+        }
+
+        if (btnConfirmOutcome && !isLocked) {
+            const labelMap = {
+                resolve: 'Save Settlement',
+                schedule_second_paanyaya: 'Schedule 2nd Paanyaya',
+                escalate: 'Escalate to Mediation',
+                dismiss: 'Mark as Dismissed'
+            };
+            btnConfirmOutcome.textContent = labelMap[outcome] || 'Save Record';
+            btnConfirmOutcome.classList.toggle('is-danger', outcome === 'dismiss');
+        }
+    }
+
     // =========================================================================
     // STATE MACHINE / LOCK ENGINE:
-    // - If it was settled in the paanyaya, it should lock other buttons
-    // - If it was escalated into a mediation and saved, it should lock the buttons
+    // - If settled, dismissed, or escalated into mediation, locks modal fields
     // =========================================================================
-    function applyAttendanceLockState(status, complaintId, attempt, complaintNumber = '') {
+    function applyAttendanceLockState(status, complaintId, attempt, complaintNumber = '', linkedCaseId = 0) {
         const normStatus = String(status || '').trim().toLowerCase();
         const parsedComplaintId = parseInt(complaintId, 10) || 0;
+        const parsedLinkedCaseId = parseInt(linkedCaseId, 10) || 0;
+        const isDismissed = normStatus === 'dismissed';
         const isSettled = ['resolved', 'settled', 'completed', 'done'].includes(normStatus);
-        const isEscalated = normStatus === 'escalated' || (parsedComplaintId > 0 && !isSettled);
+        const isEscalated = normStatus === 'escalated'
+            || ['docketed', 'mediation', 'conciliation', 'arbitration', 'cfa issued'].includes(normStatus)
+            || (parsedLinkedCaseId > 0 && !isSettled && !isDismissed);
 
         const lockNotice = document.getElementById('attLockNoticeBanner');
         const viewMedWrap = document.getElementById('attViewMediationLinkWrap');
@@ -2620,176 +4416,149 @@ document.addEventListener('DOMContentLoaded', function() {
         const compRadios = document.querySelectorAll('input[name="complainant_attended"]');
         const invRadios = document.querySelectorAll('input[name="invitee_attended"]');
 
+        const lockFields = () => {
+            compRadios.forEach(r => { r.disabled = true; });
+            invRadios.forEach(r => { r.disabled = true; });
+            if (attNotesInput) {
+                attNotesInput.readOnly = true;
+                attNotesInput.style.backgroundColor = '#f8fafc';
+                attNotesInput.style.color = '#475569';
+            }
+            if (btnSaveAttOnly) {
+                btnSaveAttOnly.disabled = true;
+                btnSaveAttOnly.style.display = 'none';
+            }
+            if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
+        };
+
         if (isSettled) {
-            // -----------------------------------------------------------------
-            // CASE 1: SETTLED IN PAANYAYA -> LOCK OTHER BUTTONS
-            // -----------------------------------------------------------------
+            currentAttLocked = true;
             if (lockNotice) {
                 lockNotice.style.display = 'flex';
                 lockNotice.style.alignItems = 'flex-start';
                 lockNotice.style.gap = '10px';
                 lockNotice.style.background = '#ecfdf5';
-                lockNotice.style.border = '1.5px solid #86efac';
+                lockNotice.style.border = '1px solid #bbf7d0';
                 lockNotice.style.color = '#065f46';
                 lockNotice.innerHTML = `
-                    <span style="font-size: 1.25rem; line-height: 1;">🔒</span>
+                    <span style="font-size: 1.05rem; line-height: 1.2;">&#128274;</span>
                     <div>
-                        <strong style="display: block; font-size: 0.88rem; color: #047857; margin-bottom: 2px;">
+                        <strong style="display: block; font-size: 0.84rem; color: #047857; margin-bottom: 2px;">
                             Naresolba sa Paanyaya (Kasunduan)
                         </strong>
-                        <span style="font-size: 0.8rem; color: #065f46; line-height: 1.4;">
-                            Ang usaping ito ay ganap nang naayos at naresolba sa pribadong kasunduan (Settled). Naka-lock na ang ibang mga pindutan upang maiwasan ang pagbabago.
+                        <span style="font-size: 0.78rem; color: #065f46; line-height: 1.4;">
+                            Ang usaping ito ay ganap nang naayos at naresolba sa pribadong kasunduan (Settled). Naka-lock na ang mga field upang maiwasan ang pagbabago.
                         </span>
                     </div>
                 `;
             }
 
-            // Lock other buttons: Save Attendance, 2nd Paanyaya, Escalate to Mediation
-            if (btnSaveAttOnly) {
-                btnSaveAttOnly.disabled = true;
-                btnSaveAttOnly.classList.add('is-locked-btn');
-                btnSaveAttOnly.style.opacity = '0.55';
-                btnSaveAttOnly.style.cursor = 'not-allowed';
-                btnSaveAttOnly.style.pointerEvents = 'none';
-                btnSaveAttOnly.style.background = '#f1f5f9';
-                btnSaveAttOnly.style.color = '#94a3b8';
-                btnSaveAttOnly.style.borderColor = '#cbd5e1';
-                btnSaveAttOnly.innerHTML = '🔒 Save Attendance';
-                btnSaveAttOnly.title = 'Naka-lock dahil naresolba na ang Paanyaya sa Kasunduan.';
+            if (attOutcomeSelect) {
+                attOutcomeSelect.innerHTML = '<option value="resolve">Settlement</option>';
+                attOutcomeSelect.value = 'resolve';
+                attOutcomeSelect.disabled = true;
+            }
+            if (attRuleHint) attRuleHint.textContent = 'Closed · Settled';
+            if (btnConfirmOutcome) {
+                btnConfirmOutcome.disabled = true;
+                btnConfirmOutcome.classList.remove('is-danger');
+                btnConfirmOutcome.style.opacity = '1';
+                btnConfirmOutcome.style.cursor = 'default';
+                btnConfirmOutcome.style.background = '#15803d';
+                btnConfirmOutcome.style.borderColor = '#166534';
+                btnConfirmOutcome.style.color = '#ffffff';
+                btnConfirmOutcome.textContent = 'Settled (Kasunduan)';
+                btnConfirmOutcome.title = 'Naitatala na bilang Kasunduan (Settled).';
             }
 
-            if (btnOpenSecondPaanyaya) {
-                btnOpenSecondPaanyaya.disabled = true;
-                btnOpenSecondPaanyaya.classList.add('is-locked-btn');
-                btnOpenSecondPaanyaya.style.opacity = '0.55';
-                btnOpenSecondPaanyaya.style.cursor = 'not-allowed';
-                btnOpenSecondPaanyaya.style.pointerEvents = 'none';
-                btnOpenSecondPaanyaya.style.background = '#e2e8f0';
-                btnOpenSecondPaanyaya.style.color = '#64748b';
-                btnOpenSecondPaanyaya.style.borderColor = '#cbd5e1';
-                btnOpenSecondPaanyaya.innerHTML = '🔒 2nd Paanyaya';
-                btnOpenSecondPaanyaya.title = 'Naka-lock dahil naresolba na ang Paanyaya sa Kasunduan.';
+            lockFields();
+            if (viewMedWrap) viewMedWrap.style.display = 'none';
+
+        } else if (isDismissed) {
+            currentAttLocked = true;
+            if (lockNotice) {
+                lockNotice.style.display = 'flex';
+                lockNotice.style.alignItems = 'flex-start';
+                lockNotice.style.gap = '10px';
+                lockNotice.style.background = '#fef2f2';
+                lockNotice.style.border = '1px solid #fecaca';
+                lockNotice.style.color = '#991b1b';
+                lockNotice.innerHTML = `
+                    <span style="font-size: 1.05rem; line-height: 1.2;">&#128274;</span>
+                    <div>
+                        <strong style="display: block; font-size: 0.84rem; color: #b91c1c; margin-bottom: 2px;">
+                            Na-dismiss sa Paanyaya
+                        </strong>
+                        <span style="font-size: 0.78rem; color: #991b1b; line-height: 1.4;">
+                            Opisyal nang na-dismiss ang usaping ito (Complainant Absent). Naka-lock na ang mga field upang maiwasan ang pagbabago.
+                        </span>
+                    </div>
+                `;
             }
 
-            if (btnEscalateMed) {
-                btnEscalateMed.disabled = true;
-                btnEscalateMed.classList.add('is-locked-btn');
-                btnEscalateMed.style.opacity = '0.55';
-                btnEscalateMed.style.cursor = 'not-allowed';
-                btnEscalateMed.style.pointerEvents = 'none';
-                btnEscalateMed.style.background = '#e2e8f0';
-                btnEscalateMed.style.color = '#64748b';
-                btnEscalateMed.style.borderColor = '#cbd5e1';
-                btnEscalateMed.innerHTML = '🔒 Formal Complaint Details';
-                btnEscalateMed.title = 'Naka-lock dahil naresolba na ang Paanyaya sa Kasunduan.';
+            if (attOutcomeSelect) {
+                attOutcomeSelect.innerHTML = '<option value="dismiss">Dismissed</option>';
+                attOutcomeSelect.value = 'dismiss';
+                attOutcomeSelect.disabled = true;
+            }
+            if (attRuleHint) attRuleHint.textContent = 'Closed · Dismissed';
+            if (btnConfirmOutcome) {
+                btnConfirmOutcome.disabled = true;
+                btnConfirmOutcome.classList.remove('is-danger');
+                btnConfirmOutcome.style.opacity = '1';
+                btnConfirmOutcome.style.cursor = 'default';
+                btnConfirmOutcome.style.background = '#dc2626';
+                btnConfirmOutcome.style.borderColor = '#b91c1c';
+                btnConfirmOutcome.style.color = '#ffffff';
+                btnConfirmOutcome.textContent = 'Dismissed';
+                btnConfirmOutcome.title = 'Na-dismiss na ang Paanyaya.';
             }
 
-            // The Kasunduan button itself shows settled state and is finalized
-            if (btnResolveDiag) {
-                btnResolveDiag.disabled = true;
-                btnResolveDiag.classList.remove('is-locked-btn');
-                btnResolveDiag.style.opacity = '1';
-                btnResolveDiag.style.cursor = 'default';
-                btnResolveDiag.style.pointerEvents = 'none';
-                btnResolveDiag.style.background = '#15803d';
-                btnResolveDiag.style.color = '#ffffff';
-                btnResolveDiag.style.borderColor = '#166534';
-                btnResolveDiag.innerHTML = '✓ Kasunduan (Settled)';
-                btnResolveDiag.title = 'Naitatala na bilang Kasunduan (Settled).';
-            }
-
-            // Lock attendance inputs & narrative
-            compRadios.forEach(r => r.disabled = true);
-            invRadios.forEach(r => r.disabled = true);
-            if (attSalaysayInput) {
-                attSalaysayInput.readOnly = true;
-                attSalaysayInput.style.backgroundColor = '#f8fafc';
-                attSalaysayInput.style.color = '#475569';
-            }
-
-            if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
-            if (alreadySecondPaanyayaNotice) alreadySecondPaanyayaNotice.style.display = 'none';
+            lockFields();
             if (viewMedWrap) viewMedWrap.style.display = 'none';
 
         } else if (isEscalated) {
-            // -----------------------------------------------------------------
-            // CASE 2: ESCALATED INTO A MEDIATION AND SAVED -> LOCK ALL BUTTONS
-            // -----------------------------------------------------------------
+            currentAttLocked = true;
             const caseLabel = complaintNumber ? ` (Case #${complaintNumber})` : '';
             if (lockNotice) {
                 lockNotice.style.display = 'flex';
                 lockNotice.style.alignItems = 'flex-start';
                 lockNotice.style.gap = '10px';
                 lockNotice.style.background = '#fffbeb';
-                lockNotice.style.border = '1.5px solid #fde047';
+                lockNotice.style.border = '1px solid #fde68a';
                 lockNotice.style.color = '#854d0e';
                 lockNotice.innerHTML = `
-                    <span style="font-size: 1.25rem; line-height: 1;">🔒</span>
+                    <span style="font-size: 1.05rem; line-height: 1.2;">&#128274;</span>
                     <div>
-                        <strong style="display: block; font-size: 0.88rem; color: #b45309; margin-bottom: 2px;">
+                        <strong style="display: block; font-size: 0.84rem; color: #b45309; margin-bottom: 2px;">
                             Nai-akyat sa Pormal na Mediation${caseLabel}
                         </strong>
-                        <span style="font-size: 0.8rem; color: #854d0e; line-height: 1.4;">
-                            Ang usaping ito ay pormal nang nai-doket sa Mediation at nai-save bilang pormal na reklamo. Naka-lock ang lahat ng pindutan ng aksyon.
+                        <span style="font-size: 0.78rem; color: #854d0e; line-height: 1.4;">
+                            Ang usaping ito ay pormal nang nai-doket sa Mediation at nai-save bilang pormal na reklamo. Naka-lock ang mga field ng Paanyaya.
                         </span>
                     </div>
                 `;
             }
 
-            // Lock all action buttons
-            if (btnSaveAttOnly) {
-                btnSaveAttOnly.disabled = true;
-                btnSaveAttOnly.classList.add('is-locked-btn');
-                btnSaveAttOnly.style.opacity = '0.55';
-                btnSaveAttOnly.style.cursor = 'not-allowed';
-                btnSaveAttOnly.style.pointerEvents = 'none';
-                btnSaveAttOnly.style.background = '#f1f5f9';
-                btnSaveAttOnly.style.color = '#94a3b8';
-                btnSaveAttOnly.style.borderColor = '#cbd5e1';
-                btnSaveAttOnly.innerHTML = '🔒 Save Attendance';
-                btnSaveAttOnly.title = 'Naka-lock dahil nai-akyat na sa Mediation.';
+            if (attOutcomeSelect) {
+                attOutcomeSelect.innerHTML = '<option value="escalate">Escalate to Mediation</option>';
+                attOutcomeSelect.value = 'escalate';
+                attOutcomeSelect.disabled = true;
+            }
+            if (attRuleHint) attRuleHint.textContent = 'Escalated · Mediation';
+            if (btnConfirmOutcome) {
+                btnConfirmOutcome.disabled = true;
+                btnConfirmOutcome.classList.remove('is-danger');
+                btnConfirmOutcome.style.opacity = '1';
+                btnConfirmOutcome.style.cursor = 'default';
+                btnConfirmOutcome.style.background = '#6d28d9';
+                btnConfirmOutcome.style.borderColor = '#5b21b6';
+                btnConfirmOutcome.style.color = '#ffffff';
+                btnConfirmOutcome.textContent = 'Escalated to Mediation';
+                btnConfirmOutcome.title = 'Nai-akyat na sa Pormal na Mediation.';
             }
 
-            if (btnResolveDiag) {
-                btnResolveDiag.disabled = true;
-                btnResolveDiag.classList.add('is-locked-btn');
-                btnResolveDiag.style.opacity = '0.55';
-                btnResolveDiag.style.cursor = 'not-allowed';
-                btnResolveDiag.style.pointerEvents = 'none';
-                btnResolveDiag.style.background = '#e2e8f0';
-                btnResolveDiag.style.color = '#64748b';
-                btnResolveDiag.style.borderColor = '#cbd5e1';
-                btnResolveDiag.innerHTML = '🔒 Kasunduan (Settle)';
-                btnResolveDiag.title = 'Naka-lock dahil nai-akyat na sa Mediation.';
-            }
-
-            if (btnOpenSecondPaanyaya) {
-                btnOpenSecondPaanyaya.disabled = true;
-                btnOpenSecondPaanyaya.classList.add('is-locked-btn');
-                btnOpenSecondPaanyaya.style.opacity = '0.55';
-                btnOpenSecondPaanyaya.style.cursor = 'not-allowed';
-                btnOpenSecondPaanyaya.style.pointerEvents = 'none';
-                btnOpenSecondPaanyaya.style.background = '#e2e8f0';
-                btnOpenSecondPaanyaya.style.color = '#64748b';
-                btnOpenSecondPaanyaya.style.borderColor = '#cbd5e1';
-                btnOpenSecondPaanyaya.innerHTML = '🔒 2nd Paanyaya';
-                btnOpenSecondPaanyaya.title = 'Naka-lock dahil nai-akyat na sa Mediation.';
-            }
-
-            if (btnEscalateMed) {
-                btnEscalateMed.disabled = true;
-                btnEscalateMed.classList.remove('is-locked-btn');
-                btnEscalateMed.style.opacity = '1';
-                btnEscalateMed.style.cursor = 'default';
-                btnEscalateMed.style.pointerEvents = 'none';
-                btnEscalateMed.style.background = '#6d28d9';
-                btnEscalateMed.style.color = '#ffffff';
-                btnEscalateMed.style.borderColor = '#5b21b6';
-                btnEscalateMed.innerHTML = '⚖️ Escalated to Mediation 🔒';
-                btnEscalateMed.title = 'Nai-akyat na sa Pormal na Mediation.';
-            }
-
-            // Direct link to the complaint details
+            lockFields();
             if (parsedComplaintId > 0 && viewMedWrap && viewMedLink) {
                 viewMedWrap.style.display = 'block';
                 viewMedLink.href = `../complaints/complaint-details.php?id=${parsedComplaintId}&tab=mediation`;
@@ -2797,171 +4566,157 @@ document.addEventListener('DOMContentLoaded', function() {
                 viewMedWrap.style.display = 'none';
             }
 
-            // Lock inputs
-            compRadios.forEach(r => r.disabled = true);
-            invRadios.forEach(r => r.disabled = true);
-            if (attSalaysayInput) {
-                attSalaysayInput.readOnly = true;
-                attSalaysayInput.style.backgroundColor = '#f8fafc';
-                attSalaysayInput.style.color = '#475569';
-            }
-
-            if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
-            if (alreadySecondPaanyayaNotice) alreadySecondPaanyayaNotice.style.display = 'none';
-
         } else {
-            // -----------------------------------------------------------------
-            // CASE 3: NORMAL UNLOCKED ACTIVE PAANYAYA
-            // -----------------------------------------------------------------
+            currentAttLocked = false;
             if (lockNotice) lockNotice.style.display = 'none';
             if (viewMedWrap) viewMedWrap.style.display = 'none';
 
             if (btnSaveAttOnly) {
                 btnSaveAttOnly.disabled = false;
-                btnSaveAttOnly.classList.remove('is-locked-btn');
-                btnSaveAttOnly.style.opacity = '';
-                btnSaveAttOnly.style.cursor = '';
-                btnSaveAttOnly.style.pointerEvents = '';
-                btnSaveAttOnly.style.background = '#ffffff';
-                btnSaveAttOnly.style.color = '';
-                btnSaveAttOnly.style.borderColor = '#cbd5e1';
-                btnSaveAttOnly.innerHTML = '💾 Save Attendance';
+                btnSaveAttOnly.style.display = '';
+                btnSaveAttOnly.textContent = 'Save Attendance & Notes';
                 btnSaveAttOnly.title = '';
             }
 
-            if (btnResolveDiag) {
-                btnResolveDiag.disabled = false;
-                btnResolveDiag.classList.remove('is-locked-btn');
-                btnResolveDiag.style.opacity = '';
-                btnResolveDiag.style.cursor = '';
-                btnResolveDiag.style.pointerEvents = '';
-                btnResolveDiag.style.background = '#16a34a';
-                btnResolveDiag.style.color = '#ffffff';
-                btnResolveDiag.style.borderColor = '';
-                btnResolveDiag.innerHTML = '🤝 Kasunduan (Settle)';
-                btnResolveDiag.title = '';
+            if (attOutcomeSelect) {
+                attOutcomeSelect.disabled = false;
             }
 
-            if (btnOpenSecondPaanyaya) {
-                btnOpenSecondPaanyaya.classList.remove('is-locked-btn');
-                btnOpenSecondPaanyaya.style.opacity = '';
-                btnOpenSecondPaanyaya.style.cursor = '';
-                btnOpenSecondPaanyaya.style.pointerEvents = '';
-                btnOpenSecondPaanyaya.style.background = '#0284c7';
-                btnOpenSecondPaanyaya.style.color = '#ffffff';
-                btnOpenSecondPaanyaya.style.borderColor = '';
-                btnOpenSecondPaanyaya.innerHTML = '📩 2nd Paanyaya';
-                btnOpenSecondPaanyaya.title = '';
-
-                if (attempt >= 2) {
-                    btnOpenSecondPaanyaya.style.display = 'none';
-                    btnOpenSecondPaanyaya.disabled = true;
-                    if (alreadySecondPaanyayaNotice) alreadySecondPaanyayaNotice.style.display = 'block';
-                } else {
-                    btnOpenSecondPaanyaya.style.display = 'flex';
-                    btnOpenSecondPaanyaya.disabled = false;
-                    if (alreadySecondPaanyayaNotice) alreadySecondPaanyayaNotice.style.display = 'none';
-                }
+            if (btnConfirmOutcome) {
+                btnConfirmOutcome.disabled = false;
+                btnConfirmOutcome.style.opacity = '';
+                btnConfirmOutcome.style.cursor = '';
+                btnConfirmOutcome.style.background = '';
+                btnConfirmOutcome.style.borderColor = '';
+                btnConfirmOutcome.style.color = '';
+                btnConfirmOutcome.title = '';
             }
 
-            if (btnEscalateMed) {
-                btnEscalateMed.disabled = false;
-                btnEscalateMed.classList.remove('is-locked-btn');
-                btnEscalateMed.style.opacity = '';
-                btnEscalateMed.style.cursor = '';
-                btnEscalateMed.style.pointerEvents = '';
-                btnEscalateMed.style.background = '#7c3aed';
-                btnEscalateMed.style.color = '#ffffff';
-                btnEscalateMed.style.borderColor = '';
-                btnEscalateMed.innerHTML = '⚖️ Continue to Formal Complaint Details';
-                btnEscalateMed.title = '';
+            compRadios.forEach(r => { r.disabled = false; });
+            invRadios.forEach(r => { r.disabled = false; });
+            if (attNotesInput) {
+                attNotesInput.readOnly = false;
+                attNotesInput.style.backgroundColor = '';
+                attNotesInput.style.color = '';
             }
 
-            compRadios.forEach(r => r.disabled = false);
-            invRadios.forEach(r => r.disabled = false);
-            if (attSalaysayInput) {
-                attSalaysayInput.readOnly = false;
-                attSalaysayInput.style.backgroundColor = '';
-                attSalaysayInput.style.color = '';
-            }
+            applyAttendanceOutcomeRules({ preserveSelection: false });
         }
     }
+
+    function applyModalStatusBadgeClass(badgeEl, rawStatus, linkedCaseId = 0) {
+        if (!badgeEl) return;
+        const norm = String(rawStatus || '').trim().toLowerCase();
+        const isStDismissed = ['dismissed', 'cancelled', 'failed'].includes(norm);
+        const isStResolved = ['resolved', 'settled', 'completed', 'done'].includes(norm);
+        const isStEscalated = norm === 'escalated'
+            || ['docketed', 'mediation', 'conciliation', 'arbitration', 'cfa issued'].includes(norm)
+            || (linkedCaseId > 0 && !isStResolved && !isStDismissed);
+        badgeEl.className = isStDismissed
+            ? 'status-pill-cancelled'
+            : (isStResolved ? 'status-pill-resolved' : (isStEscalated ? 'status-pill-escalated' : 'status-pill-scheduled'));
+    }
+
+    document.querySelectorAll('input[name="complainant_attended"], input[name="invitee_attended"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            applyAttendanceOutcomeRules({ preserveSelection: false });
+        });
+    });
 
     document.querySelectorAll('.btn-open-attendance').forEach(btn => {
         btn.addEventListener('click', async function(e) {
             e.preventDefault();
+            e.stopPropagation();
             const paanyayaId = parseInt(this.dataset.paanyayaId || 0, 10);
             const complaintId = parseInt(this.dataset.complaintId || 0, 10);
+            const linkedCaseId = parseInt(this.dataset.linkedCaseId || 0, 10);
             const invitee = this.dataset.invitee || 'Inanyayahan';
             const complainant = this.dataset.complainant || 'Nagpaanyaya';
             const date = this.dataset.date || '';
             const time = this.dataset.time || '';
             const status = this.dataset.status || 'Scheduled';
-            const attempt = parseInt(this.dataset.attempt || 1, 10);
+            const attempt = Math.min(2, Math.max(1, parseInt(this.dataset.attempt || 1, 10)));
             const complaintNumber = this.dataset.complaintNumber || '';
+
+            currentAttAttempt = attempt;
 
             if (attIdInput) attIdInput.value = paanyayaId;
             if (attComplaintIdInput) attComplaintIdInput.value = complaintId;
-            if (attInviteeLabel) attInviteeLabel.textContent = `Inanyayahan: ${invitee}`;
-            if (attComplainantLabel) attComplainantLabel.textContent = `Nagpaanyaya: ${complainant}`;
-            if (attScheduleLabel) attScheduleLabel.textContent = `Iskedyul: ${date} ${time}`;
+            if (attScheduleLabel) {
+                const schedText = `${date} ${time}`.trim();
+                attScheduleLabel.textContent = schedText || '—';
+            }
             if (attStatusBadge) {
                 attStatusBadge.textContent = status;
-                const isStResolved = ['resolved', 'settled', 'completed', 'done'].includes(status.toLowerCase());
-                const isStEscalated = status.toLowerCase() === 'escalated' || (complaintId > 0 && !isStResolved);
-                attStatusBadge.className = isStResolved ? 'status-pill-resolved' : (isStEscalated ? 'status-pill-escalated' : 'status-pill-scheduled');
+                applyModalStatusBadgeClass(attStatusBadge, status, linkedCaseId);
             }
-            if (attCompNameDisplay) attCompNameDisplay.textContent = complainant;
-            if (attInvNameDisplay) attInvNameDisplay.textContent = invitee;
+            if (attCompNameDisplay) {
+                attCompNameDisplay.textContent = complainant;
+                attCompNameDisplay.title = complainant;
+            }
+            if (attInvNameDisplay) {
+                attInvNameDisplay.textContent = invitee;
+                attInvNameDisplay.title = invitee;
+            }
+            if (attCompInitials) attCompInitials.textContent = getPartyInitials(complainant, 'NP');
+            if (attInvInitials) attInvInitials.textContent = getPartyInitials(invitee, 'IN');
 
-            // Update Attempt UI
             if (attAttemptBadge) {
                 if (attempt >= 2) {
-                    attAttemptBadge.textContent = 'Ikalawang Paanyaya (Attempt 2)';
+                    attAttemptBadge.textContent = '2nd Paanyaya';
                     attAttemptBadge.className = 'status-pill-escalated';
                 } else {
-                    attAttemptBadge.textContent = 'Unang Paanyaya (Attempt 1)';
+                    attAttemptBadge.textContent = '1st Paanyaya';
                     attAttemptBadge.className = 'status-pill-scheduled';
                 }
             }
 
+            if (p2DateInput) p2DateInput.value = '';
             if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
 
-            // Reset inputs to clean state
-            if (attSalaysayInput) attSalaysayInput.value = '';
+            if (attNotesInput) attNotesInput.value = '';
             setRadio('complainant_attended', 'Present');
             setRadio('invitee_attended', 'Absent');
 
-            // Apply locked state immediately based on dataset attributes
-            applyAttendanceLockState(status, complaintId, attempt, complaintNumber);
+            applyAttendanceLockState(status, complaintId, attempt, complaintNumber, linkedCaseId);
 
-            // Open modal immediately
             if (attModal) attModal.style.display = 'flex';
 
-            // Fetch latest persisted attendance and salaysay
             try {
                 const res = await fetch(`../../../backend/api/paanyaya/attendance.php?paanyaya_id=${paanyayaId}`);
                 const json = await res.json();
                 if (json.success && json.data) {
                     const row = json.data;
-                    if (row.salaysay && attSalaysayInput) attSalaysayInput.value = row.salaysay;
+                    const rowAttempt = parseInt(row.attempt_number || attempt, 10);
+                    currentAttAttempt = Math.min(2, Math.max(1, rowAttempt));
+                    if (attAttemptBadge) {
+                        if (currentAttAttempt >= 2) {
+                            attAttemptBadge.textContent = '2nd Paanyaya';
+                            attAttemptBadge.className = 'status-pill-escalated';
+                        } else {
+                            attAttemptBadge.textContent = '1st Paanyaya';
+                            attAttemptBadge.className = 'status-pill-scheduled';
+                        }
+                    }
+
+                    if (attNotesInput) {
+                        attNotesInput.value = mergeExistingNotes(row.salaysay, row.dialogue_notes);
+                    }
                     if (row.complainant_attended) setRadio('complainant_attended', row.complainant_attended);
                     if (row.invitee_attended) setRadio('invitee_attended', row.invitee_attended);
 
-                    const effStatus = status.toLowerCase() === 'done' ? 'Done' : (row.status || status);
+                    const effStatus = row.current_workflow_status || row.status || status;
                     const effComplaintId = parseInt(row.complaint_id || row.escalated_to_complaint_id || complaintId, 10);
+                    const effLinkedCaseId = parseInt(row.linked_case_id || linkedCaseId, 10) || 0;
                     const effCompNumber = row.complaint_number || complaintNumber;
 
                     if (attComplaintIdInput) attComplaintIdInput.value = effComplaintId;
                     if (attStatusBadge) {
                         attStatusBadge.textContent = effStatus;
-                        const isStResolved = ['resolved', 'settled', 'completed'].includes(effStatus.toLowerCase());
-                        const isStEscalated = effStatus.toLowerCase() === 'escalated' || effComplaintId > 0;
-                        attStatusBadge.className = isStResolved ? 'status-pill-resolved' : (isStEscalated ? 'status-pill-escalated' : 'status-pill-scheduled');
+                        applyModalStatusBadgeClass(attStatusBadge, effStatus, effLinkedCaseId);
                     }
 
-                    // Re-apply lock state with verified server data
-                    applyAttendanceLockState(effStatus, effComplaintId, attempt, effCompNumber);
+                    applyAttendanceLockState(effStatus, effComplaintId, currentAttAttempt, effCompNumber, effLinkedCaseId);
                 }
             } catch (err) {
                 console.warn('Could not fetch existing attendance data:', err);
@@ -2978,7 +4733,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return document.querySelector(`input[name="${name}"]:checked`)?.value || 'Present';
     }
 
-    async function submitAttendanceAction(actionType, confirmMessage = null) {
+    async function submitAttendanceAction(actionType, confirmMessage = null, triggerBtn = null) {
         if (confirmMessage && !confirm(confirmMessage)) {
             return;
         }
@@ -2989,25 +4744,25 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        const notesText = attNotesInput?.value.trim() || '';
         const payload = {
             paanyaya_id: paanyayaId,
             complaint_id: parseInt(attComplaintIdInput.value || 0, 10),
             complainant_attended: getRadio('complainant_attended'),
             invitee_attended: getRadio('invitee_attended'),
-            salaysay: attSalaysayInput?.value.trim() || '',
+            notes: notesText,
+            salaysay: notesText,
+            dialogue_notes: notesText,
             action: actionType,
             p2_date: p2DateInput?.value || '',
             p2_time: p2TimeInput?.value || '14:00'
         };
 
-        const activeBtn = (actionType === 'escalate') ? btnEscalateMed : 
-                          ((actionType === 'resolve') ? btnResolveDiag : 
-                          ((actionType === 'schedule_second_paanyaya') ? btnConfirmP2 : btnSaveAttOnly));
-        const originalText = activeBtn ? activeBtn.innerHTML : '';
-        if (activeBtn) {
-            activeBtn.disabled = true;
-            activeBtn.innerHTML = 'Saving...';
-        }
+        const activeBtn = triggerBtn || btnConfirmOutcome || btnSaveAttOnly;
+        const originalText = activeBtn ? activeBtn.textContent : '';
+        if (btnSaveAttOnly) btnSaveAttOnly.disabled = true;
+        if (btnConfirmOutcome) btnConfirmOutcome.disabled = true;
+        if (activeBtn) activeBtn.textContent = 'Saving...';
 
         try {
             const res = await fetch('../../../backend/api/paanyaya/attendance.php', {
@@ -3023,17 +4778,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (!res.ok || !data.success) {
                 agapAlert(data.message || 'Nabigo ang pag-proseso ng aksyon.', 'error');
-                if (activeBtn) {
-                    activeBtn.disabled = false;
-                    activeBtn.innerHTML = originalText;
-                }
+                if (btnSaveAttOnly) btnSaveAttOnly.disabled = false;
+                if (btnConfirmOutcome) btnConfirmOutcome.disabled = false;
+                if (activeBtn) activeBtn.textContent = originalText;
                 return;
             }
 
             closeAttModal();
 
             if (actionType === 'escalate' && data.case_number) {
-                const navMsg = `Matagumpay na nai-akyat ang Paanyaya sa Pormal na Mediation (Stage 1)!\nCase Number: ${data.case_number}\n\nNailipat ang Salaysay at tala ng Pagdalo ng mga panig.`;
+                const navMsg = `Matagumpay na nai-akyat ang Paanyaya sa Pormal na Mediation (Stage 1)!\nCase Number: ${data.case_number}\n\nNailipat ang Notes at tala ng Pagdalo ng mga panig.`;
                 if (typeof window.showSuccessPopup === 'function') {
                     await window.showSuccessPopup(navMsg, 'Inilipat sa Mediation!');
                 } else {
@@ -3050,6 +4804,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 } else {
                     alert(msg);
                 }
+            } else if (actionType === 'dismiss') {
+                const msg = data.message || 'Opisyal nang na-dismiss ang usapin.';
+                if (typeof window.showSuccessPopup === 'function') {
+                    await window.showSuccessPopup(msg, 'Dismissed');
+                } else {
+                    alert(msg);
+                }
             } else {
                 if (typeof window.showSuccessPopup === 'function') {
                     await window.showSuccessPopup(data.message || 'Matagumpay na naitala ang aksyon.', 'Tagumpay!');
@@ -3062,93 +4823,113 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (err) {
             console.error(err);
             agapAlert('May naganap na error sa pag-proseso ng aksyon.', 'error');
-            if (activeBtn) {
-                activeBtn.disabled = false;
-                activeBtn.innerHTML = originalText;
+            if (btnSaveAttOnly) btnSaveAttOnly.disabled = false;
+            if (btnConfirmOutcome) btnConfirmOutcome.disabled = false;
+            if (activeBtn) activeBtn.textContent = originalText;
+        }
+    }
+
+    async function handleEscalateOutcome() {
+        const paanyayaId = parseInt(attIdInput?.value, 10);
+        if (!paanyayaId) {
+            agapAlert('Invalid Paanyaya record.', 'error');
+            return;
+        }
+
+        const linkedComplaintId = parseInt(attComplaintIdInput?.value || 0, 10);
+        if (linkedComplaintId > 0) {
+            submitAttendanceAction(
+                'escalate',
+                'Sigurado ka bang iaakyat na ang Paanyaya na ito sa Pormal na Mediation?',
+                btnConfirmOutcome
+            );
+            return;
+        }
+
+        const confirmed = confirm(
+            'Magpatuloy sa Formal Complaint Details?\n\n' +
+            'Isi-save muna ang attendance at notes ng Paanyaya. Pagkatapos, ilagay ang mga kinakailangang detalye para sa pormal na reklamo tulad ng category, case type, incident details, at relief na hinihingi. Hindi pa ito mai-dodocket hangga\'t hindi naisusumite ang form.'
+        );
+        if (!confirmed) return;
+
+        const originalText = btnConfirmOutcome ? btnConfirmOutcome.textContent : '';
+        if (btnSaveAttOnly) btnSaveAttOnly.disabled = true;
+        if (btnConfirmOutcome) {
+            btnConfirmOutcome.disabled = true;
+            btnConfirmOutcome.textContent = 'Saving Paanyaya...';
+        }
+
+        const notesText = attNotesInput?.value.trim() || '';
+
+        try {
+            const response = await fetch('../../../backend/api/paanyaya/attendance.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({
+                    paanyaya_id: paanyayaId,
+                    complaint_id: linkedComplaintId,
+                    complainant_attended: getRadio('complainant_attended'),
+                    invitee_attended: getRadio('invitee_attended'),
+                    notes: notesText,
+                    salaysay: notesText,
+                    dialogue_notes: notesText,
+                    action: 'save_attendance'
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Unable to save the Paanyaya attendance.');
+            }
+
+            window.location.href = `../complaints/complaint-create.php?escalate_paanyaya_id=${encodeURIComponent(paanyayaId)}`;
+        } catch (error) {
+            console.error(error);
+            agapAlert(error.message || 'Hindi naisave ang Paanyaya attendance.', 'error');
+            if (btnSaveAttOnly) btnSaveAttOnly.disabled = false;
+            if (btnConfirmOutcome) {
+                btnConfirmOutcome.disabled = false;
+                btnConfirmOutcome.textContent = originalText;
             }
         }
     }
 
-    if (btnSaveAttOnly) {
-        btnSaveAttOnly.addEventListener('click', () => submitAttendanceAction('save_attendance'));
+    if (attOutcomeSelect) {
+        attOutcomeSelect.addEventListener('change', syncOutcomeUi);
     }
-    if (btnResolveDiag) {
-        btnResolveDiag.addEventListener('click', () => submitAttendanceAction('resolve', 'Sigurado ka bang naayos na ang sigalot at mamarkahang "Resolved" ang Paanyaya na ito?'));
-    }
-    if (btnEscalateMed) {
-        btnEscalateMed.addEventListener('click', async () => {
-            const paanyayaId = parseInt(attIdInput?.value, 10);
-            if (!paanyayaId) {
-                agapAlert('Invalid Paanyaya record.', 'error');
-                return;
-            }
 
-            const confirmed = confirm(
-                'Magpatuloy sa Formal Complaint Details?\n\n' +
-                'Isi-save muna ang attendance at Salaysay ng Paanyaya. Pagkatapos, ilagay ang mga kinakailangang detalye para sa pormal na reklamo tulad ng category, case type, incident details, at relief na hinihingi. Hindi pa ito mai-dodocket hangga\'t hindi naisusumite ang form.'
-            );
-            if (!confirmed) return;
-
-            const originalText = btnEscalateMed.innerHTML;
-            btnEscalateMed.disabled = true;
-            btnEscalateMed.innerHTML = 'Saving Paanyaya...';
-
-            try {
-                const response = await fetch('../../../backend/api/paanyaya/attendance.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                        'X-CSRF-Token': csrfToken
-                    },
-                    body: JSON.stringify({
-                        paanyaya_id: paanyayaId,
-                        complaint_id: parseInt(attComplaintIdInput?.value || 0, 10),
-                        complainant_attended: getRadio('complainant_attended'),
-                        invitee_attended: getRadio('invitee_attended'),
-                        salaysay: attSalaysayInput?.value.trim() || '',
-                        action: 'save_attendance'
-                    })
-                });
-                const data = await response.json().catch(() => ({}));
-                if (!response.ok || !data.success) {
-                    throw new Error(data.message || 'Unable to save the Paanyaya attendance.');
+    if (btnConfirmOutcome) {
+        btnConfirmOutcome.addEventListener('click', () => {
+            const outcome = attOutcomeSelect ? attOutcomeSelect.value : 'schedule_second_paanyaya';
+            if (outcome === 'resolve') {
+                submitAttendanceAction(
+                    'resolve',
+                    'Sigurado ka bang naayos na ang sigalot at mamarkahang "Settled" ang Paanyaya na ito?',
+                    btnConfirmOutcome
+                );
+            } else if (outcome === 'dismiss') {
+                submitAttendanceAction(
+                    'dismiss',
+                    'Sigurado ka bang idi-dismiss ang usaping ito dahil hindi nakadalo ang Nagpaanyaya?',
+                    btnConfirmOutcome
+                );
+            } else if (outcome === 'schedule_second_paanyaya') {
+                const p2Date = p2DateInput?.value || '';
+                if (!p2Date) {
+                    agapAlert('Mangyaring pumili ng petsa para sa 2nd Paanyaya.', 'warning');
+                    return;
                 }
-
-                window.location.href = `../complaints/complaint-create.php?escalate_paanyaya_id=${encodeURIComponent(paanyayaId)}`;
-            } catch (error) {
-                console.error(error);
-                agapAlert(error.message || 'Hindi naisave ang Paanyaya attendance.', 'error');
-                btnEscalateMed.disabled = false;
-                btnEscalateMed.innerHTML = originalText;
+                submitAttendanceAction(
+                    'schedule_second_paanyaya',
+                    `Sigurado ka bang nais nang ilabas ang Ikalawang Paanyaya (2nd Paanyaya) sa darating na ${p2Date}?`,
+                    btnConfirmOutcome
+                );
+            } else if (outcome === 'escalate') {
+                handleEscalateOutcome();
             }
-        });
-    }
-    if (btnOpenSecondPaanyaya) {
-        btnOpenSecondPaanyaya.addEventListener('click', () => {
-            if (!secondPaanyayaPanel) return;
-            const isHidden = (secondPaanyayaPanel.style.display === 'none' || secondPaanyayaPanel.style.display === '');
-            secondPaanyayaPanel.style.display = isHidden ? 'block' : 'none';
-            if (isHidden && p2DateInput) {
-                p2DateInput.value = getSuggestedNextDate();
-                const today = new Date().toISOString().split('T')[0];
-                p2DateInput.min = today;
-            }
-        });
-    }
-    if (btnCancelP2) {
-        btnCancelP2.addEventListener('click', () => {
-            if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
-        });
-    }
-    if (btnConfirmP2) {
-        btnConfirmP2.addEventListener('click', () => {
-            const p2Date = p2DateInput?.value || '';
-            if (!p2Date) {
-                agapAlert('Mangyaring pumili ng petsa para sa 2nd Paanyaya.', 'warning');
-                return;
-            }
-            submitAttendanceAction('schedule_second_paanyaya', `Sigurado ka bang nais nang ilabas ang Ikalawang Paanyaya (2nd Paanyaya) sa darating na ${p2Date}?`);
         });
     }
 
@@ -3191,7 +4972,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!emptyRow) {
                 emptyRow = document.createElement('tr');
                 emptyRow.id = 'paanyayaFilterEmptyRow';
-                emptyRow.innerHTML = '<td colspan="4" style="text-align:center; color:#64748b; padding:36px 20px;"><div style="font-weight:700; color:#0f172a;">No matching Paanyaya invitations</div><p style="margin:4px 0 0; font-size:0.84rem;">Try clearing your search keyword.</p></td>';
+                emptyRow.innerHTML = '<td colspan="6" style="text-align:center; color:#64748b; padding:36px 20px;"><div style="font-weight:700; color:#0f172a;">No matching Paanyaya invitations</div><p style="margin:4px 0 0; font-size:0.84rem;">Try clearing your search keyword.</p></td>';
                 paanyayaTbody.appendChild(emptyRow);
             }
             emptyRow.style.display = '';
@@ -3331,6 +5112,60 @@ document.addEventListener('DOMContentLoaded', function() {
         paanyayaPageSize = Number(paanyayaPageSizeEl.value || 10) || 10;
         paanyayaCurrentPage = 1;
         renderPaanyayaPage();
+    });
+
+    let paanyayaSortKey = 'date';
+    let paanyayaSortDir = 'desc';
+
+    const sortPaanyayaHeaders = Array.from(document.querySelectorAll('.paanyaya-table thead th.sortable-th[data-sort-key]'));
+    sortPaanyayaHeaders.forEach(th => {
+        th.addEventListener('click', () => {
+            const key = th.dataset.sortKey;
+            if (!key) return;
+            if (paanyayaSortKey === key) {
+                paanyayaSortDir = paanyayaSortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                paanyayaSortKey = key;
+                paanyayaSortDir = key === 'date' ? 'desc' : 'asc';
+            }
+
+            sortPaanyayaHeaders.forEach(h => {
+                h.classList.remove('sort-active-asc', 'sort-active-desc');
+                const ind = h.querySelector('.sort-indicator');
+                if (ind) ind.textContent = '⇅';
+            });
+            th.classList.add(paanyayaSortDir === 'asc' ? 'sort-active-asc' : 'sort-active-desc');
+            const activeInd = th.querySelector('.sort-indicator');
+            if (activeInd) activeInd.textContent = paanyayaSortDir === 'asc' ? '▲' : '▼';
+
+            if (paanyayaTbody && paanyayaRows.length) {
+                const attrMap = {
+                    ref: 'sortRef',
+                    complainant: 'sortComplainant',
+                    respondent: 'sortRespondent',
+                    date: 'sortDate',
+                    status: 'sortStatus'
+                };
+                const attr = attrMap[paanyayaSortKey] || 'sortDate';
+                paanyayaRows.sort((a, b) => {
+                    const av = String(a.dataset[attr] || '');
+                    const bv = String(b.dataset[attr] || '');
+                    const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+                    return paanyayaSortDir === 'asc' ? cmp : -cmp;
+                });
+                const frag = document.createDocumentFragment();
+                paanyayaRows.forEach(row => {
+                    const dropdownRow = getDropdownRowFor(row);
+                    frag.appendChild(row);
+                    if (dropdownRow) frag.appendChild(dropdownRow);
+                });
+                const filterEmptyRow = document.getElementById('paanyayaFilterEmptyRow');
+                paanyayaTbody.appendChild(frag);
+                if (filterEmptyRow) paanyayaTbody.appendChild(filterEmptyRow);
+                paanyayaCurrentPage = 1;
+                renderPaanyayaPage();
+            }
+        });
     });
 
     if (paanyayaRows.length) {

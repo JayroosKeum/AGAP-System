@@ -48,6 +48,7 @@ $residentProfile = [
     'email' => '',
     'contact_no' => '',
     'purok' => '',
+    'is_tenant' => 0,
     'address' => '',
     'preferred_language' => 'fil',
     'residency_verified' => 0,
@@ -72,17 +73,17 @@ if ($isResident) {
 
     $resRow = null;
     if ($residentProfile['resident_id'] > 0) {
-        $rStmt = $db->prepare('SELECT resident_id, first_name, middle_name, last_name, email, contact_no, purok, address, COALESCE(residency_verified, 0) AS residency_verified FROM residents WHERE resident_id = ? LIMIT 1');
+        $rStmt = $db->prepare('SELECT resident_id, first_name, middle_name, last_name, email, contact_no, purok, COALESCE(is_tenant, 0) AS is_tenant, address, COALESCE(residency_verified, 0) AS residency_verified FROM residents WHERE resident_id = ? LIMIT 1');
         $rStmt->execute([$residentProfile['resident_id']]);
         $resRow = $rStmt->fetch(PDO::FETCH_ASSOC);
     }
     if (!$resRow && $residentProfile['email'] !== '') {
-        $rStmt = $db->prepare('SELECT resident_id, first_name, middle_name, last_name, email, contact_no, purok, address, COALESCE(residency_verified, 0) AS residency_verified FROM residents WHERE LOWER(email) = LOWER(?) LIMIT 1');
+        $rStmt = $db->prepare('SELECT resident_id, first_name, middle_name, last_name, email, contact_no, purok, COALESCE(is_tenant, 0) AS is_tenant, address, COALESCE(residency_verified, 0) AS residency_verified FROM residents WHERE LOWER(email) = LOWER(?) LIMIT 1');
         $rStmt->execute([$residentProfile['email']]);
         $resRow = $rStmt->fetch(PDO::FETCH_ASSOC);
     }
     if (!$resRow && $residentProfile['first_name'] !== '' && $residentProfile['last_name'] !== '') {
-        $rStmt = $db->prepare('SELECT resident_id, first_name, middle_name, last_name, email, contact_no, purok, address, COALESCE(residency_verified, 0) AS residency_verified FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
+        $rStmt = $db->prepare('SELECT resident_id, first_name, middle_name, last_name, email, contact_no, purok, COALESCE(is_tenant, 0) AS is_tenant, address, COALESCE(residency_verified, 0) AS residency_verified FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
         $rStmt->execute([$residentProfile['first_name'], $residentProfile['last_name']]);
         $resRow = $rStmt->fetch(PDO::FETCH_ASSOC);
     }
@@ -95,6 +96,10 @@ if ($isResident) {
         $residentProfile['email'] = (string) ($resRow['email'] ?: $residentProfile['email']);
         $residentProfile['contact_no'] = (string) ($resRow['contact_no'] ?: $residentProfile['contact_no']);
         $residentProfile['purok'] = (string) ($resRow['purok'] ?? '');
+        $residentProfile['is_tenant'] = (int) ($resRow['is_tenant'] ?? 0);
+        if ($residentProfile['is_tenant'] === 0 && strcasecmp($residentProfile['purok'], 'Non-Resident') === 0) {
+            $residentProfile['is_tenant'] = 2;
+        }
         $residentProfile['address'] = (string) ($resRow['address'] ?? '');
         $residentProfile['residency_verified'] = (int) ($resRow['residency_verified'] ?? 0);
     }
@@ -612,6 +617,17 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                                 <input type="tel" id="portalCompContact" name="complainant_contact_no" required maxlength="20" data-validate="phone" placeholder="09XXXXXXXXX" value="<?php echo htmlspecialchars($residentProfile['contact_no']); ?>">
                                             </div>
                                             <div class="form-group">
+                                                <label for="portalCompIsTenant">Residency Status <span class="req">*</span></label>
+                                                <select id="portalCompIsTenant" name="complainant_is_tenant" required>
+                                                    <option value="0" <?php echo ((int)$residentProfile['is_tenant'] === 0) ? 'selected' : ''; ?>>Resident (Permanent — Tumana)</option>
+                                                    <option value="1" <?php echo ((int)$residentProfile['is_tenant'] === 1) ? 'selected' : ''; ?>>Resident (Tenant / Renter — Tumana)</option>
+                                                    <option value="2" <?php echo ((int)$residentProfile['is_tenant'] === 2) ? 'selected' : ''; ?>>Non-Resident (Outside Tumana)</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="agap-field-row-2" style="margin-bottom:0;">
+                                            <div class="form-group" style="margin-bottom:0;">
                                                 <label for="portalCompPurok">Purok / Area in Tumana</label>
                                                 <select id="portalCompPurok" name="complainant_purok">
                                                     <option value="">Select Purok...</option>
@@ -621,11 +637,10 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                                     <option value="Non-Resident" <?php echo ($residentProfile['purok'] === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
                                                 </select>
                                             </div>
-                                        </div>
-
-                                        <div class="form-group" style="margin-bottom:0;">
-                                            <label for="portalCompAddress">Your Complete Address <span class="req">*</span></label>
-                                            <input type="text" id="portalCompAddress" name="complainant_address" required maxlength="255" value="<?php echo htmlspecialchars($residentProfile['address']); ?>" placeholder="House #, Street, Barangay Tumana">
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label for="portalCompAddress">Your Complete Address <span class="req">*</span></label>
+                                                <input type="text" id="portalCompAddress" name="complainant_address" required maxlength="255" value="<?php echo htmlspecialchars($residentProfile['address']); ?>" placeholder="House #, Street, Barangay Tumana">
+                                            </div>
                                         </div>
 
                                         <div class="rd-extra-parties-block">
@@ -655,13 +670,16 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                             <span class="hint">Include both first name and last name so summons can be addressed properly.</span>
                                         </div>
 
-                                        <div class="form-group">
-                                            <label for="portalRespAddress">Actual Address (Legally Required for Summons) <span class="req">*</span></label>
-                                            <input type="text" id="portalRespAddress" name="respondent_address" required maxlength="255" placeholder="House #, Street, Sitio / Barangay">
-                                        </div>
-
                                         <div class="agap-field-row-2">
-                                            <div class="form-group" style="margin-bottom:0;">
+                                            <div class="form-group">
+                                                <label for="portalRespIsTenant">Residency Status <span class="req">*</span></label>
+                                                <select id="portalRespIsTenant" name="respondent_is_tenant" required>
+                                                    <option value="0">Resident (Permanent — Tumana)</option>
+                                                    <option value="1">Resident (Tenant / Renter — Tumana)</option>
+                                                    <option value="2">Non-Resident (Outside Tumana)</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
                                                 <label for="portalRespPurok">Respondent Purok / Area</label>
                                                 <select id="portalRespPurok" name="respondent_purok">
                                                     <option value="">Select Purok (Optional)...</option>
@@ -670,6 +688,13 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                                     <?php endforeach; ?>
                                                     <option value="Non-Resident">Non-Resident / Outside Tumana</option>
                                                 </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="agap-field-row-2">
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <label for="portalRespAddress">Actual Address (Legally Required for Summons) <span class="req">*</span></label>
+                                                <input type="text" id="portalRespAddress" name="respondent_address" required maxlength="255" placeholder="House #, Street, Sitio / Barangay">
                                             </div>
                                             <div class="form-group" style="margin-bottom:0;">
                                                 <label for="portalRespContact">Mobile Number (Optional)</label>
@@ -700,14 +725,37 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
 
                                         <input type="hidden" id="portalResolution" name="requested_resolution" value="">
                                         <input type="hidden" id="portalAutoTitle" name="complaint_title" value="">
-                                        <input type="hidden" id="portalCatId" name="category_id" value="">
-                                        <input type="hidden" id="portalOtherCatSpec" name="other_category_specification" value="">
                                         <input type="hidden" id="portalCaseType" name="case_type" value="Civil">
                                         <input type="hidden" id="portalAiUsed" name="ai_classification_used" value="0">
                                         <input type="hidden" id="portalAiVerifiedHidden" name="ai_classification_verified" value="0">
                                         <input type="hidden" id="portalAiSuggestedCatId" name="ai_suggested_category_id" value="">
                                         <input type="hidden" id="portalAiSuggestedTitle" name="ai_suggested_title" value="">
                                         <input type="hidden" id="portalAiSuggestionPayload" name="ai_suggestion_payload" value="">
+
+                                        <div class="rd-category-box">
+                                            <div class="rd-category-head">
+                                                <label for="portalCatId">Complaint Category <span style="font-weight:500; color:#64748b;">(Optional)</span></label>
+                                                <span class="rd-category-review-badge">Under Review &bull; Verified by Lupon</span>
+                                            </div>
+                                            <div class="form-group" style="margin-bottom:0;">
+                                                <select id="portalCatId" name="category_id">
+                                                    <option value="">Let Barangay Lupon classify during review (Optional)</option>
+                                                    <?php foreach ($categories as $catRow): ?>
+                                                        <option value="<?php echo (int) $catRow['category_id']; ?>"
+                                                                data-cat-name="<?php echo htmlspecialchars((string) $catRow['category_name'], ENT_QUOTES); ?>">
+                                                            <?php echo htmlspecialchars((string) $catRow['category_name']); ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                            <div class="form-group" id="portalOtherCatWrap" style="display:none; margin-top:10px; margin-bottom:0;">
+                                                <label for="portalOtherCatSpec">Specify Other Complaint Category <span class="req">*</span></label>
+                                                <input type="text" id="portalOtherCatSpec" name="other_category_specification" maxlength="255" placeholder="Briefly describe the nature or type of complaint...">
+                                            </div>
+                                            <p class="rd-category-note">
+                                                Selecting a category is optional. All submissions remain <strong>Under Review</strong> and may be modified by the assigned <strong>Lupon Member</strong> after verifying Barangay jurisdiction (R.A. 7160).
+                                            </p>
+                                        </div>
 
                                         <div class="agap-field-row-2">
                                             <div class="form-group">
@@ -1026,6 +1074,14 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
 
                                         <div class="rd-settings-fields-2">
                                             <div class="form-group">
+                                                <label for="profIsTenant">Residency Status</label>
+                                                <select id="profIsTenant" name="is_tenant" disabled>
+                                                    <option value="0" <?php echo ((int)$residentProfile['is_tenant'] === 0) ? 'selected' : ''; ?>>Resident (Permanent — Tumana)</option>
+                                                    <option value="1" <?php echo ((int)$residentProfile['is_tenant'] === 1) ? 'selected' : ''; ?>>Resident (Tenant / Renter — Tumana)</option>
+                                                    <option value="2" <?php echo ((int)$residentProfile['is_tenant'] === 2) ? 'selected' : ''; ?>>Non-Resident (Outside Tumana)</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
                                                 <label for="profPurok">Purok / Area in Tumana</label>
                                                 <select id="profPurok" name="purok" disabled>
                                                     <option value="">Select Purok...</option>
@@ -1035,7 +1091,7 @@ $isVerifiedResident = !empty($residentProfile['residency_verified']);
                                                     <option value="Non-Resident" <?php echo ($residentProfile['purok'] === 'Non-Resident') ? 'selected' : ''; ?>>Non-Resident / Outside Tumana</option>
                                                 </select>
                                             </div>
-                                            <div class="form-group">
+                                            <div class="form-group rd-settings-span-full">
                                                 <label for="profAddress">Complete Street Address</label>
                                                 <input type="text" id="profAddress" name="address" maxlength="255" readonly value="<?php echo htmlspecialchars($residentProfile['address']); ?>" placeholder="House #, Street, Barangay Tumana">
                                             </div>
@@ -1608,6 +1664,35 @@ document.addEventListener('DOMContentLoaded', () => {
         if (opt) selectEl.value = opt.value;
     }
 
+    function formatPortalResidencyLabel(val) {
+        const s = String(val ?? '0');
+        if (s === '2') return 'Non-Resident (Outside Tumana)';
+        if (s === '1') return 'Resident (Tenant / Renter)';
+        return 'Resident (Permanent)';
+    }
+
+    function bindPortalResidencyPurokSync(tenantEl, purokEl) {
+        if (!tenantEl || !purokEl) return;
+        tenantEl.addEventListener('change', () => {
+            if (tenantEl.value === '2') {
+                purokEl.value = 'Non-Resident';
+            } else if (purokEl.value === 'Non-Resident') {
+                purokEl.value = '';
+            }
+        });
+        purokEl.addEventListener('change', () => {
+            if (purokEl.value === 'Non-Resident') {
+                tenantEl.value = '2';
+            } else if (purokEl.value !== '' && tenantEl.value === '2') {
+                tenantEl.value = '0';
+            }
+        });
+    }
+
+    bindPortalResidencyPurokSync(document.getElementById('portalCompIsTenant'), document.getElementById('portalCompPurok'));
+    bindPortalResidencyPurokSync(document.getElementById('portalRespIsTenant'), document.getElementById('portalRespPurok'));
+    bindPortalResidencyPurokSync(document.getElementById('profIsTenant'), document.getElementById('profPurok'));
+
     const extraComplainantsListEl = document.getElementById('portalExtraComplainantsList');
     const extraRespondentsListEl = document.getElementById('portalExtraRespondentsList');
     const extraPartiesHiddenContainer = document.getElementById('portalExtraPartiesHiddenInputs');
@@ -1675,6 +1760,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const nameEl = card.querySelector('[data-party-field="name"]');
                 const addrEl = card.querySelector('[data-party-field="address"]');
                 const purokEl = card.querySelector('[data-party-field="purok"]');
+                const isTenantEl = card.querySelector('[data-party-field="is_tenant"]');
                 const contactEl = card.querySelector('[data-party-field="contact"]');
                 const fullName = String(nameEl?.value || '').trim().replace(/\s+/g, ' ');
                 const origId = String(card.dataset.origResidentId || '').trim();
@@ -1688,12 +1774,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     nameEl,
                     addrEl,
                     purokEl,
+                    isTenantEl,
                     contactEl,
                     residentId: keepResidentId,
                     fullName,
                     parsedName: splitFullNameParts(fullName),
                     address: String(addrEl?.value || '').trim(),
                     purok: String(purokEl?.value || '').trim(),
+                    isTenant: String(isTenantEl?.value ?? (String(purokEl?.value || '').trim() === 'Non-Resident' ? '2' : '0')),
                     contact: String(contactEl?.value || '').trim()
                 });
             });
@@ -1721,6 +1809,7 @@ document.addEventListener('DOMContentLoaded', () => {
             appendHidden('party_last_names[]', entry.parsedName.last);
             appendHidden('party_addresses[]', entry.address);
             appendHidden('party_puroks[]', entry.purok);
+            appendHidden('party_is_tenant[]', entry.isTenant);
             appendHidden('party_contacts[]', entry.contact);
         });
     }
@@ -1752,7 +1841,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const nameId = `extraPartyName_${uid}`;
         const addrId = `extraPartyAddr_${uid}`;
         const purokId = `extraPartyPurok_${uid}`;
+        const isTenantId = `extraPartyIsTenant_${uid}`;
         const contactId = `extraPartyContact_${uid}`;
+        const initTenantVal = String(prefill.isTenant ?? (prefill.purok === 'Non-Resident' ? '2' : '0'));
 
         card.innerHTML = `
             <div class="rd-extra-party-card-head">
@@ -1762,9 +1853,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 </span>
                 <button type="button" class="rd-remove-party-btn">Remove</button>
             </div>
-            <div class="form-group">
-                <label for="${nameId}">Full Name (First &amp; Last Name) <span class="req">*</span></label>
-                <input type="text" id="${nameId}" data-party-field="name" required maxlength="150" data-validate="name" placeholder="e.g. Juan Dela Cruz" value="${escHtml(fullNameVal)}">
+            <div class="agap-field-row-2">
+                <div class="form-group">
+                    <label for="${nameId}">Full Name (First &amp; Last Name) <span class="req">*</span></label>
+                    <input type="text" id="${nameId}" data-party-field="name" required maxlength="150" data-validate="name" placeholder="e.g. Juan Dela Cruz" value="${escHtml(fullNameVal)}">
+                </div>
+                <div class="form-group">
+                    <label for="${isTenantId}">Residency Status <span class="req">*</span></label>
+                    <select id="${isTenantId}" data-party-field="is_tenant" required>
+                        <option value="0" ${initTenantVal === '0' ? 'selected' : ''}>Resident (Permanent — Tumana)</option>
+                        <option value="1" ${initTenantVal === '1' ? 'selected' : ''}>Resident (Tenant / Renter — Tumana)</option>
+                        <option value="2" ${initTenantVal === '2' ? 'selected' : ''}>Non-Resident (Outside Tumana)</option>
+                    </select>
+                </div>
             </div>
             <div class="form-group">
                 <label for="${addrId}">${cfg.addressLabel}${addrReqMark}</label>
@@ -1784,9 +1885,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         cfg.listEl.appendChild(card);
         const purokSelectEl = card.querySelector(`[id="${purokId}"]`);
+        const isTenantSelectEl = card.querySelector(`[id="${isTenantId}"]`);
         if (prefill.purok) {
             selectMatchingPurok(purokSelectEl, prefill.purok);
+        } else if (initTenantVal === '2' && purokSelectEl) {
+            purokSelectEl.value = 'Non-Resident';
         }
+        bindPortalResidencyPurokSync(isTenantSelectEl, purokSelectEl);
 
         const bindSync = () => syncExtraPartiesHiddenInputs();
         card.querySelectorAll('input, select').forEach((el) => {
@@ -2650,9 +2755,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const rawCat = String(detail.category_name_display || detail.category_name || '').trim();
-            const catDisplay = (!rawCat || /pending barangay liso classification/i.test(rawCat))
+            const rawStatusLower = String(detail.status || '').trim().toLowerCase();
+            const isCategoryPendingReview = !rawCat || /pending barangay liso classification/i.test(rawCat);
+            const catDisplay = isCategoryPendingReview
                 ? 'Pending review by Barangay Lupon / LISO'
-                : rawCat;
+                : (['under review', 'needs information', 'filed'].includes(rawStatusLower) && Number(detail.is_draft || 0) !== 1
+                    ? `${rawCat} (Under Review — subject to Lupon jurisdiction check)`
+                    : rawCat);
 
             const parties = Array.isArray(detail.parties) ? detail.parties : [];
             const partyName = (p) => p.full_name || p.resident_name || [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(' ');
@@ -2917,8 +3026,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const addDetailsEl = document.getElementById('portalAdditionalDetails');
 
     const portalCatIdEl = document.getElementById('portalCatId');
+    const portalOtherCatWrapEl = document.getElementById('portalOtherCatWrap');
     const portalOtherCatSpecEl = document.getElementById('portalOtherCatSpec');
     const portalCaseTypeEl = document.getElementById('portalCaseType');
+
+    function syncPortalCategoryUi() {
+        if (!portalCatIdEl || !portalOtherCatWrapEl || !portalOtherCatSpecEl) return;
+        const selectedOpt = portalCatIdEl.options?.[portalCatIdEl.selectedIndex] || null;
+        const optText = (selectedOpt?.getAttribute('data-cat-name') || selectedOpt?.textContent || '').trim();
+        const hasChoice = Boolean(portalCatIdEl.value);
+        const isOther = hasChoice && /others|iba pa/i.test(optText);
+        portalOtherCatWrapEl.style.display = isOther ? 'block' : 'none';
+        portalOtherCatSpecEl.required = isOther;
+        if (!isOther) {
+            portalOtherCatSpecEl.value = '';
+            portalOtherCatSpecEl.classList.remove('input-error', 'is-invalid');
+        }
+    }
+
+    portalCatIdEl?.addEventListener('change', () => {
+        if (portalCaseTypeEl && !portalCatIdEl.value) {
+            portalCaseTypeEl.value = 'Civil';
+        }
+        syncPortalCategoryUi();
+    });
+    syncPortalCategoryUi();
     const portalAiUsedEl = document.getElementById('portalAiUsed');
     const portalAiVerifiedHiddenEl = document.getElementById('portalAiVerifiedHidden');
     const portalAiSugCatIdEl = document.getElementById('portalAiSuggestedCatId');
@@ -3178,12 +3310,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    function resetAiSuggestionSelection(hideCard = true) {
+    function resetAiSuggestionSelection(hideCard = true, resetCategoryInputs = false) {
         hasClickedAiSuggestion = false;
         currentReadonlyAiSuggestion = null;
-        if (portalCatIdEl) portalCatIdEl.value = '';
-        if (portalOtherCatSpecEl) portalOtherCatSpecEl.value = '';
-        if (portalCaseTypeEl) portalCaseTypeEl.value = 'Civil';
+        if (resetCategoryInputs) {
+            if (portalCatIdEl) portalCatIdEl.value = '';
+            if (portalOtherCatSpecEl) portalOtherCatSpecEl.value = '';
+            if (portalCaseTypeEl) portalCaseTypeEl.value = 'Civil';
+            syncPortalCategoryUi();
+        }
         if (portalAiUsedEl) portalAiUsedEl.value = '0';
         if (portalAiVerifiedHiddenEl) portalAiVerifiedHiddenEl.value = '0';
         if (portalAiSugCatIdEl) portalAiSugCatIdEl.value = '';
@@ -3319,10 +3454,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     <strong style="font-size:0.9rem; color:#102b2d;">${escHtml(primary.category_name)}</strong>
                     <span class="rd-ai-cand-meta">${escHtml(defaultCaseType)}</span>
                     <span class="rd-ai-cand-meta">${escHtml(primary.confidence || 'Medium')} Confidence</span>
+                    <button type="button" class="rd-chip-btn" id="btnPortalApplyAiCat" style="margin-left:auto;">Use Suggested Category</button>
                 </div>
                 ${secHtml}
                 ${subjHtml}
             `;
+            document.getElementById('btnPortalApplyAiCat')?.addEventListener('click', () => {
+                if (portalCatIdEl && primary.category_id) {
+                    portalCatIdEl.value = String(primary.category_id);
+                    syncPortalCategoryUi();
+                }
+                if (portalCaseTypeEl && (defaultCaseType === 'Civil' || defaultCaseType === 'Criminal')) {
+                    portalCaseTypeEl.value = defaultCaseType;
+                }
+                setStoryAiStatus(
+                    storyLang === 'tl'
+                        ? `Napili ang "${primary.category_name}" (Under Review — susuriin pa rin ng Lupon ang jurisdiction).`
+                        : `Selected "${primary.category_name}" (Under Review — Lupon Member will still verify jurisdiction).`,
+                    'success'
+                );
+            });
         }
 
         if (portalAiReasonEl) {
@@ -3424,11 +3575,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span class="rd-review-party-role">${escHtml(labelPrefix)} #${idx + 2}</span>
                 <dl class="rd-review-dl">
                     <div><dt>Full Name</dt><dd>${escHtml(item.fullName || '—')}</dd></div>
+                    <div><dt>Residency</dt><dd>${escHtml(formatPortalResidencyLabel(item.isTenant))}</dd></div>
                     <div><dt>Contact Number</dt><dd>${escHtml(item.contact || 'Not provided')}</dd></div>
                     <div class="rd-review-full"><dt>Address &amp; Purok</dt><dd>${escHtml([item.address, item.purok].filter(Boolean).join(' • ') || 'Not provided')}</dd></div>
                 </dl>
             </div>
         `).join('');
+
+        const selectedCatOpt = portalCatIdEl?.options?.[portalCatIdEl.selectedIndex] || null;
+        const selectedCatId = Number(portalCatIdEl?.value || 0);
+        const selectedCatNameRaw = (selectedCatOpt?.getAttribute('data-cat-name') || selectedCatOpt?.textContent || '').trim();
+        const otherCatVal = portalOtherCatSpecEl?.value?.trim() || '';
+        const selectedCatDisplay = selectedCatId > 0
+            ? ((/others|iba pa/i.test(selectedCatNameRaw) && otherCatVal) ? `Others: ${otherCatVal}` : selectedCatNameRaw)
+            : '';
+
+        const catReviewRowHtml = selectedCatDisplay
+            ? `<div class="rd-review-full"><dt>Selected Category (Optional &bull; Under Review)</dt><dd>${escHtml(selectedCatDisplay)} &mdash; Subject to Barangay Lupon jurisdiction check &amp; confirmation</dd></div>`
+            : `<div class="rd-review-full"><dt>Complaint Category</dt><dd>Not selected &mdash; To be classified by Barangay Lupon / LISO during jurisdiction review (Under Review)</dd></div>`;
 
         const aiSecSug = currentReadonlyAiSuggestion?.secondary?.category_name ? currentReadonlyAiSuggestion.secondary : null;
         const aiSugSummary = (hasClickedAiSuggestion && currentReadonlyAiSuggestion?.primary?.category_name)
@@ -3436,7 +3600,7 @@ document.addEventListener('DOMContentLoaded', () => {
             : '';
         const aiReviewRowHtml = aiSugSummary
             ? `<div class="rd-review-full"><dt>AI Suggestion (Read-Only)</dt><dd>${escHtml(aiSugSummary)} &mdash; Advisory only; final classification confirmed by Barangay Lupon / LISO</dd></div>`
-            : `<div class="rd-review-full"><dt>Complaint Classification</dt><dd>To be classified by Barangay Tumana Lupon / LISO (For Review)</dd></div>`;
+            : '';
 
         host.innerHTML = `
             <div class="rd-review-box">
@@ -3446,6 +3610,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <dl class="rd-review-dl">
                     <div><dt>${extraComps.length ? 'Primary Complainant' : 'Full Name'}</dt><dd>${escHtml(document.getElementById('portalCompFullName')?.value || '—')}</dd></div>
+                    <div><dt>Residency</dt><dd>${escHtml(formatPortalResidencyLabel(document.getElementById('portalCompIsTenant')?.value))}</dd></div>
                     <div><dt>Contact Number</dt><dd>${escHtml(document.getElementById('portalCompContact')?.value || '—')}</dd></div>
                     <div class="rd-review-full"><dt>Address &amp; Purok</dt><dd>${escHtml([document.getElementById('portalCompAddress')?.value?.trim(), document.getElementById('portalCompPurok')?.value].filter(Boolean).join(' • ') || '—')}</dd></div>
                 </dl>
@@ -3458,6 +3623,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <dl class="rd-review-dl">
                     <div><dt>${extraResps.length ? 'Primary Respondent' : 'Respondent Full Name'}</dt><dd>${escHtml(respFullNameEl?.value || '—')}</dd></div>
+                    <div><dt>Residency</dt><dd>${escHtml(formatPortalResidencyLabel(document.getElementById('portalRespIsTenant')?.value))}</dd></div>
                     <div><dt>Contact Number</dt><dd>${escHtml(document.getElementById('portalRespContact')?.value?.trim() || 'Not provided')}</dd></div>
                     <div class="rd-review-full"><dt>Actual Summons Address</dt><dd>${escHtml([document.getElementById('portalRespAddress')?.value?.trim(), document.getElementById('portalRespPurok')?.value].filter(Boolean).join(' • ') || '—')}</dd></div>
                 </dl>
@@ -3471,6 +3637,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <dl class="rd-review-dl">
                     <div><dt>When It Happened</dt><dd>${escHtml(dtFormatted)}</dd></div>
                     <div><dt>Where It Happened</dt><dd>${escHtml([document.getElementById('portalIncidentStreet')?.value?.trim(), document.getElementById('portalIncidentPurok')?.value].filter(Boolean).join(' • ') || '—')}</dd></div>
+                    ${catReviewRowHtml}
                     ${aiReviewRowHtml}
                     <div class="rd-review-full"><dt>Your Complaint Narrative</dt><dd style="white-space:pre-line;">${escHtml(narrativeEl?.value?.trim() || '—')}</dd></div>
                     <div><dt>Attached Files</dt><dd>${escHtml(attachedFilesLabel)}</dd></div>
@@ -3584,7 +3751,7 @@ document.addEventListener('DOMContentLoaded', () => {
         stopActiveVoiceCapture();
         clearExtraParties();
         lastAiCoverage = null;
-        resetAiSuggestionSelection(true);
+        resetAiSuggestionSelection(true, true);
         setStoryAiStatus('');
         syncRespondentNameParts();
         syncGuidedNarrative();
@@ -3653,10 +3820,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const extraRespParties = respParties.slice(1);
 
             const compContactEl = document.getElementById('portalCompContact');
+            const compIsTenantEl = document.getElementById('portalCompIsTenant');
             const compPurokEl = document.getElementById('portalCompPurok');
             const compAddrEl = document.getElementById('portalCompAddress');
             if (compContactEl && (compParty.resident_contact || compParty.preferred_contact)) {
                 compContactEl.value = compParty.resident_contact || compParty.preferred_contact;
+            }
+            if (compIsTenantEl) {
+                const ct = String(compParty.is_tenant ?? ((compParty.purok || '') === 'Non-Resident' ? '2' : '0'));
+                compIsTenantEl.value = ['0', '1', '2'].includes(ct) ? ct : '0';
             }
             if (compPurokEl && compParty.purok) {
                 selectMatchingPurok(compPurokEl, compParty.purok);
@@ -3669,9 +3841,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (respFullNameEl) respFullNameEl.value = respFullName;
             syncRespondentNameParts();
             const respAddrEl = document.getElementById('portalRespAddress');
+            const respIsTenantEl = document.getElementById('portalRespIsTenant');
             const respPurokEl = document.getElementById('portalRespPurok');
             const respContactEl = document.getElementById('portalRespContact');
             if (respAddrEl) respAddrEl.value = respParty.address || '';
+            if (respIsTenantEl) {
+                const rt = String(respParty.is_tenant ?? ((respParty.purok || '') === 'Non-Resident' ? '2' : '0'));
+                respIsTenantEl.value = ['0', '1', '2'].includes(rt) ? rt : '0';
+            }
             if (respPurokEl) selectMatchingPurok(respPurokEl, respParty.purok || '');
             if (respContactEl) respContactEl.value = respParty.resident_contact || respParty.preferred_contact || '';
 
@@ -3681,6 +3858,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     fullName: formatPartyName(p),
                     address: p.address || '',
                     purok: p.purok || '',
+                    isTenant: String(p.is_tenant ?? ((p.purok || '') === 'Non-Resident' ? '2' : '0')),
                     contact: p.resident_contact || p.preferred_contact || '',
                     skipFocus: true
                 });
@@ -3691,6 +3869,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     fullName: formatPartyName(p),
                     address: p.address || '',
                     purok: p.purok || '',
+                    isTenant: String(p.is_tenant ?? ((p.purok || '') === 'Non-Resident' ? '2' : '0')),
                     contact: p.resident_contact || p.preferred_contact || '',
                     skipFocus: true
                 });
@@ -3728,6 +3907,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 autoTitleHiddenEl.dataset.fromAi = '';
                 autoTitleHiddenEl.value = detail.complaint_title || '';
             }
+            const draftCatId = Number(detail.category_id || 0);
+            const draftOtherSpec = String(detail.other_category_specification || '').trim();
+            const isAutoPendingCat = /pending barangay liso classification/i.test(draftOtherSpec);
+            if (portalCatIdEl) {
+                portalCatIdEl.value = (draftCatId > 0 && !isAutoPendingCat) ? String(draftCatId) : '';
+            }
+            if (portalOtherCatSpecEl) {
+                portalOtherCatSpecEl.value = isAutoPendingCat ? '' : draftOtherSpec;
+            }
+            if (portalCaseTypeEl && (detail.case_type === 'Civil' || detail.case_type === 'Criminal')) {
+                portalCaseTypeEl.value = detail.case_type;
+            }
+            syncPortalCategoryUi();
             syncGuidedNarrative();
 
             const fineEl = document.getElementById('portalFineMax');
@@ -3846,6 +4038,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const el = document.getElementById(id);
             if (el) snap[id] = el.value;
         });
+        snap.profIsTenant = document.getElementById('profIsTenant')?.value ?? '0';
         snap.profPurok = document.getElementById('profPurok')?.value || '';
         snap.profLang = document.getElementById('profLang')?.value || 'fil';
         return snap;
@@ -3862,6 +4055,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (err) err.remove();
             }
         });
+        const tenantEl = document.getElementById('profIsTenant');
+        if (tenantEl && Object.prototype.hasOwnProperty.call(snap, 'profIsTenant')) {
+            tenantEl.value = snap.profIsTenant;
+        }
         const purokEl = document.getElementById('profPurok');
         if (purokEl && Object.prototype.hasOwnProperty.call(snap, 'profPurok')) {
             purokEl.value = snap.profPurok;
@@ -3890,7 +4087,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 el.setAttribute('readonly', 'readonly');
             }
         });
-        ['profPurok', 'profLang'].forEach((id) => {
+        ['profIsTenant', 'profPurok', 'profLang'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.disabled = !isEditing;
         });
@@ -3973,6 +4170,7 @@ document.addEventListener('DOMContentLoaded', () => {
             last_name: document.getElementById('profLastName')?.value?.trim() || '',
             email: document.getElementById('profEmail')?.value?.trim() || '',
             contact_no: document.getElementById('profContactNo')?.value?.trim() || '',
+            is_tenant: document.getElementById('profIsTenant')?.value ?? '0',
             purok: document.getElementById('profPurok')?.value || '',
             address: document.getElementById('profAddress')?.value?.trim() || '',
             preferred_language: document.getElementById('profLang')?.value || 'fil',
@@ -4037,6 +4235,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 syncVal('portalCompContact', payload.contact_no);
                 syncVal('portalCompAddress', payload.address);
                 syncVal('portalCompEmailHidden', payload.email);
+                const portalCompTenantEl = document.getElementById('portalCompIsTenant');
+                if (portalCompTenantEl) {
+                    portalCompTenantEl.value = ['0', '1', '2'].includes(String(payload.is_tenant)) ? String(payload.is_tenant) : '0';
+                    Array.from(portalCompTenantEl.options).forEach((o) => {
+                        o.defaultSelected = (o.value === portalCompTenantEl.value);
+                    });
+                }
                 const portalCompPurokEl = document.getElementById('portalCompPurok');
                 selectMatchingPurok(portalCompPurokEl, payload.purok);
                 if (portalCompPurokEl) {

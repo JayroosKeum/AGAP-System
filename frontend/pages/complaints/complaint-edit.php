@@ -1267,9 +1267,9 @@ include __DIR__ . '/../../layouts/header.php';
                         <div class="party-field-col">
                             <label for="modalIsTenant">Residency Status <span class="required-mark">*</span></label>
                             <select id="modalIsTenant" required>
-                                <option value="0">Permanent Resident</option>
-                                <option value="1">Tenant / Renter</option>
-                                <option value="2">Non-Resident</option>
+                                <option value="0">Resident (Permanent — Tumana)</option>
+                                <option value="1">Resident (Tenant / Renter — Tumana)</option>
+                                <option value="2">Non-Resident (Outside Tumana)</option>
                             </select>
                         </div>
                     </div>
@@ -3158,6 +3158,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_is_tenant[]" value="${escapeHtml(String(p.is_tenant ?? (p.purok === 'Non-Resident' ? '2' : '0')))}">
                     <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
                     <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
@@ -3177,6 +3178,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_is_tenant[]" value="${escapeHtml(String(p.is_tenant ?? (p.purok === 'Non-Resident' ? '2' : '0')))}">
                     <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
                     <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
@@ -3184,6 +3186,17 @@ document.addEventListener('DOMContentLoaded', () => {
             addContainer.innerHTML = html;
             document.dispatchEvent(new CustomEvent('agap:parties-updated'));
         }
+    }
+
+    function getResidencyPillHtml(p) {
+        const isTen = String(p?.is_tenant ?? (p?.purok === 'Non-Resident' ? '2' : '0'));
+        if (isTen === '2' || p?.purok === 'Non-Resident') {
+            return '<span class="party-role-pill" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-size: 0.68rem;">Non-Resident</span>';
+        }
+        if (isTen === '1') {
+            return '<span class="party-role-pill" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 0.68rem;">Resident • Tenant</span>';
+        }
+        return '<span class="party-role-pill" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.68rem;">Resident</span>';
     }
 
     function renderParties() {
@@ -3242,6 +3255,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <div class="party-summary-title-row">
                                         <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                         <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${getResidencyPillHtml(c)}
                                     </div>
                                 </div>
                             </div>
@@ -3338,6 +3352,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <div class="party-summary-title-row">
                                         <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                         <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${getResidencyPillHtml(r)}
                                         ${exceptionPill}
                                     </div>
                                 </div>

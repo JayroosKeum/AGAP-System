@@ -1530,6 +1530,13 @@ class Complaint
                         $pContact = trim((string)($data['party_contacts'][$index] ?? ''));
                         $pAddress = trim((string)($data['party_addresses'][$index] ?? ''));
                         $pPurok = trim((string)($data['party_puroks'][$index] ?? ''));
+                        $pIsTenantRaw = $data['party_is_tenant'][$index] ?? null;
+                        $pIsTenant = ($pIsTenantRaw !== null && $pIsTenantRaw !== '' && in_array((int)$pIsTenantRaw, [0, 1, 2], true))
+                            ? (int)$pIsTenantRaw
+                            : (strcasecmp($pPurok, 'Non-Resident') === 0 ? 2 : 0);
+                        if ($pIsTenant === 2 && $pPurok === '') {
+                            $pPurok = 'Non-Resident';
+                        }
 
                         $pLat = (isset($data['party_latitudes'][$index]) && $data['party_latitudes'][$index] !== '') ? (float)$data['party_latitudes'][$index] : null;
                         $pLng = (isset($data['party_longitudes'][$index]) && $data['party_longitudes'][$index] !== '') ? (float)$data['party_longitudes'][$index] : null;
@@ -1539,11 +1546,11 @@ class Complaint
                         if ($existingMatch) {
                             $pId = (int)$existingMatch['resident_id'];
                         } else {
-                            $pIsNonTumana = ($pPurok === 'Non-Resident' || ($pAddress !== '' && stripos($pAddress, 'tumana') === false));
+                            $pIsNonTumana = ($pIsTenant === 2 || strcasecmp($pPurok, 'Non-Resident') === 0 || ($pAddress !== '' && stripos($pAddress, 'tumana') === false));
                             $pBarangay = $pIsNonTumana ? 'Outside Tumana' : 'Tumana';
                             $pVerifiedFlag = $isOnlineSource ? 0 : 1;
-                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, address, home_latitude, home_longitude, house_street, purok, barangay, city_municipality, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                            $ins->execute([$pFirst, $pMiddle ?: null, $pLast, $pSuffix ?: null, $pContact ?: null, $pAddress ?: null, $pLat, $pLng, $pAddress ?: null, $pPurok ?: null, $pBarangay, 'Marikina City', $pVerifiedFlag]);
+                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, address, home_latitude, home_longitude, house_street, purok, barangay, city_municipality, is_tenant, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                            $ins->execute([$pFirst, $pMiddle ?: null, $pLast, $pSuffix ?: null, $pContact ?: null, $pAddress ?: null, $pLat, $pLng, $pAddress ?: null, $pPurok ?: null, $pBarangay, 'Marikina City', $pIsTenant, $pVerifiedFlag]);
                             $pId = (int)$this->conn->lastInsertId();
                         }
                     }
@@ -1557,6 +1564,10 @@ class Complaint
                     $pAddressVal = trim((string)($data['party_addresses'][$index] ?? ''));
                     $pPurokVal   = trim((string)($data['party_puroks'][$index] ?? ''));
                     $pContactVal = trim((string)($data['party_contacts'][$index] ?? ''));
+                    $pTenantPostRaw = $data['party_is_tenant'][$index] ?? null;
+                    $pTenantVal = ($pTenantPostRaw !== null && $pTenantPostRaw !== '' && in_array((int)$pTenantPostRaw, [0, 1, 2], true))
+                        ? (int)$pTenantPostRaw
+                        : (strcasecmp($pPurokVal, 'Non-Resident') === 0 ? 2 : null);
                     $pLatVal     = (isset($data['party_latitudes'][$index]) && $data['party_latitudes'][$index] !== '') ? (float)$data['party_latitudes'][$index] : null;
                     $pLngVal     = (isset($data['party_longitudes'][$index]) && $data['party_longitudes'][$index] !== '') ? (float)$data['party_longitudes'][$index] : null;
 
@@ -1568,7 +1579,7 @@ class Complaint
                             $pParams[] = $pAddressVal;
                             $pUpd[] = "house_street = ?";
                             $pParams[] = $pAddressVal;
-                            $isNonTum = ($pPurokVal === 'Non-Resident' || (stripos($pAddressVal, 'tumana') === false && (stripos($pAddressVal, 'marikina') !== false || stripos($pAddressVal, 'quezon') !== false || stripos($pAddressVal, 'pasig') !== false || stripos($pAddressVal, 'cainta') !== false || stripos($pAddressVal, 'san mateo') !== false)));
+                            $isNonTum = ($pTenantVal === 2 || strcasecmp($pPurokVal, 'Non-Resident') === 0 || (stripos($pAddressVal, 'tumana') === false && (stripos($pAddressVal, 'marikina') !== false || stripos($pAddressVal, 'quezon') !== false || stripos($pAddressVal, 'pasig') !== false || stripos($pAddressVal, 'cainta') !== false || stripos($pAddressVal, 'san mateo') !== false)));
                             $pUpd[] = "barangay = ?";
                             $pParams[] = $isNonTum ? 'Outside Tumana' : 'Tumana';
                             $pUpd[] = "city_municipality = ?";
@@ -1583,6 +1594,10 @@ class Complaint
                         if ($pPurokVal !== '') {
                             $pUpd[] = "purok = ?";
                             $pParams[] = $pPurokVal;
+                        }
+                        if ($pTenantVal !== null) {
+                            $pUpd[] = "is_tenant = ?";
+                            $pParams[] = $pTenantVal;
                         }
                         if ($pContactVal !== '') {
                             $pUpd[] = "contact_no = ?";

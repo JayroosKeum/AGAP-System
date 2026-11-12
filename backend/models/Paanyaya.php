@@ -97,6 +97,16 @@ class Paanyaya
             return null;
         }
 
+        $isTenant = 0;
+        if (isset($data[$prefix . '_is_tenant']) && in_array((int)$data[$prefix . '_is_tenant'], [0, 1, 2], true)) {
+            $isTenant = (int)$data[$prefix . '_is_tenant'];
+        } elseif (stripos($purok, 'Non-Resident') !== false) {
+            $isTenant = 2;
+        }
+        $normalizedPurok = ($isTenant === 2 && ($purok === '' || stripos($purok, 'Non-Resident') !== false))
+            ? 'Non-Resident'
+            : ($purok ?: null);
+
         require_once __DIR__ . '/Resident.php';
         $profile = [
             'first_name' => $firstName,
@@ -105,13 +115,24 @@ class Paanyaya
             'contact_no' => $contact ?: null,
             'email' => $email ?: null,
             'address' => $address ?: null,
-            'purok' => $purok ?: null,
+            'purok' => $normalizedPurok,
+            'is_tenant' => $isTenant,
             'home_latitude' => isset($data[$prefix . '_latitude']) && is_numeric($data[$prefix . '_latitude']) ? (float) $data[$prefix . '_latitude'] : null,
             'home_longitude' => isset($data[$prefix . '_longitude']) && is_numeric($data[$prefix . '_longitude']) ? (float) $data[$prefix . '_longitude'] : null,
         ];
         $residents = new Resident($this->conn);
         $existing = $residents->findDuplicate($profile);
-        return $existing ? (int) $existing['resident_id'] : $residents->create($profile);
+        $resolvedId = $existing ? (int) $existing['resident_id'] : $residents->create($profile);
+        if ($resolvedId > 0) {
+            try {
+                $brgyVal = $isTenant === 2 ? 'Outside Tumana' : 'Tumana';
+                $this->conn->prepare('UPDATE residents SET barangay = ?, is_tenant = ? WHERE resident_id = ?')
+                    ->execute([$brgyVal, $isTenant, $resolvedId]);
+            } catch (Throwable $e) {
+                error_log('Could not sync residency status on paanyaya party: ' . $e->getMessage());
+            }
+        }
+        return $resolvedId;
     }
 
     /**
@@ -265,6 +286,38 @@ class Paanyaya
             }
         }
 
+        // Enforce strict max 2 Paanyaya invitations per complaint or standalone party pair
+        $existingPairCount = 0;
+        if ($complaintId > 0) {
+            if (!empty($complaint['max_paanyaya_reached'])) {
+                return ['success' => false, 'message' => 'Dalawang beses lamang (max 2) pinahihintulutan ang Paanyaya bawat usapin.'];
+            }
+            $cntPaa = $this->conn->prepare("
+                SELECT COUNT(*) FROM paanyayas
+                WHERE (complaint_id = ? OR escalated_to_complaint_id = ?)
+                  AND COALESCE(status, 'Scheduled') <> 'Cancelled'
+            ");
+            $cntPaa->execute([$complaintId, $complaintId]);
+            $cntSes = $this->conn->prepare('SELECT COUNT(*) FROM paanyaya_sessions WHERE complaint_id = ?');
+            $cntSes->execute([$complaintId]);
+            $existingPairCount = max((int) $cntPaa->fetchColumn(), (int) $cntSes->fetchColumn());
+        } else {
+            $cntPair = $this->conn->prepare("
+                SELECT COUNT(*) FROM paanyayas
+                WHERE COALESCE(complaint_id, 0) = 0
+                  AND COALESCE(escalated_to_complaint_id, 0) = 0
+                  AND LOWER(TRIM(COALESCE(complainant_name, ''))) = LOWER(TRIM(?))
+                  AND LOWER(TRIM(COALESCE(invitee_name, ''))) = LOWER(TRIM(?))
+                  AND COALESCE(status, 'Scheduled') <> 'Cancelled'
+            ");
+            $cntPair->execute([$complainantName, $inviteeName]);
+            $existingPairCount = (int) $cntPair->fetchColumn();
+        }
+        if ($existingPairCount >= self::MAX_ATTEMPTS) {
+            return ['success' => false, 'message' => 'Dalawang beses lamang (max 2) pinahihintulutan ang Paanyaya bawat usapin.'];
+        }
+        $plannedAttempt = min(self::MAX_ATTEMPTS, max(1, $existingPairCount + 1));
+
         try {
             $this->conn->beginTransaction();
 
@@ -284,8 +337,8 @@ class Paanyaya
             $insPaanyaya = $this->conn->prepare("
                 INSERT INTO paanyayas (
                     complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
-                    status, venue, salaysay, scheduled_by
-                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', ?, ?, ?)
+                    status, attempt_number, venue, salaysay, scheduled_by
+                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', ?, ?, ?, ?)
             ");
             $insPaanyaya->execute([
                 $complaintId > 0 ? $complaintId : null,
@@ -293,6 +346,7 @@ class Paanyaya
                 $inviteeName,
                 $scheduledDate,
                 $scheduledTime,
+                $plannedAttempt,
                 $venue,
                 $salaysay !== '' ? $salaysay : null,
                 $userId
@@ -622,10 +676,7 @@ class Paanyaya
         }
 
         $ordinalFn = static function (int $n): string {
-            if ($n === 1) return '1st Paanyaya';
-            if ($n === 2) return '2nd Paanyaya';
-            if ($n === 3) return '3rd Paanyaya';
-            return $n . 'th Paanyaya';
+            return ($n >= 2) ? '2nd Paanyaya' : '1st Paanyaya';
         };
 
         $cases = [];
@@ -641,6 +692,10 @@ class Paanyaya
             });
 
             $count = count($items);
+            if ($count > self::MAX_ATTEMPTS) {
+                $items = [$items[0], $items[$count - 1]];
+                $count = count($items);
+            }
             $latest = $items[$count - 1];
             if ($count === 1 && !empty($latest['has_stage2_issued'])) {
                 $stage2Synthetic = $latest;
@@ -655,7 +710,7 @@ class Paanyaya
 
             $maxAttempt = 1;
             foreach ($items as $it) {
-                $maxAttempt = max($maxAttempt, (int) ($it['attempt_number'] ?? 1));
+                $maxAttempt = min(self::MAX_ATTEMPTS, max($maxAttempt, (int) ($it['attempt_number'] ?? 1)));
             }
 
             $hasSecondPaanyaya = ($count >= 2)
@@ -667,31 +722,81 @@ class Paanyaya
             $enrichedItems = [];
             foreach ($items as $idx => $it) {
                 $isLatest = ($idx === $count - 1);
-                $stepNumber = ($idx === 0 && (int) ($it['attempt_number'] ?? 1) >= 2)
-                    ? (int) $it['attempt_number']
-                    : ($idx + 1);
+                $stepNumber = min(
+                    self::MAX_ATTEMPTS,
+                    ($idx === 0 && (int) ($it['attempt_number'] ?? 1) >= 2)
+                        ? (int) $it['attempt_number']
+                        : ($idx + 1)
+                );
                 $rawRowStatus = trim((string) ($it['status'] ?? 'Scheduled'));
                 $isSuperseded = !$isLatest;
-                $isStepCompleted = $isSuperseded || in_array($rawRowStatus, ['Completed', 'Done', 'Resolved', 'Settled'], true);
 
                 $it['step_index'] = $stepNumber;
                 $it['step_label'] = $ordinalFn($stepNumber);
                 $it['is_latest'] = $isLatest;
                 $it['is_superseded'] = $isSuperseded;
                 $it['step_state'] = $isLatest ? 'current' : 'done';
-                $it['step_display_status'] = $isSuperseded
-                    ? 'Done'
-                    : ($isStepCompleted && $rawRowStatus === 'Completed' ? 'Done' : $rawRowStatus);
+                if (in_array($rawRowStatus, ['Resolved', 'Settled', 'Resolved at Paanyaya / Closed'], true)) {
+                    $stepDispStatus = 'Settled';
+                } elseif (in_array($rawRowStatus, ['Dismissed', 'Cancelled', 'DISMISSED_BARRED'], true)) {
+                    $stepDispStatus = 'Dismissed';
+                } elseif ($rawRowStatus === 'Escalated') {
+                    $stepDispStatus = 'Escalated';
+                } elseif ($isSuperseded || in_array($rawRowStatus, ['Completed', 'Done'], true)) {
+                    $stepDispStatus = '2nd Paanyaya Issued';
+                } else {
+                    $stepDispStatus = $rawRowStatus !== '' ? $rawRowStatus : 'Scheduled';
+                }
+                $it['step_display_status'] = $stepDispStatus;
                 $enrichedItems[] = $it;
             }
             if (!empty($enrichedItems)) {
                 $latest = $enrichedItems[count($enrichedItems) - 1];
             }
 
-            $rawWorkflowStatus = $latest['current_workflow_status'] ?? $latest['status'] ?? 'Scheduled';
-            $displayStatus = $hasSecondPaanyaya
-                ? 'Done'
-                : ($rawWorkflowStatus === 'Completed' ? 'Done' : $rawWorkflowStatus);
+            $latestAttempt = min(
+                self::MAX_ATTEMPTS,
+                max(1, (int) ($latest['step_index'] ?? ($latest['attempt_number'] ?? ($hasSecondPaanyaya ? 2 : 1))))
+            );
+            $latestAttemptLabel = $latestAttempt >= 2 ? '2nd Paanyaya' : '1st Paanyaya';
+            $latestOwnStatus = trim((string) ($latest['status'] ?? 'Scheduled'));
+            $rawWorkflowStatus = trim((string) ($latest['current_workflow_status'] ?? $latestOwnStatus));
+            $complaintWorkflowStatus = trim((string) ($latest['complaint_workflow_status'] ?? ''));
+
+            $settledAtPaanyaya = in_array($latestOwnStatus, ['Resolved', 'Settled'], true)
+                || $complaintWorkflowStatus === 'Resolved at Paanyaya / Closed';
+            $isEscalatedCase = $latestOwnStatus === 'Escalated'
+                || in_array($rawWorkflowStatus, ['Escalated', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued', 'RESPONDENT_DEFAULT', 'Repudiated'], true)
+                || !empty($latest['escalated_to_complaint_id'])
+                || (!empty($latest['linked_case_id']) && !in_array($latestOwnStatus, ['Dismissed', 'Resolved', 'Settled'], true));
+            $isDismissedCase = in_array($latestOwnStatus, ['Dismissed', 'Cancelled', 'DISMISSED_BARRED'], true)
+                || in_array($rawWorkflowStatus, ['Dismissed', 'Cancelled', 'DISMISSED_BARRED'], true);
+            $isSettledWorkflow = !$isEscalatedCase && !$isDismissedCase
+                && in_array($rawWorkflowStatus, ['Resolved', 'Settled'], true);
+
+            if ($settledAtPaanyaya || $isSettledWorkflow) {
+                $displayStatus = "Settled ({$latestAttemptLabel})";
+            } elseif ($isDismissedCase) {
+                $displayStatus = 'Dismissed';
+            } elseif ($isEscalatedCase) {
+                $displayStatus = 'Escalated';
+            } elseif ($hasSecondPaanyaya || $latestAttempt >= 2) {
+                $displayStatus = '2nd Paanyaya';
+            } else {
+                $displayStatus = '1st Paanyaya';
+            }
+
+            if (!empty($enrichedItems)) {
+                $lastIdx = count($enrichedItems) - 1;
+                if ($settledAtPaanyaya || $isSettledWorkflow) {
+                    $enrichedItems[$lastIdx]['step_display_status'] = 'Settled';
+                } elseif ($isDismissedCase) {
+                    $enrichedItems[$lastIdx]['step_display_status'] = 'Dismissed';
+                } elseif ($isEscalatedCase) {
+                    $enrichedItems[$lastIdx]['step_display_status'] = 'Escalated';
+                }
+                $latest = $enrichedItems[$lastIdx];
+            }
 
             $cases[] = [
                 'group_key' => $groupKey,
@@ -735,15 +840,15 @@ class Paanyaya
 
         if ($status !== null && $status !== '' && $status !== 'all') {
             $cases = array_values(array_filter($cases, static function (array $case) use ($status): bool {
-                $st = $case['display_status'];
+                $st = (string) ($case['display_status'] ?? '');
                 if (in_array($status, ['Resolved', 'Completed', 'Settled', 'Done'], true)) {
-                    return in_array($st, ['Done', 'Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true);
+                    return str_starts_with($st, 'Settled') || in_array($st, ['Resolved', 'Settled'], true);
                 }
-                if (in_array($status, ['Cancelled', 'Failed', 'Escalated'], true)) {
-                    return in_array($st, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true);
+                if (in_array($status, ['Cancelled', 'Failed', 'Escalated', 'Dismissed'], true)) {
+                    return in_array($st, ['Escalated', 'Dismissed', 'Cancelled', 'Failed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Archived'], true);
                 }
                 if (in_array($status, ['Scheduled', 'Pending'], true)) {
-                    return in_array($st, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true);
+                    return in_array($st, ['1st Paanyaya', '2nd Paanyaya', 'Scheduled', 'Pending'], true);
                 }
                 return $st === $status;
             }));
@@ -2859,19 +2964,32 @@ class Paanyaya
             ? $data['complainant_attended'] : 'Present';
         $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Absent'], true)
             ? $data['invitee_attended'] : 'Present';
-        $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
-        $dialogueNotes = trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
+        $hasNotesKey = array_key_exists('notes', $data);
+        $notesInput = trim((string)($data['notes'] ?? ''));
+        $salaysay = $hasNotesKey
+            ? $notesInput
+            : trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
+        $dialogueNotes = $hasNotesKey
+            ? $notesInput
+            : trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
         $action = trim((string)($data['action'] ?? 'save_attendance'));
 
         $currentStatus = (string)($paanyaya['status'] ?? '');
-        if (in_array($currentStatus, ['Resolved', 'Settled', 'Completed'], true) && in_array($action, ['schedule_second_paanyaya', 'escalate'], true)) {
+        if (in_array($currentStatus, ['Resolved', 'Settled', 'Completed'], true) && in_array($action, ['schedule_second_paanyaya', 'escalate', 'dismiss'], true)) {
             return [
                 'success' => false,
                 'message' => 'Naka-lock ang Paanyaya dahil naresolba na ito sa Kasunduan (Settled).'
             ];
         }
 
-        if ($currentStatus === 'Escalated' && in_array($action, ['schedule_second_paanyaya', 'resolve', 'escalate'], true)) {
+        if ($currentStatus === 'Dismissed' && in_array($action, ['schedule_second_paanyaya', 'resolve', 'escalate', 'dismiss'], true)) {
+            return [
+                'success' => false,
+                'message' => 'Naka-lock ang Paanyaya dahil na-dismiss na ito.'
+            ];
+        }
+
+        if ($currentStatus === 'Escalated' && in_array($action, ['schedule_second_paanyaya', 'resolve', 'escalate', 'dismiss'], true)) {
             return [
                 'success' => false,
                 'message' => 'Naka-lock ang Paanyaya dahil opisyal na itong nai-akyat sa Mediation.'
@@ -2990,6 +3108,44 @@ class Paanyaya
             return [
                 'success' => true,
                 'message' => 'Matagumpay na naitala ang kasunduan at naging "Resolved" ang Paanyaya.'
+            ];
+        }
+
+        // Handle Dismissal (e.g. Complainant Absent on 2nd Paanyaya)
+        if ($action === 'dismiss') {
+            $upd = $this->conn->prepare("
+                UPDATE paanyayas
+                SET complainant_attended = ?,
+                    invitee_attended = ?,
+                    salaysay = ?,
+                    dialogue_notes = ?,
+                    status = 'Dismissed',
+                    attendance_recorded_at = NOW(),
+                    updated_at = NOW()
+                WHERE paanyaya_id = ?
+            ");
+            $upd->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
+
+            $complaintId = (int)($paanyaya['complaint_id'] ?? 0);
+            if ($complaintId > 0) {
+                $this->conn->prepare("
+                    UPDATE complaints
+                    SET status = 'Dismissed',
+                        resolved_without_docketing = 1,
+                        ltia_category = 'Dismissed at Paanyaya',
+                        paanyaya_1_outcome = COALESCE(NULLIF(paanyaya_1_outcome, ''), 'Dismissed'),
+                        updated_at = NOW()
+                    WHERE complaint_id = ?
+                ")->execute([$complaintId]);
+            }
+
+            $this->audit->log($userId, "Dismissed Paanyaya #{$paanyayaId} (Complainant Absent).", 'Paanyaya', $complaintId > 0 ? $complaintId : $paanyayaId);
+
+            return [
+                'success' => true,
+                'action' => 'dismissed',
+                'status' => 'Dismissed',
+                'message' => 'Opisyal nang na-dismiss ang usapin dahil hindi nakadalo ang Nagpaanyaya.'
             ];
         }
 
@@ -3256,10 +3412,41 @@ class Paanyaya
             return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
         }
 
-        if ((int)($paanyaya['attempt_number'] ?? 1) >= 2) {
+        if ((int)($paanyaya['attempt_number'] ?? 1) >= self::MAX_ATTEMPTS) {
             return [
                 'success' => false,
                 'message' => 'Ang usaping ito ay nasa Ikalawang Paanyaya (Attempt 2) na. Alinsunod sa proseso ng Katarungang Pambarangay, dalawang beses lamang ang Paanyaya bago umakyat sa Mediation.'
+            ];
+        }
+
+        $linkedComplaintId = (int) ($paanyaya['complaint_id'] ?? 0);
+        if ($linkedComplaintId > 0) {
+            $cntStmt = $this->conn->prepare("
+                SELECT COUNT(*) FROM paanyayas
+                WHERE (complaint_id = ? OR escalated_to_complaint_id = ?)
+                  AND COALESCE(status, 'Scheduled') <> 'Cancelled'
+            ");
+            $cntStmt->execute([$linkedComplaintId, $linkedComplaintId]);
+            $existingTotal = (int) $cntStmt->fetchColumn();
+        } else {
+            $cntStmt = $this->conn->prepare("
+                SELECT COUNT(*) FROM paanyayas
+                WHERE COALESCE(complaint_id, 0) = 0
+                  AND COALESCE(escalated_to_complaint_id, 0) = 0
+                  AND LOWER(TRIM(COALESCE(complainant_name, ''))) = LOWER(TRIM(?))
+                  AND LOWER(TRIM(COALESCE(invitee_name, ''))) = LOWER(TRIM(?))
+                  AND COALESCE(status, 'Scheduled') <> 'Cancelled'
+            ");
+            $cntStmt->execute([
+                (string) ($paanyaya['complainant_name'] ?? ''),
+                (string) ($paanyaya['invitee_name'] ?? ''),
+            ]);
+            $existingTotal = (int) $cntStmt->fetchColumn();
+        }
+        if ($existingTotal >= self::MAX_ATTEMPTS) {
+            return [
+                'success' => false,
+                'message' => 'Dalawang beses lamang (max 2) pinahihintulutan ang Paanyaya bawat usapin.'
             ];
         }
 
@@ -3276,7 +3463,14 @@ class Paanyaya
             ? $data['complainant_attended'] : 'Present';
         $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Absent'], true)
             ? $data['invitee_attended'] : 'Absent';
-        $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
+        $hasNotesKey = array_key_exists('notes', $data);
+        $notesInput = trim((string)($data['notes'] ?? ''));
+        $salaysay = $hasNotesKey
+            ? $notesInput
+            : trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
+        $dialogueNotes = $hasNotesKey
+            ? $notesInput
+            : trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
 
         try {
             $this->conn->beginTransaction();
@@ -3287,12 +3481,13 @@ class Paanyaya
                 SET complainant_attended = ?,
                     invitee_attended = ?,
                     salaysay = ?,
+                    dialogue_notes = ?,
                     status = 'Completed',
                     attendance_recorded_at = NOW(),
                     updated_at = NOW()
                 WHERE paanyaya_id = ?
             ");
-            $updFirst->execute([$compAttended, $invAttended, $salaysay, $paanyayaId]);
+            $updFirst->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
 
             // 2. Insert 2nd Paanyaya with attempt_number = 2
             $venue = !empty($paanyaya['venue']) ? $paanyaya['venue'] : 'Tanggapan ng Barangay Tumana';

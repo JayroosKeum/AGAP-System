@@ -11918,6 +11918,12 @@ function printKpFormModalDirect(caseId, formCode) {
 }
 window.printKpFormModalDirect = printKpFormModalDirect;
 
+function canScreenLisoClassification() {
+    return typeof window.__agapCanScreenClassification === 'boolean'
+        ? window.__agapCanScreenClassification
+        : !window.__agapLuponReadOnly;
+}
+
 function renderLisoVerificationBanner(data) {
     const banner = document.getElementById('lisoVerificationBanner');
     if (!banner || !data) return;
@@ -11977,10 +11983,10 @@ function renderLisoVerificationBanner(data) {
         if (aiSection) aiSection.style.display = 'none';
     } else {
         banner.style.borderLeftColor = '#2563eb';
-        if (titleEl) titleEl.textContent = `LISO Preliminary Screening (${status})`;
-        if (subEl) subEl.textContent = 'Check submitted 5Ws, Salaysay, jurisdiction indicators, and advisory category suggestions before endorsing to mandatory Paanyaya.';
+        if (titleEl) titleEl.textContent = `LISO / Lupon Jurisdiction & Category Screening (${status})`;
+        if (subEl) subEl.textContent = 'Check submitted 5Ws, Salaysay, R.A. 7160 jurisdiction indicators, and complainant-selected or advisory category before endorsing to mandatory Paanyaya.';
         if (btnPaanyaya) btnPaanyaya.style.display = 'none';
-        if (actionWrap) actionWrap.style.display = window.__agapLuponReadOnly ? 'none' : 'flex';
+        if (actionWrap) actionWrap.style.display = canScreenLisoClassification() ? 'flex' : 'none';
         if (aiSection) {
             aiSection.style.display = 'block';
             populateLisoAiScreeningPanel(data);
@@ -12027,7 +12033,7 @@ function renderLisoAiSuggestionCard(sug, sourceBadgeText, opts = {}) {
         if (sug.secondary && sug.secondary.category_id && sug.secondary.category_name) {
             secEl.style.display = 'block';
             secEl.innerHTML = `<span><strong>Suggested 2nd Category:</strong> ${escapeHtml(sug.secondary.category_name)}${sug.secondary.case_type ? ` (${escapeHtml(sug.secondary.case_type)})` : ''} &mdash; ${escapeHtml(sug.secondary.reason || '')}</span>`
-                + (!window.__agapLuponReadOnly
+                + (canScreenLisoClassification()
                     ? ` <button type="button" id="btnLisoApplySecondaryAi" class="btn-secondary btn-sm" style="margin-left:6px; padding:2px 8px; font-size:0.73rem;">+ Apply as Category 2</button>`
                     : '');
             const applySecBtn = document.getElementById('btnLisoApplySecondaryAi');
@@ -12071,13 +12077,13 @@ function renderLisoAiSuggestionCard(sug, sourceBadgeText, opts = {}) {
                     data-liso-pick-title="${idx === 0 ? escapeHtml(sug.suggested_title || '') : ''}"
                     data-liso-pick-type="${idx === 0 ? escapeHtml(sug.case_type || 'Civil') : ''}"
                     data-liso-pick-reason="${escapeHtml(cand.reason || '')}"
-                    ${window.__agapLuponReadOnly ? 'disabled' : ''}
+                    ${canScreenLisoClassification() ? '' : 'disabled'}
                     style="font-size: 0.75rem; padding: 4px 9px; ${idx === 0 ? 'border-color:#2563eb; color:#1e40af; background:#eff6ff; font-weight:700;' : ''}">
                 ${idx === 0 ? 'Proposed Primary: ' : 'Alternative: '}${escapeHtml(cand.category_name)} (${escapeHtml(cand.confidence || 'Medium')})
             </button>
         `).join('');
 
-        if (!window.__agapLuponReadOnly) {
+        if (canScreenLisoClassification()) {
             chipsEl.querySelectorAll('[data-liso-pick-cat]').forEach((chipBtn) => {
                 chipBtn.addEventListener('click', () => {
                     const catId = chipBtn.getAttribute('data-liso-pick-cat') || '';
@@ -12107,6 +12113,7 @@ function populateLisoAiScreeningPanel(data) {
     const origCat = document.getElementById('lisoOrigCategoryPreview');
     const origNar = document.getElementById('lisoOrigNarrativePreview');
     const origRes = document.getElementById('lisoOrigResolutionPreview');
+    const origJur = document.getElementById('lisoOrigJurisdictionBox');
     const catSel = document.getElementById('lisoCategorySelect');
     const secCatSel = document.getElementById('lisoSecondaryCategorySelect');
     const typeSel = document.getElementById('lisoCaseTypeSelect');
@@ -12114,17 +12121,28 @@ function populateLisoAiScreeningPanel(data) {
     const otherInp = document.getElementById('lisoOtherCategorySpec');
     const secOtherInp = document.getElementById('lisoSecondaryOtherCategorySpec');
 
+    const isPendingCat = String(data.other_category_specification || '').trim() === 'Pending Barangay LISO Classification';
+
     if (origCat) {
-        origCat.textContent = `${data.case_type || 'Civil'} — ${data.category_name_display || data.category_name || 'Uncategorized'} (${data.complaint_title || 'Untitled'})`;
+        if (isPendingCat) {
+            origCat.textContent = `${data.case_type || 'Civil'} — Not selected by resident (Pending Jurisdiction & Category Review) · Title: ${data.complaint_title || 'Untitled'}`;
+        } else {
+            origCat.textContent = `${data.case_type || 'Civil'} — Complainant-selected: ${data.category_name_display || data.category_name || 'Uncategorized'} (${data.status || 'Under Review'}) · Title: ${data.complaint_title || 'Untitled'}`;
+        }
     }
     if (origNar) origNar.textContent = data.narrative || '(No narrative provided)';
     if (origRes) origRes.textContent = data.requested_resolution || '(None specified)';
+    if (origJur) {
+        const venueText = [data.incident_purok, data.incident_location].filter(Boolean).join(' • ') || 'Barangay Tumana (location not specified)';
+        const screeningNotes = String(data.screening_notes || '').trim();
+        origJur.textContent = `Venue: ${venueText}\n${screeningNotes || 'No automatic jurisdiction flags — verify R.A. 7160 residency, venue & category coverage manually.'}`;
+    }
 
-    if (catSel && data.category_id) catSel.value = String(data.category_id);
+    if (catSel) catSel.value = (!isPendingCat && data.category_id) ? String(data.category_id) : '';
     if (secCatSel) secCatSel.value = data.secondary_category_id ? String(data.secondary_category_id) : '';
     if (typeSel && (data.case_type === 'Civil' || data.case_type === 'Criminal')) typeSel.value = data.case_type;
     if (titleInp && data.complaint_title) titleInp.value = data.complaint_title;
-    if (otherInp) otherInp.value = data.other_category_specification || '';
+    if (otherInp) otherInp.value = isPendingCat ? '' : (data.other_category_specification || '');
     if (secOtherInp) secOtherInp.value = data.secondary_other_category_specification || '';
     toggleLisoOtherCategoryInput();
 
