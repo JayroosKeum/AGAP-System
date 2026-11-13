@@ -15,6 +15,8 @@ $currentStage = $pData['current_stage'] ?? 'Paanyaya 1';
 $isP2 = ($currentStage === 'Paanyaya 2');
 $stage1 = $pData['stage1'] ?? null;
 $stage2 = $pData['stage2'] ?? null;
+$preparedFirstInvitation = !$isP2 && !empty($stage1['issued_at'])
+    && PaanyayaPreparationService::hasReadyInvitation((new Database())->connect(), $complaintId);
 
 // Streamlined initial field values
 $complainantNameVal = $pData['complainant_name'] ?? 'NAGPAANYAYA';
@@ -421,7 +423,7 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
             <?php endif; ?>
 
             <!-- Card 1: Streamlined Paanyaya Inputs -->
-            <div class="paanyaya-card-box">
+            <div class="paanyaya-card-box" <?= $preparedFirstInvitation ? 'hidden' : '' ?>>
                 <h3>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
                     Paanyaya Form Fields (Streamlined)
@@ -596,23 +598,30 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
             <div class="preview-panel-header">
                 <span class="preview-panel-title">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                    Live Document Preview (A4 / Legal)
+                    <?= $preparedFirstInvitation ? 'Served invitation' : 'Live Document Preview (A4 / Legal)' ?>
                 </span>
+                <?php if (!$preparedFirstInvitation): ?>
                 <div style="display: flex; gap: 8px;">
                     <button type="button" class="btn-case-outline" style="font-size: 0.8rem; padding: 4px 10px;" onclick="printPreviewIframe()">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: middle; margin-right: 4px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
                         Print Document
                     </button>
                 </div>
+                <?php endif; ?>
             </div>
 
-            <!-- Iframe Embedding paanyaya-preview.php -->
+            <?php if ($preparedFirstInvitation): ?>
+                <?php if (in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)): ?>
+                    <p><a href="../complaints/complaint-details.php?id=<?= $complaintId ?>#paanyaya-preparation">View the served invitation and proof on the complaint</a></p>
+                <?php endif; ?>
+            <?php else: ?>
             <div class="preview-iframe-wrapper">
                 <iframe id="paanyayaIframePreview"
                         src="../../components/documents/paanyaya-preview.php?complaint_id=<?= $complaintId ?>&stage_type=<?= urlencode($currentStage) ?>&complainant_name=<?= urlencode($complainantNameVal) ?>&respondent_name=<?= urlencode($respondentNameVal) ?>&tanggapan=<?= urlencode($tanggapanVal) ?>&petsa=<?= urlencode((string)$petsaVal) ?>&buwan=<?= urlencode((string)$buwanVal) ?>&taon=<?= urlencode((string)$taonVal) ?>&araw=<?= urlencode((string)$arawVal) ?>&oras=<?= urlencode((string)$orasVal) ?>&salaysay=<?= urlencode($salaysayVal) ?>&has_e_signature=<?= $hasESignatureVal ? '1' : '0' ?>"
                         title="Live Paanyaya Preview">
                 </iframe>
             </div>
+            <?php endif; ?>
         </div>
 
     </div>

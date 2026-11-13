@@ -70,9 +70,15 @@ include '../../layouts/header.php';
                             <a href="../complaints/complaint-details.php?id=<?= (int) $intake['complaint_id'] ?>#paanyaya-preparation">
                                 <strong><?= htmlspecialchars($intake['intake_reference'] ?: 'Intake #' . $intake['complaint_id']) ?></strong>
                                 <?= htmlspecialchars($intake['complaint_title']) ?>
+                                <?php if ((int) $intake['invitation_number'] === 2): ?> · Second Paanyaya<?php endif; ?>
                             </a>
                             <span class="paanyaya-prep-status">
-                                <?= $intake['ready_at'] ? 'Ready for Release' : ($intake['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation') ?>
+                                <?= match (true) {
+                                    !$intake['ready_at'] => $intake['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation',
+                                    $intake['service_outcome'] === 'Not Delivered' => 'Delivery unsuccessful',
+                                    $intake['service_attempt_id'] !== null => 'Assigned for delivery',
+                                    default => 'Ready for Release',
+                                } ?>
                             </span>
                         </li>
                     <?php endforeach; ?>

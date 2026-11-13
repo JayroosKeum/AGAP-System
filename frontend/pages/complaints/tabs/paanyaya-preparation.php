@@ -1,12 +1,15 @@
 <?php
-$escapePrep = static fn (?string $value): string => htmlspecialchars($value ?? '', ENT_QUOTES, 'UTF-8');
+$escapePrep = static fn ($value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $prepEndpoint = '../../../backend/api/paanyaya/preparation.php';
 $savedAppointment = $preparation['appointment_at'] ?? '';
 $formValues = $preparationFlash['old'] ?? [];
 $prepCsrf = $escapePrep(CsrfService::token());
+$latestService = $paanyayaServiceHistory[0] ?? null;
+$serviceOutcome = $latestService['outcome'] ?? null;
+$serviceEndpoint = '../../../backend/api/paanyaya/service.php';
 ?>
-<section class="paanyaya-preparation" id="paanyaya-preparation" aria-labelledby="paanyaya-prep-title">
-    <h2 id="paanyaya-prep-title">Paanyaya Preparation</h2>
+<section class="paanyaya-preparation" id="paanyaya-invitation-<?= $invitationNumber ?>" aria-labelledby="paanyaya-prep-title-<?= $invitationNumber ?>">
+    <h2 id="paanyaya-prep-title-<?= $invitationNumber ?>"><?= $invitationNumber === 2 ? 'Second Paanyaya' : 'Paanyaya Preparation' ?></h2>
 
     <?php if ($preparationFlash): ?>
         <p role="<?= $preparationFlash['type'] === 'error' ? 'alert' : 'status' ?>">
@@ -16,7 +19,14 @@ $prepCsrf = $escapePrep(CsrfService::token());
 
     <?php if ($preparation): ?>
         <p class="paanyaya-prep-status">
-            <?= $preparation['ready_at'] ? 'Ready for Release' : ($preparation['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation') ?>
+            <?= match (true) {
+                $paanyayaMinutes !== null => 'Dialogue recorded',
+                $serviceOutcome === 'Delivered' => 'Delivered',
+                !$preparation['ready_at'] => $preparation['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation',
+                $serviceOutcome === 'Not Delivered' => 'Delivery unsuccessful',
+                $latestService !== null => 'Assigned for delivery',
+                default => 'Ready for Release',
+            } ?>
         </p>
         <?php if (!empty($preparation['review_notes'])): ?>
             <p><strong>LISO screening notes</strong> <?= $escapePrep($preparation['review_notes']) ?></p>
@@ -40,6 +50,7 @@ $prepCsrf = $escapePrep(CsrfService::token());
             <form method="post" action="<?= $prepEndpoint ?>">
                 <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                 <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
+                <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
                 <input type="hidden" name="action" value="generate">
                 <input type="hidden" name="party_version" value="<?= PaanyayaPreparationService::partyVersion($preparationParties) ?>">
                 <div class="paanyaya-prep-fields">
@@ -65,10 +76,10 @@ $prepCsrf = $escapePrep(CsrfService::token());
         <?php endif; ?>
 
         <?php if ($preparation['prepared_at']): ?>
-            <?php $pdfUrl = $prepEndpoint . '?complaint_id=' . $complaintId . '&version=' . $preparation['document_version']; ?>
+            <?php $pdfUrl = $prepEndpoint . '?complaint_id=' . $complaintId . '&invitation_number=' . $invitationNumber . '&version=' . $preparation['document_version']; ?>
             <p><strong>Appointment</strong> <?= $escapePrep(date('M j, Y, g:i A', strtotime($savedAppointment))) ?> · <?= $escapePrep($preparation['venue']) ?></p>
             <p><strong>Generated</strong> <?= $escapePrep($preparation['prepared_at']) ?> · <?= $escapePrep($preparation['prepared_by_name'] ?: 'Staff account') ?></p>
-            <details class="paanyaya-prep-preview">
+            <details class="paanyaya-prep-preview" <?= !$preparation['ready_at'] ? 'open' : '' ?>>
                 <summary>Preview and print invitation</summary>
                 <p>Use the PDF viewer’s print control. <a href="<?= $escapePrep($pdfUrl) ?>" target="_blank" rel="noopener">Open PDF separately</a></p>
                 <iframe title="Prepared Paanyaya invitation PDF" src="<?= $escapePrep($pdfUrl) ?>" loading="lazy"></iframe>
@@ -79,9 +90,76 @@ $prepCsrf = $escapePrep(CsrfService::token());
                 <form method="post" action="<?= $prepEndpoint ?>">
                     <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                     <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
+                    <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
                     <input type="hidden" name="action" value="ready">
                     <input type="hidden" name="document_version" value="<?= $escapePrep($preparation['document_version']) ?>">
                     <button type="submit" class="btn-case-primary">Mark Ready for Release</button>
+                </form>
+            <?php endif; ?>
+        <?php endif; ?>
+
+        <?php if ($paanyayaServiceUnavailable): ?>
+            <p role="status">Paanyaya service is currently unavailable.</p>
+        <?php elseif ($preparation['prepared_at']): ?>
+            <?php if ($paanyayaServiceHistory): ?>
+                <h3>Service history</h3>
+                <ul class="paanyaya-prep-list">
+                    <?php foreach ($paanyayaServiceHistory as $attempt): ?>
+                        <li>
+                            <div>
+                                <strong><?= $escapePrep($attempt['outcome'] ?? 'Assigned for delivery') ?></strong>
+                                <div><?= $escapePrep($attempt['server_name']) ?> · Released <?= $escapePrep($attempt['released_at']) ?> by <?= $escapePrep($attempt['released_by_name'] ?: 'Staff account') ?></div>
+                                <?php if ($attempt['recorded_at']): ?>
+                                    <div>Result recorded <?= $escapePrep($attempt['recorded_at']) ?></div>
+                                <?php endif; ?>
+                                <?php if ($attempt['notes']): ?>
+                                    <div><?= nl2br($escapePrep($attempt['notes'])) ?></div>
+                                <?php endif; ?>
+                            </div>
+                            <?php if ($attempt['proof_mime']): ?>
+                                <a href="<?= $serviceEndpoint ?>?view=proof&amp;attempt_id=<?= (int) $attempt['attempt_id'] ?>" target="_blank" rel="noopener">View proof image</a>
+                            <?php endif; ?>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+
+            <?php if ($serviceOutcome === 'Delivered'): ?>
+                <p>Delivery confirmed for the <?= $escapePrep(date('M j, Y, g:i a', strtotime($savedAppointment))) ?> dialogue.</p>
+                <?php include __DIR__ . '/paanyaya-dialogue.php'; ?>
+            <?php elseif ($preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $serviceOutcome === 'Not Delivered')): ?>
+                <h3><?= $latestService ? 'Coordinate another delivery attempt' : 'Release invitation' ?></h3>
+                <?php if (!$paanyayaServers): ?>
+                    <p>No active summons servers are available.</p>
+                <?php elseif (strtotime($savedAppointment) > time()): ?>
+                    <form method="post" action="<?= $serviceEndpoint ?>">
+                        <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
+                        <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
+                        <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
+                        <input type="hidden" name="action" value="release">
+                        <input type="hidden" name="document_version" value="<?= $escapePrep($preparation['document_version']) ?>">
+                        <div class="paanyaya-prep-fields">
+                            <label>Summons server
+                                <select name="assigned_to" required>
+                                    <option value="">Select a summons server</option>
+                                    <?php foreach ($paanyayaServers as $server): ?>
+                                        <option value="<?= (int) $server['user_id'] ?>"><?= $escapePrep($server['full_name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </label>
+                        </div>
+                        <button type="submit" class="btn-case-primary"><?= $latestService ? 'Assign next attempt' : 'Release and assign' ?></button>
+                    </form>
+                <?php else: ?>
+                    <p>The appointment has passed. Revise the invitation before assigning delivery.</p>
+                <?php endif; ?>
+                <form class="paanyaya-service-form" method="post" action="<?= $prepEndpoint ?>">
+                    <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
+                    <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
+                    <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
+                    <input type="hidden" name="action" value="revise">
+                    <input type="hidden" name="document_version" value="<?= $escapePrep($preparation['document_version']) ?>">
+                    <button type="submit" class="btn-case-status">Revise invitation</button>
                 </form>
             <?php endif; ?>
         <?php endif; ?>

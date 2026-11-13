@@ -21,24 +21,33 @@ if (!in_array($method, ['GET', 'POST'], true)) {
 
 $input = $method === 'POST' ? $_POST : $_GET;
 $id = filter_var($input['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-if (!$id) {
+$number = filter_var($input['invitation_number'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 2]]);
+if (!$id || !$number) {
     http_response_code(400);
     exit('A valid intake is required.');
 }
 
 $service = new PaanyayaPreparationService((new Database())->connect());
 if ($method === 'GET') {
+    $version = $_GET['version'] ?? null;
+    if ($version !== null && (!is_string($version) || !preg_match('/\A[a-f0-9]{64}\z/', $version))) {
+        http_response_code(400);
+        exit('A valid invitation version is required.');
+    }
+    header('Cache-Control: private, no-store');
     try {
-        $pdf = $service->document($id);
+        $pdf = $service->document($id, $version, $number);
         if ($pdf === null) {
             http_response_code(404);
             exit('Generate the invitation before opening the PDF.');
         }
         header('Content-Type: application/pdf');
         header('Content-Disposition: inline; filename="Paanyaya-Intake-' . $id . '.pdf"');
-        header('Cache-Control: private, no-store');
         header('X-Content-Type-Options: nosniff');
         echo $pdf;
+    } catch (DomainException $exception) {
+        http_response_code(409);
+        echo $exception->getMessage();
     } catch (Throwable $exception) {
         error_log('Paanyaya preparation PDF: ' . $exception->getMessage());
         http_response_code(500);
@@ -48,9 +57,9 @@ if ($method === 'GET') {
 }
 
 $action = (string) ($_POST['action'] ?? '');
-$flash = ['type' => 'success', 'complaint_id' => $id];
+$flash = ['type' => 'success', 'complaint_id' => $id, 'invitation_number' => $number];
 try {
-    $flash['message'] = $service->save($id, $userId, $action, $_POST);
+    $flash['message'] = $service->save($id, $userId, $action, $_POST, $number);
 } catch (DomainException $exception) {
     $flash['type'] = 'error';
     $flash['message'] = $exception->getMessage();

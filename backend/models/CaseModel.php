@@ -603,6 +603,15 @@ class CaseModel
             return 'paanyaya_preparation_required';
         }
 
+        if (PaanyayaPreparationService::hasReadyInvitation($this->conn, (int) $complaintId)) {
+            $dialogue = $this->conn->prepare("SELECT complainant_choice FROM paanyaya_minutes WHERE complaint_id = ?
+                ORDER BY FIELD(stage_type, 'Paanyaya 2', 'Paanyaya 1'), minutes_id DESC LIMIT 1");
+            $dialogue->execute([$complaintId]);
+            if ($dialogue->fetchColumn() !== 'Escalate_Mediation') {
+                return 'paanyaya_preparation_required';
+            }
+        }
+
         return null;
     }
 

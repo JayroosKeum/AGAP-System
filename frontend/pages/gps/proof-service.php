@@ -15,6 +15,10 @@ include '../../layouts/header.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
 $sysSettings = Setting::all();
 require_once __DIR__ . '/../../../backend/config/database.php';
+$paanyayaAssignments = [];
+$paanyayaServiceUnavailable = false;
+$paanyayaServiceFlash = $_SESSION['paanyaya_service_flash'] ?? null;
+unset($_SESSION['paanyaya_service_flash']);
 $servingOfficers = [];
 $currentOfficerName = trim((string) ($_SESSION['full_name'] ?? $_SESSION['username'] ?? 'Lupon Officer'));
 try {
@@ -38,6 +42,15 @@ try {
 } catch (Throwable $e) {
     $servingOfficers = [];
 }
+if ($roleId === 4) {
+    require_once __DIR__ . '/../../../backend/services/PaanyayaServiceDelivery.php';
+    try {
+        $paanyayaAssignments = (new PaanyayaServiceDelivery($dbProof))->assignments((int) $_SESSION['user_id']);
+    } catch (Throwable $exception) {
+        error_log('Paanyaya service queue: ' . $exception->getMessage());
+        $paanyayaServiceUnavailable = true;
+    }
+}
 ?>
 <script>
 window.AGAP_USER_ROLE_ID = <?php echo (int) $roleId; ?>;
@@ -55,6 +68,7 @@ window.AGAP_SETTINGS = <?php echo json_encode([
 <link rel="stylesheet" href="../../assets/css/dashboard.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/dashboard.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/gps.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/gps.css'); ?>">
 <link rel="stylesheet" href="../../assets/css/agap-list-layout.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/agap-list-layout.css'); ?>">
+<link rel="stylesheet" href="../../assets/css/paanyaya-preparation.css?v=<?= filemtime(__DIR__ . '/../../assets/css/paanyaya-preparation.css') ?>">
 
 <div class="dashboard-layout">
     <?php include '../../layouts/sidebar.php'; ?>
@@ -63,6 +77,9 @@ window.AGAP_SETTINGS = <?php echo json_encode([
         <?php include '../../layouts/navbar.php'; ?>
 
         <div class="agap-list-shell">
+            <?php if ($roleId === 4): ?>
+                <?php include __DIR__ . '/paanyaya-assignments.php'; ?>
+            <?php endif; ?>
             <a id="backLink" href="../complaints/complaint-list.php" class="back-link" hidden style="margin-bottom: 12px; display: inline-flex; align-items: center; gap: 6px;">
                 <svg class="back-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <line x1="19" y1="12" x2="5" y2="12"></line>

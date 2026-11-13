@@ -15,7 +15,12 @@ if($_SERVER['REQUEST_METHOD'] === 'POST')
         header('Location: ../../../frontend/pages/cases/case-list.php?error=save_failed');
         exit;
     }
-    $error = $controller->getDocketingError($_POST['complaint_id'] ?? null);
+    $complaintId = filter_var($_POST['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($complaintId && PaanyayaPreparationService::managesDialogue((new Database())->connect(), $complaintId)) {
+        header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '#paanyaya-preparation', true, 303);
+        exit;
+    }
+    $error = $controller->getDocketingError($complaintId);
 
     if ($error !== null) {
         header('Location: ../../../frontend/pages/cases/case-list.php?error=' . $error);

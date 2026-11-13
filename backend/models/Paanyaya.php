@@ -127,7 +127,8 @@ class Paanyaya
         $complaint = null;
 
         if ($complaintId > 0) {
-            if (PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
+            if (PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)
+                || PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
                 return ['success' => false, 'message' => 'Prepare this walk-in invitation from the original intake record.'];
             }
             $cStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status, paanyaya_attempt_count, max_paanyaya_reached, resolved_without_docketing FROM complaints WHERE complaint_id = ? LIMIT 1');
@@ -841,6 +842,9 @@ class Paanyaya
 
         $complaintId = (int) $session['complaint_id'];
         $attemptNumber = (int) $session['attempt_number'];
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Record dialogue minutes on the original complaint.'];
+        }
 
         $outcome = trim((string) ($data['outcome'] ?? ''));
         $notes = trim((string) ($data['outcome_notes'] ?? ($data['notes'] ?? '')));
@@ -1158,6 +1162,9 @@ class Paanyaya
      */
     public function escalateToFormalDocketing(int $complaintId, ?int $userId = null, ?string $notes = null, array $escalationData = []): array
     {
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
+            return $this->docketRecordedDialogue($complaintId, $userId ?? 0);
+        }
         try {
             require_once __DIR__ . '/CaseModel.php';
             require_once __DIR__ . '/Summons.php';
@@ -1493,6 +1500,58 @@ class Paanyaya
         } catch (Throwable $e) {
             error_log('Escalation error: ' . $e->getMessage());
             return ['success' => false, 'message' => 'Escalation failed: ' . $e->getMessage()];
+        }
+    }
+
+    private function docketRecordedDialogue(int $complaintId, int $userId): array
+    {
+        require_once __DIR__ . '/CaseModel.php';
+        if ($userId < 1) {
+            return ['success' => false, 'message' => 'A staff account is required.'];
+        }
+        $this->conn->beginTransaction();
+        try {
+            $lock = $this->conn->prepare('SELECT case_type, status FROM complaints WHERE complaint_id = ? FOR UPDATE');
+            $lock->execute([$complaintId]);
+            $complaint = $lock->fetch(PDO::FETCH_ASSOC);
+            $lookup = $this->conn->prepare('SELECT case_id, case_number FROM cases WHERE complaint_id = ?');
+            $lookup->execute([$complaintId]);
+            $case = $lookup->fetch(PDO::FETCH_ASSOC);
+            if (!$case) {
+                $minutes = $this->conn->prepare('SELECT complainant_choice FROM paanyaya_minutes WHERE complaint_id = ?
+                    ORDER BY FIELD(stage_type, \'Paanyaya 2\', \'Paanyaya 1\'), minutes_id DESC LIMIT 1');
+                $minutes->execute([$complaintId]);
+                if (($complaint['status'] ?? '') !== 'Pre-Docketed (Paanyaya)' || $minutes->fetchColumn() !== 'Escalate_Mediation') {
+                    throw new DomainException('Record dialogue minutes with a mediation outcome before docketing this complaint.');
+                }
+                if (!(new CaseModel($this->conn))->create(['complaint_id' => $complaintId, 'case_type' => $complaint['case_type']])) {
+                    throw new RuntimeException('Unable to create the formal case.');
+                }
+                $lookup->execute([$complaintId]);
+                $case = $lookup->fetch(PDO::FETCH_ASSOC);
+                $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?")->execute([$case['case_id']]);
+                $this->conn->prepare("INSERT INTO case_stages (case_id, stage_type, stage_status)
+                    VALUES (?, 'Mediation', 'Not Started') ON DUPLICATE KEY UPDATE stage_type = VALUES(stage_type)")
+                    ->execute([$case['case_id']]);
+                $this->conn->prepare('UPDATE complaints SET docketed_by = ?, docketed_at = NOW() WHERE complaint_id = ?')
+                    ->execute([$userId, $complaintId]);
+                $this->conn->prepare("UPDATE paanyayas SET status = 'Escalated', escalated_to_complaint_id = ?
+                    WHERE complaint_id = ? AND attempt_number = (SELECT paanyaya_attempt_count FROM complaints WHERE complaint_id = ?)")
+                    ->execute([$complaintId, $complaintId, $complaintId]);
+                if (!(new AuditService($this->conn))->log($userId, 'Docketed Paanyaya for formal mediation', 'Complaints', $complaintId)) {
+                    throw new RuntimeException('Unable to save the docketing audit entry.');
+                }
+            }
+            $this->conn->commit();
+            return ['success' => true, 'case_id' => (int) $case['case_id'], 'case_number' => $case['case_number'],
+                'message' => 'Formal case ' . $case['case_number'] . ' is ready for mediation scheduling.'];
+        } catch (Throwable $exception) {
+            $this->conn->rollBack();
+            if ($exception instanceof DomainException) {
+                return ['success' => false, 'message' => $exception->getMessage()];
+            }
+            error_log('Paanyaya docketing: ' . $exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to docket this complaint. The saved minutes are available for retry.'];
         }
     }
 
@@ -1834,6 +1893,10 @@ class Paanyaya
             return ['success' => false, 'message' => 'Invalid Paanyaya stage specified.'];
         }
 
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Prepare this invitation on the original complaint.'];
+        }
+
         $cStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status FROM complaints WHERE complaint_id = ? LIMIT 1');
         $cStmt->execute([$complaintId]);
         $complaint = $cStmt->fetch(PDO::FETCH_ASSOC);
@@ -2045,6 +2108,9 @@ class Paanyaya
 
     public function reviewStage(int $complaintId, string $stageType, array $data, ?int $userId = null): array
     {
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Record dialogue minutes on the original complaint.'];
+        }
         if (!in_array($stageType, [self::STAGE_1, self::STAGE_2], true)) {
             return ['success' => false, 'message' => 'Invalid Paanyaya stage specified.'];
         }
@@ -2194,6 +2260,49 @@ class Paanyaya
             return ['success' => false, 'message' => 'Complaint not found.'];
         }
 
+        $managed = PaanyayaPreparationService::managesDialogue($this->conn, $complaintId);
+        if (!$managed && PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Confirm delivery of the prepared invitation before recording dialogue minutes.'];
+        }
+
+        if ($managed) {
+            foreach (['complainant_attended', 'respondent_attended'] as $field) {
+                if (!in_array($data[$field] ?? '', ['Present', 'Absent'], true)) {
+                    return ['success' => false, 'message' => 'Record attendance for both parties.'];
+                }
+            }
+            $date = is_string($data['dialogue_date'] ?? null) ? $data['dialogue_date'] : '';
+            $parsed = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $date);
+            if (!$parsed || $parsed->format('Y-m-d\TH:i') !== $date || $parsed > new DateTimeImmutable()) {
+                return ['success' => false, 'message' => 'Enter the actual dialogue date and time, up to the current time.'];
+            }
+            $outcomeInput = $data['outcome'] ?? '';
+            if (!in_array($outcomeInput, ['Settled', 'Request_Paanyaya_2', 'Escalate_Mediation', 'Dismissed'], true)
+                || ($outcomeInput === 'Request_Paanyaya_2' && $stageType !== self::STAGE_1)
+                || (($outcomeInput === 'Dismissed') !== ($data['complainant_attended'] === 'Absent'))) {
+                return ['success' => false, 'message' => 'Choose an outcome that matches the recorded attendance and dialogue.'];
+            }
+            foreach (['discussion_summary', 'agreed_terms'] as $field) {
+                if (!is_string($data[$field] ?? '') || mb_strlen($data[$field] ?? '') > 10000) {
+                    return ['success' => false, 'message' => 'Minutes and agreed terms can contain up to 10,000 characters each.'];
+                }
+            }
+            if (trim($data['discussion_summary'] ?? '') === '') {
+                return ['success' => false, 'message' => 'Enter the minutes or attendance notes.'];
+            }
+            $data = [
+                'dialogue_date' => $date,
+                'actual_start_time' => $parsed->format('H:i'),
+                'complainant_attended' => $data['complainant_attended'],
+                'respondent_attended' => $data['respondent_attended'],
+                'outcome' => $outcomeInput,
+                'complainant_choice' => $outcomeInput,
+                'discussion_summary' => $data['discussion_summary'],
+                'agreed_terms' => $data['agreed_terms'] ?? '',
+            ];
+            $proofFile = null;
+        }
+
         $dialogueDate = !empty($data['dialogue_date']) ? date('Y-m-d H:i:s', strtotime($data['dialogue_date'])) : date('Y-m-d H:i:s');
         $compAttended = in_array(trim((string)($data['complainant_attended'] ?? '')), ['Present', 'Late', 'Absent'], true)
             ? trim((string)$data['complainant_attended']) : 'Present';
@@ -2332,6 +2441,27 @@ class Paanyaya
         try {
             $this->conn->beginTransaction();
 
+            if ($managed) {
+                $number = $stageType === self::STAGE_2 ? 2 : 1;
+                $lock = $this->conn->prepare('SELECT status FROM complaints WHERE complaint_id = ? FOR UPDATE');
+                $lock->execute([$complaintId]);
+                $status = $lock->fetchColumn();
+                $delivery = $this->conn->prepare("SELECT MAX(recorded_at) FROM paanyaya_service_attempts
+                    WHERE complaint_id = ? AND invitation_number = ? AND outcome = 'Delivered'");
+                $delivery->execute([$complaintId, $number]);
+                $deliveredAt = $delivery->fetchColumn();
+                if ($status !== 'Pre-Docketed (Paanyaya)' || !$deliveredAt) {
+                    throw new DomainException('Confirm delivery of this invitation before recording dialogue minutes.');
+                }
+                if (strtotime($dialogueDate) < strtotime(date('Y-m-d H:i:00', strtotime($deliveredAt)))) {
+                    throw new DomainException('The dialogue cannot be recorded as occurring before delivery.');
+                }
+                $existing = $this->getStageMinutes($complaintId, $stageType);
+                if ($existing) {
+                    throw new DomainException('Minutes have already been recorded for this dialogue.');
+                }
+            }
+
             // Extract and sanitize presiding_officer_ids
             $rawPresiders = $data['presiding_officer_ids'] ?? [];
             if (is_string($rawPresiders)) {
@@ -2398,15 +2528,25 @@ class Paanyaya
                         complainant_attended = ?,
                         respondent_attended = ?,
                         presiding_officer_ids = ?,
+                        queue_status = IF(? = 1, 'Concluded', queue_status),
                         updated_at = CURRENT_TIMESTAMP
                     WHERE session_id = ?
                 ");
                 $fullActualStart = $actualStartTime ? (date('Y-m-d', strtotime($dialogueDate)) . ' ' . $actualStartTime) : null;
-                $updSess->execute([$sessOutcome, $discussionSummary, $sessionRemarks ?: null, $fullActualStart, $compAttended, $respAttended, $presidersJson, (int)$sess['session_id']]);
+                $updSess->execute([$sessOutcome, $discussionSummary, $sessionRemarks ?: null, $fullActualStart, $compAttended, $respAttended, $presidersJson, (int) $managed, (int)$sess['session_id']]);
             }
             $attemptNumber = ($stageType === self::STAGE_2) ? 2 : 1;
             $this->conn->prepare("UPDATE paanyaya_sessions SET presiding_officer_ids = ? WHERE complaint_id = ? AND attempt_number = ?")
                        ->execute([$presidersJson, $complaintId, $attemptNumber]);
+            if ($managed) {
+                $registerStatus = match (true) {
+                    $outcome === 'Settled' => 'Resolved',
+                    $outcome === 'Dismissed' => 'Cancelled',
+                    default => 'Completed',
+                };
+                $this->conn->prepare('UPDATE paanyayas SET status = ?, attendance_recorded_at = CURRENT_TIMESTAMP
+                    WHERE complaint_id = ? AND attempt_number = ?')->execute([$registerStatus, $complaintId, $attemptNumber]);
+            }
 
             // Case 0: Dismissed
             if ($outcome === 'Dismissed') {
@@ -2504,7 +2644,7 @@ class Paanyaya
                 $stage1 = $this->getOrCreateStage($complaintId, self::STAGE_1);
                 $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Completed', updated_at = CURRENT_TIMESTAMP WHERE id = ?")->execute([(int)$stage1['id']]);
 
-                $this->audit->log($userId, "Recorded Minutes for {$stageType}: No Agreement. Complainant requested 2nd Paanyaya.", 'Paanyaya', $complaintId);
+                $this->audit->log($userId, "Recorded Minutes for {$stageType}: Complainant requested 2nd Paanyaya.", 'Paanyaya', $complaintId);
 
                 $this->conn->commit();
 
@@ -2524,7 +2664,8 @@ class Paanyaya
                     $p2Venue = 'Lupon Courtroom';
                 }
                 $scheduledP2 = false;
-                $msg = 'Dialogue minutes recorded: No agreement reached. Complainant requested 2nd Paanyaya. Paanyaya 2 card is now unlocked!';
+                $msg = $managed ? 'Minutes recorded. Prepare the second invitation on this complaint.'
+                    : 'Dialogue minutes recorded: No agreement reached. Complainant requested 2nd Paanyaya. Paanyaya 2 card is now unlocked!';
 
                 if ($p2Date !== '' && $p2Time !== '') {
                     $issueData = [
@@ -2611,6 +2752,13 @@ class Paanyaya
 
             $this->conn->commit();
 
+            if ($managed) {
+                return [
+                    'success' => true, 'minutes_id' => $minutesId, 'action' => 'mediation_pending',
+                    'message' => 'Minutes recorded. Continue to formal mediation from the complaint.',
+                ];
+            }
+
             // Trigger formal docketing
             $escResult = $this->escalateToFormalDocketing($complaintId, $userId, $discussionSummary, $data);
             if (empty($escResult['success'])) {
@@ -2638,6 +2786,9 @@ class Paanyaya
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
+            if ($e instanceof DomainException) {
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
             error_log("Paanyaya recordMinutes error: " . $e->getMessage());
             return ['success' => false, 'message' => 'Error recording dialogue minutes: ' . $e->getMessage()];
         }
@@ -2654,6 +2805,9 @@ class Paanyaya
         $paanyaya = $this->getPaanyayaById($paanyayaId);
         if (!$paanyaya) {
             return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
+        }
+        if (!empty($paanyaya['complaint_id']) && PaanyayaPreparationService::managesDialogue($this->conn, (int) $paanyaya['complaint_id'])) {
+            return ['success' => false, 'message' => 'Record dialogue minutes on the original complaint.'];
         }
 
         $compAttended = in_array($data['complainant_attended'] ?? '', ['Present', 'Absent'], true)
@@ -2829,6 +2983,10 @@ class Paanyaya
             if (!$paanyaya) {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
+            }
+            if (!empty($paanyaya['complaint_id']) && PaanyayaPreparationService::managesDialogue($this->conn, (int) $paanyaya['complaint_id'])) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Continue to formal mediation from the original complaint.'];
             }
 
             // Check if already escalated
@@ -3055,6 +3213,9 @@ class Paanyaya
         $paanyaya = $this->getPaanyayaById($paanyayaId);
         if (!$paanyaya) {
             return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
+        }
+        if (!empty($paanyaya['complaint_id']) && PaanyayaPreparationService::managesDialogue($this->conn, (int) $paanyaya['complaint_id'])) {
+            return ['success' => false, 'message' => 'Prepare the second invitation on the original complaint.'];
         }
 
         if ((int)($paanyaya['attempt_number'] ?? 1) >= 2) {

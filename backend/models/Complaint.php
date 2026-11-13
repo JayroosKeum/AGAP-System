@@ -594,6 +594,10 @@ class Complaint
     public function docket(int $id, int $clerkId): array
     {
         require_once __DIR__ . '/CaseModel.php';
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $id)) {
+            require_once __DIR__ . '/Paanyaya.php';
+            return (new Paanyaya($this->conn))->escalateToFormalDocketing($id, $clerkId);
+        }
         $this->conn->beginTransaction();
         try {
             $record = $this->conn->prepare('SELECT complaint_id, case_type, screening_decision FROM complaints WHERE complaint_id = ? FOR UPDATE');

@@ -17,7 +17,9 @@ if ($complaintId <= 0) {
 }
 
 require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.php';
-if (PaanyayaPreparationService::requiresPreparation((new Database())->connect(), $complaintId)) {
+$db = (new Database())->connect();
+if (PaanyayaPreparationService::requiresPreparation($db, $complaintId)
+    || PaanyayaPreparationService::managesDialogue($db, $complaintId)) {
     $destination = in_array($roleId, [1, 2], true)
         ? '../complaints/complaint-details.php?id=' . $complaintId . '#paanyaya-preparation'
         : ($roleId === 3 ? '../dashboard/lupon-dashboard.php' : '../gps/proof-service.php');

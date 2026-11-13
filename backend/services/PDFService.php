@@ -4807,7 +4807,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             $inviteeName = 'INANYAYAHAN';
         }
 
-        $caseRefStr = !empty($data['complaint']['complaint_number']) ? $data['complaint']['complaint_number'] : '';
+        $intakeReference = trim((string) ($data['intake_reference'] ?? ''));
 
         $sheetContent = '
         <table class="header-table">
@@ -4837,6 +4837,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         </div>
 
         <div class="meta-date">' . $dateFormatted . '</div>
+        ' . ($intakeReference !== '' ? '<div>Intake Reference <strong>' . $this->escape($intakeReference) . '</strong></div>' : '') . '
 
         <div class="party-block">
             <div class="party-role">(Nagpaanyaya)</div>

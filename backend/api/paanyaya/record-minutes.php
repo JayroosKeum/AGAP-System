@@ -35,6 +35,12 @@ if (!in_array($stageType, [Paanyaya::STAGE_1, Paanyaya::STAGE_2], true)) {
 $proofFile = $_FILES['scanned_minutes'] ?? ($_FILES['proof_file'] ?? null);
 
 try {
+    if (!in_array((int) $_SESSION['role_id'], [1, 2], true)
+        && PaanyayaPreparationService::managesDialogue((new Database())->connect(), (int) $complaintId)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'The clerk or administrator records this dialogue on the complaint.']);
+        exit;
+    }
     $paanyayaModel = new Paanyaya();
     $userId = (int) $_SESSION['user_id'];
 

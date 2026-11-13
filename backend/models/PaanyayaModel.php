@@ -162,6 +162,10 @@ class PaanyayaModel
             ? $data['stage_type']
             : 'Paanyaya 1';
 
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Prepare this invitation on the original complaint.'];
+        }
+
         $invitationDate = trim($data['invitation_date'] ?? '');
         $invitationTime = trim($data['invitation_time'] ?? '');
 
@@ -407,6 +411,9 @@ class PaanyayaModel
      */
     public function recordAttendanceAndProgression(int $complaintId, array $payload, int $userId): array
     {
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Record dialogue minutes on the original complaint.'];
+        }
         $stageType = in_array(($payload['stage_type'] ?? ''), ['Paanyaya 1', 'Paanyaya 2'], true)
             ? $payload['stage_type']
             : 'Paanyaya 1';
@@ -417,6 +424,10 @@ class PaanyayaModel
 
         $this->conn->beginTransaction();
         try {
+            if (PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Confirm delivery of the prepared invitation before recording attendance.'];
+            }
             $outcome = '';
             $newComplaintStatus = '';
             $progressionAction = ''; // 'settled', 'issue_p2', 'dismissed', 'escalate_mediation'

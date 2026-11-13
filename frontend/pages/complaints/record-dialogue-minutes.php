@@ -31,6 +31,11 @@ require_once __DIR__ . '/../../../backend/controllers/ComplaintController.php';
 require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
 
+if (PaanyayaPreparationService::managesDialogue($rbacDb, $complaintId)) {
+    header('Location: complaint-details.php?id=' . $complaintId . '#paanyaya-dialogue-' . ($stageType === 'Paanyaya 2' ? '2' : '1'), true, 303);
+    exit;
+}
+
 $sysSettings = Setting::all();
 $rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Tue';
 $allowedMedDays = [];

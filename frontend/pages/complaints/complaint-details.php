@@ -33,7 +33,7 @@ if (!isset($_GET['id']) || empty($_GET['id'])) {
 
 $complaintId = (int)$_GET['id'];
 $preparation = null;
-$preparationParties = [];
+$paanyayaInvitations = [];
 $preparationFlash = $_SESSION['paanyaya_preparation_flash'] ?? null;
 if (($preparationFlash['complaint_id'] ?? null) === $complaintId) {
     unset($_SESSION['paanyaya_preparation_flash']);
@@ -44,14 +44,16 @@ if (($preparationFlash['complaint_id'] ?? null) === $complaintId) {
 require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.php';
 $preparationDb = (new Database())->connect();
 $usesPaanyayaPreparation = PaanyayaPreparationService::requiresPreparation($preparationDb, $complaintId);
-if (in_array($roleId, [1, 2], true) && $usesPaanyayaPreparation) {
+if (in_array($roleId, [1, 2], true)) {
     try {
         $preparationService = new PaanyayaPreparationService($preparationDb);
         $preparation = $preparationService->intake($complaintId);
         if ($preparation) {
-            $preparationParties = $preparation['ready_at']
-                ? json_decode($preparation['verified_parties'], true, 512, JSON_THROW_ON_ERROR)
-                : $preparationService->parties($complaintId);
+            $paanyayaInvitations[1] = $preparation;
+            $secondInvitation = $preparationService->intake($complaintId, 2);
+            if ($secondInvitation) {
+                $paanyayaInvitations[2] = $secondInvitation;
+            }
         }
     } catch (PDOException $exception) {
         error_log('Paanyaya preparation workspace: ' . $exception->getMessage());
@@ -74,7 +76,7 @@ if (!str_starts_with($rawTab, 'tab-')) {
 }
 $validTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
 if ($rawTab === 'tab-paanyaya') {
-    if ($usesPaanyayaPreparation && in_array($roleId, [1, 2], true)) {
+    if ($preparation || ($usesPaanyayaPreparation && in_array($roleId, [1, 2], true))) {
         header('Location: complaint-details.php?id=' . $complaintId . '#paanyaya-preparation');
         exit;
     }
@@ -196,7 +198,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <?php elseif ($roleId === 3 && $assignedLisoId !== (int) $_SESSION['user_id']): ?>
                     <span style="color:#64748b; font-size:.82rem; font-weight:700;">Assigned to another LISO</span>
                 <?php endif; ?>
-                <?php if (in_array($roleId, [1, 2], true) && !$usesPaanyayaPreparation): ?>
+                <?php if (in_array($roleId, [1, 2], true) && !$usesPaanyayaPreparation && !$preparation): ?>
                     <button type="button" class="btn-case-primary" onclick="docketEligibleIntake(<?php echo $complaintId; ?>)">
                         <span>Formal Docket</span>
                     </button>
@@ -379,7 +381,47 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         <div id="tab-overview" class="case-tab-pane <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>">
 
             <?php if ($preparation || $preparationFlash): ?>
-                <?php include __DIR__ . '/tabs/paanyaya-preparation.php'; ?>
+                <div id="paanyaya-preparation">
+                    <?php
+                    require_once __DIR__ . '/../../../backend/services/PaanyayaServiceDelivery.php';
+                    $delivery = new PaanyayaServiceDelivery($preparationDb);
+                    $minutesModel = new Paanyaya($preparationDb);
+                    $intakeFlash = $preparationFlash;
+                    if (!$paanyayaInvitations) {
+                        $paanyayaInvitations[1] = null;
+                    }
+                    foreach ($paanyayaInvitations as $invitationNumber => $invitationRecord) {
+                        $preparation = $invitationRecord;
+                        $preparationFlash = (int) ($intakeFlash['invitation_number'] ?? 1) === $invitationNumber ? $intakeFlash : null;
+                        $preparationParties = [];
+                        $paanyayaServiceHistory = [];
+                        $paanyayaServers = [];
+                        $paanyayaServiceUnavailable = false;
+                        $paanyayaMinutes = null;
+                        try {
+                            if ($preparation) {
+                                $preparationParties = $preparation['ready_at']
+                                    ? json_decode($preparation['verified_parties'], true, 512, JSON_THROW_ON_ERROR)
+                                    : $preparationService->parties($complaintId);
+                                if ($preparation['prepared_at']) {
+                                    $paanyayaServiceHistory = $delivery->history($complaintId, $invitationNumber);
+                                    $latestOutcome = $paanyayaServiceHistory[0]['outcome'] ?? null;
+                                    if ($preparation['eligible'] && $preparation['ready_at'] && (!$paanyayaServiceHistory || $latestOutcome === 'Not Delivered')) {
+                                        $paanyayaServers = $delivery->servers();
+                                    }
+                                    if ($latestOutcome === 'Delivered') {
+                                        $paanyayaMinutes = $minutesModel->getStageMinutes($complaintId, 'Paanyaya ' . $invitationNumber);
+                                    }
+                                }
+                            }
+                        } catch (Throwable $exception) {
+                            error_log('Paanyaya service workspace: ' . $exception->getMessage());
+                            $paanyayaServiceUnavailable = true;
+                        }
+                        include __DIR__ . '/tabs/paanyaya-preparation.php';
+                    }
+                    ?>
+                </div>
             <?php endif; ?>
 
             <!-- Celebratory Statutory Countdown Completion Alert Banner -->
