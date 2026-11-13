@@ -1,7 +1,7 @@
 # Azure deployment
 
 This repository deploys to a **Linux Azure App Service running PHP 8.3** with
-the GitHub Actions workflow in `.github/workflows/main_agap.yml`.
+the [GitHub Actions workflow](../.github/workflows/azure-webapp.yml).
 
 ## 1. Create Azure resources
 

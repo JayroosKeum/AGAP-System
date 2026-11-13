@@ -13,7 +13,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 
 - [Key Features](#key-features)
   - [1. Complaint Intake, Management & Records Search](#1-complaint-intake-management--records-search)
-  - [2. Preliminary Paanyaya Process & Officer's Return Tracking](#2-preliminary-paanyaya-process--officers-return-tracking)
+  - [2. Preliminary Paanyaya Process & Pre-Docket Tracking](#2-preliminary-paanyaya-process--pre-docket-tracking)
   - [3. Mediation & Conciliation Progression Engine](#3-mediation--conciliation-progression-engine)
   - [4. Case Management & Unified Case Teams](#4-case-management--unified-case-teams)
   - [5. KP Document Generation & Proof of Service](#5-kp-document-generation--proof-of-service)
@@ -30,6 +30,8 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 ## Key Features
 
 #### 1. Complaint Intake, Management & Records Search
+
+- **Resident portal** allows residents to register, accept the user agreement, submit concerns, and track their own submissions.
 
 - **Dedicated File Complaint Page (`complaint-create.php`)**:
   - Full-page, compact two-column card intake layout replacing legacy modal popups.
@@ -74,32 +76,9 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 
 ### 2. Preliminary Paanyaya Process & Pre-Docket Tracking
 
-- **Mandatory Preliminary Workflow Insertion**:
-  - Seamlessly positioned between Complaint Details and formal Mediation:
-    `Complaint Intake / Overview` $\rightarrow$ `Paanyaya 1` $\rightarrow$ `Paanyaya 2` $\rightarrow$ `Mediation` $\rightarrow$ `Conciliation` $\rightarrow$ `Arbitration / CFA`.
-  - Cases in this preliminary phase hold the dedicated `Paanyaya` (`Pre-Docketed (Paanyaya)`) state until preliminary service requirements or administrative review escalations are satisfied.
-  - **Status Isolation**: Records in Paanyaya display strictly the `Paanyaya` status badge and are never combined with other statuses (such as "Pending", "Draft", or "Under Review").
-- **Distinct Pre-Docket Case Numbering (`P-month-number-year`)**:
-  - While in the informal Paanyaya stage, disputes are **not docketed automatically** into the court cases table.
-  - Assigned a distinct pre-docket tracking number format: `P-month-number-year` (e.g. `P-10-86-2026`).
-  - Upon escalation to formal Mediation, the dispute is docketed into `cases` and the case number transitions to the official docketed format: `month-number-year` (e.g. `10-21-2026`).
-- **Dedicated Paanyaya Tab (`complaint-details.php`)**:
-  - Positioned directly after Overview & Workflow and before the Mediation tab.
-  - Two distinct sections:
-    - **Paanyaya 1 – First Preliminary Invitation**: Up to 6 recorded delivery attempts.
-    - **Paanyaya 2 – Second Preliminary Invitation**: Up to 6 delivery attempts, unlocked only when Paanyaya 1 completes with Lupon administrative review or escalation approval.
-  - Independent attempt counter (1 to 6) per stage enforced by database constraints and server-side model logic; attempt counters never reset on navigation or overlap between stages.
-- **Official Paanyaya Invitation Letter Generation & Print Preview**:
-  - Generates official Paanyaya invitation letters featuring Barangay Tumana and City of Marikina seals, hearing schedule (date, time, venue), salaysay facts excerpt, and Punong Barangay / Lupon signature block.
-  - Streamlined post-filing modal preview (`#paanyayaPreviewModal`) displaying Legal-size print previews with direct zero-watermark printing and handover to Officer's Return recording.
-- **Granular Officer's Return Delivery Tracking**:
-  - Tracks detailed delivery data per attempt: attempt number (1–6), date/time visited, serving officer, recipient visited, address visited, delivery outcome, failure reason, remarks/witness notes, proof photo/document attachment, and GPS coordinates.
-  - Non-equivalent outcome options: `Successfully delivered`, `Recipient unavailable`, `Recipient refused to receive`, `Respondent not found at the address`, `Incorrect or incomplete address`, and `Other reason`.
-- **Lupon Administrative Review Workflow**:
-  - When all 6 attempts are exhausted without successful delivery, the stage transitions to `Attempts Exhausted – For Review`.
-  - Authorized Lupon officers review the history and record decisions: `Approved for Paanyaya 2`, `Approved for Summons`, or `Case Closed`.
-- **Summons Prerequisite Gate**:
-  - The `Issue Summon 1st Attempt` action remains locked until Paanyaya 1 is successfully delivered OR all attempts are exhausted and approved for formal court-annexed escalation via administrative review.
+For an eligible LISO-assigned walk-in, the clerk opens **Paanyaya Preparation** from the clerk dashboard. On the original complaint, the clerk verifies the parties, sets the appointment, generates and prints the invitation, and assigns an active summons server after marking it **Ready for Release**.
+
+The server records the result under **Proof of Service → My Paanyaya Assignments**. An unsuccessful delivery returns to the clerk for another attempt. Confirmed delivery opens attendance, minutes, and outcome recording on the complaint. A second invitation, when requested, has its own preparation and service history. A mediation outcome enables formal docketing from the same complaint.
 
 ### 3. Mediation & Conciliation Progression Engine
 
@@ -210,23 +189,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
   - **KP Form 20**: Certificate to File Action (CFA - issued upon 3 failed summons delivery attempts or conciliation/mediation failure).
   - **KP Form 21**: Certificate to Bar Action (for Complainant default).
   - **KP Form 22**: Certificate to Bar Counterclaim (for Respondent default).
-- **Summons Management & Proof of Service Interface (`proof-service.php`)**:
-  - **Unified Expandable Case Table**: Displays all cases requiring summons and preliminary invitation tracking, seamlessly integrating both formal hearings and Paanyaya cases. Rows expand/collapse inline to reveal service records.
-  - **Paanyaya Adaptive Layout**: For Paanyaya preliminary cases, displays a full-width Respondent delivery card (Complainant notice card is hidden as Paanyaya is delivered exclusively to the respondent).
-  - **Live Filter Tabs & Search**: Instant keyword search across Case No., parties, and titles; filter tabs for **All Cases**, **Pending Delivery**, and **Fully Served** with live counter badges.
-  - **Top KPI Indicators**: Compact summary counters for Total Cases, Pending Delivery, CFA Eligible, and Served Today.
-  - **Complainant & Respondent Visual Parity**: Matching two-column card structure, badges, typography, and detail lists (`Date/Time Served`, `Service Source / Server`, `Service Method`, `Remarks`, failure notes, proof links).
-  - **Interactive Horizontal Steppers**:
-    - **Paanyaya Cases**: 6 interactive attempt nodes (1st to 6th Attempt) for Respondent preliminary invitations.
-    - **Formal Summons**: Progression nodes for Attempt 1, Attempt 2, Attempt 3, and CFA status with dynamic state badges (`Served`, `Pending`, `Failed`, `Locked`).
-  - **Fully Editable Officer's Return Workflow**:
-    - Stepper circles for all issued/recorded attempts have pointer cursors and open the return drawer on click.
-    - Row-level `✏️ Edit Return` buttons allow authorized personnel to update existing returns (outcome, recipient name, address visited, remarks, failure reason).
-    - Automatically operates in **Edit Mode** (`Edit Officer's Return`) when editing existing attempts and **Log Return Mode** when recording pending attempts.
-    - Updates are saved to `paanyaya_officer_returns` and `summon_deliveries` with audit logging via `AuditService`, without causing attempt counter collisions.
-  - **Auto-Served Complainant Notice**: Automatically sets KP Form 8 to `Served` upon issuance of the 1st Attempt summons from the complaint page.
-  - **Slide-in Officer's Return Drawer**: Modern off-canvas drawer (`#officerReturnModal`) with distinct Case Number, Party, and Document Form badges for recording delivery outcomes, recipient relationship, unserved reasons, notes, and photo proof attachments.
-  - **Clean Action Footers**: Streamlined card footers focused on **Log Officer's Return** / **Edit Officer's Return** alongside next-stage progression buttons, removing clutter from redundant print buttons.
+- **Proof of Service (`proof-service.php`)** displays formal summons service records and Officer's Returns. Summons servers also use **My Paanyaya Assignments** on that page to open assigned invitations and record delivery results and optional proof images.
 
 ### 6. Security, Audit Trails & Notifications
 
@@ -284,7 +247,6 @@ AGAP-System/
 │   └── pages/                 # Full-page PHP views (complaints, cases, hearings, etc.)
 ├── storage/                   # Uploaded attachments, proof images, and generated PDFs
 ├── AI_DEVELOPMENT_GUIDE.md    # Development and AI pair-programming guide
-├── PROJECT_HANDOFF.md         # Comprehensive project specification and handoff details
 └── README.md                  # System overview and getting started guide
 ```
 
@@ -316,17 +278,10 @@ mysql -u root agap_db < database/schema.sql
 ```
 
 ### 3. Verify Configuration
-Ensure `backend/config/database.php` matches your local database settings:
-```php
-define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_NAME', 'agap_db');
-```
 
-To enable AI narrative enhancement, configure `GEMINI_API_KEY` as a PHP/Apache
-environment variable and restart Apache. The key is read server-side only; do
-not add it to JavaScript or `backend/config/gemini.php`.
+Copy `.env.example` to `.env` and set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASS` for your local MySQL connection. Apache environment overrides take precedence, so check those if the web server connects to a different database.
+
+For Gemini dictation, supply `GEMINI_API_KEY` through the server environment or the local `.env` file. See the [deployment checklist](DEPLOYMENT.md) for production configuration.
 
 ### 4. Access the Application
 Start Apache and MySQL in Laragon, then open:
@@ -338,7 +293,7 @@ http://localhost/AGAP-System/
 
 ## Local Test Credentials
 
-For development and testing, `database/schema.sql` seeds the following local accounts (all accounts use password: `password`):
+For development and testing, `database/schema.sql` seeds the following accounts. The seed password is documented in the schema's reference-data section.
 
 | Username | Role | Description |
 | :--- | :--- | :--- |
@@ -355,10 +310,6 @@ For development and testing, `database/schema.sql` seeds the following local acc
 
 ## Database & Migrations
 
-- `database/schema.sql` is the authoritative definition for fresh database installations.
-- For updating existing databases that predate specific increments, refer to the step-by-step instructions in [database/README.md](database/README.md). Recent migrations include:
-  - `database/migrations/20261029_001_voluntary_arbitration_outcomes.sql` for extending case stage outcomes and hearing minutes session outcomes to support Voluntary Arbitration, Arbitration Awards, and Repudiation.
-  - `database/migrations/20261020_001_create_paanyaya_stages_and_returns.sql` for the mandatory preliminary Paanyaya workflow and independent Officer's Return tracking.
-  - `database/migrations/20261017_002_scheduling_conflict_and_mediation_improvements.sql` for scheduling capacity, holiday calendars, and venue conflict detection.
-  - `database/migrations/20261016_001_enhance_file_complaint_kp7.sql` for the File Complaint module, versioned scanned KP Form 7 uploads, and demographic/guardian fields.
-- Reference guides for developers and AI agents are maintained in [AI_DEVELOPMENT_GUIDE.md](AI_DEVELOPMENT_GUIDE.md) and [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md).
+- Use `database/schema.sql` for a fresh database. For an existing database, use the applicable migrations in the [database guide](database/README.md).
+- Follow the [AI development guide](AI_DEVELOPMENT_GUIDE.md) for workflow and verification guidance.
+- See the [production checklist](DEPLOYMENT.md) and [Azure setup](azure/README.md) for hosting.

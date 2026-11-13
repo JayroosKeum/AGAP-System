@@ -225,6 +225,19 @@ For databases implementing clean separation between informal pre-docketing Paany
     - Stores strictly: `paanyaya_id`, `complaint_id`, `invitee_name`, `scheduled_date`, `scheduled_time`, `venue`, `status` (`'Scheduled'`, `'Completed'`, `'Cancelled'`, `'Resolved'`, `'Unresolved'`), `scheduled_by`, and timestamps.
     - No complaint narrative or salaysay duplicated; mediation records handle dispute specifics.
   - **Removal of Officer's Return from Paanyaya**:
-    - Dropped table `paanyaya_officer_returns`. Officer's Return / proof of service belongs exclusively to formal summonses and hearings in Mediation/Conciliation/Arbitration.
+    - Dropped the old `paanyaya_officer_returns` table. Formal Officer's Returns are recorded in the summons workflow. The later prepared Paanyaya workflow tracks invitation delivery in its own service table.
     - Removed `assigned_officer_id` and delivery tracking statuses from `paanyaya_stages`.
     - Removed `salaysay` column from `complaint_paanyaya`, `paanyaya_stages`, and `paanyaya_sessions`.
+
+## Resident intake, LISO duty, and prepared Paanyaya
+
+For an existing database, apply the missing migrations in this order. Check the target database and which migrations it already has before running them.
+
+1. [Resident intake and profile links](migrations/20261110_001_resident_intake_workflow.sql) adds the Resident role, account-to-profile links, and intake screening fields. It also initializes screening metadata for existing numbered complaints.
+2. [LISO duty sessions](migrations/20261111_002_liso_duty_sessions.sql) adds duty sessions for Lupon Members.
+3. [Walk-in LISO assignment](migrations/20261111_003_assign_walkin_liso.sql) links the complaint to the assigned member and duty session.
+4. [Paanyaya preparation](migrations/20261112_001_paanyaya_preparations.sql) adds the verified party snapshot, appointment, PDF, and Ready for Release record.
+5. [Paanyaya service attempts](migrations/20261113_001_paanyaya_service_attempts.sql) adds release assignments, delivery results, and optional proof images.
+6. [Paanyaya dialogue invitations](migrations/20261113_002_paanyaya_dialogue_invitations.sql) adds invitation numbering so the first and second notices have separate PDFs and service attempts. Existing notices and attempts become invitation 1.
+
+The [Barangay News migration](migrations/20261111_002_barangay_news.sql) is independent and enables the news widget.

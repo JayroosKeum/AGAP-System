@@ -735,7 +735,7 @@ class HearingController
             $recordRemarks = trim($recordRemarks . ($recordRemarks === '' ? '' : "\n\n") . $exceptionNote);
         }
 
-        // Master Operating Schedule (Barangay Tumana KP_SYSTEM_ENHANCEMENT_SPECS.md sec.83-84, 99-100)
+        // Apply the configured mediation days and the barangay office-hours rules.
         // 1. Mediation (Punong Barangay): Mon-Fri, 8:00 AM - 5:00 PM (any regular working day).
         // 2. Conciliation (Pangkat): Mon, Wed, Thu, Fri, 8:00 AM - 5:00 PM & Tuesday mornings 8:00 AM - 12:00 PM. Tuesday afternoons reserved for formal mediation.
         // 3. 12:00 PM - 1:00 PM Lunch Break & Weekends/Holidays: Closed for all session types.

@@ -1,147 +1,46 @@
 # AGAP AI Development Guide
 
-Use this guide when changing AGAP. Its purpose is to keep the system understandable, safe, and small enough to maintain. Read `PROJECT_GUIDELINES.md` first.
+Use this guide when changing AGAP. Start with the [project README](README.md) for local setup, the [database guide](database/README.md) for migrations, and the [deployment checklist](DEPLOYMENT.md) for production.
 
-## 1. Simplify before adding
+## Start with the existing workflow
 
-Do not solve a workflow problem by adding another status, table, screen, service, or migration unless the existing path cannot be simplified first.
+- Identify the user action, the record that owns its state, and the endpoint that changes it. Follow that path before adding a page, table, or status.
+- Keep staff actions on the original complaint when they can continue there. Use the existing role queues as entry points, including the clerk's preparation queue and the summons server's Proof of Service page.
+- Preserve existing entry points and data. Check whether a record is using the current preparation workflow or an older Paanyaya path before changing shared code.
+- Keep changes scoped to the requested feature. Preserve local edits and push only when the user explicitly asks.
 
-Before editing, identify:
+## Resident intake and Paanyaya
 
-1. The user action that starts the process.
-2. The single record that owns the state.
-3. The approved action that changes the state.
-4. The screen and API that show the result.
-5. A test for the happy path and a blocked path.
-
-If these cannot be named clearly, propose a simplification plan before implementing.
-
-## 2. Sources of truth
-
-| Concern | Source of truth |
+| Step | Current behavior |
 | --- | --- |
-| Complaint details, parties, and scanned documents | `complaints`, `complaint_parties`, `residents`, `complaint_scanned_documents` |
-| Case stage and final disposition | `cases.case_status` |
-| Hearing schedule and completion | `hearings` |
-| Presiding officer and substitution | `hearings.presiding_officer_id`, `hearings.substitute_presider_id`, `hearings.substitute_reason`, `hearings.parties_consent_to_substitute` |
-| Attendance and non-appearance | `hearing_attendance`, `hearings.complainant_attendance`, `hearings.respondent_attendance` |
-| Show-cause justification evaluation | `show_cause_evaluations` |
-| Hearing minutes and settlement notes | `hearing_minutes` |
-| Preliminary Paanyaya invitations (Independent Entity) | `paanyayas` |
-| Paanyaya dialogue minutes & outcomes | `paanyaya_minutes` |
-| Summons service attempts | `summon_deliveries` |
-| Pangkat membership & challenges | `pangkat_groups`, `pangkat_members`, `pangkat_challenges`, `pangkat_extensions` |
-| Generated KP forms & templates | `document_templates`, `generated_documents` |
-| History | `case_history` and audit log |
+| Resident intake | Residents accept the user agreement, register, and submit a concern from the resident portal. The dashboard shows submissions owned by the signed-in account. |
+| Walk-in intake | A clerk or administrator records the complaint, starting with the narrative, and selects an on-duty Lupon Member for screening. LISO duty is an assignment of a Lupon Member. |
+| Screening | The assigned Lupon Member opens the walk-in from their queue and records the screening decision. Eligible assigned walk-ins appear in the clerk's Paanyaya preparation queue. |
+| Preparation | On the original complaint, the clerk or administrator verifies the parties, enters the appointment and venue, generates and reviews the PDF, and marks it Ready for Release. |
+| Release and service | The clerk or administrator assigns an active summons server. The server records delivery in **Proof of Service → My Paanyaya Assignments**. Unsuccessful delivery requires a reason and allows a retry. The complaint displays the result and any proof. |
+| Dialogue | Confirmed delivery of that invitation enables the clerk or administrator to save attendance, the actual dialogue date and time, minutes, and the outcome on the complaint. Settlement requires agreed terms. |
+| Next action | A request for a second Paanyaya enables a separate invitation on the same complaint with its own PDF, service history, and dialogue. If the recorded outcome calls for formal mediation, staff create the formal docket from the complaint and continue in its Mediation tab. Hearing scheduling follows in that tab. |
 
-Do not introduce another table that represents the same fact. Dashboards may derive data from these records, but must not become alternate sources of truth.
+This preparation queue currently covers LISO-assigned walk-ins. The current workflow supports two invitations. Delivery retries are recorded against the same invitation. Authorization, allowed outcomes, and stage gates are explicit server-side rules. Parties, duty status, assignment, dates, venue, proof, and minutes come from saved records or staff input.
 
-## 3. Canonical case flow
+## Authoritative records
 
-```text
-Complaint → Reviewed → Pre-Docketed (Optional informal Paanyaya 1 & 2 dialogue)
-                     → Docketed (upon completion or escalation)
-                     → Mediation Summon issued (KP Form 8 & 9) → Officer's Return recorded
-                     → Summons issued (KP Form 8 & 9) → Service recorded
-                     → Mediation (1st → 2nd → 3rd) → approved outcome
-                         ├─ Settled (KP Form 16) / dismissed / final outcome
-                         ├─ Voluntary Arbitration (KP Form 14) → Hearings → Award (KP Form 15)
-                         └─ Referred to Pangkat → Conciliation (1st → 2nd → 3rd) → approved outcome
-                                                           ├─ Settled (KP Form 16)
-                                                           ├─ Voluntary Arbitration (KP Form 14) → Hearings → Award (KP Form 15)
-                                                           └─ CFA review → CFA issued (KP Form 20)
-```
+| Fact | Where to read it |
+| --- | --- |
+| Resident account link and submission ownership | `resident_user_profiles` and `complaints.submitted_by` |
+| Intake, parties, screening, and duty | `complaints`, `complaint_parties`, `residents`, `complaint_intake_screenings`, and `liso_duty_sessions` |
+| Prepared invitation and delivery result | `paanyaya_preparations` and `paanyaya_service_attempts`, scoped to the complaint and invitation number |
+| Dialogue schedule, attendance, and outcome | `paanyaya_stages`, `paanyaya_sessions`, and `paanyaya_minutes`. The `paanyayas` register reflects the scheduled invitation and progression. |
+| Formal case, stage, hearing, and service | `cases.case_status`, `case_stages`, `hearings`, `hearing_attendance`, `hearing_minutes`, and `summon_deliveries` |
+| Formal documents and history | `document_templates`, `generated_documents`, `case_history`, and `audit_trails` |
 
-- Scheduling a hearing is not an outcome.
-- Issuing a document is not proof of service.
-- **Voluntary Arbitration Workflow (RA 7160 Sec. 413)**: Parties may agree to submit to binding arbitration at any time during mediation or conciliation via KP Form 14. This opens a 5-day statutory repudiation window (KP Form 17), allows scheduling segregated Arbitration hearings, and mandates rendering an Arbitration Award (KP Form 15) strictly between Day 6 and Day 15 from signing KP Form 14.
-- **Mandatory Preliminary Paanyaya Process**: Before formal court-annexed summons (KP Form 8 & 9) are issued, cases undergo preliminary invitation dialogue. Paanyaya 1 and Paanyaya 2 each allow up to six (6) delivery attempts with recorded Officer's Returns before authorized case escalation.
-- **Officer's Return Editing**: Recorded returns can be edited/corrected by authorized officers; all edits are captured in the Lupon audit trail.
-- Initial summons (KP Form 9) serves for the 1st Mediation; 2nd and subsequent mediations do not require summons re-issuance and inherit prior service notice.
-- Non-appearance in 2nd mediation unlocks KP Form 18 (Complainant) and KP Form 19 (Respondent) show-cause hearing notices.
-- Certificate to Bar Action (KP Form 21) or Counterclaim (KP Form 22) requires a recorded show-cause evaluation ruling non-appearance as unjustified.
-- A hearing count never changes a case stage by itself.
-- Hearings must be scheduled for a future date and time. Only an Administrator may approve a past-date exception, with the reason retained on the hearing record and in audit history.
-- Elevation to Pangkat Conciliation requires completion of 3 mediation sessions with an unresolved outcome and an explicit authorized action.
-- A stage changes only through an explicit, authorized server-side action.
-- A terminal outcome prevents ordinary scheduling.
-- A legal/KP policy owner approves statutory rules, KP form wording, deadline calculations, and CFA grounds before they are changed.
+Use the saved state for action availability and dashboard counts. Confirm service before opening dialogue for the prepared invitation. Use explicit authorized actions for formal case transitions, including Pangkat referral and CFA issuance. Verify scheduling rules, KP form wording, and statutory deadlines with the project's policy owner before changing them.
 
-## 4. State changes
+## Implementation and verification
 
-Use `cases.case_status` only for broad stages and final outcomes:
-
-```text
-Pre-Docketed (Paanyaya) → Docketed → Mediation → Conciliation → Settled | Arbitration | Dismissed | CFA Issued | Archived
-```
-
-Do not use case status for UI hints such as “ready,” “attempt 2,” or “needs review.” Store a specific fact on the relevant record or calculate it for display.
-
-Every transition needs an authorized endpoint, a reason or approved outcome, actor and timestamp history, previous-state validation, and one clear user-facing result.
-
-## 5. Responsibilities by layer
-
-```text
-Page / JavaScript  → presents data and requests an action
-API endpoint       → authenticates, authorizes, validates input, returns JSON
-Controller         → coordinates the use case and audit event
-Model / service    → reads or changes one domain concern transactionally
-Database           → protects relationships and required data
-```
-
-Never put legal workflow gates only in JavaScript. Do not duplicate a transition in multiple models. Do not infer transitions from counts or labels.
-
-## 6. Implementation checklist
-
-Before editing:
-
-- Search existing code and schema use with `rg`.
-- Inspect the API response and live schema for data-related bugs.
-- Preserve unrelated user changes.
-
-While editing:
-
-- Use prepared PDO statements.
-- Wrap multi-table writes in one transaction.
-- Keep endpoints JSON-only with meaningful HTTP status codes.
-- Enforce authorization on the server; browser controls are only usability aids.
-- Add an idempotent migration for schema changes and update `database/schema.sql` for fresh installs.
-- Let optional panels fail independently; a workspace error must not hide core complaint/case data.
-
-After editing:
-
-- Run syntax checks for modified PHP and JavaScript.
-- Exercise the affected API with a representative record when safe.
-- Test a permitted action and a blocked action.
-- Run `git diff --check`.
-- Report changes, behaviour, and required migrations.
-
-## 7. Migration rules
-
-- Migrations are forward-only and idempotent.
-- Use `INFORMATION_SCHEMA` checks where installation versions differ.
-- Keep one migration focused on one concern.
-- Do not make runtime code require a column before its migration is supplied.
-- Do not silently swallow integrity failures; log technical details and return a recoverable message.
-
-## 8. UI rules
-
-- One screen answers: current stage, last action, and next permitted action.
-- Show one primary action, not competing workflow buttons.
-- Explain why unavailable actions are blocked.
-- Prefer progressive disclosure over dashboards inside every page.
-- Use consistent terminology: **Mediation**, **Conciliation**, **Pangkat**, **CFA**.
-
-## 9. AI must not
-
-- Add a parallel workflow, duplicate status, or duplicate entity table.
-- Make a legal conclusion from free text alone.
-- Auto-escalate to Conciliation because a count reaches three.
-- Auto-issue CFA from a button click or keyword match.
-- Put security, authorization, or legal gates only in the browser.
-- Send complaint text or other sensitive records to an external AI provider without explicit user acknowledgement; enforce bounded inputs and server-side rate limits.
-- Rewrite working modules or change unrelated data without approval.
-
-## 10. Definition of done
-
-A change is complete only when it has one owner, one authoritative state path, a verified API response, a usable screen state, and an explanation of how it behaves when the action is not allowed.
+- Use prepared PDO statements and enforce session, role, record ownership, and CSRF checks on the server.
+- Keep multi-record state changes and their audit entries consistent. Lock or recheck the current record before a transition so stale submissions and retries cannot overwrite outcomes.
+- Follow the endpoint's response convention. AJAX APIs use JSON with appropriate status codes. Complaint form actions use a redirect and feedback on the original record.
+- Make schema upgrades safe to rerun where practical, preserve existing records, and update `database/schema.sql` for new installations. Verify the target database before applying migrations. The [database guide](database/README.md) lists the workflow migration order.
+- Run syntax checks for modified PHP and JavaScript and run `git diff --check`. Exercise the normal browser path, a blocked action, and a retry where relevant. Use synthetic accounts and an isolated local database for tests that create records.
+- For Gemini dictation, keep credentials server-side. Require explicit consent before sending audio and let the user review and edit the transcript before inserting it into the narrative. Use synthetic audio and a mocked response for browser tests that cover the UI.
