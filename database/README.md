@@ -16,17 +16,24 @@ strengthened constraints can expose duplicate or orphaned records that must be
 resolved first. Back up the database, validate existing records, then apply a
 reviewed migration in a maintenance window.
 
-For an existing database that predates the current complaint workflow,
-document-service, and unified case-team changes, run the single consolidated
-upgrade query instead of the individual workflow migrations:
+For an existing database that predates all four September 14–18 workflow
+upgrades, run the consolidated upgrade for complaint review and incident
+details, document service, case-team roles, and deadline uniqueness:
 
 ```powershell
 mysql -u root agap_db < database/migrations/20260917_consolidated_workflow_upgrade.sql
 ```
 
-Do not run the consolidated query if any of its individual migrations have
-already been applied; its `ADD COLUMN`, index, and constraint operations are
-intentionally one-time changes.
+If the database already has some of those four upgrades, check its columns,
+indexes, and constraints against the original individual scripts in Git at
+commit `98f8a08`. Apply only the missing changes from those scripts. The
+consolidated upgrade requires all four changes to be pending.
+
+For older databases that still lack home coordinates, use
+[`20261021_006_add_home_coordinates_to_residents_and_parties.sql`](migrations/20261021_006_add_home_coordinates_to_residents_and_parties.sql).
+Check both `residents` and `complaint_parties` first. If either table already
+has the columns, apply only the missing additions. This SQL migration replaces
+the duplicate PHP script.
 
 ## Complaint case-type upgrade
 
