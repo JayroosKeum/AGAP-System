@@ -13,8 +13,8 @@ require_once __DIR__ . '/../../controllers/PaanyayaController.php';
 $db = (new Database())->connect();
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $allowedRoles = ($method === 'GET')
-    ? ['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'Summons Server']
-    : ['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'];
+    ? ['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'Summons Server', 'Secretary', 'Barangay Secretary']
+    : ['Administrator', 'Lupon Clerk', 'Secretary', 'Barangay Secretary'];
 agapRequireApiRoles($allowedRoles, $db);
 
 $controller = new PaanyayaController();

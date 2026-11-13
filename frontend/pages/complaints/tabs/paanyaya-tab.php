@@ -6,8 +6,13 @@ if (!isset($complaintId) || !$complaintId) {
     $complaintId = filter_var($_GET['id'] ?? ($_GET['complaint_id'] ?? null), FILTER_VALIDATE_INT) ?: 0;
 }
 
+require_once __DIR__ . '/../../../../backend/config/database.php';
+require_once __DIR__ . '/../../../../backend/middleware/rbac.php';
 require_once __DIR__ . '/../../../../backend/models/PaanyayaModel.php';
-$paanyayaModelInstance = new PaanyayaModel();
+$tabConn = (new Database())->connect();
+$canEditPaanyaya = agapHasRole(['Administrator', 'Lupon Clerk', 'Secretary', 'Barangay Secretary'], $tabConn);
+
+$paanyayaModelInstance = new PaanyayaModel($tabConn);
 $pData = $paanyayaModelInstance->getPaanyayaData($complaintId) ?? [];
 
 $compStatus = $pData['complaint']['status'] ?? 'Pre-Docketed (Paanyaya)';
@@ -15,6 +20,17 @@ $currentStage = $pData['current_stage'] ?? 'Paanyaya 1';
 $isP2 = ($currentStage === 'Paanyaya 2');
 $stage1 = $pData['stage1'] ?? null;
 $stage2 = $pData['stage2'] ?? null;
+
+$compData = $pData['complaint'] ?? [];
+$complainantsList = $pData['complainants'] ?? [];
+$respondentsList = $pData['respondents'] ?? [];
+$narrativeVal = trim((string)($compData['narrative'] ?? ''));
+$requestedReliefVal = trim((string)($compData['requested_resolution'] ?? ''));
+$incidentLocVal = trim((string)($compData['incident_location'] ?? ''));
+$incidentPurokVal = trim((string)($compData['incident_purok'] ?? ''));
+$incidentDateVal = trim((string)($compData['incident_date'] ?? ''));
+$incidentTimeVal = trim((string)($compData['incident_time'] ?? ''));
+$complaintSourceVal = trim((string)($compData['complaint_source'] ?? 'Online'));
 
 // Streamlined initial field values
 $complainantNameVal = $pData['complainant_name'] ?? 'NAGPAANYAYA';
@@ -34,6 +50,8 @@ $isSettled = !empty($pData['is_settled']);
 $isDismissed = !empty($pData['is_dismissed']);
 $isEscalated = !empty($pData['is_escalated']);
 $isConcluded = $isSettled || $isDismissed || $isEscalated;
+$readonlyAttr = (!$canEditPaanyaya || $isConcluded) ? 'readonly' : '';
+$disabledAttr = (!$canEditPaanyaya || $isConcluded) ? 'disabled' : '';
 ?>
 
 <!-- Paanyaya Workspace Styles: 50/50 Split Screen Layout -->
@@ -402,6 +420,94 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
         <!-- LEFT COLUMN: STREAMLINED FORM & PROGRESSION -->
         <!-- ========================================== -->
         <div class="paanyaya-form-panel">
+            <!-- Role Authorization Banner -->
+            <?php if ($canEditPaanyaya): ?>
+                <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 11px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #166534; font-size: 0.85rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                        <span><strong>Authorized Editor:</strong> Editable by Lupon Clerk, Barangay Secretary, and Administrator.</span>
+                    </div>
+                    <span style="font-size: 0.72rem; font-weight: 800; background: #dcfce7; color: #15803d; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.5px;">✓ Editable</span>
+                </div>
+            <?php else: ?>
+                <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 11px 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #475569; font-size: 0.85rem; box-shadow: 0 1px 2px rgba(0,0,0,0.03);">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        <span><strong>Read-Only Mode:</strong> Paanyaya information can only be edited by the <strong>Lupon Clerk</strong>, <strong>Barangay Secretary</strong>, or <strong>Admin</strong>.</span>
+                    </div>
+                    <span style="font-size: 0.72rem; font-weight: 800; background: #e2e8f0; color: #475569; padding: 3px 10px; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.5px;">🔒 View Only</span>
+                </div>
+            <?php endif; ?>
+
+            <!-- Card: Auto-filled Resident Submission Details -->
+            <div class="paanyaya-card-box" style="border-left: 4px solid #2563eb; background: #ffffff;">
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
+                    <h3 style="margin: 0; font-size: 0.95rem; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Auto-filled Resident Information
+                    </h3>
+                    <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.74rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 3px 10px; border-radius: 9999px;">
+                        ✓ From Resident Submission
+                    </span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px;">
+                    <!-- Complainants Column -->
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px;">
+                        <div style="font-size: 0.74rem; font-weight: 800; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                            Nagpaanyaya (Complainant)
+                        </div>
+                        <?php if (!empty($complainantsList)): ?>
+                            <?php foreach ($complainantsList as $cIdx => $cItem): ?>
+                                <div style="font-size: 0.84rem; font-weight: 700; color: #0f172a;"><?= htmlspecialchars($cItem['full_name'] ?: 'Complainant') ?></div>
+                                <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">
+                                    <?= htmlspecialchars($cItem['address'] ?: 'Tumana') ?><?= !empty($cItem['contact_number']) ? ' &bull; ' . htmlspecialchars($cItem['contact_number']) : '' ?>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div style="font-size: 0.84rem; font-weight: 600; color: #334155;"><?= htmlspecialchars($complainantNameVal) ?></div>
+                        <?php endif; ?>
+                    </div>
+
+                    <!-- Respondents Column -->
+                    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px;">
+                        <div style="font-size: 0.74rem; font-weight: 800; color: #b45309; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                            Inanyayahan (Respondent)
+                        </div>
+                        <?php if (!empty($respondentsList)): ?>
+                            <?php foreach ($respondentsList as $rIdx => $rItem): ?>
+                                <div style="font-size: 0.84rem; font-weight: 700; color: #0f172a;"><?= htmlspecialchars($rItem['full_name'] ?: 'Respondent') ?></div>
+                                <div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">
+                                    <?= htmlspecialchars($rItem['address'] ?: 'Tumana') ?><?= !empty($rItem['contact_number']) ? ' &bull; ' . htmlspecialchars($rItem['contact_number']) : '' ?>
+                                </div>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <div style="font-size: 0.84rem; font-weight: 600; color: #334155;"><?= htmlspecialchars($respondentNameVal) ?></div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Narrative & Relief Box -->
+                <div style="background: #fdfefe; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px;">
+                    <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-bottom: 4px;">Submitted Narrative (Salaysay):</div>
+                    <div style="font-size: 0.82rem; color: #1e293b; line-height: 1.45; max-height: 90px; overflow-y: auto; white-space: pre-wrap; background: #ffffff; border: 1px solid #f1f5f9; border-radius: 6px; padding: 8px;">
+                        <?= htmlspecialchars($narrativeVal ?: 'No narrative recorded.') ?>
+                    </div>
+                    <?php if (!empty($requestedReliefVal)): ?>
+                        <div style="font-size: 0.74rem; font-weight: 700; color: #059669; margin-top: 6px; margin-bottom: 2px;">Hinihiling na Kalutasan (Requested Relief):</div>
+                        <div style="font-size: 0.8rem; color: #065f46; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 6px 8px;">
+                            <?= htmlspecialchars($requestedReliefVal) ?>
+                        </div>
+                    <?php endif; ?>
+                    <?php if (!empty($incidentLocVal) || !empty($incidentPurokVal)): ?>
+                        <div style="margin-top: 6px; font-size: 0.76rem; color: #64748b;">
+                            <strong>Incident Location:</strong> <?= htmlspecialchars($incidentLocVal ?: $incidentPurokVal) ?>
+                            <?= (!empty($incidentDateVal)) ? ' &bull; <strong>Date:</strong> ' . htmlspecialchars($incidentDateVal) : '' ?>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
             <?php if ($isSettled): ?>
                 <div style="background: #ecfdf5; border: 1.5px solid #a7f3d0; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 10px; color: #065f46; font-size: 0.88rem;">
                     <span style="font-size: 1.3rem;">🔒</span>
@@ -422,10 +528,13 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
 
             <!-- Card 1: Streamlined Paanyaya Inputs -->
             <div class="paanyaya-card-box">
-                <h3>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
-                    Paanyaya Form Fields (Streamlined)
-                </h3>
+                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                    <h3 style="margin: 0;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                        Paanyaya Form Fields (Streamlined)
+                    </h3>
+                    <small style="color: #64748b; font-size: 0.78rem;">Pre-filled from resident submission</small>
+                </div>
 
                 <form id="paanyayaStreamlinedForm" onsubmit="handleSavePaanyaya(event)">
                     <input type="hidden" id="pnyComplaintId" name="complaint_id" value="<?= $complaintId ?>">
@@ -435,18 +544,18 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
                     <div class="form-grid-2">
                         <div class="form-group-streamlined">
                             <label for="pnyComplainantName">Complainant Name (Nagpaanyaya)</label>
-                            <input type="text" id="pnyComplainantName" name="complainant_name" value="<?= htmlspecialchars($complainantNameVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                            <input type="text" id="pnyComplainantName" name="complainant_name" value="<?= htmlspecialchars($complainantNameVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                         </div>
                         <div class="form-group-streamlined">
                             <label for="pnyRespondentName">Respondent Name (Inanyayahan)</label>
-                            <input type="text" id="pnyRespondentName" name="respondent_name" value="<?= htmlspecialchars($respondentNameVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                            <input type="text" id="pnyRespondentName" name="respondent_name" value="<?= htmlspecialchars($respondentNameVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                         </div>
                     </div>
 
                     <!-- 2. Tanggapan (Barangay Tumana) -->
                     <div class="form-group-streamlined">
                         <label for="pnyTanggapan">Tanggapan</label>
-                        <input type="text" id="pnyTanggapan" name="tanggapan" value="<?= htmlspecialchars($tanggapanVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                        <input type="text" id="pnyTanggapan" name="tanggapan" value="<?= htmlspecialchars($tanggapanVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                     </div>
 
                     <!-- 3. Master Date Picker with Past Date Guardrail -->
@@ -459,6 +568,7 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
                                    value="<?= htmlspecialchars($invitationDateVal) ?>"
                                    min="<?= date('Y-m-d') ?>"
                                    required
+                                   <?= $readonlyAttr ?>
                                    onchange="syncDateComponents(this.value); triggerLivePreviewUpdate();">
                             <div id="pastDateError" class="date-guardrail-alert">
                                 &times; Bawal pumili ng nakaraang petsa. Pakiusap pumili ng petsa simula ngayong araw pataas.
@@ -472,6 +582,7 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
                                    name="invitation_time"
                                    value="<?= htmlspecialchars($invitationTimeVal) ?>"
                                    required
+                                   <?= $readonlyAttr ?>
                                    onchange="syncTimeComponents(this.value); triggerLivePreviewUpdate();">
                         </div>
                     </div>
@@ -480,38 +591,38 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
                     <div class="form-grid-3">
                         <div class="form-group-streamlined">
                             <label for="pnyPetsa">Petsa (Araw Blg.)</label>
-                            <input type="text" id="pnyPetsa" name="petsa" value="<?= htmlspecialchars((string)$petsaVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                            <input type="text" id="pnyPetsa" name="petsa" value="<?= htmlspecialchars((string)$petsaVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                         </div>
                         <div class="form-group-streamlined">
                             <label for="pnyBuwan">Buwan</label>
-                            <input type="text" id="pnyBuwan" name="buwan" value="<?= htmlspecialchars((string)$buwanVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                            <input type="text" id="pnyBuwan" name="buwan" value="<?= htmlspecialchars((string)$buwanVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                         </div>
                         <div class="form-group-streamlined">
                             <label for="pnyTaon">Taon</label>
-                            <input type="text" id="pnyTaon" name="taon" value="<?= htmlspecialchars((string)$taonVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                            <input type="text" id="pnyTaon" name="taon" value="<?= htmlspecialchars((string)$taonVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                         </div>
                     </div>
 
                     <div class="form-grid-2">
                         <div class="form-group-streamlined">
                             <label for="pnyAraw">Araw (Day of Week)</label>
-                            <input type="text" id="pnyAraw" name="araw" value="<?= htmlspecialchars((string)$arawVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                            <input type="text" id="pnyAraw" name="araw" value="<?= htmlspecialchars((string)$arawVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                         </div>
                         <div class="form-group-streamlined">
                             <label for="pnyOras">Oras (Format: 09:00 AM)</label>
-                            <input type="text" id="pnyOras" name="oras" value="<?= htmlspecialchars((string)$orasVal) ?>" required oninput="triggerLivePreviewUpdate()">
+                            <input type="text" id="pnyOras" name="oras" value="<?= htmlspecialchars((string)$orasVal) ?>" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()">
                         </div>
                     </div>
 
                     <!-- 4. Salaysay -->
                     <div class="form-group-streamlined">
                         <label for="pnySalaysay">Salaysay (Statement / Matter of Dialogue)</label>
-                        <textarea id="pnySalaysay" name="salaysay" rows="4" required oninput="triggerLivePreviewUpdate()"><?= htmlspecialchars($salaysayVal) ?></textarea>
+                        <textarea id="pnySalaysay" name="salaysay" rows="4" required <?= $readonlyAttr ?> oninput="triggerLivePreviewUpdate()"><?= htmlspecialchars($salaysayVal) ?></textarea>
                     </div>
 
                     <!-- 5. Punong Barangay Signature Toggle -->
                     <label class="sig-toggle-box" for="pnyPrintSig">
-                        <input type="checkbox" id="pnyPrintSig" name="has_e_signature" value="1" <?= $hasESignatureVal ? 'checked' : '' ?> onchange="triggerLivePreviewUpdate()">
+                        <input type="checkbox" id="pnyPrintSig" name="has_e_signature" value="1" <?= $hasESignatureVal ? 'checked' : '' ?> <?= $disabledAttr ?> onchange="triggerLivePreviewUpdate()">
                         <span class="sig-toggle-label">
                             [✓] Print Punong Barangay Signature (Hon. Akiko Lynne Centeno)
                         </span>
@@ -522,8 +633,10 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
 
                     <!-- Save / Update Button -->
                     <div style="margin-top: 18px; display: flex; justify-content: flex-end; gap: 10px;">
-                        <button type="submit" class="btn-create" id="btnSavePaanyayaForm" <?= $isConcluded ? 'disabled style="padding: 10px 20px; font-weight: 700; opacity: 0.55; cursor: not-allowed; background: #94a3b8; border-color: #94a3b8;" title="Naka-lock ang Paanyaya"' : 'style="padding: 10px 20px; font-weight: 700;"' ?>>
-                            <?= $isSettled ? '🔒 Settled in Paanyaya' : ($isEscalated ? '🔒 Escalated to Mediation' : 'Save &amp; Update Paanyaya') ?>
+                        <button type="submit" class="btn-create" id="btnSavePaanyayaForm"
+                            <?= (!$canEditPaanyaya || $isConcluded) ? 'disabled style="padding: 10px 20px; font-weight: 700; opacity: 0.55; cursor: not-allowed; background: #94a3b8; border-color: #94a3b8;"' : 'style="padding: 10px 20px; font-weight: 700;"' ?>
+                            title="<?= !$canEditPaanyaya ? 'Editing restricted to Lupon Clerk, Barangay Secretary, and Admin' : ($isSettled ? 'Naresolba na ang Paanyaya' : ($isEscalated ? 'Nai-akyat na sa Mediation' : 'Save & Update Paanyaya')) ?>">
+                            <?= !$canEditPaanyaya ? '🔒 Read-Only (Lupon Clerk, Secretary, Admin only)' : ($isSettled ? '🔒 Settled in Paanyaya' : ($isEscalated ? '🔒 Escalated to Mediation' : 'Save &amp; Update Paanyaya')) ?>
                         </button>
                     </div>
                 </form>
@@ -547,11 +660,11 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
                             <label>Nagpaanyaya (Complainant)</label>
                             <div class="attendance-pill-group">
                                 <label class="attendance-pill-label active-present" id="lblCompPresent">
-                                    <input type="radio" name="complainant_attended" value="Present" checked onchange="updateAttendanceState()">
+                                    <input type="radio" name="complainant_attended" value="Present" checked <?= $disabledAttr ?> onchange="updateAttendanceState()">
                                     <span>&#10003; Present</span>
                                 </label>
                                 <label class="attendance-pill-label" id="lblCompAbsent">
-                                    <input type="radio" name="complainant_attended" value="Absent" onchange="updateAttendanceState()">
+                                    <input type="radio" name="complainant_attended" value="Absent" <?= $disabledAttr ?> onchange="updateAttendanceState()">
                                     <span>&times; Absent</span>
                                 </label>
                             </div>
@@ -562,11 +675,11 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
                             <label>Inanyayahan (Respondent)</label>
                             <div class="attendance-pill-group">
                                 <label class="attendance-pill-label active-present" id="lblRespPresent">
-                                    <input type="radio" name="respondent_attended" value="Present" checked onchange="updateAttendanceState()">
+                                    <input type="radio" name="respondent_attended" value="Present" checked <?= $disabledAttr ?> onchange="updateAttendanceState()">
                                     <span>&#10003; Present</span>
                                 </label>
                                 <label class="attendance-pill-label" id="lblRespAbsent">
-                                    <input type="radio" name="respondent_attended" value="Absent" onchange="updateAttendanceState()">
+                                    <input type="radio" name="respondent_attended" value="Absent" <?= $disabledAttr ?> onchange="updateAttendanceState()">
                                     <span>&times; Absent</span>
                                 </label>
                             </div>
@@ -580,8 +693,8 @@ $isConcluded = $isSettled || $isDismissed || $isEscalated;
 
                     <!-- Submit Progression Button -->
                     <div style="margin-top: 18px; display: flex; justify-content: flex-end;">
-                        <button type="submit" class="btn-create" id="btnConfirmProgression" <?= $isConcluded ? 'disabled style="background: #64748b; border-color: #64748b; padding: 10px 22px; font-weight: 700; opacity: 0.55; cursor: not-allowed;" title="Naka-lock ang Paanyaya"' : 'style="background: #0f172a; border-color: #0f172a; padding: 10px 22px; font-weight: 700;"' ?>>
-                            <?= $isSettled ? '🔒 Naresolba sa Kasunduan' : ($isEscalated ? '🔒 Nai-akyat sa Mediation' : 'Confirm Attendance &amp; Advance Outcome') ?>
+                        <button type="submit" class="btn-create" id="btnConfirmProgression" <?= (!$canEditPaanyaya || $isConcluded) ? 'disabled style="background: #64748b; border-color: #64748b; padding: 10px 22px; font-weight: 700; opacity: 0.55; cursor: not-allowed;" title="' . (!$canEditPaanyaya ? 'Restricted to Lupon Clerk, Barangay Secretary, and Admin' : 'Naka-lock ang Paanyaya') . '"' : 'style="background: #0f172a; border-color: #0f172a; padding: 10px 22px; font-weight: 700;"' ?>>
+                            <?= !$canEditPaanyaya ? '🔒 Read-Only (Lupon Clerk, Secretary, Admin only)' : ($isSettled ? '🔒 Naresolba sa Kasunduan' : ($isEscalated ? '🔒 Nai-akyat sa Mediation' : 'Confirm Attendance &amp; Advance Outcome')) ?>
                         </button>
                     </div>
                 </form>

@@ -13,7 +13,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $db = (new Database())->connect();
-agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'], $db);
+agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'Secretary', 'Barangay Secretary'], $db);
 
 $complaintId = filter_var($_POST['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$complaintId) {

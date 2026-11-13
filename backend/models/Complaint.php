@@ -649,6 +649,10 @@ class Complaint
 
     public function review(int $id, string $status, ?string $notes, array $classificationData = []): array
     {
+        if (strcasecmp($status, 'Approved') === 0) {
+            $status = 'Accepted';
+        }
+
         $allowed = ['Under Review', 'Needs Information', 'Accepted', 'Rejected'];
         if (!in_array($status, $allowed, true)) {
             return ['success' => false, 'message' => 'Select a valid review decision.'];
@@ -764,13 +768,21 @@ class Complaint
         $stmt->execute($params);
 
         if ($status === 'Accepted') {
+            // Auto-initialize Paanyaya with auto-filled resident information
+            try {
+                require_once __DIR__ . '/PaanyayaModel.php';
+                (new PaanyayaModel($this->conn))->autoInitializeFromComplaint($id, (int)($_SESSION['user_id'] ?? 1));
+            } catch (Throwable $pe) {
+                error_log('Failed to auto-initialize Paanyaya on complaint approval: ' . $pe->getMessage());
+            }
+
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';
                 $cNum = $row['complaint_number'] ?: "CMP-#{$id}";
                 (new NotificationService())->notifyRoles(
-                    ['Administrator', 'Lupon Clerk', 'LISO'],
-                    'Complaint Verified — Ready for Paanyaya',
-                    "Complaint {$cNum} passed LISO preliminary verification and is ready for mandatory Paanyaya scheduling.",
+                    ['Administrator', 'Lupon Clerk', 'Secretary', 'Barangay Secretary', 'LISO'],
+                    'Complaint Approved — Endorsed to Lupon Clerk for Paanyaya Scheduling',
+                    "Complaint {$cNum} was approved by LISO and endorsed to Lupon Clerk for Paanyaya scheduling.",
                     $_SESSION['user_id'] ?? null,
                     'info',
                     '../paanyaya/stage.php?complaint_id=' . $id
@@ -784,7 +796,7 @@ class Complaint
             'success' => true,
             'status' => $status,
             'message' => $status === 'Accepted'
-                ? 'Complaint verified and endorsed for mandatory Paanyaya.'
+                ? 'Complaint approved and endorsed to Lupon Clerk for Paanyaya scheduling.'
                 : 'Complaint review saved.'
         ];
     }

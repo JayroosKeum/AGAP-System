@@ -574,6 +574,9 @@ class ComplaintController
     public function review(int $id, array $data): array
     {
         $status = trim((string) ($data['status'] ?? ''));
+        if (strcasecmp($status, 'Approved') === 0) {
+            $status = 'Accepted';
+        }
         $notes = trim((string) ($data['review_notes'] ?? ''));
         if ($id < 1 || mb_strlen($notes) > 2000) {
             return ['success' => false, 'message' => 'Provide valid review notes of 2,000 characters or fewer.'];
@@ -581,9 +584,10 @@ class ComplaintController
         $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $data);
         if ($result['success']) {
             $actorId = (int) ($_SESSION['user_id'] ?? 1);
-            $this->audit->log($actorId, 'Reviewed Complaint: ' . $status, 'Complaints', $id);
+            $effectiveStatus = $result['status'] ?? $status;
+            $this->audit->log($actorId, 'Reviewed Complaint: ' . $effectiveStatus, 'Complaints', $id);
             $this->logAiClassificationVerification($id, $data);
-            if ($status === 'Accepted') {
+            if ($effectiveStatus === 'Accepted') {
                 try {
                     require_once __DIR__ . '/../services/KpFormService.php';
                     (new KpFormService($this->conn))->autoGenerateForEvent('complaint_filed', $id, $actorId);

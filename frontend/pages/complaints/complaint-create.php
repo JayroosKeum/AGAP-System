@@ -224,6 +224,496 @@ include '../../layouts/header.php';
 <link rel="stylesheet" href="../../assets/css/residents.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/residents.css'); ?>">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
+<!-- MODERN STEPPER WIZARD REDESIGN: Zanzibar SaaS Reference Style -->
+<style id="wizardRedesignStyles">
+/* Page Canvas & Wrapper */
+.intake-main-wrapper {
+    max-width: 1380px !important;
+    margin: 0 auto !important;
+    padding: 24px 28px 48px !important;
+}
+
+/* Modern Header Bar */
+.wizard-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+.wizard-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.wizard-back-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #1e293b;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.wizard-back-btn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+    transform: translateX(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+.wizard-title {
+    font-size: 1.55rem !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    line-height: 1.25 !important;
+    letter-spacing: -0.02em !important;
+}
+.wizard-subtitle {
+    font-size: 0.88rem !important;
+    color: #64748b !important;
+    margin: 4px 0 0 0 !important;
+}
+.wizard-header-alt-btn {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: #f0fdf4;
+    border: 1.5px solid #86efac;
+    color: #166534;
+    font-size: 0.84rem;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+.wizard-header-alt-btn:hover {
+    background: #dcfce7;
+    border-color: #4ade80;
+}
+
+/* 2-Column Wizard Layout */
+.wizard-layout-container {
+    display: grid;
+    grid-template-columns: 290px minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+}
+@media (max-width: 1024px) {
+    .wizard-layout-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+}
+
+/* Left Sidebar Stepper */
+.wizard-sidebar-col {
+    position: sticky;
+    top: 88px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.wizard-stepper-card {
+    background: transparent;
+    padding: 0;
+}
+.wizard-stepper-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+}
+.wizard-stepper-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+}
+.wizard-stepper-counter {
+    font-size: 0.82rem;
+    color: #64748b;
+    font-weight: 500;
+}
+.wizard-progress-track {
+    width: 100%;
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+.wizard-progress-bar {
+    height: 100%;
+    background: #2563eb;
+    border-radius: 999px;
+    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Steps List */
+.wizard-steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.wizard-step-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1.5px solid transparent;
+    background: transparent;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+    font-family: inherit;
+}
+.wizard-step-item:hover {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+.wizard-step-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    color: #64748b;
+    font-size: 0.84rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+.wizard-step-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.wizard-step-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #334155;
+    line-height: 1.3;
+}
+.wizard-step-desc {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Active Step */
+.wizard-step-item.is-active {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+.wizard-step-item.is-active .wizard-step-badge {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+.wizard-step-item.is-active .wizard-step-name {
+    color: #1e40af;
+    font-weight: 700;
+}
+.wizard-step-item.is-active .wizard-step-desc {
+    color: #3b82f6;
+}
+
+/* Completed Step */
+.wizard-step-item.is-completed .wizard-step-badge {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+}
+
+/* Need Assistance Card */
+.wizard-assist-card {
+    background: #f0f7ff;
+    border: 1px solid #dbeafe;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 10px;
+}
+.wizard-assist-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.wizard-assist-title {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1e40af;
+    margin-bottom: 3px;
+}
+.wizard-assist-desc {
+    font-size: 0.76rem;
+    color: #2563eb;
+    line-height: 1.45;
+    margin: 0;
+}
+
+/* Right Column: Main Wizard Card */
+.wizard-card-container {
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 25px -4px rgba(0, 0, 0, 0.05);
+    padding: 34px 38px;
+    min-height: 620px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+@media (max-width: 768px) {
+    .wizard-card-container {
+        padding: 24px 20px;
+        border-radius: 16px;
+    }
+}
+.wizard-card-header {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.wizard-card-title {
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    margin: 0 0 6px 0 !important;
+    letter-spacing: -0.01em !important;
+}
+.wizard-card-desc {
+    font-size: 0.88rem !important;
+    color: #64748b !important;
+    margin: 0 !important;
+    line-height: 1.45 !important;
+}
+
+/* Step Panels */
+.wizard-step-panel {
+    display: none;
+}
+.wizard-step-panel.is-active {
+    display: block;
+    animation: fadeInStep 0.22s ease-out;
+}
+@keyframes fadeInStep {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Flatten nested section card visuals inside panels */
+.wizard-step-panel .intake-section-card {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+    margin-bottom: 0 !important;
+    border-radius: 0 !important;
+}
+.wizard-step-panel .intake-section-header {
+    display: none !important;
+}
+
+/* Wizard Footer */
+.wizard-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 36px;
+    padding-top: 24px;
+    border-top: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.btn-wizard-draft {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    color: #334155;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 11px 22px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-wizard-draft:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+.wizard-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.btn-wizard-prev {
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 11px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-wizard-prev:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+.btn-wizard-next {
+    background: #0284c7;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    border: none;
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 11px 26px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+    transition: all 0.15s ease;
+}
+.btn-wizard-next:hover {
+    box-shadow: 0 6px 16px rgba(2, 132, 199, 0.35);
+    transform: translateY(-1px);
+}
+.btn-wizard-submit {
+    background: #16a34a;
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    border: none;
+    color: #ffffff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    padding: 11px 28px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.28);
+    transition: all 0.15s ease;
+}
+.btn-wizard-submit:hover {
+    box-shadow: 0 6px 18px rgba(22, 163, 74, 0.38);
+    transform: translateY(-1px);
+}
+
+/* Pre-filing Review Summary Card in Step 5 */
+.wizard-review-summary {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 24px;
+}
+.review-summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.review-summary-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+    color: #0f172a;
+}
+.review-summary-badge {
+    font-size: 0.74rem;
+    color: #0284c7;
+    font-weight: 700;
+    background: #e0f2fe;
+    border: 1px solid #bae6fd;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+.review-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    font-size: 0.86rem;
+}
+.review-summary-item {
+    display: flex;
+    flex-direction: column;
+}
+.review-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+}
+.review-value {
+    font-weight: 600;
+    color: #0f172a;
+}
+.review-value.is-comp { color: #0284c7; }
+.review-value.is-resp { color: #be123c; }
+
+/* Enhanced Modern Input Styling inside Wizard Card */
+.wizard-card-container input[type="text"],
+.wizard-card-container input[type="number"],
+.wizard-card-container input[type="date"],
+.wizard-card-container input[type="datetime-local"],
+.wizard-card-container select,
+.wizard-card-container textarea {
+    border-radius: 10px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    padding: 10px 14px !important;
+    font-size: 0.92rem !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    background: #ffffff !important;
+}
+.wizard-card-container input:focus,
+.wizard-card-container select:focus,
+.wizard-card-container textarea:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+    outline: none !important;
+}
+.wizard-card-container label {
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    color: #334155 !important;
+    margin-bottom: 6px !important;
+}
+</style>
+
 <div class="dashboard-layout">
     <?php include '../../layouts/sidebar.php'; ?>
 
@@ -231,17 +721,19 @@ include '../../layouts/header.php';
         <?php include '../../layouts/navbar.php'; ?>
 
         <div class="intake-main-wrapper">
-            <!-- Header Bar -->
-            <div class="intake-header-bar">
-                <div>
-                    <a href="complaint-list.php" class="back-link">
-                        <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                        <span>Back to Complaints</span>
+            <!-- Header Bar (Matching Modern Reference UI) -->
+            <div class="wizard-header-bar">
+                <div class="wizard-header-left">
+                    <a href="complaint-list.php" class="wizard-back-btn" title="Back to Complaints">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                     </a>
-                    <h1 class="intake-title"><?php echo $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : 'File Official Complaint (Direct to Mediation — Stage 1)'; ?></h1>
+                    <div>
+                        <h1 class="wizard-title"><?php echo $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : 'File Official Complaint'; ?></h1>
+                        <p class="wizard-subtitle">Katarungang Pambarangay (Stage 1 — Formal Mediation Docketing)</p>
+                    </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                    <a href="../paanyaya/index.php" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 8px; background: #f0fdf4; border: 1.5px solid #86efac; color: #166534; font-size: 0.84rem; font-weight: 700;">
+                <div class="wizard-header-actions">
+                    <a href="../paanyaya/index.php" class="wizard-header-alt-btn">
                         <span>🤝 Prefer an Informal Dialogue first? Go to Paanyaya Module &rarr;</span>
                     </a>
                 </div>
@@ -289,47 +781,74 @@ include '../../layouts/header.php';
                 <div id="walkinLookupResults" style="display:none; margin-top:12px;"></div>
             </section>
 
-            <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
+            <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form" novalidate>
                 <input type="hidden" name="bypass_office_hours" value="1">
                 <input type="hidden" name="is_draft" id="complaintIsDraftInput" value="0">
                 <input type="hidden" name="escalated_from_paanyaya_id" value="<?php echo htmlspecialchars((string)($old['escalated_from_paanyaya_id'] ?? ($escalatePaanyaya['paanyaya_id'] ?? ''))); ?>">
 
-                <div class="intake-layout-container" id="intakeLayoutContainer">
+                <div class="wizard-layout-container" id="intakeLayoutContainer">
 
-                    <!-- LEFT PANEL COLUMN: Quick-Nav in Digital mode; Document Viewer in Pre-Signed Paper mode -->
-                    <div class="intake-left-panel-col" id="intakeLeftPanel">
-                        <!-- STICKY QUICK-NAV SIDEBAR (Digital Mode) -->
-                        <nav class="intake-quicknav-sidebar" id="intakeQuickNav" aria-label="Form Quick Navigation">
-                            <div class="quicknav-title">Form Quick-Nav</div>
-                            
-                            <a href="#section-ingestion" id="nav-sec-ingestion" class="quicknav-link is-active">
-                                <span class="quicknav-badge">1</span> Filing Method &amp; Case Classification
-                            </a>
-                            
-                            <a href="#section-parties" id="nav-sec-parties" class="quicknav-link">
-                                <span class="quicknav-badge">2</span> Involved Parties
-                            </a>
-
-                            <a href="#section-narrative" id="nav-sec-narrative" class="quicknav-link">
-                                <span class="quicknav-badge">3</span> Statement of Facts &amp; Relief Sought
-                            </a>
-                            
-                            <a href="#section-location" id="nav-sec-location" class="quicknav-link">
-                                <span class="quicknav-badge">4</span> Incident Location &amp; Map Pin
-                            </a>
-
-                            <a href="#section-jurisdiction" id="nav-sec-jurisdiction" class="quicknav-link">
-                                <span class="quicknav-badge">KP</span> Jurisdiction Check
-                            </a>
-
-                            <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
-                                <span class="quicknav-badge">5</span> Evidence &amp; Attachments
-                            </a>
-
-                            <div class="quicknav-footer">
-                                Fill out required (<span class="required-mark">*</span>) fields before final submission to Lupon Tagapamayapa.
+                    <!-- LEFT PANEL COLUMN: Stepper Progress in Digital mode; Document Viewer in Pre-Signed Paper mode -->
+                    <div class="wizard-sidebar-col" id="intakeLeftPanel">
+                        <!-- PROGRESS STEPPER SIDEBAR (Matching Modern Reference UI) -->
+                        <div class="wizard-stepper-card" id="intakeQuickNav">
+                            <div class="wizard-stepper-header">
+                                <div class="wizard-stepper-title">Filing Progress</div>
+                                <div class="wizard-stepper-counter" id="wizardStepIndicator">Step 1 of 5</div>
                             </div>
-                        </nav>
+                            <div class="wizard-progress-track">
+                                <div class="wizard-progress-bar" id="wizardProgressBar" style="width: 20%;"></div>
+                            </div>
+
+                            <div class="wizard-steps-list" role="tablist" aria-label="Filing Step Navigation">
+                                <button type="button" class="wizard-step-item is-active" data-step="1" id="wizardStepBtn1">
+                                    <span class="wizard-step-badge">1</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Case Classification</span>
+                                        <span class="wizard-step-desc">Category, type &amp; title</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="2" id="wizardStepBtn2">
+                                    <span class="wizard-step-badge">2</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Involved Parties</span>
+                                        <span class="wizard-step-desc">Complainants &amp; respondents</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="3" id="wizardStepBtn3">
+                                    <span class="wizard-step-badge">3</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Statement &amp; Relief</span>
+                                        <span class="wizard-step-desc">Facts narrative &amp; prayers</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="4" id="wizardStepBtn4">
+                                    <span class="wizard-step-badge">4</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Incident Location</span>
+                                        <span class="wizard-step-desc">Address &amp; map coordinates</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="5" id="wizardStepBtn5">
+                                    <span class="wizard-step-badge">5</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Evidence &amp; Review</span>
+                                        <span class="wizard-step-desc">Files, KP check &amp; docket</span>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <!-- NEED ASSISTANCE? HELP CARD (Matching Reference UI) -->
+                            <div class="wizard-assist-card">
+                                <div class="wizard-assist-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                </div>
+                                <div class="wizard-assist-body">
+                                    <strong class="wizard-assist-title">Need Assistance?</strong>
+                                    <p class="wizard-assist-desc">Barangay Tumana Lupon Secretariat is available during office hours (8AM - 5PM) to assist with filing rules and KP procedures.</p>
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- DOCUMENT VIEWER (Pre-Signed Paper Form Mode) -->
                         <div class="paper-doc-viewer" id="paperDocViewer" style="display: none;">
@@ -431,15 +950,17 @@ include '../../layouts/header.php';
                         </div>
                     </div>
 
-                    <!-- LONG-FORM SECTIONS STACK / FAST INTAKE FORM -->
-                    <div class="intake-sections-container" id="intakeSectionsContainer">
+                    <!-- RIGHT MAIN WIZARD CARD -->
+                    <div class="wizard-main-col" id="intakeSectionsContainer">
+                        <div class="wizard-card-container">
+                            <div class="wizard-card-header">
+                                <h2 class="wizard-card-title" id="wizardCurrentStepTitle">Case Classification</h2>
+                                <p class="wizard-card-desc" id="wizardCurrentStepDesc">Specify dispute categorization, case type, and official complaint details.</p>
+                            </div>
 
-                        <div class="fast-intake-badge">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
-                            <span>Formal Complaint Intake &amp; Docketing</span>
-                        </div>
-
-                        <!-- SECTION 1: CASE CLASSIFICATION -->
+                            <!-- STEP 1 PANEL: CASE CLASSIFICATION -->
+                            <div class="wizard-step-panel is-active" id="wizardPanel1" data-panel-step="1">
+                                <!-- SECTION 1: CASE CLASSIFICATION -->
                         <section id="section-ingestion" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
@@ -666,7 +1187,11 @@ include '../../layouts/header.php';
                         </section>
 
 
-                        <!-- SECTION 2: INVOLVED PARTIES (MODAL-DRIVEN WITH MULTIPLE TOGGLES) -->
+                                                    </div><!-- /#wizardPanel1 -->
+
+                            <!-- STEP 2 PANEL: INVOLVED PARTIES -->
+                            <div class="wizard-step-panel" id="wizardPanel2" data-panel-step="2" style="display: none;">
+                                <!-- SECTION 2: INVOLVED PARTIES (MODAL-DRIVEN WITH MULTIPLE TOGGLES) -->
                         <section id="section-parties" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
@@ -811,7 +1336,11 @@ include '../../layouts/header.php';
                             <div id="additionalPartiesHiddenContainer"></div>
                         </section>
 
-<!-- SECTION 3: STATEMENT OF FACTS & RELIEF SOUGHT -->
+                            </div><!-- /#wizardPanel2 -->
+
+                            <!-- STEP 3 PANEL: STATEMENT OF FACTS & RELIEF SOUGHT -->
+                            <div class="wizard-step-panel" id="wizardPanel3" data-panel-step="3" style="display: none;">
+                                <!-- SECTION 3: STATEMENT OF FACTS & RELIEF SOUGHT -->
                         <section id="section-narrative" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
@@ -903,7 +1432,11 @@ include '../../layouts/header.php';
                         </section>
 
 
-                        <!-- SECTION 4: INCIDENT LOCATION & INTEGRATED MAP -->
+                                                    </div><!-- /#wizardPanel3 -->
+
+                            <!-- STEP 4 PANEL: INCIDENT LOCATION & INTEGRATED MAP -->
+                            <div class="wizard-step-panel" id="wizardPanel4" data-panel-step="4" style="display: none;">
+                                <!-- SECTION 4: INCIDENT LOCATION & INTEGRATED MAP -->
                         <section id="section-location" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
@@ -1022,7 +1555,46 @@ include '../../layouts/header.php';
                         </section>
 
 
-                        <?php renderKpJurisdictionVerificationPanel($old); ?>
+                                                    </div><!-- /#wizardPanel4 -->
+
+                            <!-- STEP 5 PANEL: EVIDENCE, KP JURISDICTION & DOCKETING REVIEW -->
+                            <div class="wizard-step-panel" id="wizardPanel5" data-panel-step="5" style="display: none;">
+                                <!-- PRE-FILING COMPLAINT REVIEW SUMMARY -->
+                                <div class="wizard-review-summary" id="step5ReviewSummary">
+                                    <div class="review-summary-header">
+                                        <div class="review-summary-title-wrap">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                                <polyline points="14 2 14 8 20 8"></polyline>
+                                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                                <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
+                                            <strong>Complaint Summary Review</strong>
+                                        </div>
+                                        <span class="review-summary-badge">Stage 1 Pre-Filing Check</span>
+                                    </div>
+                                    <div class="review-summary-grid">
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Category &amp; Case Type</span>
+                                            <span class="review-value" id="revCategoryTitle">—</span>
+                                        </div>
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Incident Schedule &amp; Place</span>
+                                            <span class="review-value" id="revIncidentInfo">—</span>
+                                        </div>
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Complainant(s)</span>
+                                            <span class="review-value is-comp" id="revComplainants">—</span>
+                                        </div>
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Respondent(s)</span>
+                                            <span class="review-value is-resp" id="revRespondents">—</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <?php renderKpJurisdictionVerificationPanel($old); ?>
 
                         <!-- SECTION 5: EVIDENCE & ATTACHMENTS -->
                         <section id="section-evidence" class="intake-section-card">
@@ -1069,17 +1641,30 @@ include '../../layouts/header.php';
 
                         </section>
 
-                        <!-- Action Row directly under Section 5 Evidence & Attachments -->
-                        <div class="intake-bottom-actions" style="display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 24px; padding: 20px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-                            <a href="complaint-list.php" class="btn-secondary" style="text-decoration: none; padding: 10px 20px;">Cancel</a>
-                            <button type="submit" form="createComplaintForm" class="btn-secondary" id="btnSaveComplaintDraft" style="padding: 10px 18px; font-weight: 600;">Save as Draft</button>
-                            <button type="submit" form="createComplaintForm" class="btn-create" id="btnSubmitComplaint" style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.95rem; font-weight: 700; padding: 11px 26px;">
-                                <?php echo !empty($escalatePaanyaya) ? 'File Complaint &amp; Proceed to Mediation →' : 'Save &amp; File Formal Complaint →'; ?>
-                            </button>
-                        </div>
+                            </div><!-- /#wizardPanel5 -->
 
-                    </div>
-                </div>
+                            <!-- Modern Wizard Footer (Matching Reference UI) -->
+                            <div class="wizard-card-footer">
+                                <div class="wizard-footer-left">
+                                    <button type="submit" form="createComplaintForm" class="btn-wizard-draft" id="btnSaveComplaintDraft">
+                                        Save as Draft
+                                    </button>
+                                </div>
+                                <div class="wizard-footer-right">
+                                    <button type="button" class="btn-wizard-prev" id="btnPrevStep" style="display: none;">
+                                        &larr; Previous Step
+                                    </button>
+                                    <button type="button" class="btn-wizard-next" id="btnNextStep">
+                                        Next Step &rarr;
+                                    </button>
+                                    <button type="submit" form="createComplaintForm" class="btn-wizard-submit" id="btnSubmitComplaint" style="display: none;">
+                                        <?php echo !empty($escalatePaanyaya) ? 'File Complaint &amp; Proceed to Mediation &rarr;' : 'Save &amp; File Formal Complaint &rarr;'; ?>
+                                    </button>
+                                </div>
+                            </div>
+                        </div><!-- /.wizard-card-container -->
+                    </div><!-- /.wizard-main-col -->
+                </div><!-- /.wizard-layout-container -->
 
 
             </form>
@@ -2063,12 +2648,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isFirstOffense = document.getElementById('chkFirstOffenseCatcalling')?.checked;
                 if (isRepeatVawc) {
                     e.preventDefault();
+                    window.setWizardStep?.(1);
                     window.agapNotify?.('VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.', 'error');
                     document.getElementById('vawcPnpRoutingBanner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     return;
                 }
                 if (!isFirstOffense) {
                     e.preventDefault();
+                    window.setWizardStep?.(1);
                     window.agapNotify?.('Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.', 'error');
                     const firstBox = document.getElementById('chkFirstOffenseCatcalling');
                     firstBox?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2084,6 +2671,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!blotterVal) {
                     e.preventDefault();
+                    window.setWizardStep?.(1);
                     window.agapNotify?.('Police / Court Jurisdiction: Estimated damages exceed ₱5,000. Under Katarungang Pambarangay guidelines (R.A. 7160 §408), please issue and record an official Barangay Blotter Reference Number.', 'error');
                     const bInput = document.getElementById('blotterRefNo');
                     bInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2117,6 +2705,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!compId && (!compFirst || !compLast)) {
                 e.preventDefault();
+                window.setWizardStep?.(2);
                 window.agapNotify?.('Please provide the complainant\'s First Name and Last Name.', 'error');
                 window.openPartyModal('complainant', complainantsList.length > 0 ? 'edit' : 'add', 0);
                 return;
@@ -2124,6 +2713,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!respId && (!respFirst || !respLast)) {
                 e.preventDefault();
+                window.setWizardStep?.(2);
                 window.agapNotify?.('Please provide the respondent\'s First Name and Last Name.', 'error');
                 window.openPartyModal('respondent', respondentsList.length > 0 ? 'edit' : 'add', 0);
                 return;
@@ -2193,6 +2783,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cityInput = document.getElementById('incidentCity');
             if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
                 e.preventDefault();
+                window.setWizardStep?.(4);
                 window.agapNotify?.('Incident location must be within Marikina City.', 'error');
                 return;
             }
@@ -4422,51 +5013,239 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Quick-Nav ScrollSpy & Smooth Scrolling ──
-    const quickNavLinks = document.querySelectorAll('#intakeQuickNav .quicknav-link');
-    const navSectionIds = ['section-ingestion', 'section-parties', 'section-narrative', 'section-location', 'section-evidence'];
-    const navSections = navSectionIds.map(id => document.getElementById(id)).filter(Boolean);
+    // ── Modern Stepper Controller (Matching Reference UI) ──
+    const WIZARD_STEP_META = {
+        1: {
+            title: 'Case Classification',
+            desc: 'Specify dispute categorization, case type, and official complaint details.'
+        },
+        2: {
+            title: 'Involved Parties',
+            desc: 'Add and manage all dispute participants cleanly without cluttering the screen.'
+        },
+        3: {
+            title: 'Statement of Facts & Relief Sought',
+            desc: 'Provide complaint narrative and requested relief according to Katarungang Pambarangay guidelines.'
+        },
+        4: {
+            title: 'Incident Location & Map Pin',
+            desc: 'Specify the incident address in Barangay Tumana and pinpoint the exact map location coordinates.'
+        },
+        5: {
+            title: 'Evidence & Final Docketing Review',
+            desc: 'Review complaint details, verify KP jurisdiction eligibility, and attach supporting evidence.'
+        }
+    };
 
-    quickNavLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetId = link.getAttribute('href')?.replace('#', '');
-            const targetEl = document.getElementById(targetId);
-            if (targetEl) {
-                const topOffset = 70;
-                const elementPosition = targetEl.getBoundingClientRect().top + window.pageYOffset;
-                window.scrollTo({
-                    top: Math.max(0, elementPosition - topOffset),
-                    behavior: 'smooth'
-                });
-                quickNavLinks.forEach(l => l.classList.remove('is-active'));
-                link.classList.add('is-active');
+    let currentWizardStep = 1;
+    const totalWizardSteps = 5;
+
+    function validateStep(step) {
+        if (step === 1) {
+            const cat = (document.getElementById('primaryCategoryInput')?.value || '').trim();
+            if (!cat) {
+                window.agapNotify?.('Please enter or select a Complaint Category.', 'error');
+                document.getElementById('primaryCategoryInput')?.focus();
+                return false;
             }
+            if (window.isSafeSpacesCategorySelected && window.isSafeSpacesCategorySelected()) {
+                if (document.getElementById('chkRepeatOffenseVawc')?.checked) {
+                    window.agapNotify?.('VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.', 'error');
+                    return false;
+                }
+                if (!document.getElementById('chkFirstOffenseCatcalling')?.checked) {
+                    window.agapNotify?.('Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.', 'error');
+                    document.getElementById('chkFirstOffenseCatcalling')?.focus();
+                    return false;
+                }
+            }
+            const title = (document.getElementById('complaintTitle')?.value || '').trim();
+            if (!title) {
+                window.agapNotify?.('Please enter the Complaint Title / Specific Nature.', 'error');
+                document.getElementById('complaintTitle')?.focus();
+                return false;
+            }
+            const dt = document.getElementById('incidentDateTime')?.value;
+            if (!dt) {
+                window.agapNotify?.('Please provide the incident date and time.', 'error');
+                document.getElementById('incidentDateTime')?.focus();
+                return false;
+            }
+            return true;
+        } else if (step === 2) {
+            if (!complainantsList || complainantsList.length === 0) {
+                window.agapNotify?.('Please add at least one complainant.', 'error');
+                window.openPartyModal('complainant', 'add');
+                return false;
+            }
+            if (!respondentsList || respondentsList.length === 0) {
+                window.agapNotify?.('Please add at least one respondent.', 'error');
+                window.openPartyModal('respondent', 'add');
+                return false;
+            }
+            return true;
+        } else if (step === 3) {
+            const narrative = (document.getElementById('narrative')?.value || '').trim();
+            if (!narrative && document.getElementById('narrative')?.hasAttribute('required')) {
+                window.agapNotify?.('Please provide the complaint narrative (salaysay).', 'error');
+                document.getElementById('narrative')?.focus();
+                return false;
+            }
+            return true;
+        } else if (step === 4) {
+            const street = (document.getElementById('incidentStreet')?.value || '').trim();
+            if (!street) {
+                window.agapNotify?.('Please provide the street address / landmark of the incident.', 'error');
+                document.getElementById('incidentStreet')?.focus();
+                return false;
+            }
+            return true;
+        }
+        return true;
+    }
+
+    function updateStep5ReviewSummary() {
+        const cat = document.getElementById('primaryCategoryInput')?.value?.trim() || '—';
+        const type = document.getElementById('caseType')?.value || 'Civil';
+        const title = document.getElementById('complaintTitle')?.value?.trim() || '';
+        const catEl = document.getElementById('revCategoryTitle');
+        if (catEl) {
+            catEl.textContent = `${cat} • ${type}${title ? ' — "' + title + '"' : ''}`;
+        }
+
+        const dt = document.getElementById('incidentDateTime')?.value || '';
+        const street = document.getElementById('incidentStreet')?.value?.trim() || '';
+        const purok = document.getElementById('incidentPurok')?.value || 'Tumana';
+        const incEl = document.getElementById('revIncidentInfo');
+        if (incEl) {
+            const formattedDt = dt ? dt.replace('T', ' ') : 'Not specified';
+            incEl.textContent = `${formattedDt} @ ${street ? street + ', ' : ''}${purok}`;
+        }
+
+        const compEl = document.getElementById('revComplainants');
+        if (compEl) {
+            if (complainantsList && complainantsList.length > 0) {
+                compEl.innerHTML = complainantsList.map((c) => {
+                    const name = [c.first_name, c.middle_name, c.last_name, c.suffix].filter(Boolean).join(' ');
+                    const pill = (typeof getResidencyPillHtml === 'function') ? getResidencyPillHtml(c) : '';
+                    return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px;"><span>${escapeHtmlLocal(name)}</span>${pill}</div>`;
+                }).join('');
+            } else {
+                compEl.textContent = 'None recorded';
+            }
+        }
+
+        const respEl = document.getElementById('revRespondents');
+        if (respEl) {
+            if (respondentsList && respondentsList.length > 0) {
+                respEl.innerHTML = respondentsList.map((r) => {
+                    const name = [r.first_name, r.middle_name, r.last_name, r.suffix].filter(Boolean).join(' ');
+                    const pill = (typeof getResidencyPillHtml === 'function') ? getResidencyPillHtml(r) : '';
+                    return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px;"><span>${escapeHtmlLocal(name)}</span>${pill}</div>`;
+                }).join('');
+            } else {
+                respEl.textContent = 'None recorded';
+            }
+        }
+    }
+
+    function setWizardStep(step, validateCurrent = false) {
+        if (step < 1 || step > totalWizardSteps) return;
+
+        if (validateCurrent && step > currentWizardStep) {
+            if (!validateStep(currentWizardStep)) {
+                return;
+            }
+        }
+
+        currentWizardStep = step;
+
+        // Update Progress Header & Bar
+        const stepIndicator = document.getElementById('wizardStepIndicator');
+        if (stepIndicator) stepIndicator.textContent = `Step ${step} of ${totalWizardSteps}`;
+
+        const progressBar = document.getElementById('wizardProgressBar');
+        if (progressBar) progressBar.style.width = `${(step / totalWizardSteps) * 100}%`;
+
+        // Update Stepper List
+        const stepItems = document.querySelectorAll('.wizard-step-item');
+        stepItems.forEach(item => {
+            const itemStep = parseInt(item.getAttribute('data-step'), 10);
+            item.classList.remove('is-active', 'is-completed');
+            const badge = item.querySelector('.wizard-step-badge');
+            if (itemStep === step) {
+                item.classList.add('is-active');
+                if (badge) badge.textContent = itemStep;
+            } else if (itemStep < step) {
+                item.classList.add('is-completed');
+                if (badge) badge.innerHTML = '&#10003;';
+            } else {
+                if (badge) badge.textContent = itemStep;
+            }
+        });
+
+        // Update Card Header
+        const cardTitle = document.getElementById('wizardCurrentStepTitle');
+        const cardDesc = document.getElementById('wizardCurrentStepDesc');
+        if (cardTitle && WIZARD_STEP_META[step]) cardTitle.textContent = WIZARD_STEP_META[step].title;
+        if (cardDesc && WIZARD_STEP_META[step]) cardDesc.textContent = WIZARD_STEP_META[step].desc;
+
+        // Show/Hide Panels
+        for (let s = 1; s <= totalWizardSteps; s++) {
+            const panel = document.getElementById(`wizardPanel${s}`);
+            if (panel) {
+                if (s === step) {
+                    panel.style.display = 'block';
+                    panel.classList.add('is-active');
+                } else {
+                    panel.style.display = 'none';
+                    panel.classList.remove('is-active');
+                }
+            }
+        }
+
+        // Update Action Buttons
+        const prevBtn = document.getElementById('btnPrevStep');
+        const nextBtn = document.getElementById('btnNextStep');
+        const submitBtn = document.getElementById('btnSubmitComplaint');
+
+        if (prevBtn) prevBtn.style.display = step > 1 ? 'inline-flex' : 'none';
+        if (nextBtn) nextBtn.style.display = step < totalWizardSteps ? 'inline-flex' : 'none';
+        if (submitBtn) submitBtn.style.display = step === totalWizardSteps ? 'inline-flex' : 'none';
+
+        // Step-specific hooks
+        if (step === 4) {
+            setTimeout(() => {
+                window.complaintMaps?.addComplaintMap?.map?.invalidateSize?.();
+            }, 180);
+        }
+        if (step === 5) {
+            updateStep5ReviewSummary();
+        }
+
+        // Scroll to top of wizard card smoothly
+        const wizardCard = document.querySelector('.wizard-card-container');
+        if (wizardCard) {
+            const cardTop = wizardCard.getBoundingClientRect().top + window.pageYOffset - 80;
+            window.scrollTo({ top: Math.max(0, cardTop), behavior: 'smooth' });
+        }
+    }
+
+    document.querySelectorAll('.wizard-step-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetStep = parseInt(btn.getAttribute('data-step'), 10);
+            setWizardStep(targetStep, targetStep > currentWizardStep);
         });
     });
 
-    if ('IntersectionObserver' in window && navSections.length > 0) {
-        const navObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    const id = entry.target.id;
-                    quickNavLinks.forEach(link => {
-                        const href = link.getAttribute('href');
-                        if (href === `#${id}`) {
-                            link.classList.add('is-active');
-                        } else {
-                            link.classList.remove('is-active');
-                        }
-                    });
-                }
-            });
-        }, {
-            root: null,
-            rootMargin: '-15% 0px -65% 0px',
-            threshold: 0
-        });
-        navSections.forEach(sec => navObserver.observe(sec));
-    }
+    document.getElementById('btnNextStep')?.addEventListener('click', () => {
+        setWizardStep(currentWizardStep + 1, true);
+    });
+    document.getElementById('btnPrevStep')?.addEventListener('click', () => {
+        setWizardStep(currentWizardStep - 1, false);
+    });
+
+    window.setWizardStep = setWizardStep;
 
     // ── Filing Method Dynamic Selector ──
     const methodRadios = document.querySelectorAll('input[name="filing_method"]');
@@ -5562,7 +6341,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ─── Stage 1 Automation: Voice-to-Salaysay (STT) ──────────────────────────
     const voiceBtn = document.getElementById('btnComplaintVoiceRecord');
     const voiceStatus = document.getElementById('complaintVoiceStatus');
-    const narrativeInput = document.getElementById('narrative');
+    const voiceNarrativeInput = document.getElementById('narrative');
     let voiceRecorder = null;
     let voiceChunks = [];
     let voiceStream = null;
@@ -5628,10 +6407,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const res = await resp.json();
                     const text = (res.text || res.transcript || '').trim();
                     if (res.success && text) {
-                        if (narrativeInput) {
-                            const existing = narrativeInput.value.trim();
-                            narrativeInput.value = existing ? `${existing}\n${text}` : text;
-                            narrativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        if (voiceNarrativeInput) {
+                            const existing = voiceNarrativeInput.value.trim();
+                            voiceNarrativeInput.value = existing ? `${existing}\n${text}` : text;
+                            voiceNarrativeInput.dispatchEvent(new Event('input', { bubbles: true }));
                         }
                         window.agapNotify?.('Voice transcript inserted as an editable draft. Review before saving.', 'success', 'Voice Dictation');
                     } else {

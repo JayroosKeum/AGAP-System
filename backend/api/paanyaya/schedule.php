@@ -9,7 +9,7 @@ require_once __DIR__ . '/../../models/Paanyaya.php';
 header('Content-Type: application/json; charset=utf-8');
 
 $db = (new Database())->connect();
-agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'LISO'], $db);
+agapRequireApiRoles(['Administrator', 'Lupon Clerk', 'Secretary', 'Barangay Secretary', 'LISO'], $db);
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);

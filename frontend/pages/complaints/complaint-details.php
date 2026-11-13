@@ -27,7 +27,7 @@ if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO'
 
 $roleName = agapGetRoleName($rbacDb);
 $isLuponReadOnly = ($roleName === 'Lupon Member' || $roleId === 3);
-$canScreenClassification = agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO'], $rbacDb);
+$canScreenClassification = agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'Secretary', 'Barangay Secretary'], $rbacDb);
 $canAuthorizePastDate = $roleId === 1;
 $lisoCategories = [];
 try {
@@ -347,7 +347,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <div id="lisoActionButtonsWrap" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                         <button type="button" class="btn-secondary" onclick="submitLisoReviewDecision('Under Review')" style="font-size: 0.8rem; padding: 6px 12px;">Mark Under Review</button>
                         <button type="button" class="btn-secondary" onclick="submitLisoReviewDecision('Needs Information')" style="font-size: 0.8rem; padding: 6px 12px; border-color: #f59e0b; color: #b45309;">Needs Info</button>
-                        <button type="button" class="btn-create" onclick="submitLisoReviewDecision('Accepted')" style="font-size: 0.8rem; padding: 6px 14px; background: #16a34a; border-color: #16a34a;">✓ Verify &amp; Endorse to Paanyaya</button>
+                        <button type="button" class="btn-create" onclick="submitLisoReviewDecision('Accepted')" style="font-size: 0.8rem; padding: 6px 14px; background: #16a34a; border-color: #16a34a;">✓ Approve &amp; Endorse to Paanyaya</button>
                         <button type="button" class="btn-secondary" onclick="submitLisoReviewDecision('Rejected')" style="font-size: 0.8rem; padding: 6px 12px; border-color: #ef4444; color: #b91c1c;">Reject</button>
                     </div>
                 </div>

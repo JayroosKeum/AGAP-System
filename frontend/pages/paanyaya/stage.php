@@ -8,7 +8,7 @@ require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/middleware/rbac.php';
 $rbacDb = (new Database())->connect();
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO'], $rbacDb)) {
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO', 'Secretary', 'Barangay Secretary'], $rbacDb)) {
     header('Location: ../auth/login.php');
     exit;
 }

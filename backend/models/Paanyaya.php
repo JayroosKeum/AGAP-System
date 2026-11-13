@@ -533,6 +533,25 @@ class Paanyaya
      */
     public function getAllPaanyayas(?string $status = null, ?string $search = null): array
     {
+        // Auto-heal any approved complaints that need Paanyaya seeding
+        try {
+            $unseeded = $this->conn->query("
+                SELECT c.complaint_id FROM complaints c
+                WHERE c.status IN ('Accepted', 'Approved', 'Pre-Docketed (Paanyaya)')
+                  AND NOT EXISTS (SELECT 1 FROM paanyayas p WHERE p.complaint_id = c.complaint_id)
+                LIMIT 20
+            ")->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($unseeded)) {
+                require_once __DIR__ . '/PaanyayaModel.php';
+                $pm = new PaanyayaModel($this->conn);
+                foreach ($unseeded as $uncid) {
+                    $pm->autoInitializeFromComplaint((int)$uncid, null);
+                }
+            }
+        } catch (Throwable $se) {
+            // Non-blocking
+        }
+
         $sql = "
             SELECT p.*,
                    c.complaint_number,

@@ -11929,7 +11929,7 @@ function renderLisoVerificationBanner(data) {
     if (!banner || !data) return;
 
     const status = String(data.status || '');
-    const isPrePaanyaya = !data.case_id && ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Rejected'].includes(status);
+    const isPrePaanyaya = !data.case_id && ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Approved', 'Pre-Docketed (Paanyaya)', 'Rejected'].includes(status);
     if (!isPrePaanyaya) {
         banner.style.display = 'none';
         return;
@@ -11967,11 +11967,14 @@ function renderLisoVerificationBanner(data) {
 
     const aiSection = document.getElementById('lisoAiScreeningSection');
 
-    if (status === 'Accepted') {
+    if (status === 'Accepted' || status === 'Approved' || status === 'Pre-Docketed (Paanyaya)') {
         banner.style.borderLeftColor = '#16a34a';
-        if (titleEl) titleEl.textContent = 'Verified by LISO — Mandatory Paanyaya Next';
-        if (subEl) subEl.textContent = 'Preliminary screening is complete. Schedule mandatory Paanyaya before this complaint can advance to formal Mediation.';
-        if (btnPaanyaya) btnPaanyaya.style.display = 'inline-flex';
+        if (titleEl) titleEl.textContent = 'Approved by LISO — Endorsed to Lupon Clerk for Paanyaya Scheduling';
+        if (subEl) subEl.textContent = 'Preliminary review is complete. All resident details have been auto-filled into Paanyaya and endorsed to Lupon Clerk for scheduling.';
+        if (btnPaanyaya) {
+            btnPaanyaya.style.display = 'inline-flex';
+            btnPaanyaya.innerHTML = '📅 Schedule Paanyaya Session &rarr;';
+        }
         if (actionWrap) actionWrap.style.display = 'none';
         if (aiSection) aiSection.style.display = 'none';
     } else if (status === 'Rejected') {

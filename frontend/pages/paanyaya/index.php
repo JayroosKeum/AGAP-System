@@ -6,10 +6,12 @@ require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/middleware/rbac.php';
 $rbacDb = (new Database())->connect();
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO'], $rbacDb)) {
+if (!agapHasRole(['Administrator', 'Lupon Clerk', 'Lupon Member', 'LISO', 'BPSO', 'Secretary', 'Barangay Secretary'], $rbacDb)) {
     header('Location: ../auth/login.php');
     exit;
 }
+
+$canEditPaanyaya = agapHasRole(['Administrator', 'Lupon Clerk', 'Secretary', 'Barangay Secretary'], $rbacDb);
 
 require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
@@ -1935,6 +1937,15 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                         $rowCompNumber = (string)($row['complaint_number'] ?? '');
                                         ob_start();
                                         ?>
+                                        <?php if ($cid > 0 && $canEditPaanyaya): ?>
+                                            <a href="stage.php?complaint_id=<?php echo $cid; ?>"
+                                               class="agap-btn-act is-primary-soft is-icon-btn"
+                                               title="Edit Paanyaya &amp; Schedule Details (Lupon Clerk / Secretary / Admin)"
+                                               aria-label="Edit Paanyaya and Schedule Details"
+                                               style="text-decoration: none;">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                            </a>
+                                        <?php endif; ?>
                                         <button type="button" class="agap-btn-act is-primary-soft btn-preview-modal"
                                                 data-paanyaya-id="<?php echo $pid; ?>"
                                                 data-complaint-id="<?php echo $cid; ?>"
