@@ -389,6 +389,9 @@ class ComplaintController
     public function review(int $id, array $data): array
     {
         $status = trim((string) ($data['status'] ?? ''));
+        if (strcasecmp($status, 'Approved') === 0) {
+            $status = 'Accepted';
+        }
         $notes = trim((string) ($data['review_notes'] ?? ''));
         if ($id < 1 || mb_strlen($notes) > 2000) {
             return ['success' => false, 'message' => 'Provide valid review notes of 2,000 characters or fewer.'];
@@ -397,7 +400,17 @@ class ComplaintController
         $isAssignedLisoReview = (int) ($_SESSION['role_id'] ?? 0) === 3;
         $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $reviewerId, $isAssignedLisoReview);
         if ($result['success']) {
-            $this->audit->log((int) $_SESSION['user_id'], 'Reviewed Complaint: ' . $status, 'Complaints', $id);
+            $actorId = (int) ($_SESSION['user_id'] ?? 1);
+            $effectiveStatus = $result['status'] ?? $status;
+            $this->audit->log($actorId, 'Reviewed Complaint: ' . $effectiveStatus, 'Complaints', $id);
+            if ($effectiveStatus === 'Accepted') {
+                try {
+                    require_once __DIR__ . '/../services/KpFormService.php';
+                    (new KpFormService())->autoGenerateForEvent('complaint_filed', $id, $actorId);
+                } catch (Throwable $kpErr) {
+                    error_log('Review KP Form 7 generation warning: ' . $kpErr->getMessage());
+                }
+            }
         }
         return $result;
     }

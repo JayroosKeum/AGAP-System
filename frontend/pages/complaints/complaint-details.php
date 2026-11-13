@@ -24,6 +24,7 @@ if (!in_array($roleId, [1, 2, 3], true)) {
 }
 
 $isLuponReadOnly = $roleId === 3;
+$canScreenClassification = in_array($roleId, [1, 2, 3], true);
 $canAuthorizePastDate = $roleId === 1;
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
@@ -220,6 +221,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <?php endif; ?>
                 <script>
                     window.__agapLuponReadOnly = <?php echo $isLuponReadOnly ? 'true' : 'false'; ?>;
+                    window.__agapCanScreenClassification = <?php echo $canScreenClassification ? 'true' : 'false'; ?>;
                 </script>
             </div>
         </div>
@@ -445,7 +447,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
-                <section id="intake-screening" class="case-hero-card" aria-labelledby="intake-screening-title">
+                <section id="intake-screening" class="case-hero-card" aria-labelledby="intake-screening-title" style="margin-bottom: 18px;">
                     <h2 id="intake-screening-title">LISO Preliminary Screening</h2>
                     <p>Review the narrative, parties, and incident details before recording your decision.</p>
                     <div class="form-group">
@@ -459,118 +461,296 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </section>
             <?php endif; ?>
 
-            <!-- Top Hero Section: Primary Case Info & Immediate Context -->
-            <div class="case-hero-card">
-                <div class="hero-badges-row">
-                    <span id="heroCaseTypeBadge" class="hero-type-pill">CRIMINAL COMPLAINT</span>
-                    <span id="heroDaysRemainingBadge" class="hero-days-pill" style="display: none;">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                        <span id="heroDaysRemainingText">26 days remaining</span>
-                    </span>
+            <!-- Sophos-Style Hero Section (Light Mode) -->
+            <div class="sophos-hero-card">
+                <div class="sophos-hero-left">
+                    <div class="sophos-hero-pills-row">
+                        <span id="sophosHeroCaseNum" class="sophos-ref-pill">#CMP-2026-0000</span>
+                        <span id="heroCaseTypeBadge" class="sophos-tag-select sophos-tag-type">
+                            <span id="sophosCaseTypeText">CIVIL COMPLAINT</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </span>
+                        <span id="complaintStatusBadge" class="sophos-tag-select sophos-tag-status">
+                            <span id="sophosStatusText">Under Review</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </span>
+                        <!-- Hidden hook for legacy scripts if needed -->
+                        <span id="heroDaysRemainingBadge" style="display: none;"><span id="heroDaysRemainingText"></span></span>
+                    </div>
+                    <h2 id="complaintTitle" class="sophos-hero-title">Loading case title...</h2>
                 </div>
-                <h2 id="complaintTitle" class="hero-case-title">Loading case title...</h2>
-                <div class="hero-meta-columns">
-                    <div class="hero-meta-item">
-                        <span class="m-label">Category</span>
-                        <span id="infoCategory" class="m-value">—</span>
+                <div class="sophos-hero-kpis">
+                    <div class="sophos-kpi-col">
+                        <span class="sophos-kpi-label">Assigned Officer</span>
+                        <span id="sophosHeroOwner" class="sophos-kpi-val">Punong Barangay</span>
                     </div>
-                    <div class="hero-meta-item">
-                        <span class="m-label">Incident Date</span>
-                        <span id="infoIncidentDate" class="m-value">—</span>
+                    <div class="sophos-kpi-col">
+                        <span class="sophos-kpi-label">Date Filed</span>
+                        <span id="infoDateFiled" class="sophos-kpi-val">—</span>
                     </div>
-                    <div class="hero-meta-item">
-                        <span class="m-label">Date Filed</span>
-                        <span id="infoDateFiled" class="m-value">—</span>
+                    <div class="sophos-kpi-col">
+                        <span class="sophos-kpi-label">Hearing Date</span>
+                        <span id="sophosHeroHearingDate" class="sophos-kpi-val">N/A</span>
                     </div>
-                    <div class="hero-meta-item">
-                        <span class="m-label">Administrative Status</span>
-                        <span id="infoStatus" class="m-value status-blue">Mediation Stage</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Side-by-Side Context Grid: Involved Parties & Incident Location -->
-            <div class="case-context-grid">
-                <!-- LEFT COLUMN: Involved Parties Card -->
-                <div class="context-box-card">
-                    <div class="context-box-header">
-                        <h3>INVOLVED PARTIES (<span id="partiesCount">0</span>)</h3>
-                        <span class="context-subtitle">Complainants &amp; Respondents</span>
-                    </div>
-                    <div id="partiesListContainer" class="parties-list-wrap">
-                        <div class="empty-detail-state">Loading parties...</div>
-                    </div>
-                </div>
-
-                <!-- RIGHT COLUMN: Incident Location Card -->
-                <div class="context-box-card">
-                    <div class="context-box-header">
-                        <h3>INCIDENT LOCATION</h3>
-                        <span class="context-subtitle">Pinned GPS</span>
-                    </div>
-                    <div class="location-summary-rows">
-                        <div class="loc-data-row">
-                            <strong>Specific Location:</strong> <span id="locationAddressText">—</span>
-                        </div>
-                        <div class="loc-data-row">
-                            <strong>Landmark &amp; Coordinates:</strong> <span id="locationLandmarkText">None</span> | <span id="locationCoordinatesText">—</span>
-                        </div>
-                        <div class="loc-data-row" id="locationDetailsRow" style="display:none;">
-                            <strong>Location Details:</strong> <span id="locationDetailsText">—</span>
-                        </div>
-                    </div>
-                    <div id="complaintDetailMap" class="context-map-frame" aria-label="Incident Location Map"></div>
-                    <div id="emptyMapPlaceholder" class="empty-map-state-frame" style="display:none;">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                        <p style="margin: 6px 0 2px; font-weight: 600; font-size: 0.88rem;">No exact GPS coordinates pinned</p>
-                        <span style="font-size: 0.78rem; color: #94a3b8;">Coordinates can be set anytime via Edit Case</span>
+                    <div class="sophos-kpi-col">
+                        <span class="sophos-kpi-label">Last Updated</span>
+                        <span id="sophosHeroLastUpdate" class="sophos-kpi-val">—</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Full Narrative & Facts Card (Moved from Parties & Narratives) -->
-            <div class="narrative-card-box">
-                <div class="narrative-card-header">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                    <div>
-                        <h3 style="margin: 0;">Full Narrative &amp; Facts</h3>
-                        <span class="card-subtitle" style="font-size: 0.8rem; color: #64748b; font-weight: 500;">Complete statement of complaint, narrative, and relief sought</span>
+            <!-- Sophos-Inspired 2-Column Asymmetric Layout Grid -->
+            <div class="sophos-layout-grid">
+                <!-- ================= LEFT COLUMN (~36% / 360px) ================= -->
+                <div class="sophos-grid-left">
+                    <!-- Left Card 1: Information -->
+                    <div class="sophos-card">
+                        <div class="sophos-card-header">
+                            <h3 class="sophos-card-title">Information</h3>
+                        </div>
+                        <div class="sophos-card-body">
+                            <div class="sophos-info-list">
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Case type</span>
+                                    <span id="infoCaseType" class="sophos-info-val">Civil Complaint</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Category</span>
+                                    <span id="infoCategory" class="sophos-info-val">—</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Origin / Intake</span>
+                                    <span id="sophosInfoOrigin" class="sophos-info-val">Resident Portal (Online)</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Jurisdiction</span>
+                                    <span class="sophos-info-val">Barangay Tumana</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Total Parties</span>
+                                    <span class="sophos-info-val"><span id="partiesCount">0</span> involved</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Admin Status</span>
+                                    <span id="infoStatus" class="sophos-info-val" style="color: #2563eb;">Mediation Stage</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="narrative-text-container">
-                    <span style="font-size: 0.78rem; font-weight: 700; color: #64748b; text-transform: uppercase; display: block; margin-bottom: 6px;">Statement of Complaint</span>
-                    <div id="complaintNarrative">Loading narrative statement...</div>
-                    <div id="complaintAdditionalDetailsWrap" style="display:none; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1;">
-                        <strong style="font-size: 0.82rem; color: #64748b; text-transform: uppercase;">Additional Facts / Prior Attempts:</strong>
-                        <p id="complaintAdditionalDetails" style="margin: 4px 0 0; font-size: 0.9rem; color: #1e293b;"></p>
-                    </div>
-                    <div id="complaintRequestedResolutionWrap" style="display:none; margin-top: 14px; padding-top: 12px; border-top: 1px dashed #cbd5e1;">
-                        <strong style="font-size: 0.82rem; color: #64748b; text-transform: uppercase;">Requested Resolution / Relief:</strong>
-                        <p id="complaintRequestedResolution" style="margin: 4px 0 0; font-size: 0.9rem; color: #1e293b;"></p>
-                    </div>
-                    <div id="complaintAiSuggestionCallout" style="display:none; margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: #eff6ff; border: 1px solid #bfdbfe;"></div>
-                </div>
-            </div>
 
-            <!-- AI-assisted factual case brief: generated only on request and never saved as an outcome. -->
-            <div class="narrative-card-box" style="border-color: #ddd6fe; background: linear-gradient(135deg, #fcfbff 0%, #f8f7ff 100%);">
-                <div class="narrative-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap;">
-                    <div>
-                        <h3 style="margin: 0;">✨ AI-Assisted Case Brief</h3>
-                        <span class="card-subtitle" style="font-size: 0.8rem; color: #64748b; font-weight: 500;">A factual, view-only briefing built from the saved case record. It does not decide an outcome or legal remedy.</span>
+                    <!-- Left Card 2: Applicable KP Rules & Legal Basis (Mitre Tactics Style) -->
+                    <div class="sophos-card">
+                        <div class="sophos-card-header">
+                            <h3 class="sophos-card-title">Applicable KP Rules &amp; Legal Basis</h3>
+                        </div>
+                        <div class="sophos-card-body">
+                            <div class="sophos-legal-list">
+                                <a href="https://www.officialgazette.gov.ph/1991/10/10/republic-act-no-7160/" target="_blank" rel="noopener noreferrer" class="sophos-legal-item" title="Subject matter jurisdiction of Katarungang Pambarangay">
+                                    <div class="sophos-legal-left">
+                                        <span class="sophos-legal-chevron">&rsaquo;</span>
+                                        <span class="sophos-legal-code">Sec. 408</span>
+                                        <span class="sophos-legal-desc">Subject Matter Jurisdiction</span>
+                                    </div>
+                                    <span class="sophos-legal-icon">&#8599;</span>
+                                </a>
+                                <a href="https://www.officialgazette.gov.ph/1991/10/10/republic-act-no-7160/" target="_blank" rel="noopener noreferrer" class="sophos-legal-item" title="Barangay venue and territorial residency requirements">
+                                    <div class="sophos-legal-left">
+                                        <span class="sophos-legal-chevron">&rsaquo;</span>
+                                        <span class="sophos-legal-code">Sec. 409</span>
+                                        <span class="sophos-legal-desc">Barangay Venue &amp; Residency</span>
+                                    </div>
+                                    <span class="sophos-legal-icon">&#8599;</span>
+                                </a>
+                                <a href="javascript:void(0)" onclick="switchCaseTab('tab-overview')" class="sophos-legal-item" title="Formal verified complaint requirement">
+                                    <div class="sophos-legal-left">
+                                        <span class="sophos-legal-chevron">&rsaquo;</span>
+                                        <span class="sophos-legal-code">KP Form 7</span>
+                                        <span class="sophos-legal-desc">Verified Formal Complaint</span>
+                                    </div>
+                                    <span class="sophos-legal-icon">&#8599;</span>
+                                </a>
+                                <a href="javascript:void(0)" onclick="switchCaseTab('tab-mediation')" class="sophos-legal-item" title="Punong Barangay 15-day mediation mandate">
+                                    <div class="sophos-legal-left">
+                                        <span class="sophos-legal-chevron">&rsaquo;</span>
+                                        <span class="sophos-legal-code">Sec. 410</span>
+                                        <span class="sophos-legal-desc">15-Day Mediation Procedure</span>
+                                    </div>
+                                    <span class="sophos-legal-icon">&#8599;</span>
+                                </a>
+                                <a href="javascript:void(0)" class="sophos-legal-item" title="Tolling of prescriptive period for criminal &amp; civil actions up to 60 days">
+                                    <div class="sophos-legal-left">
+                                        <span class="sophos-legal-chevron">&rsaquo;</span>
+                                        <span class="sophos-legal-code">60-Day Tolling</span>
+                                        <span class="sophos-legal-desc">Prescription Suspension</span>
+                                    </div>
+                                    <span class="sophos-legal-icon">&#8599;</span>
+                                </a>
+                            </div>
+                        </div>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                        <label style="font-size: .76rem; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
-                            <input type="checkbox" id="aiBriefConsentCheck" style="accent-color: #7c3aed;"> I consent to send case details to Google Gemini
-                        </label>
-                        <button type="button" id="btnGenerateAiBrief" class="btn-secondary" onclick="generateAiCaseBrief()" style="font-size: .78rem; padding: 6px 11px; border-color: #a78bfa; color: #6d28d9; background: #faf5ff; font-weight: 700;">
-                            <span id="aiBriefBtnSpinner" style="display: none;">⏳</span>
-                            <span id="aiBriefBtnText">Generate Case Brief</span>
-                        </button>
+
+                    <!-- Left Card 3: Intake & Incident Location (Initial Detection Style) -->
+                    <div class="sophos-card">
+                        <div class="sophos-card-header">
+                            <h3 class="sophos-card-title">Intake &amp; Incident Location</h3>
+                        </div>
+                        <div class="sophos-card-body">
+                            <div class="sophos-loc-meta">
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Specific Location</span>
+                                    <span id="locationAddressText" class="sophos-info-val">—</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Severity / Priority</span>
+                                    <span class="sophos-badge-severity">Medium Priority</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Landmark</span>
+                                    <span id="locationLandmarkText" class="sophos-info-val">None</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Source</span>
+                                    <span class="sophos-info-val">Barangay Tumana LISO</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Incident Date &amp; Time</span>
+                                    <span id="infoIncidentDate" class="sophos-info-val">—</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Coordinates</span>
+                                    <span id="locationCoordinatesText" class="sophos-info-val" style="font-family: monospace; font-size: 0.8rem;">—</span>
+                                </div>
+                                <div class="sophos-info-row" id="locationDetailsRow" style="display:none;">
+                                    <span class="sophos-info-label">Location Details</span>
+                                    <span id="locationDetailsText" class="sophos-info-val">—</span>
+                                </div>
+                            </div>
+
+                            <div id="complaintDetailMap" class="sophos-map-frame" aria-label="Incident Location Map"></div>
+                            <div id="emptyMapPlaceholder" class="empty-map-state-frame" style="display:none; height: 160px;">
+                                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                <p style="margin: 6px 0 2px; font-weight: 600; font-size: 0.84rem; color: #64748b;">No GPS coordinates pinned</p>
+                                <span style="font-size: 0.76rem; color: #94a3b8;">Can be updated anytime via Edit Case</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div id="aiBriefOutputContainer" style="margin-top: 12px;">
-                    <p style="margin: 0; font-size: .84rem; color: #64748b;">Generate a briefing when preparing for a hearing or reviewing the case. An authorized officer remains responsible for all decisions and official entries.</p>
+
+                <!-- ================= RIGHT COLUMN (~64%) ================= -->
+                <div class="sophos-grid-right">
+                    <!-- Right Card 1: Summary -->
+                    <div class="sophos-card">
+                        <div class="sophos-card-header">
+                            <h3 class="sophos-card-title">Summary</h3>
+                            <div class="sophos-header-actions">
+                                <button type="button" class="sophos-btn-action" onclick="copyComplaintNarrative()" title="Copy narrative statement to clipboard">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                    <span>Copy Narrative</span>
+                                </button>
+                                <button type="button" class="sophos-btn-action" onclick="document.getElementById('aiBriefBoxWrap').scrollIntoView({behavior: 'smooth'})" title="AI Case Brief Section" style="color: #6d28d9; border-color: #c4b5fd; background: #faf5ff;">
+                                    <span>✨ AI Brief</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="sophos-card-body">
+                            <span style="font-size: 0.74rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px;">Statement of Complaint</span>
+                            <div id="complaintNarrative" class="sophos-narrative-box">Loading narrative statement...</div>
+
+                            <div id="complaintAdditionalDetailsWrap" style="display:none; margin-top: 12px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                                <strong style="font-size: 0.78rem; color: #64748b; text-transform: uppercase;">Additional Facts / Prior Attempts:</strong>
+                                <p id="complaintAdditionalDetails" style="margin: 4px 0 0; font-size: 0.88rem; color: #1e293b;"></p>
+                            </div>
+
+                            <div id="complaintRequestedResolutionWrap" style="display:none; margin-top: 12px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
+                                <strong style="font-size: 0.78rem; color: #64748b; text-transform: uppercase;">Requested Resolution / Relief Sought:</strong>
+                                <p id="complaintRequestedResolution" style="margin: 4px 0 0; font-size: 0.88rem; color: #1e293b;"></p>
+                            </div>
+
+                            <div id="complaintAiSuggestionCallout" style="display:none; margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #eff6ff; border: 1px solid #bfdbfe;"></div>
+
+                            <!-- Integrated AI Brief Panel -->
+                            <div id="aiBriefBoxWrap" style="margin-top: 14px; padding: 12px 14px; border-radius: 8px; background: linear-gradient(135deg, #fcfbff 0%, #f8f7ff 100%); border: 1px solid #ddd6fe;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                    <div>
+                                        <strong style="font-size: 0.82rem; color: #4c1d95;">✨ AI-Assisted Factual Case Brief</strong>
+                                        <p style="margin: 1px 0 0; font-size: 0.76rem; color: #64748b;">Advisory summary generated on request; decisions remain with Lupon officers.</p>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                        <label style="font-size: 0.74rem; color: #475569; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+                                            <input type="checkbox" id="aiBriefConsentCheck" style="accent-color: #7c3aed;"> Consent for Gemini
+                                        </label>
+                                        <button type="button" id="btnGenerateAiBrief" class="sophos-btn-action" onclick="generateAiCaseBrief()" style="color: #6d28d9; border-color: #a78bfa; background: #ffffff; font-weight: 700;">
+                                            <span id="aiBriefBtnSpinner" style="display: none;">⏳</span>
+                                            <span id="aiBriefBtnText">Generate Brief</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="aiBriefOutputContainer" style="margin-top: 8px;">
+                                    <p style="margin: 0; font-size: 0.8rem; color: #64748b;">Click 'Generate Brief' when reviewing case narrative and relief sought.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Card 2: Incident Particulars & Execution Specs (Command Line Style) -->
+                    <div class="sophos-card">
+                        <div class="sophos-card-header">
+                            <h3 class="sophos-card-title">Incident Particulars &amp; Execution Specs</h3>
+                            <button type="button" class="sophos-btn-action" onclick="copyExecutionSpecs()" title="Copy execution parameters">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                <span>Copy Specs</span>
+                            </button>
+                        </div>
+                        <div class="sophos-card-body" style="padding: 12px 16px;">
+                            <div id="sophosCommandLineBox" class="sophos-cmd-box">
+                                <span class="sophos-cmd-param">--case-number</span>=<span class="sophos-cmd-val">"CMP-2026-0000"</span> \<br>
+                                <span class="sophos-cmd-param">--jurisdiction</span>=<span class="sophos-cmd-val">"Barangay Tumana, District II, Marikina City (RA 7160 Sec. 408)"</span> \<br>
+                                <span class="sophos-cmd-param">--incident-location</span>=<span class="sophos-cmd-val">"Sitio Olandes, Purok 3"</span> \<br>
+                                <span class="sophos-cmd-param">--relief-sought</span>=<span class="sophos-cmd-val">"Amicable settlement and boundary restitution"</span> \<br>
+                                <span class="sophos-cmd-param">--prescriptive-window</span>=<span class="sophos-cmd-val">"60 calendar days statutory tolling (Sec. 410 R.A. 7160)"</span> \<br>
+                                <span class="sophos-cmd-param">--statutory-condition</span>=<span class="sophos-cmd-val">"Condition precedent to court filing (Sec. 412 R.A. 7160)"</span> \<br>
+                                <span class="sophos-cmd-param">--presiding-officer</span>=<span class="sophos-cmd-val">"Punong Barangay / Lupon Chairman"</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Card 3: Involved Parties (Impacted Entities Style) -->
+                    <div class="sophos-card">
+                        <div class="sophos-card-header">
+                            <h3 class="sophos-card-title">Involved Parties (<span id="partiesCountHead">0</span>)</h3>
+                            <div class="sophos-header-actions">
+                                <span id="partiesCountBadge" class="sophos-ref-pill" style="font-size: 0.74rem;">0 Parties</span>
+                                <button type="button" class="sophos-btn-action" onclick="togglePartiesFilter()" title="Filter by party role">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                                    <span>Filter</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="sophos-card-body" style="padding: 0;">
+                            <div class="sophos-table-wrap">
+                                <table class="sophos-table">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 44px; text-align: center;">N°</th>
+                                            <th style="width: 140px;">ROLE / TYPE</th>
+                                            <th>NAME</th>
+                                            <th>RESIDENCY &amp; CONTACT</th>
+                                            <th style="width: 110px;">STATUS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="partiesTable">
+                                        <tr>
+                                            <td colspan="5" style="text-align: center; padding: 20px; color: #64748b;">
+                                                Loading involved parties...
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- Hidden backwards compatibility container -->
+                            <div id="partiesListContainer" style="display: none;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -952,7 +1132,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         <div id="caseWorkspaceSection" style="display:none;"></div>
         <div id="complaintInfo" style="display:none;"></div>
         <div id="complaintReviewNotes" style="display:none;"></div>
-        <table style="display:none;"><tbody id="partiesTable"></tbody></table>
+        <table style="display:none;"><tbody id="legacyPartiesTable"></tbody></table>
         <table style="display:none;"><tbody id="attachmentsTable"></tbody></table>
         <span id="complaintCaseTypeBadge" style="display:none;">Civil</span>
         <span id="complaintCategoryBadge" style="display:none;">Category</span>

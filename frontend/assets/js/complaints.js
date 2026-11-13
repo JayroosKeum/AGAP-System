@@ -1,4 +1,4 @@
-﻿function getOrdinal(n) {
+function getOrdinal(n) {
     const s = ["th", "st", "nd", "rd"];
     const v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -661,6 +661,11 @@ async function loadComplaintDetails() {
                 : 'Intake #' + docketNum;
         }
 
+        const sophosHeroNum = document.getElementById('sophosHeroCaseNum');
+        if (sophosHeroNum) {
+            sophosHeroNum.textContent = '#' + docketNum;
+        }
+
         const compTitleEl = document.getElementById('complaintTitle');
         if (compTitleEl) compTitleEl.textContent = data.complaint_title || 'Untitled Complaint';
 
@@ -737,7 +742,12 @@ async function loadComplaintDetails() {
                 statusEl.style.color = '';
                 statusEl.style.border = '';
             }
-            statusEl.textContent = displayStage;
+            const sophosStatusTxt = document.getElementById('sophosStatusText');
+            if (sophosStatusTxt) {
+                sophosStatusTxt.textContent = displayStage;
+            } else {
+                statusEl.textContent = displayStage;
+            }
         }
 
         // Reopen for CFA button: only show for Settled cases (RA 7160 Sec. 417)
@@ -772,12 +782,48 @@ async function loadComplaintDetails() {
 
         // Hero Case Type Badge
         const heroTypeEl = document.getElementById('heroCaseTypeBadge');
-        if (heroTypeEl) heroTypeEl.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
+        const sophosCaseTypeTxt = document.getElementById('sophosCaseTypeText');
+        if (sophosCaseTypeTxt) {
+            sophosCaseTypeTxt.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
+        } else if (heroTypeEl) {
+            heroTypeEl.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
+        }
 
         // Hero Days Remaining Counter Badge (hidden per statutory timer removal)
         const daysBadge = document.getElementById('heroDaysRemainingBadge');
         if (daysBadge) {
             daysBadge.style.display = 'none';
+        }
+
+        // Populate Sophos Hero KPIs & Information card
+        setText('sophosHeroOwner', data.case_workspace?.case?.assigned_officer_name || data.assigned_to_name || 'Punong Barangay');
+        const nextHearing = data.next_hearing_date || data.case_workspace?.case?.next_hearing_date || null;
+        setText('sophosHeroHearingDate', nextHearing ? formatDateReadable(nextHearing) : 'N/A');
+        setText('sophosHeroLastUpdate', data.updated_at ? formatDateReadable(data.updated_at) : (data.created_at ? formatDateReadable(data.created_at) : '—'));
+
+        let originDisplay = 'Resident Portal (Online)';
+        if (data.complaint_source === 'walk_in') originDisplay = 'Walk-in Blotter';
+        else if (data.complaint_source === 'referral') originDisplay = 'External Referral';
+        else if (data.complaint_source) originDisplay = data.complaint_source;
+        setText('sophosInfoOrigin', originDisplay);
+
+        // Populate Sophos Command Line Box
+        const cmdBox = document.getElementById('sophosCommandLineBox');
+        if (cmdBox) {
+            const cLocation = (data.incident_location || (data.location && data.location.address) || 'Sitio Olandes, Barangay Tumana').replace(/"/g, '\\"');
+            const cLandmark = (data.incident_landmark || 'None').replace(/"/g, '\\"');
+            const cRelief = (data.requested_resolution || 'Amicable settlement and boundary restitution').replace(/"/g, '\\"');
+            const cOfficer = (data.case_workspace?.case?.assigned_officer_name || 'Punong Barangay / Lupon Chairman').replace(/"/g, '\\"');
+            cmdBox.innerHTML = `
+                <span class="sophos-cmd-param">--case-number</span>=<span class="sophos-cmd-val">"${escapeHtml(docketNum)}"</span> \\<br>
+                <span class="sophos-cmd-param">--jurisdiction</span>=<span class="sophos-cmd-val">"Barangay Tumana, District II, Marikina City (RA 7160 Sec. 408)"</span> \\<br>
+                <span class="sophos-cmd-param">--incident-location</span>=<span class="sophos-cmd-val">"${escapeHtml(cLocation)}"</span> \\<br>
+                <span class="sophos-cmd-param">--incident-landmark</span>=<span class="sophos-cmd-val">"${escapeHtml(cLandmark)}"</span> \\<br>
+                <span class="sophos-cmd-param">--relief-sought</span>=<span class="sophos-cmd-val">"${escapeHtml(cRelief)}"</span> \\<br>
+                <span class="sophos-cmd-param">--prescriptive-window</span>=<span class="sophos-cmd-val">"60 calendar days statutory tolling (Sec. 410 R.A. 7160)"</span> \\<br>
+                <span class="sophos-cmd-param">--statutory-condition</span>=<span class="sophos-cmd-val">"Condition precedent to court filing (Sec. 412 R.A. 7160)"</span> \\<br>
+                <span class="sophos-cmd-param">--presiding-officer</span>=<span class="sophos-cmd-val">"${escapeHtml(cOfficer)}"</span>
+            `;
         }
 
         // Legacy Type & Category Badges
@@ -1013,27 +1059,148 @@ function renderCrossLinkAlertBanner(concurrentDisputes) {
     banner.style.display = 'flex';
 }
 
+function getInitials(name) {
+    if (!name) return 'P';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'P';
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function copyComplaintNarrative() {
+    const text = document.getElementById('complaintNarrative')?.innerText || '';
+    if (!text || text === 'Loading narrative statement...') return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            window.agapNotify ? window.agapNotify('Complaint narrative copied to clipboard', 'success') : alert('Complaint narrative copied!');
+        }).catch(() => {
+            window.agapNotify ? window.agapNotify('Failed to copy narrative', 'error') : alert('Failed to copy');
+        });
+    }
+}
+window.copyComplaintNarrative = copyComplaintNarrative;
+
+function copyExecutionSpecs() {
+    const text = document.getElementById('sophosCommandLineBox')?.innerText || '';
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            window.agapNotify ? window.agapNotify('Execution specifications copied to clipboard', 'success') : alert('Execution specifications copied!');
+        }).catch(() => {
+            window.agapNotify ? window.agapNotify('Failed to copy specifications', 'error') : alert('Failed to copy');
+        });
+    }
+}
+window.copyExecutionSpecs = copyExecutionSpecs;
+
+function togglePartiesFilter() {
+    const table = document.getElementById('partiesTable');
+    if (!table) return;
+    window._partyFilterState = (window._partyFilterState || 0) + 1;
+    if (window._partyFilterState > 2) window._partyFilterState = 0;
+    const filterRoles = ['all', 'complainant', 'respondent'];
+    const activeRole = filterRoles[window._partyFilterState];
+    const rows = table.querySelectorAll('tr[data-party-role]');
+    rows.forEach(r => {
+        if (activeRole === 'all' || r.getAttribute('data-party-role') === activeRole) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+    const filterBtnSpan = document.querySelector('.sophos-card .sophos-btn-action[onclick="togglePartiesFilter()"] span');
+    if (filterBtnSpan) {
+        filterBtnSpan.textContent = activeRole === 'all' ? 'Filter' : (activeRole.charAt(0).toUpperCase() + activeRole.slice(1) + 's');
+    }
+}
+window.togglePartiesFilter = togglePartiesFilter;
+
 function renderParties(parties) {
     const container = document.getElementById('partiesListContainer');
     const fullContainer = document.getElementById('partiesFullContainer');
     const tbody = document.getElementById('partiesTable');
     const countEl = document.getElementById('partiesCount');
+    const headCountEl = document.getElementById('partiesCountHead');
+    const badgeCountEl = document.getElementById('partiesCountBadge');
     const fullCountEl = document.getElementById('partiesFullCount');
 
     if (countEl) countEl.textContent = parties.length;
+    if (headCountEl) headCountEl.textContent = parties.length;
+    if (badgeCountEl) badgeCountEl.textContent = parties.length + (parties.length === 1 ? ' Party' : ' Parties');
     if (fullCountEl) fullCountEl.textContent = parties.length;
 
     if (tbody) {
         if (parties.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 16px;">No parties added yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 24px; color: #64748b;">No parties added to this complaint yet.</td></tr>';
         } else {
             let rows = '';
-            parties.forEach(party => {
+            let firstComplainant = false;
+            parties.forEach((party, idx) => {
+                const pType = String(party.party_type || '').trim().toLowerCase();
+                let typeClass = 'complainant';
+                let isPrimary = false;
+                if (pType === 'complainant') {
+                    typeClass = 'complainant';
+                    if (!firstComplainant) {
+                        isPrimary = true;
+                        firstComplainant = true;
+                    }
+                } else if (pType === 'respondent') {
+                    typeClass = 'respondent';
+                } else {
+                    typeClass = 'witness';
+                }
+
+                const addrParts = [];
+                if (party.purok) {
+                    const pLower = String(party.purok).toLowerCase();
+                    addrParts.push(pLower.startsWith('purok') ? party.purok : `Purok ${party.purok}`);
+                }
+                if (party.address && (!party.purok || !party.address.toLowerCase().includes(party.purok.toLowerCase()))) {
+                    addrParts.push(party.address);
+                } else if (party.address && !addrParts.length) {
+                    addrParts.push(party.address);
+                }
+                const fullAddress = addrParts.length > 0 ? addrParts.join(', ') : 'Barangay Tumana';
+
+                const isMinor = Number(party.is_minor) === 1 || (party.age !== undefined && party.age !== null && party.age !== '' && Number(party.age) < 18);
+                const guardianInfo = party.guardian_name ? `Guardian: ${escapeHtml(party.guardian_name)}${party.guardian_relationship ? ` (${escapeHtml(party.guardian_relationship)})` : ''}` : '';
+                const prefContact = party.preferred_contact ? escapeHtml(party.preferred_contact) : '';
+                const phoneText = party.contact_unknown ? 'Contact unknown' : escapeHtml(party.contact_no || 'None on file');
+
+                const initials = getInitials(party.resident_name || 'Party');
+                const isVerified = Boolean(party.resident_id || party.verified);
+                const statusBadge = isVerified
+                    ? `<span class="sophos-verified-tag">✓ Verified Resident</span>`
+                    : `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:0.72rem;font-weight:600;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;">Recorded</span>`;
+
                 rows += `
-                    <tr>
-                        <td>${escapeHtml(party.resident_name)}</td>
-                        <td>${escapeHtml(party.party_type)}</td>
-                        <td></td>
+                    <tr data-party-role="${typeClass}">
+                        <td style="text-align: center; font-weight: 700; color: #64748b; font-size: 0.8rem;">${idx + 1}</td>
+                        <td>
+                            <span class="sophos-party-type-badge ${typeClass}">${escapeHtml((party.party_type || 'Party').toUpperCase())}</span>
+                            ${isPrimary ? '<span style="display:block;margin-top:3px;font-size:0.68rem;font-weight:700;color:#2563eb;">(Primary)</span>' : ''}
+                        </td>
+                        <td>
+                            <div class="sophos-party-name-col">
+                                <span class="sophos-party-avatar">${escapeHtml(initials)}</span>
+                                <div>
+                                    <div class="sophos-party-fullname">${escapeHtml(party.resident_name || 'Unnamed Party')}${party.suffix ? ' ' + escapeHtml(party.suffix) : ''}</div>
+                                    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px;">
+                                        ${isMinor ? '<span style="background:#fee2e2;color:#991b1b;font-size:0.68rem;font-weight:700;padding:1px 5px;border-radius:4px;">Minor</span>' : ''}
+                                        ${party.age ? `<span style="font-size:0.74rem;color:#64748b;font-weight:600;">${party.age} yrs</span>` : ''}
+                                    </div>
+                                    ${guardianInfo ? `<div style="font-size:0.73rem;color:#4f46e5;margin-top:2px;font-weight:600;">${guardianInfo}</div>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div style="font-size: 0.83rem; color: #1e293b; font-weight: 500;">${escapeHtml(fullAddress)}</div>
+                            <div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">Tel: ${phoneText}${prefContact ? ' &bull; ' + prefContact : ''}</div>
+                        </td>
+                        <td>
+                            ${statusBadge}
+                        </td>
                     </tr>
                 `;
             });
@@ -11242,3 +11409,386 @@ function printKpFormModalDirect(caseId, formCode) {
     }
 }
 window.printKpFormModalDirect = printKpFormModalDirect;
+
+function canScreenLisoClassification() {
+    return typeof window.__agapCanScreenClassification === 'boolean'
+        ? window.__agapCanScreenClassification
+        : !window.__agapLuponReadOnly;
+}
+
+function renderLisoVerificationBanner(data) {
+    const banner = document.getElementById('lisoVerificationBanner');
+    if (!banner || !data) return;
+
+    const status = String(data.status || '');
+    const isPrePaanyaya = !data.case_id && ['Filed', 'Under Review', 'Needs Information', 'Accepted', 'Approved', 'Pre-Docketed (Paanyaya)', 'Rejected'].includes(status);
+    if (!isPrePaanyaya) {
+        banner.style.display = 'none';
+        return;
+    }
+
+    banner.style.display = 'block';
+    const src = String(data.complaint_source || 'Walk-in');
+    const srcBadge = document.getElementById('lisoSourceBadge');
+    if (srcBadge) {
+        srcBadge.textContent = src === 'Online' ? '🌐 Online Portal' : '🏢 Walk-in (BPSO)';
+        srcBadge.style.background = src === 'Online' ? '#dbeafe' : '#dcfce7';
+        srcBadge.style.color = src === 'Online' ? '#1e40af' : '#166534';
+    }
+    const refBadge = document.getElementById('lisoRefBadge');
+    if (refBadge) {
+        refBadge.textContent = data.complaint_number || ('CMP-' + String(data.complaint_id || 0).padStart(4, '0'));
+    }
+    const walkinInfo = document.getElementById('lisoWalkinLinkInfo');
+    if (walkinInfo) {
+        if (data.walkin_verified_at) {
+            walkinInfo.style.display = 'block';
+            walkinInfo.textContent = `Walk-in visit linked on ${data.walkin_verified_at}${data.walkin_notes ? ' — ' + data.walkin_notes : ''}`;
+        } else {
+            walkinInfo.style.display = 'none';
+        }
+    }
+    const notesInput = document.getElementById('lisoScreeningDecisionNotes');
+    if (notesInput && data.review_notes && !notesInput.value) {
+        notesInput.value = data.review_notes;
+    }
+    const btnPaanyaya = document.getElementById('btnProceedMandatoryPaanyaya');
+    const actionWrap = document.getElementById('lisoActionButtonsWrap');
+    const titleEl = document.getElementById('lisoBannerTitle');
+    const subEl = document.getElementById('lisoBannerSubtitle');
+
+    const aiSection = document.getElementById('lisoAiScreeningSection');
+
+    if (status === 'Accepted' || status === 'Approved' || status === 'Pre-Docketed (Paanyaya)') {
+        banner.style.borderLeftColor = '#16a34a';
+        if (titleEl) titleEl.textContent = 'Approved by LISO — Endorsed to Lupon Clerk for Paanyaya Scheduling';
+        if (subEl) subEl.textContent = 'Preliminary review is complete. All resident details have been auto-filled into Paanyaya and endorsed to Lupon Clerk for scheduling.';
+        if (btnPaanyaya) {
+            btnPaanyaya.style.display = 'inline-flex';
+            btnPaanyaya.innerHTML = '📅 Schedule Paanyaya Session &rarr;';
+        }
+        if (actionWrap) actionWrap.style.display = 'none';
+        if (aiSection) aiSection.style.display = 'none';
+    } else if (status === 'Rejected') {
+        banner.style.borderLeftColor = '#dc2626';
+        if (titleEl) titleEl.textContent = 'Complaint Rejected at Preliminary Screening';
+        if (subEl) subEl.textContent = data.review_notes || 'Marked outside Barangay KP jurisdiction or rejected during LISO screening.';
+        if (btnPaanyaya) btnPaanyaya.style.display = 'none';
+        if (actionWrap) actionWrap.style.display = 'none';
+        if (aiSection) aiSection.style.display = 'none';
+    } else {
+        banner.style.borderLeftColor = '#2563eb';
+        if (titleEl) titleEl.textContent = `LISO / Lupon Jurisdiction & Category Screening (${status})`;
+        if (subEl) subEl.textContent = 'Check submitted 5Ws, Salaysay, R.A. 7160 jurisdiction indicators, and complainant-selected or advisory category before endorsing to mandatory Paanyaya.';
+        if (btnPaanyaya) btnPaanyaya.style.display = 'none';
+        if (actionWrap) actionWrap.style.display = canScreenLisoClassification() ? 'flex' : 'none';
+        if (aiSection) {
+            aiSection.style.display = 'block';
+            populateLisoAiScreeningPanel(data);
+        }
+    }
+}
+window.renderLisoVerificationBanner = renderLisoVerificationBanner;
+
+let lisoScreeningClassificationDirty = false;
+
+function toggleLisoOtherCategoryInput() {
+    const sel = document.getElementById('lisoCategorySelect');
+    const wrap = document.getElementById('lisoOtherCatWrap');
+    if (sel && wrap) {
+        const text = sel.options[sel.selectedIndex]?.text || '';
+        wrap.style.display = /others|iba pa/i.test(text) ? 'block' : 'none';
+    }
+    const secSel = document.getElementById('lisoSecondaryCategorySelect');
+    const secWrap = document.getElementById('lisoSecondaryOtherCatWrap');
+    if (secSel && secWrap) {
+        const secText = secSel.options[secSel.selectedIndex]?.text || '';
+        secWrap.style.display = /others|iba pa/i.test(secText) ? 'block' : 'none';
+    }
+}
+
+function renderLisoAiSuggestionCard(sug, sourceBadgeText, opts = {}) {
+    if (!sug || !sug.primary || !sug.primary.category_id) return;
+    const primary = sug.primary;
+    const alts = Array.isArray(sug.alternatives) ? sug.alternatives : [];
+    const candidates = [primary, ...alts].filter((c) => c && c.category_id && c.category_name);
+
+    const resCard = document.getElementById('lisoAiResultCard');
+    const badgeEl = document.getElementById('lisoAiSourceBadge');
+    const chipsEl = document.getElementById('lisoAiAltChips');
+    const reasonEl = document.getElementById('lisoAiReasonText');
+    const secEl = document.getElementById('lisoAiSecondaryText');
+    const jurEl = document.getElementById('lisoAiJurisdictionAlert');
+    const confirmChk = document.getElementById('lisoConfirmClassificationCheck');
+
+    if (resCard) resCard.style.display = 'block';
+    if (badgeEl) badgeEl.textContent = sourceBadgeText || 'Advisory Match';
+    if (reasonEl) reasonEl.textContent = `Proposed Reasoning: ${primary.reason || 'Advisory category match based on narrative cues.'}`;
+    if (secEl) {
+        if (sug.secondary && sug.secondary.category_id && sug.secondary.category_name) {
+            secEl.style.display = 'block';
+            secEl.innerHTML = `<span><strong>Suggested 2nd Category:</strong> ${escapeHtml(sug.secondary.category_name)}${sug.secondary.case_type ? ` (${escapeHtml(sug.secondary.case_type)})` : ''} &mdash; ${escapeHtml(sug.secondary.reason || '')}</span>`
+                + (canScreenLisoClassification()
+                    ? ` <button type="button" id="btnLisoApplySecondaryAi" class="btn-secondary btn-sm" style="margin-left:6px; padding:2px 8px; font-size:0.73rem;">+ Apply as Category 2</button>`
+                    : '');
+            const applySecBtn = document.getElementById('btnLisoApplySecondaryAi');
+            applySecBtn?.addEventListener('click', () => {
+                const secSel = document.getElementById('lisoSecondaryCategorySelect');
+                const aiUsedEl = document.getElementById('lisoAiUsed');
+                if (aiUsedEl) aiUsedEl.value = '1';
+                if (secSel) secSel.value = String(sug.secondary.category_id);
+                toggleLisoOtherCategoryInput();
+                lisoScreeningClassificationDirty = true;
+                if (confirmChk) confirmChk.checked = false;
+                window.agapNotify?.('Suggested 2nd category loaded into Category 2. Check Mandatory Human Confirmation to verify before saving.', 'info', 'Human Review Required');
+            });
+        } else {
+            secEl.style.display = 'none';
+            secEl.innerHTML = '';
+        }
+    }
+    if (jurEl) {
+        if (sug.jurisdiction_advisory) {
+            jurEl.style.display = 'block';
+            jurEl.innerHTML = `<strong>Jurisdiction Notice (Advisory Only — Verify Under R.A. 7160):</strong> ${escapeHtml(sug.jurisdiction_advisory)}`;
+        } else {
+            jurEl.style.display = 'none';
+        }
+    }
+
+    const aiUsed = document.getElementById('lisoAiUsed');
+    const aiSugCat = document.getElementById('lisoAiSuggestedCatId');
+    const aiSugTitle = document.getElementById('lisoAiSuggestedTitle');
+    if (aiUsed && opts.markUsed !== false) aiUsed.value = '1';
+    if (aiSugCat && primary.category_id) aiSugCat.value = String(primary.category_id);
+    if (aiSugTitle && sug.suggested_title) aiSugTitle.value = String(sug.suggested_title);
+    if (confirmChk && opts.resetConfirm !== false) confirmChk.checked = false;
+
+    if (chipsEl) {
+        chipsEl.innerHTML = candidates.map((cand, idx) => `
+            <button type="button"
+                    class="btn-secondary btn-sm"
+                    data-liso-pick-cat="${Number(cand.category_id)}"
+                    data-liso-pick-title="${idx === 0 ? escapeHtml(sug.suggested_title || '') : ''}"
+                    data-liso-pick-type="${idx === 0 ? escapeHtml(sug.case_type || 'Civil') : ''}"
+                    data-liso-pick-reason="${escapeHtml(cand.reason || '')}"
+                    ${canScreenLisoClassification() ? '' : 'disabled'}
+                    style="font-size: 0.75rem; padding: 4px 9px; ${idx === 0 ? 'border-color:#2563eb; color:#1e40af; background:#eff6ff; font-weight:700;' : ''}">
+                ${idx === 0 ? 'Proposed Primary: ' : 'Alternative: '}${escapeHtml(cand.category_name)} (${escapeHtml(cand.confidence || 'Medium')})
+            </button>
+        `).join('');
+
+        if (canScreenLisoClassification()) {
+            chipsEl.querySelectorAll('[data-liso-pick-cat]').forEach((chipBtn) => {
+                chipBtn.addEventListener('click', () => {
+                    const catId = chipBtn.getAttribute('data-liso-pick-cat') || '';
+                    const pickTitle = chipBtn.getAttribute('data-liso-pick-title') || '';
+                    const pickType = chipBtn.getAttribute('data-liso-pick-type') || '';
+                    const pickReason = chipBtn.getAttribute('data-liso-pick-reason') || '';
+                    const catSel = document.getElementById('lisoCategorySelect');
+                    const typeSel = document.getElementById('lisoCaseTypeSelect');
+                    const titleInp = document.getElementById('lisoComplaintTitleInput');
+                    const aiUsedEl = document.getElementById('lisoAiUsed');
+                    if (aiUsedEl) aiUsedEl.value = '1';
+                    if (catSel && catId) catSel.value = catId;
+                    if (typeSel && (pickType === 'Civil' || pickType === 'Criminal')) typeSel.value = pickType;
+                    if (titleInp && pickTitle) titleInp.value = pickTitle;
+                    toggleLisoOtherCategoryInput();
+                    lisoScreeningClassificationDirty = true;
+                    if (confirmChk) confirmChk.checked = false;
+                    if (reasonEl && pickReason) reasonEl.textContent = `Proposed Reasoning: ${pickReason}`;
+                    window.agapNotify?.('Proposed category loaded into screening fields. Check Mandatory Human Confirmation to verify before saving.', 'info', 'Human Review Required');
+                });
+            });
+        }
+    }
+}
+
+function populateLisoAiScreeningPanel(data) {
+    const origCat = document.getElementById('lisoOrigCategoryPreview');
+    const origNar = document.getElementById('lisoOrigNarrativePreview');
+    const origRes = document.getElementById('lisoOrigResolutionPreview');
+    const origJur = document.getElementById('lisoOrigJurisdictionBox');
+    const catSel = document.getElementById('lisoCategorySelect');
+    const secCatSel = document.getElementById('lisoSecondaryCategorySelect');
+    const typeSel = document.getElementById('lisoCaseTypeSelect');
+    const titleInp = document.getElementById('lisoComplaintTitleInput');
+    const otherInp = document.getElementById('lisoOtherCategorySpec');
+    const secOtherInp = document.getElementById('lisoSecondaryOtherCategorySpec');
+
+    const isPendingCat = String(data.other_category_specification || '').trim() === 'Pending Barangay LISO Classification';
+
+    if (origCat) {
+        if (isPendingCat) {
+            origCat.textContent = `${data.case_type || 'Civil'} — Not selected by resident (Pending Jurisdiction & Category Review) · Title: ${data.complaint_title || 'Untitled'}`;
+        } else {
+            origCat.textContent = `${data.case_type || 'Civil'} — Complainant-selected: ${data.category_name_display || data.category_name || 'Uncategorized'} (${data.status || 'Under Review'}) · Title: ${data.complaint_title || 'Untitled'}`;
+        }
+    }
+    if (origNar) origNar.textContent = data.narrative || '(No narrative provided)';
+    if (origRes) origRes.textContent = data.requested_resolution || '(None specified)';
+    if (origJur) {
+        const venueText = [data.incident_purok, data.incident_location].filter(Boolean).join(' • ') || 'Barangay Tumana (location not specified)';
+        const screeningNotes = String(data.screening_notes || '').trim();
+        origJur.textContent = `Venue: ${venueText}\n${screeningNotes || 'No automatic jurisdiction flags — verify R.A. 7160 residency, venue & category coverage manually.'}`;
+    }
+
+    if (catSel) catSel.value = (!isPendingCat && data.category_id) ? String(data.category_id) : '';
+    if (secCatSel) secCatSel.value = data.secondary_category_id ? String(data.secondary_category_id) : '';
+    if (typeSel && (data.case_type === 'Civil' || data.case_type === 'Criminal')) typeSel.value = data.case_type;
+    if (titleInp && data.complaint_title) titleInp.value = data.complaint_title;
+    if (otherInp) otherInp.value = isPendingCat ? '' : (data.other_category_specification || '');
+    if (secOtherInp) secOtherInp.value = data.secondary_other_category_specification || '';
+    toggleLisoOtherCategoryInput();
+
+    lisoScreeningClassificationDirty = false;
+    const aiUsed = document.getElementById('lisoAiUsed');
+    const confirmChk = document.getElementById('lisoConfirmClassificationCheck');
+    const resCard = document.getElementById('lisoAiResultCard');
+    const statusEl = document.getElementById('lisoAiStatusText');
+    if (aiUsed) aiUsed.value = '0';
+    if (confirmChk) confirmChk.checked = false;
+
+    const savedAi = data.ai_suggestion || null;
+    if (savedAi && savedAi.primary && savedAi.primary.category_id) {
+        const badgeLabel = savedAi.source === 'gemini_ai'
+            ? 'Gemini AI Suggestion (On Submit)'
+            : (savedAi.resident_viewed ? 'Local Advisory (Resident Previewed)' : 'Auto-Suggested on Submit (Local Advisory)');
+        renderLisoAiSuggestionCard(savedAi, badgeLabel, { markUsed: false, resetConfirm: false });
+        if (statusEl) {
+            statusEl.textContent = savedAi.suggested_title
+                ? `Saved AI suggestion loaded (${savedAi.suggested_title}) — click Proposed Primary to apply or verify below.`
+                : 'Saved AI suggestion loaded — click Proposed Primary to apply or verify below.';
+        }
+    } else {
+        if (resCard) resCard.style.display = 'none';
+        if (statusEl) statusEl.textContent = '';
+    }
+
+    const markEdited = () => {
+        lisoScreeningClassificationDirty = true;
+        if (confirmChk) confirmChk.checked = false;
+        toggleLisoOtherCategoryInput();
+    };
+    if (!document.getElementById('lisoAiScreeningSection')?.dataset.wired) {
+        document.getElementById('lisoAiScreeningSection').dataset.wired = '1';
+        catSel?.addEventListener('change', markEdited);
+        secCatSel?.addEventListener('change', markEdited);
+        typeSel?.addEventListener('change', markEdited);
+        titleInp?.addEventListener('input', markEdited);
+        otherInp?.addEventListener('input', markEdited);
+        secOtherInp?.addEventListener('input', markEdited);
+        document.getElementById('btnLisoRunAiCheck')?.addEventListener('click', () => runLisoScreeningAiCheck('gemini'));
+        document.getElementById('btnLisoRunLocalCheck')?.addEventListener('click', () => runLisoScreeningAiCheck('local_only'));
+    }
+}
+
+async function runLisoScreeningAiCheck(processingMode = 'gemini') {
+    const data = window.complaintData;
+    const statusEl = document.getElementById('lisoAiStatusText');
+    const consentBox = document.getElementById('lisoAiExternalConsent');
+    const narrative = String(data?.narrative || '').trim();
+    const resolution = String(data?.requested_resolution || '').trim();
+
+    if (narrative.length < 10) {
+        window.agapNotify?.('Narrative must have at least 10 characters for classification analysis.', 'warning', 'LISO Screening');
+        return;
+    }
+    if (processingMode === 'gemini' && !consentBox?.checked) {
+        window.agapNotify?.('Check Data Privacy Act consent before sending anonymized narrative text to Google Gemini, or click Local Rule Check.', 'warning', 'Data Privacy Consent');
+        consentBox?.focus();
+        return;
+    }
+
+    const geminiBtn = document.getElementById('btnLisoRunAiCheck');
+    const localBtn = document.getElementById('btnLisoRunLocalCheck');
+    if (geminiBtn) geminiBtn.disabled = true;
+    if (localBtn) localBtn.disabled = true;
+    if (statusEl) statusEl.textContent = processingMode === 'gemini' ? 'Running advisory Gemini analysis...' : 'Running local keyword matcher...';
+
+    try {
+        const resp = await fetch('../../../backend/api/ai/classify-complaint.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({
+                complaint_id: Number(data?.complaint_id || 0),
+                context: 'liso_screening',
+                processing_mode: processingMode,
+                external_ai_consent: processingMode === 'gemini' ? '1' : '0',
+                narrative,
+                requested_resolution: resolution
+            })
+        });
+        const json = await resp.json();
+        if (!resp.ok || !json.success || !json.suggestion) {
+            window.agapNotify?.(json.message || 'Unable to run advisory classification check.', 'error', 'LISO Screening');
+            if (statusEl) statusEl.textContent = '';
+            return;
+        }
+
+        const badgeLabel = json.source === 'gemini_ai' ? 'Gemini Advisory (Minimized)' : 'Local Rule Match (Offline)';
+        renderLisoAiSuggestionCard(json.suggestion, badgeLabel, { markUsed: true, resetConfirm: true });
+
+        if (statusEl) statusEl.textContent = 'Advisory suggestion loaded — verify and check Mandatory Confirmation before saving.';
+    } catch (_) {
+        if (statusEl) statusEl.textContent = '';
+        window.agapNotify?.('Unable to connect to classification service.', 'error', 'LISO Screening');
+    } finally {
+        if (geminiBtn) geminiBtn.disabled = false;
+        if (localBtn) localBtn.disabled = false;
+    }
+}
+
+async function submitLisoReviewDecision(decision) {
+    const complaintId = new URLSearchParams(window.location.search).get('id');
+    if (!complaintId) return;
+    const notes = document.getElementById('lisoScreeningDecisionNotes')?.value?.trim() || '';
+    const aiUsed = document.getElementById('lisoAiUsed')?.value === '1';
+    const confirmChk = document.getElementById('lisoConfirmClassificationCheck');
+
+    if ((aiUsed || lisoScreeningClassificationDirty) && !confirmChk?.checked) {
+        window.agapNotify?.('Mandatory Human Confirmation required: review the original input and check the confirmation box before saving this classification.', 'warning', 'Human Verification Required');
+        confirmChk?.focus();
+        return;
+    }
+
+    try {
+        const fd = new FormData();
+        fd.append('complaint_id', complaintId);
+        fd.append('status', decision);
+        fd.append('review_notes', notes);
+
+        if (aiUsed || lisoScreeningClassificationDirty) {
+            const catVal = document.getElementById('lisoCategorySelect')?.value || '';
+            const secCatVal = document.getElementById('lisoSecondaryCategorySelect')?.value || '';
+            const typeVal = document.getElementById('lisoCaseTypeSelect')?.value || '';
+            const titleVal = document.getElementById('lisoComplaintTitleInput')?.value?.trim() || '';
+            const otherVal = document.getElementById('lisoOtherCategorySpec')?.value?.trim() || '';
+            const secOtherVal = document.getElementById('lisoSecondaryOtherCategorySpec')?.value?.trim() || '';
+            if (catVal) fd.append('category_id', catVal);
+            fd.append('secondary_category_id', secCatVal);
+            if (secOtherVal) fd.append('secondary_other_category_specification', secOtherVal);
+            if (typeVal) fd.append('case_type', typeVal);
+            if (titleVal) fd.append('complaint_title', titleVal);
+            if (otherVal) fd.append('other_category_specification', otherVal);
+            fd.append('ai_classification_used', aiUsed ? '1' : '0');
+            fd.append('ai_classification_verified', confirmChk?.checked ? '1' : '0');
+            fd.append('ai_suggested_category_id', document.getElementById('lisoAiSuggestedCatId')?.value || '');
+            fd.append('ai_suggested_title', document.getElementById('lisoAiSuggestedTitle')?.value || '');
+        }
+
+        const res = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            window.agapNotify?.(json.message || 'Unable to save review decision.', 'error', 'LISO Verification');
+            return;
+        }
+        window.agapNotify?.(json.message || 'Verification updated.', 'success', 'LISO Verification');
+        if (typeof loadComplaintDetails === 'function') {
+            await loadComplaintDetails();
+        }
+    } catch (err) {
+        window.agapNotify?.('Failed to connect to verification service.', 'error', 'LISO Verification');
+    }
+}
+window.submitLisoReviewDecision = submitLisoReviewDecision;

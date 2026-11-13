@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ValidationService.php';
 
 class Setting
 {
@@ -382,6 +383,47 @@ class Setting
         $audio = isset($data['notification_audio']) ? ((int)$data['notification_audio'] ? 1 : 0) : 1;
         $inbox = isset($data['notification_inbox']) ? ((int)$data['notification_inbox'] ? 1 : 0) : 1;
         $lang = in_array(trim((string)($data['preferred_language'] ?? '')), ['en', 'fil'], true) ? trim((string)$data['preferred_language']) : 'fil';
+        $hasPurok = array_key_exists('purok', $data);
+        $hasAddress = array_key_exists('address', $data);
+        $hasIsTenant = array_key_exists('is_tenant', $data) && $data['is_tenant'] !== '' && $data['is_tenant'] !== null;
+        $purok = $hasPurok ? (trim((string)$data['purok']) ?: null) : null;
+        $address = $hasAddress ? (trim((string)$data['address']) ?: null) : null;
+        $isTenant = null;
+        if ($hasIsTenant) {
+            if (!in_array((string)$data['is_tenant'], ['0', '1', '2'], true)) {
+                return ['success' => false, 'message' => 'Please select a valid residency status (Resident, Tenant / Renter, or Non-Resident).'];
+            }
+            $isTenant = (int)$data['is_tenant'];
+        } elseif ($hasPurok && strcasecmp((string)$purok, 'Non-Resident') === 0) {
+            $isTenant = 2;
+        }
+        if ($isTenant === 2 && ($purok === null || $purok === '')) {
+            $purok = 'Non-Resident';
+            $hasPurok = true;
+        }
+
+        if (!ValidationService::name($fn, 100, true)) {
+            return ['success' => false, 'message' => 'Please enter a valid first name (letters only, up to 100 characters).'];
+        }
+        if ($mn !== null && !ValidationService::name($mn, 100, false)) {
+            return ['success' => false, 'message' => 'Please enter a valid middle name (letters only, up to 100 characters).'];
+        }
+        if (!ValidationService::name($ln, 100, true)) {
+            return ['success' => false, 'message' => 'Please enter a valid last name (letters only, up to 100 characters).'];
+        }
+        if ($contact !== null && (mb_strlen($contact, 'UTF-8') > 20 || !ValidationService::phone($contact))) {
+            return ['success' => false, 'message' => 'Please enter a valid Philippine mobile or telephone number (up to 20 characters).'];
+        }
+        if ($email !== null && !ValidationService::email($email)) {
+            return ['success' => false, 'message' => 'Please enter a valid email address (up to 150 characters).'];
+        }
+
+        if ($purok !== null && (!ValidationService::maxLength($purok, 100) || !ValidationService::address($purok))) {
+            return ['success' => false, 'message' => 'Please enter a valid Purok or area (up to 100 characters).'];
+        }
+        if ($address !== null && (!ValidationService::maxLength($address, 255) || !ValidationService::address($address))) {
+            return ['success' => false, 'message' => 'Please enter a valid street address (up to 255 characters).'];
+        }
 
         if ($fn === '' || $ln === '') {
             return ['success' => false, 'message' => 'First name and last name are required.'];
@@ -408,6 +450,73 @@ class Setting
                 WHERE user_id = ?
             ");
             $stmt->execute([$fn, $mn, $ln, $email, $contact, $audio, $inbox, $lang, $userId]);
+
+            if (
+                session_status() === PHP_SESSION_ACTIVE
+                && ($_SESSION['user_id'] ?? 0) === $userId
+                && ($_SESSION['role_name'] ?? '') === 'Resident'
+            ) {
+                $targetResidentId = (int) ($_SESSION['resident_id'] ?? 0);
+                if ($targetResidentId <= 0 && $email !== null) {
+                    $findRes = $this->conn->prepare('SELECT resident_id FROM residents WHERE LOWER(email) = LOWER(?) LIMIT 1');
+                    $findRes->execute([$email]);
+                    $targetResidentId = (int) ($findRes->fetchColumn() ?: 0);
+                }
+                if ($targetResidentId > 0) {
+                    $resSets = [
+                        'first_name = ?',
+                        'middle_name = ?',
+                        'last_name = ?',
+                        'email = ?',
+                        'contact_no = ?',
+                    ];
+                    $resParams = [$fn, $mn, $ln, $email, $contact];
+                    if ($hasPurok) {
+                        $resSets[] = 'purok = ?';
+                        $resParams[] = $purok;
+                    }
+                    if ($isTenant !== null) {
+                        $resSets[] = 'is_tenant = ?';
+                        $resParams[] = $isTenant;
+                        $resSets[] = 'barangay = ?';
+                        $resParams[] = ($isTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0) ? 'Outside Tumana' : 'Tumana';
+                    }
+                    if ($hasAddress) {
+                        $resSets[] = 'address = ?';
+                        $resSets[] = 'house_street = ?';
+                        $resParams[] = $address;
+                        $resParams[] = $address;
+                    }
+                    $resSets[] = 'updated_at = CURRENT_TIMESTAMP';
+                    $resParams[] = $targetResidentId;
+                    $resStmt = $this->conn->prepare('UPDATE residents SET ' . implode(', ', $resSets) . ' WHERE resident_id = ?');
+                    $resStmt->execute($resParams);
+                    $_SESSION['resident_id'] = $targetResidentId;
+                } else {
+                    $resolvedTenant = $isTenant ?? ((strcasecmp((string)$purok, 'Non-Resident') === 0) ? 2 : 0);
+                    $resolvedBrgy = ($resolvedTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0) ? 'Outside Tumana' : 'Tumana';
+                    $insRes = $this->conn->prepare("
+                        INSERT INTO residents (
+                            first_name, middle_name, last_name, contact_no, email, preferred_contact,
+                            address, house_street, barangay, city_municipality, purok, is_tenant, residency_verified
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Marikina City', ?, ?, 0)
+                    ");
+                    $insRes->execute([
+                        $fn,
+                        $mn,
+                        $ln,
+                        $contact,
+                        $email,
+                        $contact ? 'SMS' : 'Email',
+                        $address,
+                        $address,
+                        $resolvedBrgy,
+                        $purok,
+                        $resolvedTenant,
+                    ]);
+                    $_SESSION['resident_id'] = (int) $this->conn->lastInsertId();
+                }
+            }
 
             // Update session cache if current user
             if (session_status() === PHP_SESSION_ACTIVE && ($_SESSION['user_id'] ?? 0) === $userId) {

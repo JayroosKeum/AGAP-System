@@ -173,10 +173,12 @@ if ($escalatePaanyayaId > 0) {
         $old['complainant_address'] = $escalatePaanyaya['complainant_address'] ?? '';
         $old['complainant_contact_no'] = $escalatePaanyaya['complainant_contact_no'] ?? '';
         $old['complainant_purok'] = $escalatePaanyaya['complainant_purok'] ?? '';
+        $old['complainant_is_tenant'] = strcasecmp(trim((string)$old['complainant_purok']), 'Non-Resident') === 0 ? '2' : '0';
         $old['respondent_resident_id'] = $escalatePaanyaya['invitee_resident_id'] ?? '';
         $old['respondent_address'] = $escalatePaanyaya['invitee_address'] ?? '';
         $old['respondent_contact_no'] = $escalatePaanyaya['invitee_contact_no'] ?? '';
         $old['respondent_purok'] = $escalatePaanyaya['invitee_purok'] ?? '';
+        $old['respondent_is_tenant'] = strcasecmp(trim((string)$old['respondent_purok']), 'Non-Resident') === 0 ? '2' : '0';
 
         $cName = trim((string)($escalatePaanyaya['complainant_name'] ?? ''));
         if ($cName !== '') {
@@ -196,28 +198,31 @@ if ($escalatePaanyayaId > 0) {
             $old['respondent_name'] = $rName;
         }
 
-        if (!empty($old['complainant_first_name']) && !empty($old['complainant_last_name'])) {
+        $matchResidentForOld = static function(string $prefix) use (&$old, $residents): void {
+            $targetId = (int)($old[$prefix . '_resident_id'] ?? 0);
+            $firstName = trim((string)($old[$prefix . '_first_name'] ?? ''));
+            $lastName = trim((string)($old[$prefix . '_last_name'] ?? ''));
             foreach ($residents as $r) {
-                if (strcasecmp($r['first_name'], $old['complainant_first_name']) === 0 && strcasecmp($r['last_name'], $old['complainant_last_name']) === 0) {
-                    $old['complainant_resident_id'] = $r['resident_id'];
-                    $old['complainant_address'] = $r['address'];
-                    $old['complainant_contact_no'] = $r['contact_no'];
-                    $old['complainant_purok'] = $r['purok'];
+                $idMatch = $targetId > 0 && (int)$r['resident_id'] === $targetId;
+                $nameMatch = $firstName !== '' && $lastName !== ''
+                    && strcasecmp((string)$r['first_name'], $firstName) === 0
+                    && strcasecmp((string)$r['last_name'], $lastName) === 0;
+                if ($idMatch || $nameMatch) {
+                    $old[$prefix . '_resident_id'] = $r['resident_id'];
+                    if (trim((string)($old[$prefix . '_address'] ?? '')) === '') $old[$prefix . '_address'] = $r['address'] ?? '';
+                    if (trim((string)($old[$prefix . '_contact_no'] ?? '')) === '') $old[$prefix . '_contact_no'] = $r['contact_no'] ?? '';
+                    if (trim((string)($old[$prefix . '_purok'] ?? '')) === '') $old[$prefix . '_purok'] = $r['purok'] ?? '';
+                    $isTen = (string)($r['is_tenant'] ?? '0');
+                    if (strcasecmp(trim((string)($old[$prefix . '_purok'] ?? '')), 'Non-Resident') === 0) {
+                        $isTen = '2';
+                    }
+                    $old[$prefix . '_is_tenant'] = $isTen;
                     break;
                 }
             }
-        }
-        if (!empty($old['respondent_first_name']) && !empty($old['respondent_last_name'])) {
-            foreach ($residents as $r) {
-                if (strcasecmp($r['first_name'], $old['respondent_first_name']) === 0 && strcasecmp($r['last_name'], $old['respondent_last_name']) === 0) {
-                    $old['respondent_resident_id'] = $r['resident_id'];
-                    $old['respondent_address'] = $r['address'];
-                    $old['respondent_contact_no'] = $r['contact_no'];
-                    $old['respondent_purok'] = $r['purok'];
-                    break;
-                }
-            }
-        }
+        };
+        $matchResidentForOld('complainant');
+        $matchResidentForOld('respondent');
     }
 }
 
@@ -231,6 +236,496 @@ include '../../layouts/header.php';
 <link rel="stylesheet" href="../../assets/css/residents.css?v=<?php echo filemtime(__DIR__ . '/../../assets/css/residents.css'); ?>">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 
+<!-- MODERN STEPPER WIZARD REDESIGN: Zanzibar SaaS Reference Style -->
+<style id="wizardRedesignStyles">
+/* Page Canvas & Wrapper */
+.intake-main-wrapper {
+    max-width: 1380px !important;
+    margin: 0 auto !important;
+    padding: 24px 28px 48px !important;
+}
+
+/* Modern Header Bar */
+.wizard-header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+.wizard-header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+.wizard-back-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #1e293b;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+.wizard-back-btn:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+    transform: translateX(-2px);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+.wizard-title {
+    font-size: 1.55rem !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    line-height: 1.25 !important;
+    letter-spacing: -0.02em !important;
+}
+.wizard-subtitle {
+    font-size: 0.88rem !important;
+    color: #64748b !important;
+    margin: 4px 0 0 0 !important;
+}
+.wizard-header-alt-btn {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    background: #f0fdf4;
+    border: 1.5px solid #86efac;
+    color: #166534;
+    font-size: 0.84rem;
+    font-weight: 700;
+    transition: all 0.2s ease;
+}
+.wizard-header-alt-btn:hover {
+    background: #dcfce7;
+    border-color: #4ade80;
+}
+
+/* 2-Column Wizard Layout */
+.wizard-layout-container {
+    display: grid;
+    grid-template-columns: 290px minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+}
+@media (max-width: 1024px) {
+    .wizard-layout-container {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+}
+
+/* Left Sidebar Stepper */
+.wizard-sidebar-col {
+    position: sticky;
+    top: 88px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.wizard-stepper-card {
+    background: transparent;
+    padding: 0;
+}
+.wizard-stepper-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+}
+.wizard-stepper-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.01em;
+}
+.wizard-stepper-counter {
+    font-size: 0.82rem;
+    color: #64748b;
+    font-weight: 500;
+}
+.wizard-progress-track {
+    width: 100%;
+    height: 4px;
+    background: #e2e8f0;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+.wizard-progress-bar {
+    height: 100%;
+    background: #2563eb;
+    border-radius: 999px;
+    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Steps List */
+.wizard-steps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.wizard-step-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    border: 1.5px solid transparent;
+    background: transparent;
+    text-align: left;
+    width: 100%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    outline: none;
+    font-family: inherit;
+}
+.wizard-step-item:hover {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+.wizard-step-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    color: #64748b;
+    font-size: 0.84rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+}
+.wizard-step-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.wizard-step-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #334155;
+    line-height: 1.3;
+}
+.wizard-step-desc {
+    font-size: 0.74rem;
+    color: #94a3b8;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Active Step */
+.wizard-step-item.is-active {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.08);
+}
+.wizard-step-item.is-active .wizard-step-badge {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+}
+.wizard-step-item.is-active .wizard-step-name {
+    color: #1e40af;
+    font-weight: 700;
+}
+.wizard-step-item.is-active .wizard-step-desc {
+    color: #3b82f6;
+}
+
+/* Completed Step */
+.wizard-step-item.is-completed .wizard-step-badge {
+    background: #dcfce7;
+    border-color: #86efac;
+    color: #166534;
+}
+
+/* Need Assistance Card */
+.wizard-assist-card {
+    background: #f0f7ff;
+    border: 1px solid #dbeafe;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-top: 10px;
+}
+.wizard-assist-icon {
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+.wizard-assist-title {
+    display: block;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #1e40af;
+    margin-bottom: 3px;
+}
+.wizard-assist-desc {
+    font-size: 0.76rem;
+    color: #2563eb;
+    line-height: 1.45;
+    margin: 0;
+}
+
+/* Right Column: Main Wizard Card */
+.wizard-card-container {
+    background: #ffffff;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 25px -4px rgba(0, 0, 0, 0.05);
+    padding: 34px 38px;
+    min-height: 620px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+@media (max-width: 768px) {
+    .wizard-card-container {
+        padding: 24px 20px;
+        border-radius: 16px;
+    }
+}
+.wizard-card-header {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.wizard-card-title {
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+    color: #0f172a !important;
+    margin: 0 0 6px 0 !important;
+    letter-spacing: -0.01em !important;
+}
+.wizard-card-desc {
+    font-size: 0.88rem !important;
+    color: #64748b !important;
+    margin: 0 !important;
+    line-height: 1.45 !important;
+}
+
+/* Step Panels */
+.wizard-step-panel {
+    display: none;
+}
+.wizard-step-panel.is-active {
+    display: block;
+    animation: fadeInStep 0.22s ease-out;
+}
+@keyframes fadeInStep {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Flatten nested section card visuals inside panels */
+.wizard-step-panel .intake-section-card {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+    margin-bottom: 0 !important;
+    border-radius: 0 !important;
+}
+.wizard-step-panel .intake-section-header {
+    display: none !important;
+}
+
+/* Wizard Footer */
+.wizard-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 36px;
+    padding-top: 24px;
+    border-top: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+.btn-wizard-draft {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    color: #334155;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 11px 22px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-wizard-draft:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+.wizard-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.btn-wizard-prev {
+    background: #ffffff;
+    border: 1.5px solid #e2e8f0;
+    color: #475569;
+    font-size: 0.88rem;
+    font-weight: 600;
+    padding: 11px 20px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.btn-wizard-prev:hover {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+.btn-wizard-next {
+    background: #0284c7;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+    border: none;
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 11px 26px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+    transition: all 0.15s ease;
+}
+.btn-wizard-next:hover {
+    box-shadow: 0 6px 16px rgba(2, 132, 199, 0.35);
+    transform: translateY(-1px);
+}
+.btn-wizard-submit {
+    background: #16a34a;
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    border: none;
+    color: #ffffff;
+    font-size: 0.92rem;
+    font-weight: 700;
+    padding: 11px 28px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.28);
+    transition: all 0.15s ease;
+}
+.btn-wizard-submit:hover {
+    box-shadow: 0 6px 18px rgba(22, 163, 74, 0.38);
+    transform: translateY(-1px);
+}
+
+/* Pre-filing Review Summary Card in Step 5 */
+.wizard-review-summary {
+    background: #f8fafc;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
+    padding: 20px 22px;
+    margin-bottom: 24px;
+}
+.review-summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.review-summary-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+    color: #0f172a;
+}
+.review-summary-badge {
+    font-size: 0.74rem;
+    color: #0284c7;
+    font-weight: 700;
+    background: #e0f2fe;
+    border: 1px solid #bae6fd;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+.review-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    font-size: 0.86rem;
+}
+.review-summary-item {
+    display: flex;
+    flex-direction: column;
+}
+.review-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 3px;
+}
+.review-value {
+    font-weight: 600;
+    color: #0f172a;
+}
+.review-value.is-comp { color: #0284c7; }
+.review-value.is-resp { color: #be123c; }
+
+/* Enhanced Modern Input Styling inside Wizard Card */
+.wizard-card-container input[type="text"],
+.wizard-card-container input[type="number"],
+.wizard-card-container input[type="date"],
+.wizard-card-container input[type="datetime-local"],
+.wizard-card-container select,
+.wizard-card-container textarea {
+    border-radius: 10px !important;
+    border: 1.5px solid #cbd5e1 !important;
+    padding: 10px 14px !important;
+    font-size: 0.92rem !important;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+    background: #ffffff !important;
+}
+.wizard-card-container input:focus,
+.wizard-card-container select:focus,
+.wizard-card-container textarea:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
+    outline: none !important;
+}
+.wizard-card-container label {
+    font-size: 0.86rem !important;
+    font-weight: 600 !important;
+    color: #334155 !important;
+    margin-bottom: 6px !important;
+}
+</style>
+
 <div class="dashboard-layout">
     <?php include '../../layouts/sidebar.php'; ?>
 
@@ -238,15 +733,24 @@ include '../../layouts/header.php';
         <?php include '../../layouts/navbar.php'; ?>
 
         <div class="intake-main-wrapper">
-            <!-- Header Bar -->
-            <div class="intake-header-bar">
-                <div>
-                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="back-link">
-                        <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                        <span><?= $isResidentPortal ? 'Back to Resident Dashboard' : 'Back to Complaints' ?></span>
+            <!-- Header Bar (Matching Modern Reference UI) -->
+            <div class="wizard-header-bar">
+                <div class="wizard-header-left">
+                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="wizard-back-btn" title="<?= $isResidentPortal ? 'Back to Resident Dashboard' : 'Back to Complaints' ?>">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                     </a>
-                    <h1 class="intake-title"><?= $isFromPaanyaya ? 'Complete Formal Complaint Details' : ($isResidentPortal ? 'Submit a Concern' : 'Record a Walk-in Complaint') ?></h1>
+                    <div>
+                        <h1 class="wizard-title"><?= $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : ($isResidentPortal ? 'Submit a Concern' : 'Record a Walk-in Complaint') ?></h1>
+                        <p class="wizard-subtitle">Katarungang Pambarangay — Preliminary Intake &amp; Screening</p>
+                    </div>
                 </div>
+                <?php if (!$isResidentPortal): ?>
+                <div class="wizard-header-actions">
+                    <a href="../paanyaya/index.php" class="wizard-header-alt-btn">
+                        <span>🤝 Prefer an Informal Dialogue first? Go to Paanyaya Module &rarr;</span>
+                    </a>
+                </div>
+                <?php endif; ?>
             </div>
 
             <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
@@ -276,38 +780,91 @@ include '../../layouts/header.php';
                 </div>
             <?php endif; ?>
 
-            <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form">
+            <?php if (!$isResidentPortal): ?>
+            <section id="walkinLookupCard" style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:12px; padding:16px 20px; margin-bottom:18px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+                    <div>
+                        <strong style="font-size:0.95rem; color:#0f172a;">Walk-in Reference Lookup &amp; Duplicate Link</strong>
+                        <p style="margin:4px 0 0; font-size:0.82rem; color:#475569;">If the complainant filed online or already has an active complaint, search their Reference ID (e.g. <code>CMP-<?php echo date('Y'); ?>-0001</code>), name, or mobile number to link this walk-in visit instead of creating a duplicate.</p>
+                    </div>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
+                    <input type="text" id="walkinLookupQuery" placeholder="Enter Reference ID (CMP-...), name, or contact number..." style="flex:1; min-width:240px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.86rem;">
+                    <button type="button" id="btnWalkinLookup" class="btn-outline-sm" style="padding:8px 14px; font-weight:700;">Search Existing Filings</button>
+                    <button type="button" id="btnClearWalkinLookup" class="btn-secondary btn-sm" style="display:none; padding:8px 12px;">Clear</button>
+                </div>
+                <div id="walkinLookupResults" style="display:none; margin-top:12px;"></div>
+            </section>
+            <?php endif; ?>
+
+            <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form" novalidate>
+                <input type="hidden" name="is_draft" id="complaintIsDraftInput" value="0">
                 <input type="hidden" name="bypass_office_hours" value="1">
                 <input type="hidden" name="escalated_from_paanyaya_id" value="<?php echo htmlspecialchars((string)($old['escalated_from_paanyaya_id'] ?? ($escalatePaanyaya['paanyaya_id'] ?? ''))); ?>">
 
-                <div class="intake-layout-container" id="intakeLayoutContainer">
+                <div class="wizard-layout-container" id="intakeLayoutContainer">
 
-                    <!-- LEFT PANEL COLUMN: Quick-Nav in Digital mode; Document Viewer in Pre-Signed Paper mode -->
-                    <div class="intake-left-panel-col" id="intakeLeftPanel">
-                        <!-- STICKY QUICK-NAV SIDEBAR (Digital Mode) -->
-                        <nav class="intake-quicknav-sidebar" id="intakeQuickNav" aria-label="Form Quick Navigation">
-                            <div class="quicknav-title">Complaint intake</div>
-
-                            <a href="#section-narrative" id="nav-sec-narrative" class="quicknav-link is-active" aria-current="step">
-                                <span class="quicknav-badge">1</span> Narrative
-                            </a>
-                            <a href="#section-location" id="nav-sec-location" class="quicknav-link">
-                                <span class="quicknav-badge">2</span> When and where
-                            </a>
-                            <a href="#section-parties" id="nav-sec-parties" class="quicknav-link">
-                                <span class="quicknav-badge">3</span> People involved
-                            </a>
-                            <a href="#section-evidence" id="nav-sec-evidence" class="quicknav-link">
-                                <span class="quicknav-badge">4</span> Requested outcome &amp; evidence
-                            </a>
-                            <a href="#section-ingestion" id="nav-sec-ingestion" class="quicknav-link">
-                                <span class="quicknav-badge">5</span> Review and submit
-                            </a>
-
-                            <div class="quicknav-footer">
-                                Fill out required (<span class="required-mark">*</span>) fields before final submission to Lupon Tagapamayapa.
+                    <!-- LEFT PANEL COLUMN: Stepper Progress in Digital mode; Document Viewer in Pre-Signed Paper mode -->
+                    <div class="wizard-sidebar-col" id="intakeLeftPanel">
+                        <!-- PROGRESS STEPPER SIDEBAR (Matching Modern Reference UI, Narrative-First Order) -->
+                        <div class="wizard-stepper-card" id="intakeQuickNav">
+                            <div class="wizard-stepper-header">
+                                <div class="wizard-stepper-title">Filing Progress</div>
+                                <div class="wizard-stepper-counter" id="wizardStepIndicator">Step 1 of 5</div>
                             </div>
-                        </nav>
+                            <div class="wizard-progress-track">
+                                <div class="wizard-progress-bar" id="wizardProgressBar" style="width: 20%;"></div>
+                            </div>
+
+                            <div class="wizard-steps-list" role="tablist" aria-label="Filing Step Navigation">
+                                <button type="button" class="wizard-step-item is-active" data-step="1" id="wizardStepBtn1">
+                                    <span class="wizard-step-badge">1</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Narrative</span>
+                                        <span class="wizard-step-desc">Facts &amp; AI suggestions</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="2" id="wizardStepBtn2">
+                                    <span class="wizard-step-badge">2</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">When and where</span>
+                                        <span class="wizard-step-desc">Date, address &amp; map pin</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="3" id="wizardStepBtn3">
+                                    <span class="wizard-step-badge">3</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">People involved</span>
+                                        <span class="wizard-step-desc">Complainants &amp; respondents</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="4" id="wizardStepBtn4">
+                                    <span class="wizard-step-badge">4</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Outcome &amp; evidence</span>
+                                        <span class="wizard-step-desc">Relief sought &amp; attachments</span>
+                                    </div>
+                                </button>
+                                <button type="button" class="wizard-step-item" data-step="5" id="wizardStepBtn5">
+                                    <span class="wizard-step-badge">5</span>
+                                    <div class="wizard-step-meta">
+                                        <span class="wizard-step-name">Review and submit</span>
+                                        <span class="wizard-step-desc">Classification &amp; LISO screening</span>
+                                    </div>
+                                </button>
+                            </div>
+
+                            <!-- NEED ASSISTANCE? HELP CARD (Matching Reference UI) -->
+                            <div class="wizard-assist-card">
+                                <div class="wizard-assist-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                </div>
+                                <div class="wizard-assist-body">
+                                    <strong class="wizard-assist-title">Need Assistance?</strong>
+                                    <p class="wizard-assist-desc">Barangay Tumana Lupon Secretariat is available during office hours (8AM - 5PM) to assist with filing rules and KP procedures.</p>
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- DOCUMENT VIEWER (Pre-Signed Paper Form Mode) -->
                         <div class="paper-doc-viewer" id="paperDocViewer" style="display: none;">
@@ -409,11 +966,18 @@ include '../../layouts/header.php';
                         </div>
                     </div>
 
-                    <!-- LONG-FORM SECTIONS STACK / FAST INTAKE FORM -->
-                    <div class="intake-sections-container" id="intakeSectionsContainer">
+                    <!-- RIGHT MAIN WIZARD CARD -->
+                    <div class="wizard-main-col" id="intakeSectionsContainer">
+                        <div class="wizard-card-container">
+                            <div class="wizard-card-header">
+                                <h2 class="wizard-card-title" id="wizardCurrentStepTitle">Narrative</h2>
+                                <p class="wizard-card-desc" id="wizardCurrentStepDesc"><?= $isResidentPortal ? 'Describe what happened in your own words.' : 'Record what happened in the resident’s own words.' ?></p>
+                            </div>
 
-                        <!-- Section 1: Narrative -->
-                        <section id="section-narrative" class="intake-section-card">
+                            <!-- STEP 1 PANEL: NARRATIVE -->
+                            <div class="wizard-step-panel is-active" id="wizardPanel1" data-panel-step="1">
+                                <!-- Section 1: Narrative -->
+                                <section id="section-narrative" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">1</span>
@@ -451,9 +1015,12 @@ include '../../layouts/header.php';
                             </div>
 
                         </section>
+                            </div><!-- /#wizardPanel1 -->
 
-                        <!-- Section 2: When and where -->
-                        <section id="section-location" class="intake-section-card">
+                            <!-- STEP 2 PANEL: WHEN AND WHERE -->
+                            <div class="wizard-step-panel" id="wizardPanel2" data-panel-step="2" style="display: none;">
+                                <!-- Section 2: When and where -->
+                                <section id="section-location" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">2</span>
@@ -496,6 +1063,13 @@ include '../../layouts/header.php';
                             <div class="location-split-layout">
                                 <!-- Left Column: Address Fields -->
                                 <div>
+                                    <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+                                        <span style="font-size:0.76rem; font-weight:700; color:#475569; margin-right:4px;">Quick Fill Location:</span>
+                                        <button type="button" id="btnPresetIncidentComplainant" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">At Complainant's Address</button>
+                                        <button type="button" id="btnPresetIncidentRespondent" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">At Respondent's Address</button>
+                                        <button type="button" id="btnPresetIncidentGps" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">&#128205; Use Current GPS</button>
+                                        <span id="incidentPresetStatus" style="font-size:0.74rem; color:#64748b; margin-left:auto;"></span>
+                                    </div>
                                     <div class="form-group">
                                         <label for="incidentStreet">Street Address / Alley / Landmark <span class="required-mark">*</span></label>
                                         <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="House #, Street, building, or nearby place" value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
@@ -590,9 +1164,12 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
                         </section>
+                            </div><!-- /#wizardPanel2 -->
 
-                        <!-- Section 3: People involved -->
-                        <section id="section-parties" class="intake-section-card">
+                            <!-- STEP 3 PANEL: PEOPLE INVOLVED -->
+                            <div class="wizard-step-panel" id="wizardPanel3" data-panel-step="3" style="display: none;">
+                                <!-- Section 3: People involved -->
+                                <section id="section-parties" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">3</span>
@@ -720,9 +1297,12 @@ include '../../layouts/header.php';
                             <!-- Container for dynamic additional parties hidden inputs -->
                             <div id="additionalPartiesHiddenContainer"></div>
                         </section>
+                            </div><!-- /#wizardPanel3 -->
 
-                        <!-- Section 4: Requested outcome &amp; evidence -->
-                        <section id="section-evidence" class="intake-section-card">
+                            <!-- STEP 4 PANEL: REQUESTED OUTCOME & EVIDENCE -->
+                            <div class="wizard-step-panel" id="wizardPanel4" data-panel-step="4" style="display: none;">
+                                <!-- Section 4: Requested outcome &amp; evidence -->
+                                <section id="section-evidence" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">4</span>
@@ -779,7 +1359,7 @@ include '../../layouts/header.php';
                             </div>
 
                             <!-- Evidence attachments -->
-                            <div class="evidence-upload-zone" id="evidenceDropZone">
+                            <div class="evidence-upload-zone" id="evidenceDropZone" style="margin-top: 16px;">
                                 <input type="file" id="evidenceFiles" name="evidence[]" multiple accept="image/*,video/*,.pdf,.doc,.docx" class="evidence-file-input">
                                 <div class="upload-zone-body">
                                     <div class="upload-zone-icon">
@@ -809,9 +1389,47 @@ include '../../layouts/header.php';
                             </div>
 
                         </section>
+                            </div><!-- /#wizardPanel4 -->
 
-                        <!-- Section 5: Review and submit -->
-                        <section id="section-ingestion" class="intake-section-card">
+                            <!-- STEP 5 PANEL: REVIEW, CLASSIFICATION, LISO SCREENING & SUBMIT -->
+                            <div class="wizard-step-panel" id="wizardPanel5" data-panel-step="5" style="display: none;">
+                                <!-- PRE-FILING COMPLAINT REVIEW SUMMARY -->
+                                <div class="wizard-review-summary" id="step5ReviewSummary">
+                                    <div class="review-summary-header">
+                                        <div class="review-summary-title-wrap">
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                                <polyline points="14 2 14 8 20 8"></polyline>
+                                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                                <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
+                                            <strong>Complaint Summary Review</strong>
+                                        </div>
+                                        <span class="review-summary-badge">Pre-Filing Check</span>
+                                    </div>
+                                    <div class="review-summary-grid">
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Category &amp; Case Type</span>
+                                            <span class="review-value" id="revCategoryTitle">—</span>
+                                        </div>
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Incident Schedule &amp; Place</span>
+                                            <span class="review-value" id="revIncidentInfo">—</span>
+                                        </div>
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Complainant(s)</span>
+                                            <span class="review-value is-comp" id="revComplainants">—</span>
+                                        </div>
+                                        <div class="review-summary-item">
+                                            <span class="review-label">Respondent(s)</span>
+                                            <span class="review-value is-resp" id="revRespondents">—</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Section 5: Review and submit -->
+                                <section id="section-ingestion" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">5</span>
@@ -1046,17 +1664,34 @@ include '../../layouts/header.php';
 
                             <input type="hidden" name="jurisdiction_screened" id="jurisdictionScreened" value="1">
                             <input type="hidden" name="has_private_offended_party" value="1">
-
-                            <div class="intake-bottom-actions">
-                                <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="btn-secondary">Cancel</a>
-                                <button type="submit" class="btn-create" id="btnSubmitComplaint">
-                                    <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation' : ($isResidentPortal ? 'Submit Concern' : 'Submit for LISO Screening') ?>
-                                </button>
-                            </div>
                         </section>
+                        </div><!-- /#wizardPanel5 -->
 
-                    </div>
-                </div>
+                            <!-- Modern Wizard Footer (Matching Reference UI) -->
+                            <div class="wizard-card-footer">
+                                <div class="wizard-footer-left" style="display:flex;align-items:center;gap:8px;">
+                                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="btn-wizard-prev" style="text-decoration:none;">Cancel</a>
+                                    <?php if (!$isResidentPortal): ?>
+                                    <button type="submit" form="createComplaintForm" class="btn-wizard-draft" id="btnSaveComplaintDraft">
+                                        Save as Draft
+                                    </button>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="wizard-footer-right">
+                                    <button type="button" class="btn-wizard-prev" id="btnPrevStep" style="display: none;">
+                                        &larr; Previous Step
+                                    </button>
+                                    <button type="button" class="btn-wizard-next" id="btnNextStep">
+                                        Next Step &rarr;
+                                    </button>
+                                    <button type="submit" form="createComplaintForm" class="btn-wizard-submit" id="btnSubmitComplaint" style="display: none;">
+                                        <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation &rarr;' : ($isResidentPortal ? 'Submit Concern &rarr;' : 'Submit for LISO Screening &rarr;') ?>
+                                    </button>
+                                </div>
+                            </div>
+                        </div><!-- /.wizard-card-container -->
+                    </div><!-- /.wizard-main-col -->
+                </div><!-- /.wizard-layout-container -->
 
 
             </form>
@@ -1278,9 +1913,9 @@ include '../../layouts/header.php';
                         <div class="party-field-col">
                             <label for="modalIsTenant">Residency Status <span class="required-mark">*</span></label>
                             <select id="modalIsTenant" required>
-                                <option value="0">Permanent Resident</option>
-                                <option value="1">Tenant / Renter</option>
-                                <option value="2">Non-Resident</option>
+                                <option value="0">Resident (Permanent — Tumana)</option>
+                                <option value="1">Resident (Tenant / Renter — Tumana)</option>
+                                <option value="2">Non-Resident (Outside Tumana)</option>
                             </select>
                         </div>
                     </div>
@@ -2087,12 +2722,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 const isFirstOffense = document.getElementById('chkFirstOffenseCatcalling')?.checked;
                 if (isRepeatVawc) {
                     e.preventDefault();
+                    window.setWizardStep?.(1);
                     window.agapNotify?.('VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.', 'error');
                     document.getElementById('vawcPnpRoutingBanner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     return;
                 }
                 if (!isFirstOffense) {
                     e.preventDefault();
+                    window.setWizardStep?.(1);
                     window.agapNotify?.('Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.', 'error');
                     const firstBox = document.getElementById('chkFirstOffenseCatcalling');
                     firstBox?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2108,6 +2745,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (!blotterVal) {
                     e.preventDefault();
+                    window.setWizardStep?.(1);
                     window.agapNotify?.('Police / Court Jurisdiction: Estimated damages exceed ₱5,000. Under Katarungang Pambarangay guidelines (R.A. 7160 §408), please issue and record an official Barangay Blotter Reference Number.', 'error');
                     const bInput = document.getElementById('blotterRefNo');
                     bInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2142,6 +2780,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!compId && (!compFirst || !compLast)) {
                 e.preventDefault();
+                window.setWizardStep?.(2);
                 window.agapNotify?.('Please provide the complainant\'s First Name and Last Name.', 'error');
                 window.openPartyModal('complainant', complainantsList.length > 0 ? 'edit' : 'add', 0);
                 return;
@@ -2149,6 +2788,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!respId && (!respFirst || !respLast)) {
                 e.preventDefault();
+                window.setWizardStep?.(2);
                 window.agapNotify?.('Please provide the respondent\'s First Name and Last Name.', 'error');
                 window.openPartyModal('respondent', respondentsList.length > 0 ? 'edit' : 'add', 0);
                 return;
@@ -2218,6 +2858,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const cityInput = document.getElementById('incidentCity');
             if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
                 e.preventDefault();
+                window.setWizardStep?.(4);
                 window.agapNotify?.('Incident location must be within Marikina City.', 'error');
                 return;
             }
@@ -3558,6 +4199,24 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        if (window.AgapFieldValidator) {
+            const modalCheck = window.AgapFieldValidator.collectPartyModalErrors({
+                firstName,
+                middleName: document.getElementById('modalMiddleUnknown')?.checked ? '' : (document.getElementById('modalMiddleName')?.value || ''),
+                lastName,
+                birthDate: document.getElementById('modalBirthUnknown')?.checked ? '' : (document.getElementById('modalBirthdate')?.value || ''),
+                age: document.getElementById('modalAge')?.value || '',
+                contactNo: document.getElementById('modalContactNo')?.value || '',
+                contactUnknown: document.getElementById('modalContactUnknown')?.checked || false,
+                email: document.getElementById('modalEmail')?.value || '',
+                isMinor,
+                guardianName: document.getElementById('modalGuardianName')?.value || '',
+                guardianContact: document.getElementById('modalGuardianContact')?.value || '',
+                allowEntity: document.querySelector('[name="party_is_juridical"]')?.checked || document.querySelector('[name="party_is_government"]')?.checked || false
+            });
+            errors.push(...modalCheck.errors);
+            errorFieldIds.push(...modalCheck.fieldIds);
+        }
         if (errors.length > 0) {
             showModalValidationErrors(errors, errorFieldIds);
             return;
@@ -3753,6 +4412,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_is_tenant[]" value="${escapeHtml(String(p.is_tenant ?? (p.purok === 'Non-Resident' ? '2' : '0')))}">
                     <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
                     <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
@@ -3772,12 +4432,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     <input type="hidden" name="party_contacts[]" value="${escapeHtml(p.contact_no || '')}">
                     <input type="hidden" name="party_addresses[]" value="${escapeHtml(p.address || '')}">
                     <input type="hidden" name="party_puroks[]" value="${escapeHtml(p.purok || '')}">
+                    <input type="hidden" name="party_is_tenant[]" value="${escapeHtml(String(p.is_tenant ?? (p.purok === 'Non-Resident' ? '2' : '0')))}">
                     <input type="hidden" name="party_latitudes[]" value="${escapeHtml(p.home_latitude ?? p.latitude ?? '')}">
                     <input type="hidden" name="party_longitudes[]" value="${escapeHtml(p.home_longitude ?? p.longitude ?? '')}">
                 `;
             }
             addContainer.innerHTML = html;
         }
+    }
+
+    function getResidencyPillHtml(p) {
+        const isTen = String(p?.is_tenant ?? (p?.purok === 'Non-Resident' ? '2' : '0'));
+        if (isTen === '2' || p?.purok === 'Non-Resident') {
+            return '<span class="party-role-pill" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-size: 0.68rem;">Non-Resident</span>';
+        }
+        if (isTen === '1') {
+            return '<span class="party-role-pill" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 0.68rem;">Resident • Tenant</span>';
+        }
+        return '<span class="party-role-pill" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.68rem;">Resident</span>';
     }
 
     function renderParties() {
@@ -3837,6 +4509,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <div class="party-summary-title-row">
                                         <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                         <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${getResidencyPillHtml(c)}
                                     </div>
                                 </div>
                             </div>
@@ -3933,6 +4606,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <div class="party-summary-title-row">
                                         <span class="party-summary-name">${escapeHtml(fullName)}</span>
                                         <span class="party-role-pill ${rolePillClass}">${roleLabel}</span>
+                                        ${getResidencyPillHtml(r)}
                                         ${exceptionPill}
                                     </div>
                                 </div>
@@ -4405,41 +5079,247 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // ── Quick-Nav ScrollSpy & Smooth Scrolling ──
-    const quickNavLinks = document.querySelectorAll('#intakeQuickNav .quicknav-link');
-    const navSections = Array.from(quickNavLinks, link => document.getElementById(link.hash.slice(1))).filter(Boolean);
+    // ── Modern Stepper Controller (Matching Reference UI, Narrative-First Order) ──
+    const WIZARD_STEP_META = {
+        1: {
+            title: 'Narrative',
+            desc: 'Record what happened in the order it occurred so AI can assist with classification.'
+        },
+        2: {
+            title: 'When and where',
+            desc: 'Confirm the date, time, and place described in the narrative.'
+        },
+        3: {
+            title: 'People involved',
+            desc: 'Add and manage all dispute participants cleanly without cluttering the screen.'
+        },
+        4: {
+            title: 'Requested outcome & evidence',
+            desc: 'Record what outcome is requested and attach any available supporting evidence.'
+        },
+        5: {
+            title: 'Review and submit',
+            desc: 'Check the details, select the complaint classification, and assign LISO screening.'
+        }
+    };
 
-    function setActiveIntakeSection(id) {
-        quickNavLinks.forEach(link => {
-            const isActive = link.hash === `#${id}`;
-            link.classList.toggle('is-active', isActive);
-            if (isActive) {
-                link.setAttribute('aria-current', 'step');
+    let currentWizardStep = 1;
+    const totalWizardSteps = 5;
+
+    function validateStep(step) {
+        if (step === 1) {
+            const narrative = (document.getElementById('narrative')?.value || '').trim();
+            if (!narrative && document.getElementById('narrative')?.hasAttribute('required')) {
+                window.agapNotify?.('Please provide the complaint narrative (salaysay).', 'error');
+                document.getElementById('narrative')?.focus();
+                return false;
+            }
+            return true;
+        } else if (step === 2) {
+            const dt = document.getElementById('incidentDateTime')?.value;
+            if (!dt) {
+                window.agapNotify?.('Please provide the incident date and time.', 'error');
+                document.getElementById('incidentDateTime')?.focus();
+                return false;
+            }
+            const street = (document.getElementById('incidentStreet')?.value || '').trim();
+            if (!street) {
+                window.agapNotify?.('Please provide the street address / landmark of the incident.', 'error');
+                document.getElementById('incidentStreet')?.focus();
+                return false;
+            }
+            return true;
+        } else if (step === 3) {
+            if (!complainantsList || complainantsList.length === 0) {
+                window.agapNotify?.('Please add at least one complainant.', 'error');
+                window.openPartyModal('complainant', 'add');
+                return false;
+            }
+            if (!respondentsList || respondentsList.length === 0) {
+                window.agapNotify?.('Please add at least one respondent.', 'error');
+                window.openPartyModal('respondent', 'add');
+                return false;
+            }
+            return true;
+        } else if (step === 4) {
+            return true;
+        } else if (step === 5) {
+            const cat = (document.getElementById('primaryCategoryInput')?.value || '').trim();
+            if (!cat) {
+                window.agapNotify?.('Please enter or select a Complaint Category.', 'error');
+                document.getElementById('primaryCategoryInput')?.focus();
+                return false;
+            }
+            if (window.isSafeSpacesCategorySelected && window.isSafeSpacesCategorySelected()) {
+                if (document.getElementById('chkRepeatOffenseVawc')?.checked) {
+                    window.agapNotify?.('VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.', 'error');
+                    return false;
+                }
+                if (!document.getElementById('chkFirstOffenseCatcalling')?.checked) {
+                    window.agapNotify?.('Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.', 'error');
+                    document.getElementById('chkFirstOffenseCatcalling')?.focus();
+                    return false;
+                }
+            }
+            const title = (document.getElementById('complaintTitle')?.value || '').trim();
+            if (!title) {
+                window.agapNotify?.('Please enter the Complaint Title / Specific Nature.', 'error');
+                document.getElementById('complaintTitle')?.focus();
+                return false;
+            }
+            return true;
+        }
+        return true;
+    }
+
+    function updateStep5ReviewSummary() {
+        const cat = document.getElementById('primaryCategoryInput')?.value?.trim() || '—';
+        const type = document.getElementById('caseType')?.value || 'Civil';
+        const title = document.getElementById('complaintTitle')?.value?.trim() || '';
+        const catEl = document.getElementById('revCategoryTitle');
+        if (catEl) {
+            catEl.textContent = `${cat} • ${type}${title ? ' — "' + title + '"' : ''}`;
+        }
+
+        const dt = document.getElementById('incidentDateTime')?.value || '';
+        const street = document.getElementById('incidentStreet')?.value?.trim() || '';
+        const purok = document.getElementById('incidentPurok')?.value || 'Tumana';
+        const incEl = document.getElementById('revIncidentInfo');
+        if (incEl) {
+            const formattedDt = dt ? dt.replace('T', ' ') : 'Not specified';
+            incEl.textContent = `${formattedDt} @ ${street ? street + ', ' : ''}${purok}`;
+        }
+
+        const compEl = document.getElementById('revComplainants');
+        if (compEl) {
+            if (complainantsList && complainantsList.length > 0) {
+                compEl.innerHTML = complainantsList.map((c) => {
+                    const name = [c.first_name, c.middle_name, c.last_name, c.suffix].filter(Boolean).join(' ');
+                    const pill = (typeof getResidencyPillHtml === 'function') ? getResidencyPillHtml(c) : '';
+                    return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px;"><span>${escapeHtmlLocal(name)}</span>${pill}</div>`;
+                }).join('');
             } else {
-                link.removeAttribute('aria-current');
+                compEl.textContent = 'None recorded';
+            }
+        }
+
+        const respEl = document.getElementById('revRespondents');
+        if (respEl) {
+            if (respondentsList && respondentsList.length > 0) {
+                respEl.innerHTML = respondentsList.map((r) => {
+                    const name = [r.first_name, r.middle_name, r.last_name, r.suffix].filter(Boolean).join(' ');
+                    const pill = (typeof getResidencyPillHtml === 'function') ? getResidencyPillHtml(r) : '';
+                    return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px;"><span>${escapeHtmlLocal(name)}</span>${pill}</div>`;
+                }).join('');
+            } else {
+                respEl.textContent = 'None recorded';
+            }
+        }
+    }
+
+    function setWizardStep(step, validateCurrent = false) {
+        if (step < 1 || step > totalWizardSteps) return;
+
+        if (validateCurrent && step > currentWizardStep) {
+            if (!validateStep(currentWizardStep)) {
+                return;
+            }
+        }
+
+        currentWizardStep = step;
+
+        // Update Progress Header & Bar
+        const stepIndicator = document.getElementById('wizardStepIndicator');
+        if (stepIndicator) stepIndicator.textContent = `Step ${step} of ${totalWizardSteps}`;
+
+        const progressBar = document.getElementById('wizardProgressBar');
+        if (progressBar) progressBar.style.width = `${(step / totalWizardSteps) * 100}%`;
+
+        // Update Stepper List
+        const stepItems = document.querySelectorAll('.wizard-step-item');
+        stepItems.forEach(item => {
+            const itemStep = parseInt(item.getAttribute('data-step'), 10);
+            item.classList.remove('is-active', 'is-completed');
+            const badge = item.querySelector('.wizard-step-badge');
+            if (itemStep === step) {
+                item.classList.add('is-active');
+                if (badge) badge.textContent = itemStep;
+            } else if (itemStep < step) {
+                item.classList.add('is-completed');
+                if (badge) badge.innerHTML = '&#10003;';
+            } else {
+                if (badge) badge.textContent = itemStep;
             }
         });
-        if (id === 'section-ingestion') updateIntakeReview();
+
+        // Update Card Header
+        const cardTitle = document.getElementById('wizardCurrentStepTitle');
+        const cardDesc = document.getElementById('wizardCurrentStepDesc');
+        if (cardTitle && WIZARD_STEP_META[step]) cardTitle.textContent = WIZARD_STEP_META[step].title;
+        if (cardDesc && WIZARD_STEP_META[step]) cardDesc.textContent = WIZARD_STEP_META[step].desc;
+
+        // Show/Hide Panels
+        for (let s = 1; s <= totalWizardSteps; s++) {
+            const panel = document.getElementById(`wizardPanel${s}`);
+            if (panel) {
+                if (s === step) {
+                    panel.style.display = 'block';
+                    panel.classList.add('is-active');
+                } else {
+                    panel.style.display = 'none';
+                    panel.classList.remove('is-active');
+                }
+            }
+        }
+
+        // Update Action Buttons
+        const prevBtn = document.getElementById('btnPrevStep');
+        const nextBtn = document.getElementById('btnNextStep');
+        const submitBtn = document.getElementById('btnSubmitComplaint');
+
+        if (prevBtn) prevBtn.style.display = step > 1 ? 'inline-flex' : 'none';
+        if (nextBtn) nextBtn.style.display = step < totalWizardSteps ? 'inline-flex' : 'none';
+        if (submitBtn) submitBtn.style.display = step === totalWizardSteps ? 'inline-flex' : 'none';
+
+        // Step-specific hooks
+        if (step === 2) {
+            setTimeout(() => {
+                window.complaintMaps?.addComplaintMap?.map?.invalidateSize?.();
+            }, 180);
+        }
+        if (step === 5) {
+            updateStep5ReviewSummary();
+            updateIntakeReview();
+        }
+
+        // Scroll to top of wizard card smoothly
+        const wizardCard = document.querySelector('.wizard-card-container');
+        if (wizardCard) {
+            const cardTop = wizardCard.getBoundingClientRect().top + window.pageYOffset - 80;
+            window.scrollTo({ top: Math.max(0, cardTop), behavior: 'smooth' });
+        }
     }
 
-    quickNavLinks.forEach(link => {
-        link.addEventListener('click', () => setActiveIntakeSection(link.hash.slice(1)));
+    document.querySelectorAll('.wizard-step-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetStep = parseInt(btn.getAttribute('data-step'), 10);
+            setWizardStep(targetStep, targetStep > currentWizardStep);
+        });
     });
 
-    if ('IntersectionObserver' in window && navSections.length > 0) {
-        const navObserver = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    setActiveIntakeSection(entry.target.id);
-                }
-            });
-        }, {
-            root: null,
-            rootMargin: '-15% 0px -65% 0px',
-            threshold: 0
-        });
-        navSections.forEach(sec => navObserver.observe(sec));
-    }
+    document.getElementById('btnNextStep')?.addEventListener('click', () => {
+        setWizardStep(currentWizardStep + 1, true);
+    });
+    document.getElementById('btnPrevStep')?.addEventListener('click', () => {
+        setWizardStep(currentWizardStep - 1, false);
+    });
+
+    ['primaryCategoryInput', 'caseType', 'complaintTitle'].forEach((fieldId) => {
+        document.getElementById(fieldId)?.addEventListener('input', updateStep5ReviewSummary);
+        document.getElementById(fieldId)?.addEventListener('change', updateStep5ReviewSummary);
+    });
+
+    window.setWizardStep = setWizardStep;
 
     // ── Filing Method Dynamic Selector ──
     const methodRadios = document.querySelectorAll('input[name="filing_method"]');
@@ -5391,6 +6271,312 @@ document.addEventListener('DOMContentLoaded', () => {
     categorySelectEl?.addEventListener('change', syncSafeSpacesOffenseUI);
     syncSafeSpacesOffenseUI();
     window.isSafeSpacesCategorySelected = isSafeSpacesCategorySelected;
+
+    // ─── Stage 1 Automation: Draft flag toggle ────────────────────────────────
+    const draftFlagInput = document.getElementById('complaintIsDraftInput');
+    document.getElementById('btnSaveComplaintDraft')?.addEventListener('click', () => {
+        if (draftFlagInput) draftFlagInput.value = '1';
+    });
+    document.getElementById('btnSubmitComplaint')?.addEventListener('click', () => {
+        if (draftFlagInput) draftFlagInput.value = '0';
+    });
+
+    // ─── Stage 1 Automation: Walk-in Lookup & Duplicate Linking ───────────────
+    const lookupQueryInput = document.getElementById('walkinLookupQuery');
+    const lookupBtn = document.getElementById('btnWalkinLookup');
+    const clearLookupBtn = document.getElementById('btnClearWalkinLookup');
+    const lookupResultsEl = document.getElementById('walkinLookupResults');
+
+    function escapeHtmlLocal(val) {
+        return String(val ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[ch]));
+    }
+
+    async function runWalkinLookup() {
+        const q = (lookupQueryInput?.value || '').trim();
+        if (q.length < 2) {
+            window.agapNotify?.('Enter at least 2 characters (Reference ID, name, or contact number).', 'warning', 'Walk-in Lookup');
+            return;
+        }
+        if (lookupBtn) lookupBtn.disabled = true;
+        try {
+            const resp = await fetch(`../../../backend/api/complaints/check-duplicate.php?reference_id=${encodeURIComponent(q)}`, {
+                headers: { Accept: 'application/json' }
+            });
+            const data = await resp.json();
+            const rows = Array.isArray(data.duplicates) ? data.duplicates : [];
+            if (clearLookupBtn) clearLookupBtn.style.display = 'inline-flex';
+            if (!lookupResultsEl) return;
+            lookupResultsEl.style.display = 'block';
+
+            if (!rows.length) {
+                lookupResultsEl.innerHTML = '<div style="padding:10px 12px; background:#fff; border:1px solid #cbd5e1; border-radius:8px; font-size:0.84rem; color:#475569;">No matching active complaint found. Proceed with filing a new Walk-in complaint below.</div>';
+                return;
+            }
+
+            lookupResultsEl.innerHTML = rows.map((row) => {
+                const ref = row.complaint_number || ('CMP-' + row.complaint_id);
+                const src = row.complaint_source === 'Online' ? 'Online' : 'Walk-in';
+                const srcBg = src === 'Online' ? '#dbeafe; color:#1d4ed8' : '#e2e8f0; color:#334155';
+                return `
+                    <div style="padding:12px 14px; background:#fff; border:1.5px solid #93c5fd; border-radius:8px; margin-bottom:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap;">
+                            <div>
+                                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                    <strong style="color:#0f172a; font-size:0.9rem;">${escapeHtmlLocal(ref)}</strong>
+                                    <span style="padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:700; background:${srcBg};">${escapeHtmlLocal(src)}</span>
+                                    <span style="padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:700; background:#fef3c7; color:#92400e;">${escapeHtmlLocal(row.status || 'Filed')}</span>
+                                </div>
+                                <div style="font-size:0.84rem; color:#1e293b; font-weight:600; margin-top:4px;">${escapeHtmlLocal(row.complaint_title || 'Untitled Complaint')}</div>
+                                <div style="font-size:0.78rem; color:#64748b; margin-top:2px;">Parties: ${escapeHtmlLocal(row.complainant_names || 'Complainant')} vs ${escapeHtmlLocal(row.respondent_names || 'Respondent')}</div>
+                            </div>
+                            <div style="display:flex; gap:6px; align-items:center;">
+                                <a href="complaint-details.php?id=${Number(row.complaint_id)}" class="btn-secondary btn-sm" style="text-decoration:none;">View Record</a>
+                                <button type="button" class="btn-create btn-sm" data-link-existing-id="${Number(row.complaint_id)}" data-link-existing-ref="${escapeHtmlLocal(ref)}">Link Walk-in Visit</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lookupResultsEl.querySelectorAll('[data-link-existing-id]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const targetId = btn.getAttribute('data-link-existing-id');
+                    const targetRef = btn.getAttribute('data-link-existing-ref');
+                    const walkinNotes = window.prompt(`Optional walk-in verification notes for ${targetRef}:`, 'Complainant appeared in person to confirm/follow up on online submission.');
+                    if (walkinNotes === null) return;
+                    btn.disabled = true;
+                    try {
+                        const fd = new FormData();
+                        fd.append('complaint_id', String(targetId));
+                        fd.append('walkin_notes', walkinNotes);
+                        const linkResp = await fetch('../../../backend/api/complaints/link-duplicate.php', {
+                            method: 'POST',
+                            body: fd
+                        });
+                        const linkRes = await linkResp.json();
+                        if (linkRes.success) {
+                            window.agapNotify?.(linkRes.message || `Linked walk-in visit to ${targetRef}.`, 'success', 'Walk-in Linked');
+                            if (linkRes.redirect_url) {
+                                window.location.href = linkRes.redirect_url;
+                            } else {
+                                window.location.href = `complaint-details.php?id=${encodeURIComponent(String(targetId))}`;
+                            }
+                        } else {
+                            window.agapNotify?.(linkRes.message || 'Unable to link walk-in visit.', 'error', 'Walk-in Lookup');
+                            btn.disabled = false;
+                        }
+                    } catch (_) {
+                        window.agapNotify?.('Connection error while linking walk-in visit.', 'error', 'Walk-in Lookup');
+                        btn.disabled = false;
+                    }
+                });
+            });
+        } catch (_) {
+            window.agapNotify?.('Unable to search existing filings right now.', 'error', 'Walk-in Lookup');
+        } finally {
+            if (lookupBtn) lookupBtn.disabled = false;
+        }
+    }
+
+    lookupBtn?.addEventListener('click', runWalkinLookup);
+    lookupQueryInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            runWalkinLookup();
+        }
+    });
+    clearLookupBtn?.addEventListener('click', () => {
+        if (lookupQueryInput) lookupQueryInput.value = '';
+        if (lookupResultsEl) {
+            lookupResultsEl.innerHTML = '';
+            lookupResultsEl.style.display = 'none';
+        }
+        clearLookupBtn.style.display = 'none';
+    });
+
+    // ─── Stage 1 Automation: Voice-to-Salaysay (STT) ──────────────────────────
+    const voiceBtn = document.getElementById('btnComplaintVoiceRecord');
+    const voiceStatus = document.getElementById('complaintVoiceStatus');
+    const voiceNarrativeInput = document.getElementById('narrative');
+    let voiceRecorder = null;
+    let voiceChunks = [];
+    let voiceStream = null;
+    let isVoiceRecording = false;
+
+    function setVoiceUi(recording, statusText = '') {
+        isVoiceRecording = recording;
+        if (voiceBtn) {
+            voiceBtn.innerHTML = recording ? '&#9209; Stop Recording' : '&#127908; Record Voice (STT)';
+            voiceBtn.style.borderColor = recording ? '#dc2626' : '';
+            voiceBtn.style.color = recording ? '#dc2626' : '';
+        }
+        if (voiceStatus) {
+            voiceStatus.textContent = statusText;
+            voiceStatus.style.display = statusText ? 'inline' : 'none';
+        }
+    }
+
+    voiceBtn?.addEventListener('click', async () => {
+        if (isVoiceRecording && voiceRecorder) {
+            voiceRecorder.stop();
+            return;
+        }
+
+        const consentBox = document.querySelector('[data-ai-external-consent]');
+        if (!consentBox?.checked) {
+            const approved = window.confirm('Voice dictation sends audio to Google Gemini to draft an editable narrative. Check consent and start recording?');
+            if (!approved) {
+                window.agapNotify?.('Check external AI consent before recording voice dictation.', 'info', 'Voice Dictation');
+                return;
+            }
+            if (consentBox) consentBox.checked = true;
+        }
+
+        if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+            window.agapNotify?.('Audio recording is not supported in this browser.', 'error', 'Voice Dictation');
+            return;
+        }
+
+        try {
+            voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            voiceChunks = [];
+            voiceRecorder = new MediaRecorder(voiceStream);
+            voiceRecorder.ondataavailable = (ev) => {
+                if (ev.data && ev.data.size > 0) voiceChunks.push(ev.data);
+            };
+            voiceRecorder.onstop = async () => {
+                voiceStream?.getTracks().forEach((t) => t.stop());
+                voiceStream = null;
+                setVoiceUi(false, 'Transcribing recording...');
+                if (voiceBtn) voiceBtn.disabled = true;
+                try {
+                    const mime = voiceRecorder.mimeType || 'audio/webm';
+                    const blob = new Blob(voiceChunks, { type: mime });
+                    const ext = mime.includes('ogg') ? 'ogg' : (mime.includes('mp4') ? 'm4a' : 'webm');
+                    const fd = new FormData();
+                    fd.append('audio', blob, `salaysay.${ext}`);
+                    fd.append('external_ai_consent', '1');
+                    const resp = await fetch('../../../backend/api/ai/transcribe-audio.php', {
+                        method: 'POST',
+                        body: fd
+                    });
+                    const res = await resp.json();
+                    const text = (res.text || res.transcript || '').trim();
+                    if (res.success && text) {
+                        if (voiceNarrativeInput) {
+                            const existing = voiceNarrativeInput.value.trim();
+                            voiceNarrativeInput.value = existing ? `${existing}\n${text}` : text;
+                            voiceNarrativeInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        window.agapNotify?.('Voice transcript inserted as an editable draft. Review before saving.', 'success', 'Voice Dictation');
+                    } else {
+                        window.agapNotify?.(res.message || 'Unable to transcribe audio recording.', 'error', 'Voice Dictation');
+                    }
+                } catch (_) {
+                    window.agapNotify?.('Connection error while transcribing voice recording.', 'error', 'Voice Dictation');
+                } finally {
+                    if (voiceBtn) voiceBtn.disabled = false;
+                    setVoiceUi(false, '');
+                }
+            };
+            voiceRecorder.start();
+            setVoiceUi(true, 'Listening... click Stop Recording when done.');
+        } catch (_) {
+            setVoiceUi(false, '');
+            window.agapNotify?.('Microphone permission denied or unavailable.', 'error', 'Voice Dictation');
+        }
+    });
+
+    // ─── Stage 1 Automation: 1-Click Incident Location & Party Address Presets ─
+    function applyPartyAddressToIncident(partyType) {
+        const streetEl = document.getElementById('incidentStreet');
+        const purokEl = document.getElementById('incidentPurok');
+        const statusEl = document.getElementById('incidentPresetStatus');
+        const list = partyType === 'complainant' ? (typeof complainantsList !== 'undefined' ? complainantsList : []) : (typeof respondentsList !== 'undefined' ? respondentsList : []);
+        const fallbackAddr = document.getElementById(partyType === 'complainant' ? 'complainantAddress' : 'respondentAddress')?.value?.trim() || '';
+        const fallbackPurok = document.getElementById(partyType === 'complainant' ? 'complainantPurok' : 'respondentPurok')?.value?.trim() || '';
+        const party = (Array.isArray(list) && list.length > 0) ? list[0] : { address: fallbackAddr, purok: fallbackPurok };
+        const addr = String(party?.address || fallbackAddr || '').trim();
+        const purok = String(party?.purok || fallbackPurok || '').trim();
+
+        if (!addr && !purok) {
+            window.agapNotify?.(`Enter the ${partyType}'s address first.`, 'info', 'Incident Location');
+            return;
+        }
+        if (streetEl && addr) {
+            streetEl.value = addr;
+            streetEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (purokEl && purok) {
+            const matchOpt = Array.from(purokEl.options).find((opt) => opt.value.toLowerCase() === purok.toLowerCase());
+            if (matchOpt) {
+                purokEl.value = matchOpt.value;
+            } else if (purok.toLowerCase().includes('non-resident') || purok.toLowerCase().includes('outside')) {
+                purokEl.value = 'Outside Tumana';
+            }
+            purokEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (party?.latitude && party?.longitude && window.complaintMaps?.addComplaintMap?.setPoint) {
+            window.complaintMaps.addComplaintMap.setPoint(Number(party.latitude), Number(party.longitude), 'selected', false);
+        }
+        if (statusEl) statusEl.textContent = `Copied from ${partyType}'s address.`;
+    }
+
+    document.getElementById('btnPresetIncidentComplainant')?.addEventListener('click', () => applyPartyAddressToIncident('complainant'));
+    document.getElementById('btnPresetIncidentRespondent')?.addEventListener('click', () => applyPartyAddressToIncident('respondent'));
+    document.getElementById('btnPresetIncidentGps')?.addEventListener('click', () => {
+        const statusEl = document.getElementById('incidentPresetStatus');
+        if (!navigator.geolocation) {
+            window.agapNotify?.('GPS geolocation is not supported on this device.', 'error', 'Location GPS');
+            return;
+        }
+        if (statusEl) statusEl.textContent = 'Detecting GPS location...';
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const { latitude, longitude } = pos.coords;
+                document.getElementById('locationMapPinbox')?.classList.add('is-open');
+                const controller = window.complaintMaps?.addComplaintMap;
+                controller?.map?.invalidateSize?.();
+                const ok = controller?.setPoint?.(latitude, longitude, 'selected', true);
+                if (statusEl) {
+                    statusEl.textContent = ok === false
+                        ? 'GPS point is outside Marikina City; adjust manually.'
+                        : 'GPS pinned and address updated.';
+                }
+            },
+            () => {
+                if (statusEl) statusEl.textContent = '';
+                window.agapNotify?.('Unable to retrieve GPS coordinates.', 'warning', 'Location GPS');
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    });
+
+    document.getElementById('btnModalSameAsComplainant')?.addEventListener('click', () => {
+        const comp = (Array.isArray(complainantsList) && complainantsList.length > 0) ? complainantsList[0] : null;
+        if (!comp) {
+            window.agapNotify?.('Add the Complainant first before copying their address.', 'info', 'Party Details');
+            return;
+        }
+        const modalPurokEl = document.getElementById('modalPurok');
+        const modalAddressEl = document.getElementById('modalAddress');
+        const modalLatEl = document.getElementById('modalLatitude');
+        const modalLngEl = document.getElementById('modalLongitude');
+        if (modalPurokEl && comp.purok) {
+            modalPurokEl.value = comp.purok;
+            modalPurokEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        if (modalAddressEl && comp.address) {
+            modalAddressEl.value = comp.address;
+            modalAddressEl.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        if (modalLatEl && comp.latitude) modalLatEl.value = comp.latitude;
+        if (modalLngEl && comp.longitude) modalLngEl.value = comp.longitude;
+        if (comp.latitude && comp.longitude && typeof setPartyAddressMapPoint === 'function') {
+            setPartyAddressMapPoint(Number(comp.latitude), Number(comp.longitude), false);
+        }
+        window.agapNotify?.("Copied complainant's Purok and street address.", 'success', 'Party Details');
+    });
 });
 </script>
 

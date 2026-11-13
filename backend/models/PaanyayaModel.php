@@ -656,4 +656,301 @@ class PaanyayaModel
         ];
         return $days[$w] ?? 'Lunes';
     }
+
+    /**
+     * Automatically initialize Paanyaya from an approved/accepted complaint.
+     * Auto-fills complainant details, respondent details, and complaint narrative/salaysay.
+     */
+    public function autoInitializeFromComplaint(int $complaintId, ?int $userId = null): array
+    {
+        if (PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId) || PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
+            return ['success' => false, 'message' => 'Prepare this walk-in invitation from the original intake record.'];
+        }
+
+        $compStmt = $this->conn->prepare('
+            SELECT c.*,
+                   cat.category_name
+            FROM complaints c
+            LEFT JOIN complaint_categories cat ON c.category_id = cat.category_id
+            WHERE c.complaint_id = ?
+            LIMIT 1
+        ');
+        $compStmt->execute([$complaintId]);
+        $complaint = $compStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$complaint) {
+            return ['success' => false, 'message' => 'Complaint not found.'];
+        }
+
+        // Fetch Parties with Resident info
+        $partyStmt = $this->conn->prepare("
+            SELECT cp.party_id, cp.resident_id, cp.party_type,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
+                   r.contact_no, r.address, r.purok, r.email,
+                   r.home_latitude, r.home_longitude
+            FROM complaint_parties cp
+            LEFT JOIN residents r ON r.resident_id = cp.resident_id
+            WHERE cp.complaint_id = ?
+            ORDER BY cp.party_id ASC
+        ");
+        $partyStmt->execute([$complaintId]);
+        $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $complainantNames = [];
+        $respondentNames = [];
+        $primaryComplainant = null;
+        $primaryRespondent = null;
+
+        foreach ($parties as $p) {
+            $name = trim((string)($p['full_name'] ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            if (strcasecmp($p['party_type'], 'Complainant') === 0) {
+                $complainantNames[] = $name;
+                if ($primaryComplainant === null) {
+                    $primaryComplainant = $p;
+                }
+            } else {
+                $respondentNames[] = $name;
+                if ($primaryRespondent === null) {
+                    $primaryRespondent = $p;
+                }
+            }
+        }
+
+        $complainantNameStr = !empty($complainantNames) ? implode(', ', array_unique($complainantNames)) : 'Nagpaanyaya';
+        $respondentNameStr = !empty($respondentNames) ? implode(', ', array_unique($respondentNames)) : 'Inanyayahan';
+
+        // Auto-fill Salaysay from complaint narrative + requested relief
+        $salaysay = trim((string)($complaint['narrative'] ?? ''));
+        if (!empty($complaint['requested_resolution'])) {
+            $relief = trim((string)$complaint['requested_resolution']);
+            if ($relief !== '') {
+                $salaysay .= ($salaysay !== '' ? "\n\n" : '') . 'Hinihiling na Kalutasan: ' . $relief;
+            }
+        }
+        if ($salaysay === '') {
+            $salaysay = 'Naisin nilang magkausap at magkasundo nang maayos ukol sa kanilang hidwaan.';
+        }
+
+        // Suggested invitation date: 3 weekdays in the future
+        $invitationDate = date('Y-m-d', strtotime('+3 weekdays'));
+        $invitationTime = '09:00:00';
+        $venue = 'Tanggapan ng Punong Barangay, Barangay Tumana';
+        $actorId = $userId ?: (int)($_SESSION['user_id'] ?? 1);
+
+        $this->conn->beginTransaction();
+        try {
+            // 1. Get or Create paanyaya_stages row (Paanyaya 1)
+            $findStage = $this->conn->prepare('
+                SELECT id FROM paanyaya_stages
+                WHERE complaint_id = ? AND stage_type = ?
+                LIMIT 1
+            ');
+            $findStage->execute([$complaintId, 'Paanyaya 1']);
+            $stageId = $findStage->fetchColumn();
+
+            if (!$stageId) {
+                $insStage = $this->conn->prepare('
+                    INSERT INTO paanyaya_stages (
+                        complaint_id, stage_type, invitee_name, status,
+                        issued_at, issued_by, invitation_date, invitation_time,
+                        venue, has_e_signature, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?,
+                        NOW(), ?, ?, ?,
+                        ?, 1, NOW(), NOW()
+                    )
+                ');
+                $insStage->execute([
+                    $complaintId,
+                    'Paanyaya 1',
+                    $respondentNameStr,
+                    'In Progress',
+                    $actorId,
+                    $invitationDate,
+                    $invitationTime,
+                    $venue
+                ]);
+                $stageId = (int)$this->conn->lastInsertId();
+            } else {
+                // Ensure stage has respondent name and default date if previously empty
+                $updStage = $this->conn->prepare('
+                    UPDATE paanyaya_stages
+                    SET invitee_name = COALESCE(NULLIF(invitee_name, ""), ?),
+                        invitation_date = COALESCE(invitation_date, ?),
+                        invitation_time = COALESCE(invitation_time, ?),
+                        venue = COALESCE(NULLIF(venue, ""), ?),
+                        updated_at = NOW()
+                    WHERE id = ?
+                ');
+                $updStage->execute([$respondentNameStr, $invitationDate, $invitationTime, $venue, $stageId]);
+            }
+
+            // 2. Get or Create Session (Attempt 1)
+            $sessCheck = $this->conn->prepare('
+                SELECT session_id FROM paanyaya_sessions
+                WHERE complaint_id = ? AND attempt_number = 1
+                LIMIT 1
+            ');
+            $sessCheck->execute([$complaintId]);
+            $sessionId = $sessCheck->fetchColumn();
+
+            if (!$sessionId) {
+                $insSess = $this->conn->prepare('
+                    INSERT INTO paanyaya_sessions (
+                        complaint_id, invitee_name, attempt_number,
+                        scheduled_date, scheduled_time, venue,
+                        has_e_signature, salaysay, scheduled_by,
+                        queue_status, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, 1,
+                        ?, ?, ?,
+                        1, ?, ?,
+                        ?, NOW(), NOW()
+                    )
+                ');
+                $insSess->execute([
+                    $complaintId,
+                    $respondentNameStr,
+                    $invitationDate,
+                    $invitationTime,
+                    $venue,
+                    $salaysay,
+                    $actorId,
+                    'Waiting'
+                ]);
+                $sessionId = (int)$this->conn->lastInsertId();
+            }
+
+            // 3. Upsert into paanyayas table for overview and queues
+            $pnyCheck = $this->conn->prepare('SELECT paanyaya_id FROM paanyayas WHERE complaint_id = ? LIMIT 1');
+            $pnyCheck->execute([$complaintId]);
+            $pnyId = $pnyCheck->fetchColumn();
+
+            $cResId = !empty($primaryComplainant['resident_id']) ? (int)$primaryComplainant['resident_id'] : null;
+            $cAddr = !empty($primaryComplainant['address']) ? (string)$primaryComplainant['address'] : null;
+            $cPurok = !empty($primaryComplainant['purok']) ? (string)$primaryComplainant['purok'] : null;
+            $cContact = !empty($primaryComplainant['contact_no']) ? (string)$primaryComplainant['contact_no'] : null;
+            $cEmail = !empty($primaryComplainant['email']) ? (string)$primaryComplainant['email'] : null;
+
+            $rResId = !empty($primaryRespondent['resident_id']) ? (int)$primaryRespondent['resident_id'] : null;
+            $rAddr = !empty($primaryRespondent['address']) ? (string)$primaryRespondent['address'] : null;
+            $rPurok = !empty($primaryRespondent['purok']) ? (string)$primaryRespondent['purok'] : null;
+            $rContact = !empty($primaryRespondent['contact_no']) ? (string)$primaryRespondent['contact_no'] : null;
+            $rEmail = !empty($primaryRespondent['email']) ? (string)$primaryRespondent['email'] : null;
+
+            if ($pnyId) {
+                $pnyUpd = $this->conn->prepare('
+                    UPDATE paanyayas
+                    SET complainant_name = COALESCE(NULLIF(complainant_name, ""), ?),
+                        invitee_name = COALESCE(NULLIF(invitee_name, ""), ?),
+                        scheduled_date = COALESCE(scheduled_date, ?),
+                        scheduled_time = COALESCE(scheduled_time, ?),
+                        venue = COALESCE(NULLIF(venue, ""), ?),
+                        salaysay = COALESCE(NULLIF(salaysay, ""), ?),
+                        complainant_resident_id = COALESCE(complainant_resident_id, ?),
+                        complainant_address = COALESCE(complainant_address, ?),
+                        complainant_purok = COALESCE(complainant_purok, ?),
+                        complainant_contact_no = COALESCE(complainant_contact_no, ?),
+                        complainant_email = COALESCE(complainant_email, ?),
+                        invitee_resident_id = COALESCE(invitee_resident_id, ?),
+                        invitee_address = COALESCE(invitee_address, ?),
+                        invitee_purok = COALESCE(invitee_purok, ?),
+                        invitee_contact_no = COALESCE(invitee_contact_no, ?),
+                        invitee_email = COALESCE(invitee_email, ?),
+                        updated_at = NOW()
+                    WHERE paanyaya_id = ?
+                ');
+                $pnyUpd->execute([
+                    $complainantNameStr,
+                    $respondentNameStr,
+                    $invitationDate,
+                    $invitationTime,
+                    $venue,
+                    $salaysay,
+                    $cResId,
+                    $cAddr,
+                    $cPurok,
+                    $cContact,
+                    $cEmail,
+                    $rResId,
+                    $rAddr,
+                    $rPurok,
+                    $rContact,
+                    $rEmail,
+                    $pnyId
+                ]);
+            } else {
+                $pnyIns = $this->conn->prepare('
+                    INSERT INTO paanyayas (
+                        complaint_id, complainant_name, invitee_name,
+                        scheduled_date, scheduled_time, status,
+                        venue, salaysay, attempt_number,
+                        complainant_resident_id, complainant_address, complainant_purok, complainant_contact_no, complainant_email,
+                        invitee_resident_id, invitee_address, invitee_purok, invitee_contact_no, invitee_email,
+                        scheduled_by, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, 1,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, NOW(), NOW()
+                    )
+                ');
+                $pnyIns->execute([
+                    $complaintId,
+                    $complainantNameStr,
+                    $respondentNameStr,
+                    $invitationDate,
+                    $invitationTime,
+                    'Scheduled',
+                    $venue,
+                    $salaysay,
+                    $cResId,
+                    $cAddr,
+                    $cPurok,
+                    $cContact,
+                    $cEmail,
+                    $rResId,
+                    $rAddr,
+                    $rPurok,
+                    $rContact,
+                    $rEmail,
+                    $actorId
+                ]);
+                $pnyId = (int)$this->conn->lastInsertId();
+            }
+
+            // 4. Update complaint status to Pre-Docketed (Paanyaya)
+            $this->conn->prepare("
+                UPDATE complaints
+                SET status = 'Pre-Docketed (Paanyaya)',
+                    paanyaya_attempt_count = GREATEST(COALESCE(paanyaya_attempt_count, 0), 1),
+                    updated_at = NOW()
+                WHERE complaint_id = ? AND status IN ('Accepted', 'Approved', 'Under Review')
+            ")->execute([$complaintId]);
+
+            $this->conn->commit();
+
+            return [
+                'success' => true,
+                'message' => 'Paanyaya initialized and resident data auto-filled.',
+                'paanyaya_id' => $pnyId,
+                'stage_id' => $stageId,
+                'session_id' => $sessionId,
+                'complainant_name' => $complainantNameStr,
+                'respondent_name' => $respondentNameStr,
+                'salaysay' => $salaysay,
+                'invitation_date' => $invitationDate,
+                'invitation_time' => $invitationTime
+            ];
+        } catch (Throwable $e) {
+            $this->conn->rollBack();
+            error_log('autoInitializeFromComplaint error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
 }

@@ -1892,6 +1892,49 @@
     line-height: 1.4;
 }
 
+.rd-category-box {
+    background: #f8fafc;
+    border: 1px solid #dbe4e0;
+    border-radius: 12px;
+    padding: 13px 15px;
+    margin-bottom: 14px;
+}
+
+.rd-category-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.rd-category-head label {
+    margin: 0 !important;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.rd-category-review-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.rd-category-note {
+    margin: 7px 0 0;
+    font-size: 0.76rem;
+    color: #475569;
+    line-height: 1.42;
+}
+
 /* Resident Complaint Details Modal & Stepped Progress Line */
 .rd-detail-modal {
     width: 100%;
