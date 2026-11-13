@@ -1442,6 +1442,11 @@ async function loadComplaintDetails() {
             compNumEl.textContent = (hasDocketCase ? 'Case #' : 'Ref #') + docketNum;
         }
 
+        const sophosHeroNum = document.getElementById('sophosHeroCaseNum');
+        if (sophosHeroNum) {
+            sophosHeroNum.textContent = '#' + docketNum;
+        }
+
         const compTitleEl = document.getElementById('complaintTitle');
         if (compTitleEl) compTitleEl.textContent = data.complaint_title || 'Untitled Complaint';
 
@@ -1524,7 +1529,12 @@ async function loadComplaintDetails() {
                 statusEl.style.color = '';
                 statusEl.style.border = '';
             }
-            statusEl.textContent = displayStage;
+            const sophosStatusTxt = document.getElementById('sophosStatusText');
+            if (sophosStatusTxt) {
+                sophosStatusTxt.textContent = displayStage;
+            } else {
+                statusEl.textContent = displayStage;
+            }
         }
 
         // Reopen for CFA button: only show for Settled cases (RA 7160 Sec. 417)
@@ -1563,12 +1573,48 @@ async function loadComplaintDetails() {
 
         // Hero Case Type Badge
         const heroTypeEl = document.getElementById('heroCaseTypeBadge');
-        if (heroTypeEl) heroTypeEl.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
+        const sophosCaseTypeTxt = document.getElementById('sophosCaseTypeText');
+        if (sophosCaseTypeTxt) {
+            sophosCaseTypeTxt.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
+        } else if (heroTypeEl) {
+            heroTypeEl.textContent = (data.case_type || 'Civil').toUpperCase() + ' COMPLAINT';
+        }
 
         // Hero Days Remaining Counter Badge (hidden per statutory timer removal)
         const daysBadge = document.getElementById('heroDaysRemainingBadge');
         if (daysBadge) {
             daysBadge.style.display = 'none';
+        }
+
+        // Populate Sophos Hero KPIs & Information card
+        setText('sophosHeroOwner', data.case_workspace?.case?.assigned_officer_name || data.assigned_to_name || 'Punong Barangay');
+        const nextHearing = data.next_hearing_date || data.case_workspace?.case?.next_hearing_date || null;
+        setText('sophosHeroHearingDate', nextHearing ? formatDateReadable(nextHearing) : 'N/A');
+        setText('sophosHeroLastUpdate', data.updated_at ? formatDateReadable(data.updated_at) : (data.created_at ? formatDateReadable(data.created_at) : '—'));
+
+        let originDisplay = 'Resident Portal (Online)';
+        if (data.complaint_source === 'walk_in') originDisplay = 'Walk-in Blotter';
+        else if (data.complaint_source === 'referral') originDisplay = 'External Referral';
+        else if (data.complaint_source) originDisplay = data.complaint_source;
+        setText('sophosInfoOrigin', originDisplay);
+
+        // Populate Sophos Command Line Box
+        const cmdBox = document.getElementById('sophosCommandLineBox');
+        if (cmdBox) {
+            const cLocation = (data.incident_location || (data.location && data.location.address) || 'Sitio Olandes, Barangay Tumana').replace(/"/g, '\\"');
+            const cLandmark = (data.incident_landmark || 'None').replace(/"/g, '\\"');
+            const cRelief = (data.requested_resolution || 'Amicable settlement and boundary restitution').replace(/"/g, '\\"');
+            const cOfficer = (data.case_workspace?.case?.assigned_officer_name || 'Punong Barangay / Lupon Chairman').replace(/"/g, '\\"');
+            cmdBox.innerHTML = `
+                <span class="sophos-cmd-param">--case-number</span>=<span class="sophos-cmd-val">"${escapeHtml(docketNum)}"</span> \\<br>
+                <span class="sophos-cmd-param">--jurisdiction</span>=<span class="sophos-cmd-val">"Barangay Tumana, District II, Marikina City (RA 7160 Sec. 408)"</span> \\<br>
+                <span class="sophos-cmd-param">--incident-location</span>=<span class="sophos-cmd-val">"${escapeHtml(cLocation)}"</span> \\<br>
+                <span class="sophos-cmd-param">--incident-landmark</span>=<span class="sophos-cmd-val">"${escapeHtml(cLandmark)}"</span> \\<br>
+                <span class="sophos-cmd-param">--relief-sought</span>=<span class="sophos-cmd-val">"${escapeHtml(cRelief)}"</span> \\<br>
+                <span class="sophos-cmd-param">--prescriptive-window</span>=<span class="sophos-cmd-val">"60 calendar days statutory tolling (Sec. 410 R.A. 7160)"</span> \\<br>
+                <span class="sophos-cmd-param">--statutory-condition</span>=<span class="sophos-cmd-val">"Condition precedent to court filing (Sec. 412 R.A. 7160)"</span> \\<br>
+                <span class="sophos-cmd-param">--presiding-officer</span>=<span class="sophos-cmd-val">"${escapeHtml(cOfficer)}"</span>
+            `;
         }
 
         // Legacy Type & Category Badges
@@ -1844,27 +1890,148 @@ function renderCrossLinkAlertBanner(concurrentDisputes) {
     banner.style.display = 'flex';
 }
 
+function getInitials(name) {
+    if (!name) return 'P';
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return 'P';
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function copyComplaintNarrative() {
+    const text = document.getElementById('complaintNarrative')?.innerText || '';
+    if (!text || text === 'Loading narrative statement...') return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            window.agapNotify ? window.agapNotify('Complaint narrative copied to clipboard', 'success') : alert('Complaint narrative copied!');
+        }).catch(() => {
+            window.agapNotify ? window.agapNotify('Failed to copy narrative', 'error') : alert('Failed to copy');
+        });
+    }
+}
+window.copyComplaintNarrative = copyComplaintNarrative;
+
+function copyExecutionSpecs() {
+    const text = document.getElementById('sophosCommandLineBox')?.innerText || '';
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+            window.agapNotify ? window.agapNotify('Execution specifications copied to clipboard', 'success') : alert('Execution specifications copied!');
+        }).catch(() => {
+            window.agapNotify ? window.agapNotify('Failed to copy specifications', 'error') : alert('Failed to copy');
+        });
+    }
+}
+window.copyExecutionSpecs = copyExecutionSpecs;
+
+function togglePartiesFilter() {
+    const table = document.getElementById('partiesTable');
+    if (!table) return;
+    window._partyFilterState = (window._partyFilterState || 0) + 1;
+    if (window._partyFilterState > 2) window._partyFilterState = 0;
+    const filterRoles = ['all', 'complainant', 'respondent'];
+    const activeRole = filterRoles[window._partyFilterState];
+    const rows = table.querySelectorAll('tr[data-party-role]');
+    rows.forEach(r => {
+        if (activeRole === 'all' || r.getAttribute('data-party-role') === activeRole) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+    const filterBtnSpan = document.querySelector('.sophos-card .sophos-btn-action[onclick="togglePartiesFilter()"] span');
+    if (filterBtnSpan) {
+        filterBtnSpan.textContent = activeRole === 'all' ? 'Filter' : (activeRole.charAt(0).toUpperCase() + activeRole.slice(1) + 's');
+    }
+}
+window.togglePartiesFilter = togglePartiesFilter;
+
 function renderParties(parties) {
     const container = document.getElementById('partiesListContainer');
     const fullContainer = document.getElementById('partiesFullContainer');
     const tbody = document.getElementById('partiesTable');
     const countEl = document.getElementById('partiesCount');
+    const headCountEl = document.getElementById('partiesCountHead');
+    const badgeCountEl = document.getElementById('partiesCountBadge');
     const fullCountEl = document.getElementById('partiesFullCount');
 
     if (countEl) countEl.textContent = parties.length;
+    if (headCountEl) headCountEl.textContent = parties.length;
+    if (badgeCountEl) badgeCountEl.textContent = parties.length + (parties.length === 1 ? ' Party' : ' Parties');
     if (fullCountEl) fullCountEl.textContent = parties.length;
 
     if (tbody) {
         if (parties.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 16px;">No parties added yet</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 24px; color: #64748b;">No parties added to this complaint yet.</td></tr>';
         } else {
             let rows = '';
-            parties.forEach(party => {
+            let firstComplainant = false;
+            parties.forEach((party, idx) => {
+                const pType = String(party.party_type || '').trim().toLowerCase();
+                let typeClass = 'complainant';
+                let isPrimary = false;
+                if (pType === 'complainant') {
+                    typeClass = 'complainant';
+                    if (!firstComplainant) {
+                        isPrimary = true;
+                        firstComplainant = true;
+                    }
+                } else if (pType === 'respondent') {
+                    typeClass = 'respondent';
+                } else {
+                    typeClass = 'witness';
+                }
+
+                const addrParts = [];
+                if (party.purok) {
+                    const pLower = String(party.purok).toLowerCase();
+                    addrParts.push(pLower.startsWith('purok') ? party.purok : `Purok ${party.purok}`);
+                }
+                if (party.address && (!party.purok || !party.address.toLowerCase().includes(party.purok.toLowerCase()))) {
+                    addrParts.push(party.address);
+                } else if (party.address && !addrParts.length) {
+                    addrParts.push(party.address);
+                }
+                const fullAddress = addrParts.length > 0 ? addrParts.join(', ') : 'Barangay Tumana';
+
+                const isMinor = Number(party.is_minor) === 1 || (party.age !== undefined && party.age !== null && party.age !== '' && Number(party.age) < 18);
+                const guardianInfo = party.guardian_name ? `Guardian: ${escapeHtml(party.guardian_name)}${party.guardian_relationship ? ` (${escapeHtml(party.guardian_relationship)})` : ''}` : '';
+                const prefContact = party.preferred_contact ? escapeHtml(party.preferred_contact) : '';
+                const phoneText = party.contact_unknown ? 'Contact unknown' : escapeHtml(party.contact_no || 'None on file');
+
+                const initials = getInitials(party.resident_name || 'Party');
+                const isVerified = Boolean(party.resident_id || party.verified);
+                const statusBadge = isVerified
+                    ? `<span class="sophos-verified-tag">✓ Verified Resident</span>`
+                    : `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:0.72rem;font-weight:600;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;">Recorded</span>`;
+
                 rows += `
-                    <tr>
-                        <td>${escapeHtml(party.resident_name)}</td>
-                        <td>${escapeHtml(party.party_type)}</td>
-                        <td></td>
+                    <tr data-party-role="${typeClass}">
+                        <td style="text-align: center; font-weight: 700; color: #64748b; font-size: 0.8rem;">${idx + 1}</td>
+                        <td>
+                            <span class="sophos-party-type-badge ${typeClass}">${escapeHtml((party.party_type || 'Party').toUpperCase())}</span>
+                            ${isPrimary ? '<span style="display:block;margin-top:3px;font-size:0.68rem;font-weight:700;color:#2563eb;">(Primary)</span>' : ''}
+                        </td>
+                        <td>
+                            <div class="sophos-party-name-col">
+                                <span class="sophos-party-avatar">${escapeHtml(initials)}</span>
+                                <div>
+                                    <div class="sophos-party-fullname">${escapeHtml(party.resident_name || 'Unnamed Party')}${party.suffix ? ' ' + escapeHtml(party.suffix) : ''}</div>
+                                    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:2px;">
+                                        ${isMinor ? '<span style="background:#fee2e2;color:#991b1b;font-size:0.68rem;font-weight:700;padding:1px 5px;border-radius:4px;">Minor</span>' : ''}
+                                        ${party.age ? `<span style="font-size:0.74rem;color:#64748b;font-weight:600;">${party.age} yrs</span>` : ''}
+                                    </div>
+                                    ${guardianInfo ? `<div style="font-size:0.73rem;color:#4f46e5;margin-top:2px;font-weight:600;">${guardianInfo}</div>` : ''}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div style="font-size: 0.83rem; color: #1e293b; font-weight: 500;">${escapeHtml(fullAddress)}</div>
+                            <div style="font-size: 0.75rem; color: #64748b; margin-top: 2px;">Tel: ${phoneText}${prefContact ? ' &bull; ' + prefContact : ''}</div>
+                        </td>
+                        <td>
+                            ${statusBadge}
+                        </td>
                     </tr>
                 `;
             });

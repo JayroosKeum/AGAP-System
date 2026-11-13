@@ -2160,3 +2160,475 @@
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
+/* ==========================================================================
+   Sophos-Inspired Light Mode Case Details Layout (Overview Tab)
+   ========================================================================== */
+
+/* Hero Header Card */
+.sophos-hero-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 0 30px 20px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+
+.sophos-hero-left {
+    flex: 1 1 380px;
+    min-width: 0;
+}
+
+.sophos-hero-pills-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.sophos-ref-pill {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.82rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    background: #f1f5f9;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    letter-spacing: -0.2px;
+}
+
+.sophos-tag-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 6px;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+}
+
+.sophos-tag-type {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.sophos-tag-status {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+
+.sophos-hero-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.3px;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.sophos-hero-kpis {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding-left: 24px;
+    border-left: 1px solid #e2e8f0;
+    flex-shrink: 0;
+}
+
+.sophos-kpi-col {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 95px;
+}
+
+.sophos-kpi-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.sophos-kpi-val {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #0f172a;
+    white-space: nowrap;
+}
+
+/* 2-Column Asymmetric Grid */
+.sophos-layout-grid {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 20px;
+    margin: 0 30px 24px;
+    align-items: start;
+}
+
+@media (max-width: 1080px) {
+    .sophos-layout-grid {
+        grid-template-columns: 1fr;
+    }
+    .sophos-hero-kpis {
+        border-left: none;
+        padding-left: 0;
+        border-top: 1px solid #e2e8f0;
+        padding-top: 14px;
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+}
+
+@media (max-width: 640px) {
+    .sophos-hero-card,
+    .sophos-layout-grid {
+        margin-left: 14px;
+        margin-right: 14px;
+    }
+}
+
+/* Card Foundations */
+.sophos-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.sophos-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 18px;
+    background: #fafbfc;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.sophos-card-title {
+    margin: 0;
+    font-size: 0.94rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.2px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sophos-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sophos-btn-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.sophos-btn-action:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+.sophos-card-body {
+    padding: 16px 18px;
+}
+
+/* Information Card (Left Col 1) */
+.sophos-info-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.sophos-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.84rem;
+    padding-bottom: 9px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.sophos-info-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.sophos-info-label {
+    color: #64748b;
+    font-weight: 500;
+}
+
+.sophos-info-val {
+    color: #0f172a;
+    font-weight: 700;
+    text-align: right;
+    word-break: break-word;
+}
+
+/* Legal Basis / Mitre Tactics Style (Left Col 2) */
+.sophos-legal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sophos-legal-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.sophos-legal-item:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    transform: translateX(2px);
+}
+
+.sophos-legal-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.sophos-legal-chevron {
+    color: #94a3b8;
+    font-weight: 700;
+    font-size: 0.9rem;
+}
+
+.sophos-legal-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    background: #e2e8f0;
+    color: #1e293b;
+    padding: 2px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+}
+
+.sophos-legal-desc {
+    font-size: 0.81rem;
+    color: #334155;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sophos-legal-icon {
+    color: #94a3b8;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+/* Location Card / Initial Detection Style (Left Col 3) */
+.sophos-loc-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    margin-bottom: 12px;
+}
+
+.sophos-badge-severity {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    background: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+.sophos-map-frame {
+    height: 175px;
+    width: 100%;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    overflow: hidden;
+}
+
+/* Summary Card (Right Col 1) */
+.sophos-narrative-box {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #1e293b;
+    white-space: pre-wrap;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+/* Monospaced Command Line Parameters (Right Col 2) */
+.sophos-cmd-box {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 16px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.79rem;
+    line-height: 1.65;
+    overflow-x: auto;
+    border: 1px solid #1e293b;
+}
+
+.sophos-cmd-param {
+    color: #38bdf8;
+    font-weight: 700;
+}
+
+.sophos-cmd-val {
+    color: #a7f3d0;
+}
+
+/* Impacted Entities / Parties Table (Right Col 3) */
+.sophos-table-wrap {
+    overflow-x: auto;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.sophos-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+    text-align: left;
+}
+
+.sophos-table th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 700;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 10px 14px;
+    border-bottom: 1px solid #e2e8f0;
+    white-space: nowrap;
+}
+
+.sophos-table td {
+    padding: 12px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #1e293b;
+    vertical-align: middle;
+}
+
+.sophos-table tr:last-child td {
+    border-bottom: none;
+}
+
+.sophos-table tr:hover td {
+    background: #f8fafc;
+}
+
+.sophos-party-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #e0e7ff;
+    color: #3730a3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+}
+
+.sophos-party-name-col {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sophos-party-fullname {
+    font-weight: 700;
+    color: #0f172a;
+    font-size: 0.86rem;
+}
+
+.sophos-party-type-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.sophos-party-type-badge.complainant {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.sophos-party-type-badge.respondent {
+    background: #fffbeb;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+.sophos-party-type-badge.witness {
+    background: #faf5ff;
+    color: #6d28d9;
+    border: 1px solid #e9d5ff;
+}
+
+.sophos-verified-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    background: #f0fdf4;
+    color: #166534;
+    border: 1px solid #bbf7d0;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
