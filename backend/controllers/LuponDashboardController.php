@@ -40,8 +40,7 @@ class LuponDashboardController
         // 3. Duty Day Hearings (defaults to member's duty day or active assigned pangkat sessions)
         $dutyHearings = $this->getDutyHearings($userId, $dutyDay);
 
-        // 4. Walk-in intakes personally assigned while the member was on LISO duty.
-        $pendingScreenings = $this->getPendingWalkInScreenings($userId);
+        $pendingScreenings = $this->getPendingScreenings($userId);
 
         // 4. KPIs for Senior-Friendly Top Cards
         $totalAssigned = count($assignedCases);
@@ -74,15 +73,13 @@ class LuponDashboardController
         ];
     }
 
-    /**
-     * Walk-in records remain in the intake workflow until their assigned LISO
-     * records a preliminary screening decision. They are not duplicate cases.
-     */
-    private function getPendingWalkInScreenings(int $userId): array
+    private function getPendingScreenings(int $userId): array
     {
         $statement = $this->conn->prepare(
             "SELECT c.complaint_id, c.intake_reference, c.complaint_title, c.created_at,
-                    c.liso_assigned_at, cat.category_name,
+                    c.liso_assigned_at, c.intake_source, cat.category_name,
+                    (SELECT MAX(ir.responded_at) FROM complaint_information_requests ir
+                     WHERE ir.complaint_id = c.complaint_id) AS resident_replied_at,
                     TRIM(CONCAT_WS(' ', encoder.first_name, encoder.last_name)) AS encoded_by_name,
                     COALESCE((
                         SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
@@ -94,10 +91,11 @@ class LuponDashboardController
              LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
              LEFT JOIN users encoder ON encoder.user_id = c.encoded_by
              WHERE c.liso_assigned_to = ?
-               AND c.intake_source = 'Walk-in'
+               AND c.is_draft = 0 AND c.status IN ('Submitted', 'Filed', 'Under Review')
                AND c.screening_decision = 'Pending'
                AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
-             ORDER BY COALESCE(c.liso_assigned_at, c.created_at) ASC, c.complaint_id ASC"
+             ORDER BY resident_replied_at IS NULL, resident_replied_at ASC,
+                      COALESCE(c.liso_assigned_at, c.created_at) ASC, c.complaint_id ASC"
         );
         $statement->execute([$userId]);
         return $statement->fetchAll(PDO::FETCH_ASSOC);

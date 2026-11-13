@@ -248,3 +248,6 @@ For an existing database, apply the missing migrations in this order. Check the 
 6. [Paanyaya dialogue invitations](migrations/20261113_002_paanyaya_dialogue_invitations.sql) adds invitation numbering so the first and second notices have separate PDFs and service attempts. Existing notices and attempts become invitation 1.
 
 The [Barangay News migration](migrations/20261111_002_barangay_news.sql) is independent and enables the news widget.
+
+Apply the [complaint information requests migration](migrations/20261114_001_complaint_information_requests.sql)
+before deploying the resident reply and complaint timeline features to an existing database.

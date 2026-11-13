@@ -398,13 +398,8 @@ class ComplaintController
         }
         $reviewerId = (int) ($_SESSION['user_id'] ?? 0);
         $isAssignedLisoReview = (int) ($_SESSION['role_id'] ?? 0) === 3;
-        $result = $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $reviewerId, $isAssignedLisoReview);
-        if ($result['success']) {
-            $actorId = (int) ($_SESSION['user_id'] ?? 1);
-            $effectiveStatus = $result['status'] ?? $status;
-            $this->audit->log($actorId, 'Reviewed Complaint: ' . $effectiveStatus, 'Complaints', $id);
-        }
-        return $result;
+        $requestMessage = is_string($data['request_message'] ?? null) ? trim($data['request_message']) : '';
+        return $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $reviewerId, $isAssignedLisoReview, $requestMessage);
     }
 
     public function docket(int $id, int $userId): array

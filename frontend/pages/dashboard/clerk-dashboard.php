@@ -44,7 +44,7 @@ include '../../layouts/header.php';
             <div class="top-quick-actions" aria-label="Clerk quick access actions">
                 <a href="../complaints/complaint-create.php" class="btn-top-primary" id="btnClerkNewIntake">+ Walk-in Intake</a>
                 <a href="../users/user-list.php?tab=residents" class="btn-top-secondary">Verify Residents</a>
-                <a href="#clerkPaanyayaPreparation" class="btn-top-secondary">Paanyaya Preparation</a>
+                <a href="#clerkPaanyayaPreparation" class="btn-top-secondary">Paanyaya Queue</a>
                 <a href="../reports/report-list.php" class="btn-top-secondary" id="btnClerkPrintRepo">LTIA &amp; Transmittals</a>
             </div>
         </div>
@@ -58,27 +58,22 @@ include '../../layouts/header.php';
         </section>
 
         <section class="paanyaya-preparation" id="clerkPaanyayaPreparation" aria-labelledby="paanyaya-queue-title">
-            <h2 id="paanyaya-queue-title">Ready for Paanyaya</h2>
+            <h2 id="paanyaya-queue-title">Paanyaya next actions</h2>
             <?php if ($paanyayaQueueUnavailable): ?>
                 <p>The Paanyaya queue is currently unavailable.</p>
             <?php elseif (!$paanyayaQueue): ?>
-                <p>No eligible walk-ins are waiting for Paanyaya preparation.</p>
+                <p>No complaints are waiting for Paanyaya action.</p>
             <?php else: ?>
                 <ul class="paanyaya-prep-list">
                     <?php foreach ($paanyayaQueue as $intake): ?>
                         <li>
-                            <a href="../complaints/complaint-details.php?id=<?= (int) $intake['complaint_id'] ?>#paanyaya-preparation">
+                            <a href="../complaints/complaint-details.php?id=<?= (int) $intake['complaint_id'] ?>#<?= htmlspecialchars($intake['target_section']) ?>">
                                 <strong><?= htmlspecialchars($intake['intake_reference'] ?: 'Intake #' . $intake['complaint_id']) ?></strong>
                                 <?= htmlspecialchars($intake['complaint_title']) ?>
                                 <?php if ((int) $intake['invitation_number'] === 2): ?> · Second Paanyaya<?php endif; ?>
                             </a>
                             <span class="paanyaya-prep-status">
-                                <?= match (true) {
-                                    !$intake['ready_at'] => $intake['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation',
-                                    $intake['service_outcome'] === 'Not Delivered' => 'Delivery unsuccessful',
-                                    $intake['service_attempt_id'] !== null => 'Assigned for delivery',
-                                    default => 'Ready for Release',
-                                } ?>
+                                <?= htmlspecialchars($intake['next_action']) ?>
                             </span>
                         </li>
                     <?php endforeach; ?>

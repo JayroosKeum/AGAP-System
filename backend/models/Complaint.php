@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/ValidationService.php';
 require_once __DIR__ . '/../services/ComplaintLifecycleService.php';
+require_once __DIR__ . '/../services/ComplaintInformationService.php';
 
 class Complaint
 {
@@ -558,7 +559,7 @@ class Complaint
         }
     }
 
-    public function review(int $id, string $status, ?string $notes, ?int $reviewerId = null, bool $mustBeAssignedLiso = false): array
+    public function review(int $id, string $status, ?string $notes, ?int $reviewerId = null, bool $mustBeAssignedLiso = false, string $requestMessage = ''): array
     {
         if (strcasecmp($status, 'Approved') === 0) {
             $status = 'Accepted';
@@ -575,34 +576,78 @@ class Complaint
             default => 'Pending',
         };
         $reviewerId ??= (int) ($_SESSION['user_id'] ?? 0);
-        $stmt = $this->conn->prepare(
-            "UPDATE complaints c
-             LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
-             LEFT JOIN users assigned ON assigned.user_id = c.liso_assigned_to
-             SET c.status = ?, c.screening_decision = ?, c.review_notes = ?,
-                 c.liso_reviewed_by = ?, c.liso_reviewed_at = NOW()
-             WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status <> 'Archived'
-               AND COALESCE(c.screening_decision, '') <> 'Eligible'
-               AND (? = 0 OR c.liso_assigned_to IS NULL OR (
-                   c.liso_assigned_to = ?
-                   AND assigned.role_id = 3 AND assigned.status = 'Active'
-               ))"
-        );
-        $stmt->execute([
-            $status,
-            $decision,
-            $notes,
-            $reviewerId ?: null,
-            $id,
-            $mustBeAssignedLiso ? 1 : 0,
-            $mustBeAssignedLiso ? $reviewerId : 0
-        ]);
-        if ($stmt->rowCount() !== 1) {
-            return ['success' => false, 'message' => 'This intake has already been screened or can no longer be updated by your account.'];
+        $this->conn->beginTransaction();
+        try {
+            $lock = $this->conn->prepare(
+                "SELECT c.submitted_by, c.liso_assigned_to, c.status, c.screening_decision, c.is_draft, cs.case_id,
+                        assigned.role_id AS assigned_role, assigned.status AS assigned_status
+                 FROM complaints c
+                 LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+                 LEFT JOIN users assigned ON assigned.user_id = c.liso_assigned_to
+                 WHERE c.complaint_id = ? FOR UPDATE"
+            );
+            $lock->execute([$id]);
+            $intake = $lock->fetch();
+            $assignedId = (int) ($intake['liso_assigned_to'] ?? 0);
+            if (!$intake || $intake['case_id'] || $intake['is_draft'] || $intake['screening_decision'] === 'Eligible'
+                || !in_array($intake['status'], ['Submitted', 'Filed', 'Under Review', 'Needs Information', 'Rejected'], true)
+                || (($mustBeAssignedLiso || $intake['submitted_by']) && $assignedId && ($assignedId !== $reviewerId
+                    || (int) $intake['assigned_role'] !== 3 || $intake['assigned_status'] !== 'Active'))) {
+                throw new DomainException('This intake has already been screened or can no longer be updated by your account.');
+            }
+
+            $assignReviewer = false;
+            if ($intake['submitted_by']) {
+                if ($intake['screening_decision'] === 'Needs Information') {
+                    $pending = $this->conn->prepare('SELECT responded_at FROM complaint_information_requests
+                        WHERE complaint_id = ? ORDER BY request_id DESC LIMIT 1');
+                    $pending->execute([$id]);
+                    if ($pending->fetchColumn() === null) {
+                        throw new DomainException('This complaint is waiting for the resident’s response.');
+                    }
+                }
+                if ($decision === 'Needs Information') {
+                    if ($requestMessage === '' || !ValidationService::maxLength($requestMessage, ComplaintInformationService::REQUEST_LIMIT)
+                        || !ValidationService::text($requestMessage, true) || !mb_check_encoding($requestMessage, 'UTF-8')) {
+                        throw new DomainException('Enter a message for the resident of up to 2,000 characters.');
+                    }
+                    if (!$assignedId && $mustBeAssignedLiso) {
+                        $activeReviewer = $this->conn->prepare("SELECT 1 FROM users WHERE user_id = ?
+                            AND role_id = 3 AND status = 'Active'");
+                        $activeReviewer->execute([$reviewerId]);
+                        $assignReviewer = (bool) $activeReviewer->fetchColumn();
+                    }
+                    if ((!$assignedId && !$assignReviewer)
+                        || ($assignedId && ((int) $intake['assigned_role'] !== 3 || $intake['assigned_status'] !== 'Active'))) {
+                        throw new DomainException('An active Lupon Member must handle re-screening for this intake.');
+                    }
+                    $this->conn->prepare('INSERT INTO complaint_information_requests (complaint_id, requested_by, request_message)
+                        VALUES (?, ?, ?)')->execute([$id, $reviewerId, $requestMessage]);
+                }
+            }
+
+            $this->conn->prepare('UPDATE complaints SET status = ?, screening_decision = ?, review_notes = ?,
+                liso_reviewed_by = ?, liso_reviewed_at = NOW() WHERE complaint_id = ?')
+                ->execute([$status, $decision, $notes, $reviewerId ?: null, $id]);
+            if ($assignReviewer) {
+                $this->conn->prepare('UPDATE complaints SET liso_assigned_to = ?, liso_assigned_at = NOW() WHERE complaint_id = ?')
+                    ->execute([$reviewerId, $id]);
+            }
+            $this->conn->prepare('UPDATE complaint_intake_screenings SET screened_by = ?, screened_at = NOW() WHERE complaint_id = ?')
+                ->execute([$reviewerId ?: null, $id]);
+            if (!(new AuditService($this->conn))->log($reviewerId ?: null, 'Reviewed Complaint: ' . $status, 'Complaints', $id)) {
+                throw new RuntimeException('Unable to audit the screening decision.');
+            }
+            $this->conn->commit();
+            return ['success' => true, 'message' => 'Complaint review saved.'];
+        } catch (Throwable $exception) {
+            $this->conn->rollBack();
+            if ($exception instanceof DomainException) {
+                return ['success' => false, 'message' => $exception->getMessage()];
+            }
+            error_log('Complaint review: ' . $exception->getMessage());
+            return ['success' => false, 'message' => 'Unable to save the screening decision. Please try again.'];
         }
-        $screening = $this->conn->prepare('UPDATE complaint_intake_screenings SET screened_by = ?, screened_at = NOW() WHERE complaint_id = ?');
-        $screening->execute([$reviewerId ?: null, $id]);
-        return ['success' => true, 'message' => 'Complaint review saved.'];
     }
 
     public function docket(int $id, int $clerkId): array

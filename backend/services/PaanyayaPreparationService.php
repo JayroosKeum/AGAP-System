@@ -60,10 +60,11 @@ final class PaanyayaPreparationService
 
     public function queue(): array
     {
-        return $this->db->query(
+        $rows = $this->db->query(
             "SELECT c.complaint_id, c.intake_reference, c.complaint_title,
-                    p.prepared_at, p.ready_at, invitation.number AS invitation_number,
-                    a.attempt_id AS service_attempt_id, a.outcome AS service_outcome
+                    p.prepared_at, p.ready_at, p.appointment_at, invitation.number AS invitation_number,
+                    a.attempt_id AS service_attempt_id, a.outcome AS service_outcome, m.complainant_choice,
+                    p.appointment_at <= NOW() AS appointment_passed
              FROM complaints c
              CROSS JOIN (SELECT 1 AS number UNION ALL SELECT 2) invitation
              LEFT JOIN paanyaya_preparations p ON p.complaint_id = c.complaint_id AND p.invitation_number = invitation.number
@@ -71,10 +72,46 @@ final class PaanyayaPreparationService
                  SELECT MAX(latest.attempt_id) FROM paanyaya_service_attempts latest
                  WHERE latest.complaint_id = c.complaint_id AND latest.invitation_number = invitation.number
              )
+             LEFT JOIN paanyaya_minutes m ON m.minutes_id = (
+                 SELECT MAX(latest_minutes.minutes_id) FROM paanyaya_minutes latest_minutes
+                 WHERE latest_minutes.complaint_id = c.complaint_id
+                   AND latest_minutes.stage_type = CONCAT('Paanyaya ', invitation.number)
+             )
              WHERE (invitation.number = 1 AND (" . self::ELIGIBLE . "))
                 OR (invitation.number = 2 AND (" . self::SECOND_ELIGIBLE . "))
-             ORDER BY a.attempt_id IS NOT NULL AND a.outcome IS NULL, p.ready_at IS NOT NULL, c.liso_reviewed_at, c.complaint_id"
+                OR (c.status = 'Pre-Docketed (Paanyaya)' AND c.is_draft = 0 AND p.ready_at IS NOT NULL
+                    AND a.outcome = 'Delivered' AND (m.minutes_id IS NULL OR m.complainant_choice = 'Escalate_Mediation')
+                    AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
+                    AND NOT EXISTS (SELECT 1 FROM paanyaya_minutes other_minutes
+                        WHERE other_minutes.complaint_id = c.complaint_id
+                          AND invitation.number = 1 AND other_minutes.stage_type = 'Paanyaya 2'))
+             ORDER BY c.liso_reviewed_at, c.complaint_id, invitation.number"
         )->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($rows as &$row) {
+            $number = (int) $row['invitation_number'];
+            [$row['next_action'], $row['target_section']] = match (true) {
+                $row['service_outcome'] === 'Delivered' => [
+                    $row['complainant_choice'] === 'Escalate_Mediation' ? 'Create formal docket' : 'Record dialogue minutes',
+                    'paanyaya-dialogue-' . $number,
+                ],
+                !$row['prepared_at'] => [
+                    $number === 2 ? 'Prepare second invitation' : 'Prepare invitation',
+                    'paanyaya-invitation-' . $number,
+                ],
+                !$row['ready_at'] => ['Review invitation for release', 'paanyaya-invitation-' . $number],
+                $row['service_outcome'] === 'Not Delivered' || $row['service_attempt_id'] === null => [
+                    $row['appointment_passed'] ? 'Revise expired invitation'
+                        : ($row['service_outcome'] === 'Not Delivered' ? 'Retry delivery' : 'Assign for delivery'),
+                    'paanyaya-service-' . $number,
+                ],
+                default => ['Awaiting delivery result', 'paanyaya-invitation-' . $number],
+            };
+            $row['awaiting_server'] = $row['service_attempt_id'] !== null && $row['service_outcome'] === null;
+        }
+        unset($row);
+        usort($rows, static fn (array $left, array $right): int => $left['awaiting_server'] <=> $right['awaiting_server']);
+        return $rows;
     }
 
     public function intake(int $id, int $invitation = 1): ?array

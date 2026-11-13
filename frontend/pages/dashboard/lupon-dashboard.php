@@ -69,13 +69,12 @@ include '../../layouts/header.php';
                 <section class="liso-screenings-panel jurisdiction-queue-panel" id="jurisdictionQueue" aria-labelledby="lisoScreeningsTitle">
                     <div class="liso-screenings-header">
                         <div>
-                            <p class="liso-duty-eyebrow">Walk-in intake screening</p>
-                            <h2 id="lisoScreeningsTitle">My Walk-in Screenings</h2>
+                            <h2 id="lisoScreeningsTitle">My Intake Screenings</h2>
                         </div>
                         <span class="liso-screenings-count" id="lisoScreeningsCount">0 pending</span>
                     </div>
                     <div id="lisoScreeningsList" class="liso-screenings-list" aria-live="polite">
-                        Loading your assigned walk-in screenings…
+                        Loading your assigned screenings…
                     </div>
                 </section>
             <?php endif; ?>

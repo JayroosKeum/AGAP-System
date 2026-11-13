@@ -128,7 +128,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
                 <p>Delivery confirmed for the <?= $escapePrep(date('M j, Y, g:i a', strtotime($savedAppointment))) ?> dialogue.</p>
                 <?php include __DIR__ . '/paanyaya-dialogue.php'; ?>
             <?php elseif ($preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $serviceOutcome === 'Not Delivered')): ?>
-                <h3><?= $latestService ? 'Coordinate another delivery attempt' : 'Release invitation' ?></h3>
+                <h3 id="paanyaya-service-<?= $invitationNumber ?>"><?= $latestService ? 'Coordinate another delivery attempt' : 'Release invitation' ?></h3>
                 <?php if (!$paanyayaServers): ?>
                     <p>No active summons servers are available.</p>
                 <?php elseif (strtotime($savedAppointment) > time()): ?>

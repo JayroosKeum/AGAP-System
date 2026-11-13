@@ -124,7 +124,7 @@
         if (!items.length) {
             const empty = document.createElement('div');
             empty.className = 'liso-screenings-empty';
-            empty.textContent = 'No walk-in screenings are assigned to you right now.';
+            empty.textContent = 'No screenings are assigned to you right now.';
             container.appendChild(empty);
             return;
         }
@@ -133,15 +133,17 @@
             const card = document.createElement('article');
             card.className = 'liso-screening-item';
             const reference = item.intake_reference || `Intake #${item.complaint_id}`;
-            const encodedBy = item.encoded_by_name ? `Encoded by ${item.encoded_by_name}` : 'Walk-in intake';
+            const encodedBy = item.encoded_by_name ? `Encoded by ${item.encoded_by_name}` : `${item.intake_source || 'Walk-in'} intake`;
             const complainant = item.complainant_names ? `Complainant: ${item.complainant_names}` : '';
+            const section = item.resident_replied_at ? 'intake-request-history' : 'intake-screening';
             card.innerHTML = `
                 <div>
                     <div class="liso-screening-ref">${escapeHtml(reference)}</div>
-                    <h3>${escapeHtml(item.complaint_title || 'Walk-in concern')}</h3>
+                    <h3>${escapeHtml(item.complaint_title || 'Concern')}</h3>
                     <p class="liso-screening-meta">${escapeHtml(item.category_name || 'Community concern')} · ${escapeHtml(encodedBy)}${complainant ? ` · ${escapeHtml(complainant)}` : ''}</p>
+                    ${item.resident_replied_at ? '<p class="liso-screening-meta"><strong>Resident replied · Ready for re-screening</strong></p>' : ''}
                 </div>
-                <a class="btn-open-screening" href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}">Open screening</a>
+                <a class="btn-open-screening" href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}#${section}">Open screening</a>
             `;
             container.appendChild(card);
         });

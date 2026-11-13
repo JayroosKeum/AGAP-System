@@ -65,15 +65,21 @@ require_once __DIR__ . '/../../../backend/models/CaseModel.php';
 $canScreenSelectedIntake = false;
 $assignedLisoId = 0;
 $intakeScreeningMeta = null;
+$informationRequests = [];
+require_once __DIR__ . '/../../../backend/services/ComplaintInformationService.php';
 try {
     $assignmentStatement = $preparationDb->prepare(
-        'SELECT c.liso_assigned_to, c.screening_decision, c.status, cs.case_id
+        'SELECT c.liso_assigned_to, c.screening_decision, c.status, c.submitted_by, c.is_draft, cs.case_id
          FROM complaints c
          LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
          WHERE c.complaint_id = ? LIMIT 1'
     );
     $assignmentStatement->execute([$complaintId]);
     $intakeScreeningMeta = $assignmentStatement->fetch(PDO::FETCH_ASSOC) ?: null;
+    if (!empty($intakeScreeningMeta['submitted_by'])
+        && ($roleId !== 3 || (int) $intakeScreeningMeta['liso_assigned_to'] === (int) $_SESSION['user_id'])) {
+        $informationRequests = (new ComplaintInformationService($preparationDb))->history($complaintId);
+    }
 } catch (Throwable $e) {
     $intakeScreeningMeta = null;
 }
@@ -95,10 +101,13 @@ $isIntakeAlreadyEligible = ($intakeScreeningMeta['screening_decision'] ?? '') ==
     ], true);
 if ($roleId === 3 && $intakeScreeningMeta) {
     $assignedLisoId = (int) ($intakeScreeningMeta['liso_assigned_to'] ?? 0);
-    $canScreenSelectedIntake = !$isIntakeAlreadyEligible && (
+    $canScreenSelectedIntake = !$isIntakeAlreadyEligible && !$intakeScreeningMeta['is_draft'] && (
         $assignedLisoId < 1 || $assignedLisoId === (int) $_SESSION['user_id']
     );
 }
+$hasResidentAccount = !empty($intakeScreeningMeta['submitted_by']);
+$awaitingResidentReply = ($intakeScreeningMeta['screening_decision'] ?? '') === 'Needs Information'
+    && $informationRequests && $informationRequests[0]['responded_at'] === null;
 $canFormallyDocket = false;
 if (in_array($roleId, [1, 2], true) && !$usesPaanyayaPreparation && !$preparation) {
     try {
@@ -284,12 +293,13 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             window.__agapReviewIntakeSubmitting = true;
 
             const notesEl = document.getElementById('lisoScreeningDecisionNotes');
+            const requestEl = document.getElementById('lisoResidentRequest');
             const btnNeedsInfo = document.getElementById('btnIntakeNeedsInfo');
             const btnEligible = document.getElementById('btnMarkIntakeEligible');
             const activeBtn = status === 'Accepted' ? btnEligible : btnNeedsInfo;
             const originalLabel = activeBtn ? activeBtn.textContent : '';
 
-            [btnNeedsInfo, btnEligible, notesEl].forEach((el) => {
+            [btnNeedsInfo, btnEligible, notesEl, requestEl].forEach((el) => {
                 if (el) {
                     el.disabled = true;
                     el.style.pointerEvents = 'none';
@@ -305,6 +315,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             form.append('complaint_id', complaintId);
             form.append('status', status);
             form.append('review_notes', reviewNotes);
+            if (status === 'Needs Information' && requestEl) {
+                form.append('request_message', requestEl.value.trim());
+            }
             try {
                 const response = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: form });
                 const result = await response.json();
@@ -319,7 +332,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 window.location.reload();
             } catch (error) {
                 window.__agapReviewIntakeSubmitting = false;
-                [btnNeedsInfo, btnEligible, notesEl].forEach((el) => {
+                [btnNeedsInfo, btnEligible, notesEl, requestEl].forEach((el) => {
                     if (el) {
                         el.disabled = false;
                         el.style.pointerEvents = '';
@@ -522,7 +535,29 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </div>
             </div>
 
-            <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
+            <?php if ($informationRequests): ?>
+                <section id="intake-request-history" class="sophos-card paanyaya-preparation" aria-labelledby="intake-request-history-title">
+                    <h2 id="intake-request-history-title">Information request history</h2>
+                    <ol class="paanyaya-prep-list">
+                        <?php foreach ($informationRequests as $informationRequest): ?>
+                            <li>
+                                <div>
+                                    <strong>Request sent</strong> · <?= htmlspecialchars($informationRequest['requested_at']) ?>
+                                    <p><?= nl2br(htmlspecialchars($informationRequest['request_message'])) ?></p>
+                                    <?php if ($informationRequest['responded_at']): ?>
+                                        <strong>Resident replied</strong> · <?= htmlspecialchars($informationRequest['responded_at']) ?>
+                                        <p><?= nl2br(htmlspecialchars($informationRequest['response_message'])) ?></p>
+                                    <?php else: ?>
+                                        <p>Awaiting resident reply</p>
+                                    <?php endif; ?>
+                                </div>
+                            </li>
+                        <?php endforeach; ?>
+                    </ol>
+                </section>
+            <?php endif; ?>
+
+            <?php if ($roleId === 3 && $canScreenSelectedIntake && !$awaitingResidentReply): ?>
                 <section id="intake-screening" class="sophos-card" aria-labelledby="intake-screening-title" style="margin-bottom: 18px; border: 1.5px solid #cde2d6; background: linear-gradient(135deg, #ffffff 0%, #f7fbf9 100%);">
                     <div class="sophos-card-header" style="border-bottom: 1px solid #e2ece7; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                         <div>
@@ -533,9 +568,16 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     </div>
                     <div class="sophos-card-body" style="padding: 16px 20px;">
                         <div class="form-group" style="margin-bottom: 14px;">
-                            <label for="lisoScreeningDecisionNotes" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Screening Notes <span style="font-weight: 400; color: #64748b;">(Optional for Eligible, recommended when requesting information)</span></label>
-                            <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000" placeholder="Add screening observations or specify missing details..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff; resize: vertical;"></textarea>
+                            <label for="lisoScreeningDecisionNotes" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Internal screening notes (optional)</label>
+                            <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff; resize: vertical;"></textarea>
                         </div>
+                        <?php if ($hasResidentAccount): ?>
+                            <div class="form-group paanyaya-prep-fields">
+                                <label for="lisoResidentRequest">Message to resident (required when requesting information)
+                                    <textarea id="lisoResidentRequest" rows="3" maxlength="<?= ComplaintInformationService::REQUEST_LIMIT ?>"></textarea>
+                                </label>
+                            </div>
+                        <?php endif; ?>
                         <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
                             <button type="button" id="btnIntakeNeedsInfo" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
                             <button type="button" id="btnMarkIntakeEligible" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')">Mark Intake Eligible</button>

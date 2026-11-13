@@ -30,10 +30,12 @@ try {
 
     $complaintsStatement = $db->prepare(
         'SELECT c.complaint_id, c.intake_reference, c.complaint_number, c.complaint_title, c.status,
-                c.screening_decision, c.created_at, c.updated_at, cc.category_name
+                c.screening_decision, c.created_at, c.updated_at, cc.category_name,
+                EXISTS (SELECT 1 FROM complaint_information_requests ir
+                    WHERE ir.complaint_id = c.complaint_id AND ir.responded_at IS NULL) AS awaiting_reply
          FROM complaints c
          LEFT JOIN complaint_categories cc ON cc.category_id = c.category_id
-         WHERE c.submitted_by = ?
+         WHERE c.submitted_by = ? AND c.is_draft = 0
          ORDER BY c.updated_at DESC, c.created_at DESC'
     );
     $complaintsStatement->execute([$userId]);
@@ -72,6 +74,11 @@ $statusDetails = static function (array $complaint): array {
 $displayName = trim((string) ($profile['display_name'] ?? 'Resident'));
 $firstName = trim((string) strtok($displayName, ' '));
 $recentComplaints = array_slice($complaints, 0, 5);
+$concernLink = static function (array $complaint): array {
+    $reply = $complaint['status'] === 'Needs Information' && $complaint['awaiting_reply'];
+    return ['url' => 'complaint.php?id=' . (int) $complaint['complaint_id'] . ($reply ? '#reply' : '#timeline'),
+        'label' => $reply ? 'Reply to request' : 'View timeline'];
+};
 ?>
 <!doctype html>
 <html lang="en">
@@ -148,12 +155,13 @@ $recentComplaints = array_slice($complaints, 0, 5);
                 <?php else: ?>
                     <div class="resident-concern-list">
                         <?php foreach ($recentComplaints as $complaint): ?>
-                            <?php $detail = $statusDetails($complaint); ?>
+                            <?php $detail = $statusDetails($complaint); $link = $concernLink($complaint); ?>
                             <article class="resident-concern-row">
                                 <div class="resident-concern-main">
                                     <div class="resident-reference"><?= htmlspecialchars((string) ($complaint['intake_reference'] ?: $complaint['complaint_number'] ?: 'Submission received'), ENT_QUOTES, 'UTF-8') ?></div>
                                     <h3><?= htmlspecialchars((string) $complaint['complaint_title'], ENT_QUOTES, 'UTF-8') ?></h3>
                                     <p><?= htmlspecialchars((string) ($complaint['category_name'] ?: 'Community concern'), ENT_QUOTES, 'UTF-8') ?> · Submitted <?= htmlspecialchars(date('M j, Y', strtotime((string) $complaint['created_at'])), ENT_QUOTES, 'UTF-8') ?></p>
+                                    <a class="resident-text-link resident-concern-link" href="<?= htmlspecialchars($link['url']) ?>"><?= $link['label'] ?></a>
                                 </div>
                                 <div class="resident-concern-status"><span class="resident-status-badge tone-<?= htmlspecialchars($detail['tone'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($detail['label'], ENT_QUOTES, 'UTF-8') ?></span><p><?= htmlspecialchars($detail['message'], ENT_QUOTES, 'UTF-8') ?></p></div>
                             </article>
@@ -182,9 +190,9 @@ $recentComplaints = array_slice($complaints, 0, 5);
                 <div class="resident-panel-heading"><div><p class="resident-dashboard-eyebrow">Complete record</p><h2 id="all-concerns-title">All submitted concerns</h2></div></div>
                 <div class="resident-concern-list">
                     <?php foreach (array_slice($complaints, 5) as $complaint): ?>
-                        <?php $detail = $statusDetails($complaint); ?>
+                        <?php $detail = $statusDetails($complaint); $link = $concernLink($complaint); ?>
                         <article class="resident-concern-row">
-                            <div class="resident-concern-main"><div class="resident-reference"><?= htmlspecialchars((string) ($complaint['intake_reference'] ?: $complaint['complaint_number'] ?: 'Submission received'), ENT_QUOTES, 'UTF-8') ?></div><h3><?= htmlspecialchars((string) $complaint['complaint_title'], ENT_QUOTES, 'UTF-8') ?></h3><p><?= htmlspecialchars((string) ($complaint['category_name'] ?: 'Community concern'), ENT_QUOTES, 'UTF-8') ?> · Submitted <?= htmlspecialchars(date('M j, Y', strtotime((string) $complaint['created_at'])), ENT_QUOTES, 'UTF-8') ?></p></div>
+                            <div class="resident-concern-main"><div class="resident-reference"><?= htmlspecialchars((string) ($complaint['intake_reference'] ?: $complaint['complaint_number'] ?: 'Submission received'), ENT_QUOTES, 'UTF-8') ?></div><h3><?= htmlspecialchars((string) $complaint['complaint_title'], ENT_QUOTES, 'UTF-8') ?></h3><p><?= htmlspecialchars((string) ($complaint['category_name'] ?: 'Community concern'), ENT_QUOTES, 'UTF-8') ?> · Submitted <?= htmlspecialchars(date('M j, Y', strtotime((string) $complaint['created_at'])), ENT_QUOTES, 'UTF-8') ?></p><a class="resident-text-link resident-concern-link" href="<?= htmlspecialchars($link['url']) ?>"><?= $link['label'] ?></a></div>
                             <div class="resident-concern-status"><span class="resident-status-badge tone-<?= htmlspecialchars($detail['tone'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($detail['label'], ENT_QUOTES, 'UTF-8') ?></span><p><?= htmlspecialchars($detail['message'], ENT_QUOTES, 'UTF-8') ?></p></div>
                         </article>
                     <?php endforeach; ?>

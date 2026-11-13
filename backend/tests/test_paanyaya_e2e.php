@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
 require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
+require_once __DIR__ . '/../services/ComplaintInformationService.php';
 require_once __DIR__ . '/TestDataCleanup.php';
 require_once __DIR__ . '/TestLisoDuty.php';
 
@@ -30,12 +31,21 @@ function request(string $base, array $session, string $route, ?array $data = nul
         $options['content'] = http_build_query($data);
     }
 
-    $body = file_get_contents($base . '/backend/api/' . $route, false, stream_context_create(['http' => $options]));
+    $path = str_starts_with($route, '/') ? $route : '/backend/api/' . $route;
+    $body = file_get_contents($base . $path, false, stream_context_create(['http' => $options]));
     if ($body === false || !isset($http_response_header[0])) {
         throw new RuntimeException("No HTTP response for $route");
     }
     $status = (int) explode(' ', $http_response_header[0])[1];
     return ['status' => $status, 'body' => $body, 'json' => json_decode($body, true)];
+}
+
+function expectClerkAction(PaanyayaPreparationService $preparations, int $id, ?string $action, ?string $target = null): void
+{
+    $rows = array_values(array_filter($preparations->queue(), static fn (array $row): bool => (int) $row['complaint_id'] === $id));
+    check($action === null ? $rows === [] : count($rows) === 1
+        && $rows[0]['next_action'] === $action && $rows[0]['target_section'] === $target,
+        $action ? "Clerk queue links to $action" : 'Completed complaint leaves the clerk queue');
 }
 
 function expectKp7(string $base, array $clerk, int $id, bool $available): void
@@ -121,8 +131,8 @@ ini_set('session.save_path', $sessionDir);
 ini_set('session.use_cookies', '0');
 $process = null;
 $logPath = $sessionDir . DIRECTORY_SEPARATOR . 'server.log';
-$residentUserId = null;
-register_shutdown_function(static function () use ($db, &$residentUserId, &$process, $sessionDir): void {
+$residentUserIds = [];
+register_shutdown_function(static function () use ($db, &$residentUserIds, &$process, $sessionDir): void {
     if (is_resource($process)) {
         proc_terminate($process);
         proc_close($process);
@@ -131,7 +141,7 @@ register_shutdown_function(static function () use ($db, &$residentUserId, &$proc
         unlink($file);
     }
     rmdir($sessionDir);
-    if ($residentUserId) {
+    foreach ($residentUserIds as $residentUserId) {
         $db->prepare('DELETE FROM users WHERE user_id = ?')->execute([$residentUserId]);
     }
 });
@@ -148,12 +158,15 @@ if (count($residents) !== 2) {
     throw new RuntimeException('The Paanyaya suite requires two seeded resident profiles.');
 }
 $residentRole = (int) $db->query("SELECT role_id FROM roles WHERE role_name = 'Resident'")->fetchColumn();
-$db->prepare("INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
-    VALUES ('Test', 'Resident', ?, ?, ?, ?, 'Active')")
-    ->execute(["test-$token", "$token@agap.test", password_hash($token, PASSWORD_DEFAULT), $residentRole]);
-$residentUserId = (int) $db->lastInsertId();
+$insertResidentUser = $db->prepare("INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status)
+    VALUES ('Test', 'Resident', ?, ?, ?, ?, 'Active')");
+foreach (['resident', 'otherresident'] as $name) {
+    $insertResidentUser->execute(["$name-$token", "$name-$token@agap.test", password_hash($token, PASSWORD_DEFAULT), $residentRole]);
+    $residentUserIds[] = $residentUserId = (int) $db->lastInsertId();
+    $actors[$name] = ['user_id' => $residentUserId, 'role_id' => $residentRole, 'role_name' => 'Resident'];
+}
+$residentUserId = $actors['resident']['user_id'];
 $db->prepare('INSERT INTO resident_user_profiles (user_id, resident_id) VALUES (?, ?)')->execute([$residentUserId, $residents[0]]);
-$actors['resident'] = ['user_id' => $residentUserId, 'role_id' => $residentRole, 'role_name' => 'Resident'];
 
 foreach ($actors as $name => &$actor) {
     $actor['id'] = "$token-$name";
@@ -236,12 +249,53 @@ try {
             check($review['status'] === 422, 'Another Lupon member cannot screen the assigned walk-in');
         } else {
             check((int) $complaint['submitted_by'] === $residentUserId && $complaint['liso_assigned_duty_session_id'] === null, 'Online intake belongs to the resident account');
+            $details = "/frontend/pages/resident/complaint.php?id=$id";
+            $requestData = ['complaint_id' => $id, 'status' => 'Needs Information', 'review_notes' => 'Private screening note for test'];
+            check(request($base, $liso, 'complaints/review.php', $requestData)['status'] === 422, 'Online information request needs a resident-facing message');
+            $information = new ComplaintInformationService($db);
+            $queueIds = static function () use ($base, $liso): array {
+                $dashboard = request($base, $liso, 'dashboard/lupon-member.php');
+                $queue = $dashboard['json']['data']['pending_screenings'];
+                return array_map('intval', array_column($queue, 'complaint_id'));
+            };
+            $previousReply = null;
+            foreach (['Please explain when the damage started.', 'Please include the street number.'] as $question) {
+                $requestData['request_message'] = $question;
+                check(request($base, $liso, 'complaints/review.php', $requestData)['status'] === 200, 'LISO sends a resident-facing request');
+                check(!in_array($id, $queueIds(), true), 'Complaint waits for the resident before re-screening');
+                check(request($base, $liso, 'complaints/review.php', ['complaint_id' => $id, 'status' => 'Accepted'])['status'] === 422, 'Screening cannot complete while a reply is pending');
+                $dashboard = request($base, $filer, '/frontend/pages/resident/dashboard.php');
+                check(str_contains($dashboard['body'], "complaint.php?id=$id#reply"), 'Dashboard links directly to the reply form');
+                $page = request($base, $filer, $details);
+                check($page['status'] === 200 && str_contains($page['body'], $question)
+                    && str_contains($page['body'], 'Go to reply form')
+                    && !str_contains($page['body'], $requestData['review_notes']), 'Resident sees the request and reply link without internal notes');
+                $reply = ['request_id' => $information->history($id)[0]['request_id'], 'response' => 'My response to: ' . $question];
+                check(request($base, $actors['otherresident'], $details)['status'] === 404
+                    && request($base, $actors['otherresident'], $details, $reply)['status'] === 404, 'A different resident cannot view or reply to the complaint');
+                if ($previousReply) {
+                    check(request($base, $filer, $details, $previousReply)['status'] === 422, 'An old request cannot answer a newer request');
+                }
+                $wrongToken = array_replace($filer, ['csrf_token' => 'invalid']);
+                check(request($base, $wrongToken, $details, $reply)['status'] === 419, 'Resident replies require a valid session token');
+                check(request($base, $filer, $details, $reply)['status'] === 303, 'Resident replies on the original complaint');
+                check(request($base, $filer, $details, $reply)['status'] === 422, 'Duplicate replies are rejected');
+                check(in_array($id, $queueIds(), true), 'Resident reply returns to the assigned LISO queue');
+                $previousReply = $reply;
+            }
+            $staffPage = request($base, $liso, "/frontend/pages/complaints/complaint-details.php?id=$id");
+            check($staffPage['status'] === 200 && substr_count($staffPage['body'], 'Resident replied') === 2,
+                'LISO workspace shows both request and response rounds');
+            check(request($base, $actors['luponhead'], 'complaints/review.php', ['complaint_id' => $id, 'status' => 'Accepted'])['status'] === 422,
+                'Another Lupon member cannot re-screen the assigned online intake');
         }
         $reviewData = ['complaint_id' => $id, 'status' => 'Accepted'];
         $review = request($base, $liso, 'complaints/review.php', $reviewData);
-        check($review['status'] === 200 && ($review['json']['success'] ?? false), "$source intake is marked eligible");
+        check($review['status'] === 200 && ($review['json']['success'] ?? false),
+            "$source intake is marked eligible: " . ($review['json']['message'] ?? $review['body']));
         check(request($base, $liso, 'complaints/review.php', $reviewData)['status'] === 422, 'Repeated eligibility is rejected');
         check(!empty($preparations->intake($id)['eligible']), "$source intake enters the preparation queue");
+        expectClerkAction($preparations, $id, 'Prepare invitation', 'paanyaya-invitation-1');
         expectKp7($base, $clerk, $id, false);
         $earlyDocket = request($base, $clerk, 'complaints/docket.php', ['complaint_id' => $id]);
         check(($earlyDocket['json']['success'] ?? null) === false, 'Direct docketing is rejected before dialogue');
@@ -255,6 +309,10 @@ try {
         $scanId = (int) $db->lastInsertId();
         expectKp7Scan($base, $clerk, $scanId, 403);
         $firstAttempt = releaseInvitation($base, $clerk, $server, $db, $id, 1, $version);
+        if ($source === 'Online') {
+            $page = request($base, $filer, $details);
+            check(!str_contains($page['body'], 'Paanyaya appointment confirmed'), 'Resident timeline waits for confirmed service before showing the appointment');
+        }
         $outcome = $source === 'Walk-in' ? 'Settled' : 'Request_Paanyaya_2';
         $minutes = [
             'action' => 'minutes', 'complaint_id' => $id, 'invitation_number' => 1,
@@ -269,6 +327,11 @@ try {
                 'action' => 'record', 'attempt_id' => $firstAttempt, 'outcome' => 'Not Delivered', 'notes' => 'Recipient unavailable',
             ]);
             check($recorded['status'] === 303 && PaanyayaServiceDelivery::latestAttempt($db, $id)['outcome'] === 'Not Delivered', 'Unsuccessful delivery is recorded');
+            expectClerkAction($preparations, $id, 'Retry delivery', 'paanyaya-service-1');
+            $clerkPage = request($base, $clerk, '/frontend/pages/dashboard/clerk-dashboard.php');
+            $workspace = request($base, $clerk, "/frontend/pages/complaints/complaint-details.php?id=$id");
+            check(str_contains($clerkPage['body'], "complaint-details.php?id=$id#paanyaya-service-1")
+                && str_contains($workspace['body'], 'id="paanyaya-service-1"'), 'The clerk dashboard link lands on the delivery retry action');
             request($base, $clerk, 'paanyaya/dialogue.php', $minutes);
             $minutesLookup->execute([$id, 'Paanyaya 1']);
             check($minutesLookup->fetch() === false, 'Failed service does not unlock dialogue');
@@ -281,6 +344,7 @@ try {
             'action' => 'record', 'attempt_id' => $attemptId, 'outcome' => 'Delivered',
         ]);
         check($recorded['status'] === 303 && PaanyayaServiceDelivery::latestAttempt($db, $id)['outcome'] === 'Delivered', 'Successful delivery activates dialogue');
+        expectClerkAction($preparations, $id, 'Record dialogue minutes', 'paanyaya-dialogue-1');
         $minutes['dialogue_date'] = date('Y-m-d\TH:i');
         $recorded = request($base, $clerk, 'paanyaya/dialogue.php', $minutes);
         $minutesLookup->execute([$id, 'Paanyaya 1']);
@@ -295,10 +359,12 @@ try {
             check($settled['status'] === 'Settled' && (int) $settled['resolved_without_docketing'] === 1, 'Settlement closes the complaint at Paanyaya');
             expectKp7($base, $clerk, $id, false);
             expectKp7Scan($base, $clerk, $scanId, 403);
+            expectClerkAction($preparations, $id, null);
             continue;
         }
 
         check(!empty($preparations->intake($id, 2)['eligible']), 'First dialogue unlocks a second invitation');
+        expectClerkAction($preparations, $id, 'Prepare second invitation', 'paanyaya-invitation-2');
         $secondVersion = prepareInvitation($base, $clerk, $preparations, $id, 2);
         check($secondVersion !== $version && $preparations->intake($id, 1)['document_version'] === $version, 'The two invitations retain separate PDFs');
         $secondAttempt = releaseInvitation($base, $clerk, $server, $db, $id, 2, $secondVersion);
@@ -309,10 +375,12 @@ try {
         check($minutesLookup->fetch() === false, 'First delivery does not unlock the second dialogue');
         request($base, $server, 'paanyaya/service.php', ['action' => 'record', 'attempt_id' => $secondAttempt, 'outcome' => 'Delivered']);
         check(PaanyayaServiceDelivery::latestAttempt($db, $id, 2)['outcome'] === 'Delivered', 'Second invitation records its own delivery');
+        expectClerkAction($preparations, $id, 'Record dialogue minutes', 'paanyaya-dialogue-2');
         $minutes['dialogue_date'] = date('Y-m-d\TH:i');
         request($base, $clerk, 'paanyaya/dialogue.php', $minutes);
         $minutesLookup->execute([$id, 'Paanyaya 2']);
         check(($minutesLookup->fetch()['complainant_choice'] ?? '') === 'Escalate_Mediation', 'Second dialogue records escalation to mediation');
+        expectClerkAction($preparations, $id, 'Create formal docket', 'paanyaya-dialogue-2');
         expectKp7($base, $clerk, $id, false);
 
         $docket = ['action' => 'docket', 'complaint_id' => $id, 'invitation_number' => 2];
@@ -320,6 +388,14 @@ try {
         $caseLookup->execute([$id]);
         $cases = $caseLookup->fetchAll();
         check(count($cases) === 1 && $cases[0]['case_status'] === 'Mediation', 'Escalation dockets one mediation case on the original complaint');
+        expectClerkAction($preparations, $id, null);
+        $page = request($base, $filer, $details);
+        check($page['status'] === 200 && str_contains($page['body'], 'Eligible for Paanyaya')
+            && str_contains($page['body'], 'Paanyaya appointment confirmed')
+            && str_contains($page['body'], 'Second Paanyaya appointment confirmed')
+            && str_contains($page['body'], 'Formal case docketed')
+            && substr_count($page['body'], 'Your response was sent') === 2
+            && !str_contains($page['body'], 'id="reply"'), 'Resident timeline shows screening, confirmed appointments, replies and docketing');
         request($base, $clerk, 'paanyaya/dialogue.php', $docket);
         $caseLookup->execute([$id]);
         check($caseLookup->fetchAll() === $cases, 'Retrying docketing keeps the same single formal case');
@@ -332,6 +408,14 @@ try {
         $documentId = (int) $db->lastInsertId();
         $stored = request($base, $clerk, "documents/download.php?id=$documentId&download=1");
         check($stored['status'] === 200 && str_starts_with($stored['body'], '%PDF-'), 'Stored KP Form 7 downloads after docketing');
+
+        // Seed a recorded formal disposition for the timeline after checking docketing and KP Form 7.
+        $db->prepare("UPDATE cases SET case_status = 'Settled' WHERE case_id = ?")->execute([$cases[0]['case_id']]);
+        $db->prepare("INSERT INTO case_history (case_id, status, remarks) VALUES (?, 'Settled', 'Private formal case remarks')")
+            ->execute([$cases[0]['case_id']]);
+        $page = request($base, $filer, $details);
+        check(str_contains($page['body'], 'Complaint settled') && !str_contains($page['body'], 'Private formal case remarks'),
+            'Resident timeline shows the recorded outcome without staff remarks');
     }
 } catch (Throwable $exception) {
     fwrite(STDERR, file_get_contents($logPath));
