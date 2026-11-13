@@ -581,14 +581,23 @@ class Complaint
              SET c.status = ?, c.screening_decision = ?, c.review_notes = ?,
                  c.liso_reviewed_by = ?, c.liso_reviewed_at = NOW()
              WHERE c.complaint_id = ? AND cs.case_id IS NULL AND c.status <> 'Archived'
-               AND (c.liso_assigned_to IS NULL OR (
-                   c.liso_assigned_to = ? AND c.screening_decision <> 'Eligible'
+               AND COALESCE(c.screening_decision, '') <> 'Eligible'
+               AND (? = 0 OR c.liso_assigned_to IS NULL OR (
+                   c.liso_assigned_to = ?
                    AND assigned.role_id = 3 AND assigned.status = 'Active'
                ))"
         );
-        $stmt->execute([$status, $decision, $notes, $reviewerId ?: null, $id, $mustBeAssignedLiso ? $reviewerId : 0]);
+        $stmt->execute([
+            $status,
+            $decision,
+            $notes,
+            $reviewerId ?: null,
+            $id,
+            $mustBeAssignedLiso ? 1 : 0,
+            $mustBeAssignedLiso ? $reviewerId : 0
+        ]);
         if ($stmt->rowCount() !== 1) {
-            return ['success' => false, 'message' => 'This screening can no longer be updated by your account.'];
+            return ['success' => false, 'message' => 'This intake has already been screened or can no longer be updated by your account.'];
         }
         $screening = $this->conn->prepare('UPDATE complaint_intake_screenings SET screened_by = ?, screened_at = NOW() WHERE complaint_id = ?');
         $screening->execute([$reviewerId ?: null, $id]);
@@ -774,8 +783,16 @@ class Complaint
         if (!$parsedDate || $parsedDate->format('Y-m-d') !== $date) return ['success' => false, 'message' => 'Incident date is invalid.'];
         if ($time !== '' && !preg_match('/^([01]\\d|2[0-3]):[0-5]\\d$/', $time)) return ['success' => false, 'message' => 'Incident time is invalid.'];
 
-        // Time restrictions for incident date and time disabled for complaint intake
-        // (Allows intake without strict clock-skew or future time rejections)
+        $today = new DateTimeImmutable('today');
+        if ($parsedDate > $today) {
+            return ['success' => false, 'message' => 'Incident date and time cannot be in the future.'];
+        }
+        if ($time !== '') {
+            $parsedDateTime = DateTimeImmutable::createFromFormat('Y-m-d H:i', $date . ' ' . $time);
+            if ($parsedDateTime && $parsedDateTime > new DateTimeImmutable('now')) {
+                return ['success' => false, 'message' => 'Incident date and time cannot be in the future.'];
+            }
+        }
         $city = trim((string) ($data['incident_city'] ?? 'Marikina City')) ?: 'Marikina City';
         $barangay = trim((string) ($data['incident_barangay'] ?? 'Tumana')) ?: 'Tumana';
         $street = trim((string) ($data['incident_street'] ?? $data['incident_location'] ?? ''));

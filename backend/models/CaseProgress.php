@@ -704,7 +704,7 @@ class CaseProgress
             require_once __DIR__ . '/Paanyaya.php';
             $paaModel = new Paanyaya($this->conn);
             $prereq = $paaModel->checkSummonsPrerequisite((int)($complaint['complaint_id'] ?? 0));
-            if (false && !$prereq['allowed']) {
+            if (!$prereq['allowed']) {
                 $summonButton['label']   = 'Issue Summon 1st Attempt';
                 $summonButton['action']  = 'open_paanyaya';
                 $summonButton['disabled'] = true;

@@ -229,15 +229,19 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     const isPaanyayaActive = paanyayaStatuses.includes(complaint.status) && !caseId;
 
     const summonsPrereq = complaint.paanyaya_stages?.summons_prerequisite;
-    const isSummonsLocked = false;
+    const isSummonsLocked = Boolean(summonsPrereq && summonsPrereq.allowed === false && !caseId);
     const p1Choice = complaint.paanyaya_stages?.stage_1?.complainant_choice;
     const p2Stage = complaint.paanyaya_stages?.stage_2;
-    const isP2Pending = false;
+    const isP2Pending = Boolean(
+        p1Choice === 'Request_Paanyaya_2' &&
+        (!p2Stage || !['Completed', 'Failed', 'No_Show', 'Escalated'].includes(p2Stage.status)) &&
+        !caseId
+    );
 
-    const isPaanyayaCompletedOrEscalated = true || (
+    const isPaanyayaCompletedOrEscalated = (
         Boolean(caseId) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'CFA', 'Settled', 'Resolution / Closed'].includes(lifecycle) ||
-        ['Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Closed'].includes(cStatus) ||
+        ['Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Closed'].includes(cStatus) ||
         Boolean(complaint.paanyaya_stages?.stage_1?.complainant_choice === 'Escalate_Mediation') ||
         Boolean(complaint.paanyaya_stages?.stage_2?.complainant_choice === 'Escalate_Mediation') ||
         Boolean(complaint.paanyaya_workspace?.escalated_to_case_id) ||
@@ -382,9 +386,11 @@ window.unlockOutcomesTab = unlockOutcomesTab;
 function initialiseCaseTabs() {
     document.querySelectorAll('.case-tab-item').forEach(btn => {
         btn.addEventListener('click', (e) => {
-            e.preventDefault();
             const tabId = btn.getAttribute('data-tab');
-            if (tabId) switchCaseTab(tabId);
+            if (tabId) {
+                e.preventDefault();
+                switchCaseTab(tabId);
+            }
         });
     });
 
@@ -637,7 +643,8 @@ async function loadComplaintDetails() {
         }
 
         // Format Docket Number (e.g. 10-17-2026) or Paanyaya Case Number (e.g. P-10-86-2026)
-        const isPaanyayaRecord = false;
+        const hasFormalCaseRecord = Boolean(data.case_id || data.case_workspace?.case?.case_id);
+        const isPaanyayaRecord = !hasFormalCaseRecord;
         const formatDocketDisplay = (num, id, dt) => {
             if (num && String(num).startsWith('P-')) return String(num);
             if (num && !String(num).startsWith('CMP-')) return String(num);
@@ -647,17 +654,17 @@ async function loadComplaintDetails() {
             const yy = d.getFullYear() || 2026;
             return isPaanyayaRecord ? `P-${mm}-${ss}-${yy}` : `${mm}-${ss}-${yy}`;
         };
-        const hasFormalDocket = Boolean(data.case_number || data.complaint_number);
+        const hasFormalDocket = Boolean(data.case_number || (hasFormalCaseRecord && data.complaint_number));
         const docketNum = hasFormalDocket
             ? formatDocketDisplay(data.case_number || data.complaint_number, data.complaint_id, data.created_at)
-            : (data.intake_reference || 'Not yet docketed');
+            : (data.intake_reference || data.complaint_number || 'Not yet docketed');
         const compNum = docketNum;
 
         // Header Case Number
         const compNumEl = document.getElementById('complaintNumber');
         if (compNumEl) {
             compNumEl.textContent = hasFormalDocket
-                ? (isPaanyayaRecord ? 'Paanyaya Case #' : 'Case #') + docketNum
+                ? 'Case #' + docketNum
                 : 'Intake #' + docketNum;
         }
 
@@ -692,7 +699,14 @@ async function loadComplaintDetails() {
             settlement
         );
 
-        const caseStage = data.case_workspace?.case?.case_status || data.current_stage || data.lifecycle_status || '';
+        const caseStage = data.case_workspace?.case?.case_status || (hasFormalCaseRecord ? (data.current_stage || data.lifecycle_status) : '') || '';
+        const isEligibleForPaanyaya = isPaanyayaRecord && (
+            data.screening_decision === 'Eligible' ||
+            data.status === 'Accepted' ||
+            data.status === 'Pre-Docketed (Paanyaya)' ||
+            data.status === 'Paanyaya In Progress' ||
+            data.status === '1st Paanyaya Failed (No-Show)'
+        );
         let displayStage = '';
 
         if (isRepudiated && isCfa) {
@@ -703,8 +717,18 @@ async function loadComplaintDetails() {
             displayStage = 'CFA Stage (Court Referral)';
         } else if (isSettled) {
             displayStage = 'Settled (Amicable Settlement)';
-        } else if (false && (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)')) {
-            displayStage = 'Paanyaya';
+        } else if (data.status === 'Resolved at Paanyaya / Closed') {
+            displayStage = 'Resolved at Paanyaya';
+        } else if (isPaanyayaRecord) {
+            if (data.status === 'Needs Information' || data.screening_decision === 'Needs Information') {
+                displayStage = 'Needs Information';
+            } else if (data.status === 'Rejected' || data.screening_decision === 'Rejected') {
+                displayStage = 'Rejected';
+            } else if (isEligibleForPaanyaya) {
+                displayStage = 'Paanyaya Stage';
+            } else {
+                displayStage = 'Preliminary Screening';
+            }
         } else {
             const effStage = caseStage || 'Mediation';
             displayStage = effStage.endsWith('Stage') ? effStage : (effStage + ' Stage');
@@ -726,14 +750,18 @@ async function loadComplaintDetails() {
                 statusEl.style.background = '#ede9fe';
                 statusEl.style.color = '#6d28d9';
                 statusEl.style.border = '1px solid #c4b5fd';
-            } else if (isSettled) {
+            } else if (isSettled || data.status === 'Resolved at Paanyaya / Closed') {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
-            } else if (false && (isPaanyayaRecord || data.status === 'Pre-Docketed (Paanyaya)')) {
+            } else if (isEligibleForPaanyaya) {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
+            } else if (isPaanyayaRecord) {
+                statusEl.style.background = '#fef3c7';
+                statusEl.style.color = '#b45309';
+                statusEl.style.border = '1px solid #fde68a';
             } else {
                 const effStage = caseStage || 'Mediation';
                 const stSlug = effStage.toLowerCase().replace(/[^a-z0-9]/g, '-');
@@ -742,12 +770,20 @@ async function loadComplaintDetails() {
                 statusEl.style.color = '';
                 statusEl.style.border = '';
             }
-            const sophosStatusTxt = document.getElementById('sophosStatusText');
-            if (sophosStatusTxt) {
-                sophosStatusTxt.textContent = displayStage;
-            } else {
-                statusEl.textContent = displayStage;
-            }
+            statusEl.textContent = displayStage;
+        }
+        const sophosStatusTxt = document.getElementById('sophosStatusText');
+        if (sophosStatusTxt) {
+            sophosStatusTxt.textContent = displayStage;
+        }
+
+        if (window.__agapLuponReadOnly && isPaanyayaRecord) {
+            const tabsNav = document.querySelector('.case-tabs-nav');
+            if (tabsNav) tabsNav.style.display = 'none';
+            const opGrid = document.getElementById('operationalModulesGrid');
+            if (opGrid) opGrid.style.display = 'none';
+            const kpCardBox = document.getElementById('officialKpFormsCardBox');
+            if (kpCardBox) kpCardBox.style.display = 'none';
         }
 
         // Reopen for CFA button: only show for Settled cases (RA 7160 Sec. 417)
@@ -764,7 +800,7 @@ async function loadComplaintDetails() {
         // Action Bar Status Tracker Button
         const statusBtnLabel = document.getElementById('statusTrackerButtonLabel');
         if (statusBtnLabel) {
-            statusBtnLabel.textContent = 'Status: ' + (data.status === 'Settled' ? 'Settled' : (caseStage || data.lifecycle_status || 'Mediation'));
+            statusBtnLabel.textContent = 'Status: ' + (data.status === 'Settled' ? 'Settled' : displayStage);
         }
         const statusDot = document.getElementById('statusDotIndicator');
         if (statusDot) {
@@ -1747,10 +1783,17 @@ function renderOfficialKpForms(workspace, complaint) {
         'Resolved at Paanyaya / Closed',
         'Paanyaya'
     ];
-    const isPaanyaya = paanyayaStatuses.includes(activeComplaint.status || '') ||
+    const isPaanyaya = (!activeComplaint.case_id && !workspace?.case?.case_id) ||
+                       paanyayaStatuses.includes(activeComplaint.status || '') ||
                        Boolean(activeComplaint.resolved_without_docketing) ||
                        (typeof activeComplaint.status === 'string' && activeComplaint.status.toLowerCase().includes('paanyaya'));
-    const hasPaanyayaDoc = false;
+    const hasPaanyayaDoc = Boolean(
+        activeComplaint.paanyaya ||
+        window.paanyayaStagesData?.stage_1?.details?.invitation_date ||
+        (window.paanyayaStagesData?.stage_1?.details?.status && window.paanyayaStagesData.stage_1.details.status !== 'Not Started') ||
+        activeComplaint.paanyaya_stages?.stage_1?.details?.invitation_date ||
+        (activeComplaint.paanyaya_stages?.stage_1?.details?.status && activeComplaint.paanyaya_stages.stage_1.details.status !== 'Not Started')
+    );
 
     // Filter and deduplicate documents:
     // 1. Skip KP Form 7 because Section 1 explicitly renders the primary complaint form.
@@ -1795,9 +1838,15 @@ function renderOfficialKpForms(workspace, complaint) {
     const stg2Details = stg2.details || {};
     const stg2Latest = stg2.latest_attempt || null;
     const stg2Count = stg2.attempts_count || 0;
-    const hasP2Attempt = false;
+    const hasP2Attempt = Boolean(
+        stg2Count > 0 ||
+        stg2Details.invitation_date ||
+        (stg2Details.status && stg2Details.status !== 'Not Started')
+    );
 
-    const totalCount = docs.length + (complaintId > 0 ? (hasPaanyayaDoc ? (hasP2Attempt ? 3 : 2) : 1) : 0) + 2;
+    const kp7IssuedCount = (complaintId > 0 && !isPaanyaya) ? 1 : 0;
+    const paanyayaIssuedCount = (complaintId > 0 && hasPaanyayaDoc) ? (hasP2Attempt ? 2 : 1) : 0;
+    const totalCount = docs.length + kp7IssuedCount + paanyayaIssuedCount;
     const countText = `${totalCount} Issued`;
     const formsCountText = `${totalCount} form${totalCount === 1 ? '' : 's'}`;
 
@@ -1930,7 +1979,7 @@ function renderOfficialKpForms(workspace, complaint) {
 
     // 1. Primary Complaint Form: KP Form 7 (Reklamo)
     if (complaintId > 0) {
-        if (false && isPaanyaya) {
+        if (isPaanyaya) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #f59e0b;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
@@ -1980,11 +2029,11 @@ function renderOfficialKpForms(workspace, complaint) {
                             <button type="button" class="btn-small-link" onclick="openScanHistoryModal(${Number(complaintId)})" title="View version history">
                                 Version History
                             </button>
-                        ` : `
+                        ` : (window.__agapLuponReadOnly ? '' : `
                             <button type="button" class="btn-small-link" onclick="openUploadScanModal()" style="color: #64748b; border-color: #cbd5e1;">
                                 + Upload Scan
                             </button>
-                        `}
+                        `)}
                     </div>
                 </div>
             `;
@@ -2047,7 +2096,7 @@ function renderOfficialKpForms(workspace, complaint) {
                     </div>
                 </div>
                 <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    ${needsOfficerReturn ? `
+                    ${(needsOfficerReturn && !window.__agapLuponReadOnly) ? `
                         <button type="button" 
                                 class="btn-small-link" 
                                 onclick="openDocOfficerReturn(${docId}, ${caseId}, '${tplNameEscaped}')" 
@@ -5672,7 +5721,7 @@ function openIssueSummonModal() {
 function _legacyOpenIssueSummonModal() {
     // Guard against issuing summons before completing Paanyaya prerequisites
     const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-    if (false && paaPrereq && !paaPrereq.allowed) {
+    if (paaPrereq && !paaPrereq.allowed) {
         window.agapNotify?.(
             paaPrereq.message || paaPrereq.reason || 'Complete the required Paanyaya process before issuing the first formal summons.',
             'warning',
@@ -5754,7 +5803,7 @@ function closeIssueSummonModal() {
 function handleIssueSummonClick() {
     // Guard against issuing summons before completing Paanyaya prerequisites
     const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-    if (false && paaPrereq && !paaPrereq.allowed) {
+    if (paaPrereq && !paaPrereq.allowed) {
         window.agapNotify?.(
             paaPrereq.message || paaPrereq.reason || 'Complete the required Paanyaya process before issuing the first formal summons.',
             'warning',
@@ -5935,7 +5984,7 @@ async function loadCaseProgress(complaintId) {
             issueBtn.removeAttribute('data-summon-gated');
 
             const paaPrereq = window.complaintData?.paanyaya_stages?.summons_prerequisite;
-            const isPaaLocked = false;
+            const isPaaLocked = Boolean(paaPrereq && paaPrereq.allowed === false);
 
             if (btnInfo.disabled || isPaaLocked) {
                 // Visually disabled — mark as gated so handleIssueSummonClick can redirect to proof page or notify
@@ -5973,15 +6022,17 @@ function renderStatusTracker(progress) {
     const historyTimelineEl = document.getElementById('caseHistoryTimeline');
     if (!track) return;
 
-    const statuses = ['Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
+    const statuses = (Array.isArray(progress.lifecycle_statuses) && progress.lifecycle_statuses.length > 0)
+        ? progress.lifecycle_statuses
+        : ['Paanyaya', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
     let currentStatus = progress.lifecycle_status;
-    if (!currentStatus || currentStatus === 'Pre-Docketed (Paanyaya)' || currentStatus === 'Pending') {
-        currentStatus = 'Mediation';
+    if (!currentStatus || currentStatus === 'Pre-Docketed (Paanyaya)' || currentStatus === 'Pending' || currentStatus === 'Accepted' || currentStatus === 'Under Review') {
+        currentStatus = 'Paanyaya';
     } else if (currentStatus === 'Settled' || currentStatus === 'Resolved at Paanyaya / Closed') {
         currentStatus = 'Resolution / Closed';
     }
     if (!statuses.includes(currentStatus)) {
-        currentStatus = 'Mediation';
+        currentStatus = statuses[0] || 'Paanyaya';
     }
     const currentIndex = statuses.indexOf(currentStatus);
 
@@ -7508,14 +7559,15 @@ function renderKp7Overview(complaint) {
         'Resolved at Paanyaya / Closed',
         'Paanyaya'
     ];
-    const isPaanyaya = paanyayaStatuses.includes(complaint.status || '') ||
+    const isPaanyaya = (!complaint.case_id && !complaint.case_workspace?.case?.case_id) ||
+                       paanyayaStatuses.includes(complaint.status || '') ||
                        Boolean(complaint.resolved_without_docketing) ||
                        (typeof complaint.status === 'string' && complaint.status.toLowerCase().includes('paanyaya'));
 
     const docStatus = complaint.document_status || (complaint.current_scan ? 'Scan Uploaded' : 'No Scan Uploaded');
     const badgeEl = document.getElementById('kp7DocStatusBadge');
     if (badgeEl) {
-        if (false && isPaanyaya) {
+        if (isPaanyaya) {
             badgeEl.className = 'badge-doc-status badge-doc-pending';
             badgeEl.style.background = '#fef3c7';
             badgeEl.style.color = '#b45309';
@@ -7532,7 +7584,7 @@ function renderKp7Overview(complaint) {
 
     const pillEl = document.getElementById('kp7ScanStatusPill');
     if (pillEl) {
-        if (false && isPaanyaya) {
+        if (isPaanyaya) {
             pillEl.textContent = 'Held in Pre-Docketing';
             pillEl.style.background = '#fffbeb';
             pillEl.style.color = '#b45309';
@@ -7591,16 +7643,18 @@ function renderKp7Overview(complaint) {
                 <a href="${downloadUrl}" class="btn-outline-sm" title="Download scan">
                     Download
                 </a>
+                ${window.__agapLuponReadOnly ? '' : `
                 <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()" title="Upload a clearer or corrected copy">
                     Replace Scan
                 </button>
+                `}
                 <button type="button" class="btn-outline-sm" onclick="openScanHistoryModal(${complaintId})" title="View upload and replacement history">
                     Version History (${(complaint.scan_history && complaint.scan_history.length) || 1})
                 </button>
             `;
         }
     } else {
-        if (false && isPaanyaya) {
+        if (isPaanyaya) {
             contentWrap.innerHTML = `
                 <div style="padding: 12px; background: #fffbeb; border: 1px dashed #fde68a; border-radius: 8px; text-align: center; color: #92400e; font-size: 0.82rem;">
                     <strong>KP Form 7 is On Hold</strong> during the informal Paanyaya dialogue phase. If the dispute is settled informally, KP Form 7 is never created.
@@ -7614,7 +7668,7 @@ function renderKp7Overview(complaint) {
             `;
         }
         if (actionsWrap) {
-            actionsWrap.innerHTML = `
+            actionsWrap.innerHTML = window.__agapLuponReadOnly ? '' : `
                 <button type="button" class="btn-outline-sm" onclick="openUploadScanModal()">
                     Upload Handwritten Scan
                 </button>
@@ -11740,6 +11794,7 @@ async function runLisoScreeningAiCheck(processingMode = 'gemini') {
 }
 
 async function submitLisoReviewDecision(decision) {
+    if (window.__agapSubmittingLisoReview) return;
     const complaintId = new URLSearchParams(window.location.search).get('id');
     if (!complaintId) return;
     const notes = document.getElementById('lisoScreeningDecisionNotes')?.value?.trim() || '';
@@ -11751,6 +11806,14 @@ async function submitLisoReviewDecision(decision) {
         confirmChk?.focus();
         return;
     }
+
+    window.__agapSubmittingLisoReview = true;
+    const actionButtons = document.querySelectorAll('#intake-screening button, [onclick*="submitLisoReviewDecision"]');
+    actionButtons.forEach((btn) => {
+        btn.disabled = true;
+        btn.style.pointerEvents = 'none';
+        btn.style.opacity = '0.65';
+    });
 
     try {
         const fd = new FormData();
@@ -11780,6 +11843,12 @@ async function submitLisoReviewDecision(decision) {
         const res = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: fd });
         const json = await res.json();
         if (!res.ok || !json.success) {
+            window.__agapSubmittingLisoReview = false;
+            actionButtons.forEach((btn) => {
+                btn.disabled = false;
+                btn.style.pointerEvents = '';
+                btn.style.opacity = '';
+            });
             window.agapNotify?.(json.message || 'Unable to save review decision.', 'error', 'LISO Verification');
             return;
         }
@@ -11787,7 +11856,14 @@ async function submitLisoReviewDecision(decision) {
         if (typeof loadComplaintDetails === 'function') {
             await loadComplaintDetails();
         }
+        window.location.reload();
     } catch (err) {
+        window.__agapSubmittingLisoReview = false;
+        actionButtons.forEach((btn) => {
+            btn.disabled = false;
+            btn.style.pointerEvents = '';
+            btn.style.opacity = '';
+        });
         window.agapNotify?.('Failed to connect to verification service.', 'error', 'LISO Verification');
     }
 }

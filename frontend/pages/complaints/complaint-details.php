@@ -61,15 +61,51 @@ if (in_array($roleId, [1, 2], true)) {
         $preparationFlash ??= ['type' => 'error', 'message' => 'Paanyaya preparation is currently unavailable.'];
     }
 }
-$canScreenSelectedIntake = true;
-if ($roleId === 3) {
-    $assignmentStatement = $preparationDb->prepare('SELECT liso_assigned_to, screening_decision FROM complaints WHERE complaint_id = ? LIMIT 1');
-    $assignmentStatement->execute([$complaintId]);
-    $screening = $assignmentStatement->fetch(PDO::FETCH_ASSOC);
-    $assignedLisoId = (int) ($screening['liso_assigned_to'] ?? 0);
-    $canScreenSelectedIntake = $assignedLisoId < 1 || (
-        $assignedLisoId === (int) $_SESSION['user_id'] && ($screening['screening_decision'] ?? '') !== 'Eligible'
+require_once __DIR__ . '/../../../backend/models/CaseModel.php';
+$canScreenSelectedIntake = false;
+$assignedLisoId = 0;
+$intakeScreeningMeta = null;
+try {
+    $assignmentStatement = $preparationDb->prepare(
+        'SELECT c.liso_assigned_to, c.screening_decision, c.status, cs.case_id
+         FROM complaints c
+         LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+         WHERE c.complaint_id = ? LIMIT 1'
     );
+    $assignmentStatement->execute([$complaintId]);
+    $intakeScreeningMeta = $assignmentStatement->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (Throwable $e) {
+    $intakeScreeningMeta = null;
+}
+$isUndocketedIntake = empty($intakeScreeningMeta['case_id']);
+$isIntakeAlreadyEligible = ($intakeScreeningMeta['screening_decision'] ?? '') === 'Eligible'
+    || !$isUndocketedIntake
+    || in_array($intakeScreeningMeta['status'] ?? '', [
+        'Accepted',
+        'Pre-Docketed (Paanyaya)',
+        'Mediation',
+        'Conciliation',
+        'Arbitration',
+        'Settled',
+        'Dismissed',
+        'CFA Issued',
+        'Archived',
+        'Rejected',
+        'Resolved at Paanyaya / Closed'
+    ], true);
+if ($roleId === 3 && $intakeScreeningMeta) {
+    $assignedLisoId = (int) ($intakeScreeningMeta['liso_assigned_to'] ?? 0);
+    $canScreenSelectedIntake = !$isIntakeAlreadyEligible && (
+        $assignedLisoId < 1 || $assignedLisoId === (int) $_SESSION['user_id']
+    );
+}
+$canFormallyDocket = false;
+if (in_array($roleId, [1, 2], true) && !$usesPaanyayaPreparation && !$preparation) {
+    try {
+        $canFormallyDocket = (new CaseModel($preparationDb))->getDocketingError($complaintId) === null;
+    } catch (Throwable $e) {
+        $canFormallyDocket = false;
+    }
 }
 $rawTab = trim((string)($_GET['tab'] ?? 'tab-overview'));
 if (!str_starts_with($rawTab, 'tab-')) {
@@ -194,29 +230,34 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <div class="case-bar-right">
-                <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
-                    <a href="complaint-details.php?id=<?php echo $complaintId; ?>#intake-screening" class="btn-case-primary">Review Intake</a>
-                <?php elseif ($roleId === 3 && $assignedLisoId !== (int) $_SESSION['user_id']): ?>
+                <?php if ($roleId === 3 && $assignedLisoId > 0 && $assignedLisoId !== (int) $_SESSION['user_id']): ?>
                     <span style="color:#64748b; font-size:.82rem; font-weight:700;">Assigned to another LISO</span>
                 <?php endif; ?>
-                <?php if (in_array($roleId, [1, 2], true) && !$usesPaanyayaPreparation && !$preparation): ?>
+                <?php if ($canFormallyDocket): ?>
                     <button type="button" class="btn-case-primary" onclick="docketEligibleIntake(<?php echo $complaintId; ?>)">
                         <span>Formal Docket</span>
                     </button>
                 <?php endif; ?>
-                <button type="button" class="btn-case-status" id="statusTrackerButton" onclick="toggleStatusTracker()" title="Toggle case progression tracking">
-                    <span id="statusDotIndicator" class="status-dot-indicator"></span>
-                    <span id="statusTrackerButtonLabel">Status: In Progress</span>
-                    <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
-                </button>
+                <?php if ($isLuponReadOnly): ?>
+                    <span class="btn-case-status" id="statusTrackerButton" style="cursor:default; pointer-events:none;" title="Current complaint progression status">
+                        <span id="statusDotIndicator" class="status-dot-indicator"></span>
+                        <span id="statusTrackerButtonLabel">Status: Under Review</span>
+                    </span>
+                <?php else: ?>
+                    <button type="button" class="btn-case-status" id="statusTrackerButton" onclick="toggleStatusTracker()" title="Toggle case progression tracking">
+                        <span id="statusDotIndicator" class="status-dot-indicator"></span>
+                        <span id="statusTrackerButtonLabel">Status: In Progress</span>
+                        <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
+                    </button>
+                <?php endif; ?>
                 <?php if (!$isLuponReadOnly): ?>
                     <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         <span>Edit Case</span>
                     </a>
                 <?php else: ?>
-                    <span class="btn-case-status" style="background:#eef6f2; border-color:#cde2d6; color:#102b2d; cursor:default;" title="View Details, Minutes &amp; KP Forms Only">
-                        Read-Only Lupon View
+                    <span class="btn-case-status" style="background:#eef6f2; border-color:#cde2d6; color:#102b2d; cursor:default; pointer-events:none;">
+                        Read-Only Screening View
                     </span>
                 <?php endif; ?>
                 <script>
@@ -239,7 +280,27 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
         <script>
         async function reviewIntake(complaintId, status) {
-            const reviewNotes = document.getElementById('lisoScreeningDecisionNotes').value.trim();
+            if (window.__agapReviewIntakeSubmitting) return;
+            window.__agapReviewIntakeSubmitting = true;
+
+            const notesEl = document.getElementById('lisoScreeningDecisionNotes');
+            const btnNeedsInfo = document.getElementById('btnIntakeNeedsInfo');
+            const btnEligible = document.getElementById('btnMarkIntakeEligible');
+            const activeBtn = status === 'Accepted' ? btnEligible : btnNeedsInfo;
+            const originalLabel = activeBtn ? activeBtn.textContent : '';
+
+            [btnNeedsInfo, btnEligible, notesEl].forEach((el) => {
+                if (el) {
+                    el.disabled = true;
+                    el.style.pointerEvents = 'none';
+                    el.style.opacity = '0.65';
+                }
+            });
+            if (activeBtn) {
+                activeBtn.textContent = 'Saving...';
+            }
+
+            const reviewNotes = (notesEl?.value || '').trim();
             const form = new FormData();
             form.append('complaint_id', complaintId);
             form.append('status', status);
@@ -250,9 +311,24 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 if (!response.ok || !result.success) {
                     throw new Error(result.message || 'Unable to save the screening decision.');
                 }
+                const screeningCard = document.getElementById('intake-screening');
+                if (screeningCard) {
+                    screeningCard.style.display = 'none';
+                }
                 window.agapNotify?.(result.message, 'success');
                 window.location.reload();
             } catch (error) {
+                window.__agapReviewIntakeSubmitting = false;
+                [btnNeedsInfo, btnEligible, notesEl].forEach((el) => {
+                    if (el) {
+                        el.disabled = false;
+                        el.style.pointerEvents = '';
+                        el.style.opacity = '';
+                    }
+                });
+                if (activeBtn && originalLabel) {
+                    activeBtn.textContent = originalLabel;
+                }
                 window.agapNotify?.(error.message, 'error');
             }
         }
@@ -297,12 +373,12 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         </div>
 
         <!-- Horizontal Tabs Navigation Bar -->
-        <nav class="case-tabs-nav" aria-label="Case Sections">
+        <nav class="case-tabs-nav" aria-label="Case Sections" <?php echo ($isLuponReadOnly && $isUndocketedIntake) ? 'style="display: none;"' : ''; ?>>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 <span>Overview &amp; Workflow</span>
             </button>
-            <?php if (!$usesPaanyayaPreparation || $preparation): ?>
+            <?php if (!$isLuponReadOnly && (!$usesPaanyayaPreparation || $preparation)): ?>
             <a href="<?php echo $preparation ? 'complaint-details.php?id=' . $complaintId . '#paanyaya-preparation' : '../paanyaya/stage.php?complaint_id=' . $complaintId; ?>" class="case-tab-item" id="navTabPaanyayaLink" style="text-decoration:none;">
                 <span>🤝 Paanyaya</span>
             </a>
@@ -447,18 +523,36 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <?php if ($roleId === 3 && $canScreenSelectedIntake): ?>
-                <section id="intake-screening" class="case-hero-card" aria-labelledby="intake-screening-title" style="margin-bottom: 18px;">
-                    <h2 id="intake-screening-title">LISO Preliminary Screening</h2>
-                    <p>Review the narrative, parties, and incident details before recording your decision.</p>
-                    <div class="form-group">
-                        <label for="lisoScreeningDecisionNotes">Screening notes</label>
-                        <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000"></textarea>
+                <section id="intake-screening" class="sophos-card" aria-labelledby="intake-screening-title" style="margin-bottom: 18px; border: 1.5px solid #cde2d6; background: linear-gradient(135deg, #ffffff 0%, #f7fbf9 100%);">
+                    <div class="sophos-card-header" style="border-bottom: 1px solid #e2ece7; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <h2 id="intake-screening-title" style="margin: 0; font-size: 1rem; font-weight: 800; color: #102b2d;">LISO Preliminary Screening</h2>
+                            <p style="margin: 2px 0 0; font-size: 0.82rem; color: #475569;">Review the narrative, parties, and incident details below before recording your screening decision.</p>
+                        </div>
+                        <span style="background: #fef3c7; color: #b45309; border: 1px solid #fde68a; border-radius: 999px; padding: 4px 12px; font-size: 0.74rem; font-weight: 700;">Action Required</span>
                     </div>
-                    <div class="case-bar-right">
-                        <button type="button" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
-                        <button type="button" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')">Mark Intake Eligible</button>
+                    <div class="sophos-card-body" style="padding: 16px 20px;">
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label for="lisoScreeningDecisionNotes" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Screening Notes <span style="font-weight: 400; color: #64748b;">(Optional for Eligible, recommended when requesting information)</span></label>
+                            <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000" placeholder="Add screening observations or specify missing details..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff; resize: vertical;"></textarea>
+                        </div>
+                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" id="btnIntakeNeedsInfo" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
+                            <button type="button" id="btnMarkIntakeEligible" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')">Mark Intake Eligible</button>
+                        </div>
                     </div>
                 </section>
+            <?php elseif ($roleId === 3 && ($intakeScreeningMeta['screening_decision'] ?? '') === 'Eligible'): ?>
+                <div class="sophos-card" style="margin-bottom: 18px; border: 1.5px solid #bbf7d0; background: #f0fdf4; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="display: inline-flex; width: 24px; height: 24px; border-radius: 50%; background: #16a34a; color: #ffffff; align-items: center; justify-content: center; font-weight: 800; font-size: 0.82rem;">✓</span>
+                        <div>
+                            <strong style="font-size: 0.9rem; color: #14532d; display: block;">Intake Marked Eligible</strong>
+                            <span style="font-size: 0.8rem; color: #166534;">Preliminary screening is complete. This complaint is now routed to the Paanyaya stage.</span>
+                        </div>
+                    </div>
+                    <span style="background: #dcfce7; color: #166534; border: 1px solid #86efac; border-radius: 999px; padding: 4px 12px; font-size: 0.74rem; font-weight: 700;">Screening Completed</span>
+                </div>
             <?php endif; ?>
 
             <!-- Sophos-Style Hero Section (Light Mode) -->
@@ -468,11 +562,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         <span id="sophosHeroCaseNum" class="sophos-ref-pill">#CMP-2026-0000</span>
                         <span id="heroCaseTypeBadge" class="sophos-tag-select sophos-tag-type">
                             <span id="sophosCaseTypeText">CIVIL COMPLAINT</span>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
                         </span>
-                        <span id="complaintStatusBadge" class="sophos-tag-select sophos-tag-status">
+                        <span id="heroComplaintStatusBadge" class="sophos-tag-select sophos-tag-status">
                             <span id="sophosStatusText">Under Review</span>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
                         </span>
                         <!-- Hidden hook for legacy scripts if needed -->
                         <span id="heroDaysRemainingBadge" style="display: none;"><span id="heroDaysRemainingText"></span></span>
@@ -532,7 +624,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                 </div>
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Admin Status</span>
-                                    <span id="infoStatus" class="sophos-info-val" style="color: #2563eb;">Mediation Stage</span>
+                                    <span id="infoStatus" class="sophos-info-val" style="color: #2563eb;">Loading...</span>
                                 </div>
                             </div>
                         </div>
@@ -630,7 +722,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             <div id="emptyMapPlaceholder" class="empty-map-state-frame" style="display:none; height: 160px;">
                                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                                 <p style="margin: 6px 0 2px; font-weight: 600; font-size: 0.84rem; color: #64748b;">No GPS coordinates pinned</p>
+                                <?php if (!$isLuponReadOnly): ?>
                                 <span style="font-size: 0.76rem; color: #94a3b8;">Can be updated anytime via Edit Case</span>
+                                <?php endif; ?>
                             </div>
                         </div>
                     </div>
@@ -755,7 +849,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <!-- Operational Modules: Case Team & Hearings Schedule Grid -->
-            <div class="operational-two-col">
+            <div class="operational-two-col" id="operationalModulesGrid" <?php echo ($isLuponReadOnly && $isUndocketedIntake) ? 'style="display: none;"' : ''; ?>>
                 <!-- Card: Case Team Assignment -->
                 <div class="operational-card">
                     <div class="operational-card-header">
@@ -763,9 +857,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             <h3>Case Team Assignment</h3>
                             <span class="card-subtitle">Assigned Lupon officers for this case</span>
                         </div>
+                        <?php if (!$isLuponReadOnly): ?>
                         <a href="../cases/case-list.php#caseAssignments" id="cwManageTeamLink" class="btn-small-link">
                             Manage Team &rarr;
                         </a>
+                        <?php endif; ?>
                     </div>
                     <div id="cwTeamContainer" class="parties-list-wrap">
                         <div class="empty-detail-state">Loading assigned case team...</div>
@@ -779,9 +875,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             <h3>Hearings &amp; Deadlines Schedule</h3>
                             <span class="card-subtitle">Mediation, conciliation, and session records</span>
                         </div>
+                        <?php if (!$isLuponReadOnly): ?>
                         <a id="cwOpenHearingsLink" href="#" class="btn-small-link" style="display: none;">
                             Open Schedule &rarr;
                         </a>
+                        <?php endif; ?>
                     </div>
                     <div id="cwHearingsContainer">
                         <div class="empty-detail-state">Loading scheduled hearings...</div>
@@ -790,7 +888,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
 
             <!-- OFFICIAL KP FORMS Card -->
-            <div class="kp-forms-card-box">
+            <div class="kp-forms-card-box" id="officialKpFormsCardBox" <?php echo ($isLuponReadOnly && $isUndocketedIntake) ? 'style="display: none;"' : ''; ?>>
                 <div class="kp-forms-header">
                     <div>
                         <h3 style="margin: 0;">OFFICIAL KP FORMS</h3>
@@ -832,9 +930,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span id="mediationSessionsCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 sessions</span>
+                        <?php if (!$isLuponReadOnly): ?>
                         <button type="button" class="btn-create" onclick="openEmbeddedScheduleModal('Mediation')" style="font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                             + Schedule Session
                         </button>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div id="mediationSessionsListContainer" style="padding: 18px 20px;">
@@ -872,9 +972,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span id="conciliationSessionsCountBadge" style="font-size: 0.78rem; background: #e2e8f0; color: #475569; padding: 2px 8px; border-radius: 9999px; font-weight: 600;">0 sessions</span>
+                        <?php if (!$isLuponReadOnly): ?>
                         <button type="button" class="btn-create" id="btnSchedConciliation" onclick="openEmbeddedScheduleModal('Conciliation')" style="font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 4px;">
                             + Schedule Conciliation Session
                         </button>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div id="conciliationSessionsListContainer" style="padding: 18px 20px;">
@@ -884,11 +986,13 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <span style="font-size: 0.82rem; color: #64748b;">
                         Pangkat is constituted from Lupon members chosen by the parties (KP Form 10/11) to conduct formal conciliation within 15 days.
                     </span>
+                    <?php if (!$isLuponReadOnly): ?>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button type="button" class="btn-secondary" onclick="openEmbeddedRecordOutcomeModal('Conciliation')" style="font-size: 0.82rem; padding: 6px 12px;">
                             Record Conciliation Outcome
                         </button>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -954,6 +1058,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             </div>
                         </div>
 
+                        <?php if (!$isLuponReadOnly): ?>
                         <!-- Top Action Buttons -->
                         <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #bbf7d0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
@@ -973,6 +1078,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                 </button>
                             </div>
                         </div>
+                        <?php endif; ?>
                     </div>
                 </div>
 

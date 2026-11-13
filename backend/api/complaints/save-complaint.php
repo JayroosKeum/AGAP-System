@@ -104,6 +104,22 @@ try {
     $caseType = in_array($inputData['case_type'] ?? '', ['Civil', 'Criminal'], true) ? $inputData['case_type'] : 'Civil';
     $incidentDate = !empty($inputData['incident_date']) ? $inputData['incident_date'] : null;
     $incidentTime = !empty($inputData['incident_time']) ? $inputData['incident_time'] : null;
+    if (!empty($incidentDate)) {
+        $parsedIncidentDate = DateTimeImmutable::createFromFormat('!Y-m-d', trim((string)$incidentDate));
+        if (!$parsedIncidentDate || $parsedIncidentDate->format('Y-m-d') !== trim((string)$incidentDate)) {
+            throw new Exception('Incident date is invalid.');
+        }
+        if ($parsedIncidentDate > new DateTimeImmutable('today')) {
+            throw new Exception('Incident date and time cannot be in the future.');
+        }
+        if (!empty($incidentTime)) {
+            $normalizedTime = substr(trim((string)$incidentTime), 0, 5);
+            $parsedIncidentDateTime = DateTimeImmutable::createFromFormat('Y-m-d H:i', trim((string)$incidentDate) . ' ' . $normalizedTime);
+            if ($parsedIncidentDateTime && $parsedIncidentDateTime > new DateTimeImmutable('now')) {
+                throw new Exception('Incident date and time cannot be in the future.');
+            }
+        }
+    }
     $incidentLocation = trim((string)($inputData['incident_location'] ?? 'Barangay Tumana'));
     $incidentPurok = trim((string)($inputData['incident_purok'] ?? ''));
     $incidentStreet = trim((string)($inputData['incident_street'] ?? ''));

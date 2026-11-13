@@ -9,7 +9,7 @@ require_once __DIR__ . '/PDFService.php';
 final class PaanyayaPreparationService
 {
     private const ASSIGNED_WALK_IN = "
-        c.intake_source = 'Walk-in' AND c.liso_assigned_to IS NOT NULL
+        c.is_draft = 0
         AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
         AND NOT EXISTS (SELECT 1 FROM paanyayas p WHERE p.complaint_id = c.complaint_id)
         AND NOT EXISTS (SELECT 1 FROM paanyaya_sessions s WHERE s.complaint_id = c.complaint_id)
@@ -20,8 +20,8 @@ final class PaanyayaPreparationService
         )";
 
     private const ELIGIBLE = self::ASSIGNED_WALK_IN . "
-        AND c.is_draft = 0 AND c.status = 'Accepted' AND c.screening_decision = 'Eligible'
-        AND c.liso_reviewed_at IS NOT NULL AND c.liso_reviewed_by = c.liso_assigned_to";
+        AND c.status = 'Accepted' AND c.screening_decision = 'Eligible'
+        AND c.liso_reviewed_at IS NOT NULL AND (c.liso_assigned_to IS NULL OR c.liso_reviewed_by = c.liso_assigned_to)";
 
     private const SECOND_ELIGIBLE = "
         c.status = 'Pre-Docketed (Paanyaya)' AND c.is_draft = 0

@@ -1046,7 +1046,7 @@ include '../../layouts/header.php';
                                 <label for="incidentDateTime" id="lblIncidentDateTime">
                                     <?php echo $isTimeUnknownOld ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?> <span class="required-mark">*</span>
                                 </label>
-                                <input type="<?php echo $isTimeUnknownOld ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($defaultDt); ?>">
+                                <input type="<?php echo $isTimeUnknownOld ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required max="<?php echo $isTimeUnknownOld ? date('Y-m-d') : date('Y-m-d\TH:i'); ?>" value="<?php echo htmlspecialchars($defaultDt); ?>">
                                 <div class="time-options-row">
                                     <label class="time-option-label">
                                         <input type="checkbox" name="is_time_approximate" value="1" id="isTimeApproximate" <?php echo !empty($old['is_time_approximate']) ? 'checked' : ''; ?> <?php echo $isTimeUnknownOld ? 'disabled' : ''; ?>>
@@ -1057,7 +1057,7 @@ include '../../layouts/header.php';
                                         <span>Exact time unknown</span>
                                     </label>
                                 </div>
-                                <span id="futureDateNotice" class="future-date-hint" style="display:none;">Notice: Selected incident date is in the future. Please verify before filing.</span>
+                                <span id="futureDateNotice" class="future-date-hint" style="display:none; color:#dc2626; font-weight:600;">Incident date and time cannot be in the future.</span>
                             </div>
 
                             <div class="location-split-layout">
@@ -4763,16 +4763,34 @@ document.addEventListener('DOMContentLoaded', () => {
     const dtField = document.getElementById('incidentDateTime');
     const lblDtField = document.getElementById('lblIncidentDateTime');
     const futureNotice = document.getElementById('futureDateNotice');
+    function getLocalMaxDateTime(isDateOnly) {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        return isDateOnly ? datePart : `${datePart}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    }
     function checkFutureDate() {
-        if (!dtField || !futureNotice) return;
+        if (!dtField || !futureNotice) return true;
+        const isDateOnly = dtField.type === 'date';
+        dtField.max = getLocalMaxDateTime(isDateOnly);
         const val = dtField.value;
         if (!val) {
             futureNotice.style.display = 'none';
-            return;
+            dtField.setCustomValidity('');
+            return true;
         }
-        const selDate = new Date(val);
         const now = new Date();
-        futureNotice.style.display = (selDate > now) ? 'block' : 'none';
+        let isFuture = false;
+        if (isDateOnly && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            const todayStr = getLocalMaxDateTime(true);
+            isFuture = val > todayStr;
+        } else {
+            const selDate = new Date(val);
+            isFuture = !Number.isNaN(selDate.getTime()) && selDate > now;
+        }
+        futureNotice.style.display = isFuture ? 'block' : 'none';
+        dtField.setCustomValidity(isFuture ? 'Incident date and time cannot be in the future.' : '');
+        return !isFuture;
     }
     if (dtField) {
         dtField.addEventListener('change', checkFutureDate);
@@ -5119,6 +5137,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const dt = document.getElementById('incidentDateTime')?.value;
             if (!dt) {
                 window.agapNotify?.('Please provide the incident date and time.', 'error');
+                document.getElementById('incidentDateTime')?.focus();
+                return false;
+            }
+            if (!checkFutureDate()) {
+                window.agapNotify?.('Incident date and time cannot be in the future.', 'error');
                 document.getElementById('incidentDateTime')?.focus();
                 return false;
             }

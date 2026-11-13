@@ -24,6 +24,7 @@ class ComplaintLifecycleService
     {
         return [
 
+            self::PAANYAYA,
             self::MEDIATION,
             self::CONCILIATION,
             self::CFA,
@@ -232,8 +233,16 @@ class ComplaintLifecycleService
          */
         if (
             $caseStatus === 'Mediation' ||
+            $caseStatus === 'Docketed' ||
             $complaintStatus === 'Mediation' ||
             $hasMediation
+        ) {
+            return self::MEDIATION;
+        }
+
+        return self::PAANYAYA;
+
+        if (false
         ) {
             return self::MEDIATION;
         }

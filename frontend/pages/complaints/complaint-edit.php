@@ -622,7 +622,7 @@ include __DIR__ . '/../../layouts/header.php';
                                     <label for="incidentDateTime" id="lblIncidentDateTime">
                                         <?php echo !empty($effIsTimeUnknown) ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?> <span class="required-mark">*</span>
                                     </label>
-                                    <input type="<?php echo !empty($effIsTimeUnknown) ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required value="<?php echo htmlspecialchars($effDatetime); ?>">
+                                    <input type="<?php echo !empty($effIsTimeUnknown) ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required max="<?php echo !empty($effIsTimeUnknown) ? date('Y-m-d') : date('Y-m-d\TH:i'); ?>" value="<?php echo htmlspecialchars($effDatetime); ?>">
                                     <div class="time-options-row">
                                         <label class="time-option-label">
                                             <input type="checkbox" name="is_time_approximate" value="1" id="isTimeApproximate" <?php echo !empty($effIsTimeApprox) ? 'checked' : ''; ?> <?php echo !empty($effIsTimeUnknown) ? 'disabled' : ''; ?>>
@@ -633,7 +633,7 @@ include __DIR__ . '/../../layouts/header.php';
                                             <span>Exact time unknown</span>
                                         </label>
                                     </div>
-                                    <span id="futureDateNotice" class="future-date-hint" style="display:none;">Notice: Selected incident date is in the future. Please verify before saving.</span>
+                                    <span id="futureDateNotice" class="future-date-hint" style="display:none; color:#dc2626; font-weight:600;">Incident date and time cannot be in the future.</span>
                                 </div>
                             </div>
 
@@ -3497,16 +3497,33 @@ document.addEventListener('DOMContentLoaded', () => {
     const dtField = document.getElementById('incidentDateTime');
     const lblDtField = document.getElementById('lblIncidentDateTime');
     const futureNotice = document.getElementById('futureDateNotice');
+    function getLocalMaxDateTime(isDateOnly) {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const datePart = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+        return isDateOnly ? datePart : `${datePart}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    }
     function checkFutureDate() {
-        if (!dtField || !futureNotice) return;
+        if (!dtField || !futureNotice) return true;
+        const isDateOnly = dtField.type === 'date';
+        dtField.max = getLocalMaxDateTime(isDateOnly);
         const val = dtField.value;
         if (!val) {
             futureNotice.style.display = 'none';
-            return;
+            dtField.setCustomValidity('');
+            return true;
         }
-        const selDate = new Date(val);
         const now = new Date();
-        futureNotice.style.display = (selDate > now) ? 'block' : 'none';
+        let isFuture = false;
+        if (isDateOnly && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            isFuture = val > getLocalMaxDateTime(true);
+        } else {
+            const selDate = new Date(val);
+            isFuture = !Number.isNaN(selDate.getTime()) && selDate > now;
+        }
+        futureNotice.style.display = isFuture ? 'block' : 'none';
+        dtField.setCustomValidity(isFuture ? 'Incident date and time cannot be in the future.' : '');
+        return !isFuture;
     }
     if (dtField) {
         dtField.addEventListener('change', checkFutureDate);

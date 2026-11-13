@@ -39,7 +39,7 @@ class Summons
             require_once __DIR__ . '/Paanyaya.php';
             $paaModel = new Paanyaya($this->conn);
             $prereq = $paaModel->checkSummonsPrerequisite($complaintId);
-            if (false && !$prereq['allowed'] && empty($mediationData['override_paanyaya'])) {
+            if (!$prereq['allowed'] && empty($mediationData['override_paanyaya'])) {
                 $this->conn->rollBack();
                 return [
                     'success' => false,

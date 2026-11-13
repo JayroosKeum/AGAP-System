@@ -403,14 +403,6 @@ class ComplaintController
             $actorId = (int) ($_SESSION['user_id'] ?? 1);
             $effectiveStatus = $result['status'] ?? $status;
             $this->audit->log($actorId, 'Reviewed Complaint: ' . $effectiveStatus, 'Complaints', $id);
-            if ($effectiveStatus === 'Accepted') {
-                try {
-                    require_once __DIR__ . '/../services/KpFormService.php';
-                    (new KpFormService())->autoGenerateForEvent('complaint_filed', $id, $actorId);
-                } catch (Throwable $kpErr) {
-                    error_log('Review KP Form 7 generation warning: ' . $kpErr->getMessage());
-                }
-            }
         }
         return $result;
     }

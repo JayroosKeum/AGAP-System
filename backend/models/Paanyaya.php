@@ -1760,7 +1760,7 @@ class Paanyaya
      */
     public function checkSummonsPrerequisite(int $complaintId): array
     {
-        $cStmt = $this->conn->prepare('SELECT status FROM complaints WHERE complaint_id = ? LIMIT 1');
+        $cStmt = $this->conn->prepare('SELECT status, screening_decision FROM complaints WHERE complaint_id = ? LIMIT 1');
         $cStmt->execute([$complaintId]);
         $compRow = $cStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -1769,6 +1769,50 @@ class Paanyaya
                 'allowed' => false,
                 'reason' => 'case_closed',
                 'message' => 'Ang reklamo ay ' . ($compRow['status'] === 'Dismissed' ? 'na-dismiss' : 'nalutas na') . '. Hindi na maaaring maglabas ng pormal na summons.'
+            ];
+        }
+
+        $caseStmt = $this->conn->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
+        $caseStmt->execute([$complaintId]);
+        if ($caseStmt->fetchColumn()) {
+            return [
+                'allowed' => true,
+                'message' => 'Mediation summons unlocked.'
+            ];
+        }
+
+        $escalatedStmt = $this->conn->prepare(
+            "SELECT (
+                EXISTS (
+                    SELECT 1 FROM paanyaya_minutes pm
+                    WHERE pm.complaint_id = ? AND pm.complainant_choice = 'Escalate_Mediation'
+                )
+                OR EXISTS (
+                    SELECT 1 FROM paanyaya_minutes pm2
+                    WHERE pm2.complaint_id = ? AND pm2.stage_type = 'Paanyaya 2'
+                      AND pm2.outcome IN ('No_Agreement', 'Party_Absent')
+                )
+                OR EXISTS (
+                    SELECT 1 FROM paanyaya_sessions ps
+                    WHERE ps.complaint_id = ?
+                      AND ps.session_outcome IN ('Impasse_Escalate', 'Max_Failed_Escalate', 'Absent_Escalate', 'Default_Escalate')
+                )
+                OR EXISTS (
+                    SELECT 1 FROM paanyaya_stages pst
+                    WHERE pst.complaint_id = ? AND pst.review_status = 'Approved for Summons'
+                )
+                OR EXISTS (
+                    SELECT 1 FROM complaint_paanyaya cp
+                    WHERE cp.complaint_id = ? AND cp.status IN ('Failed', 'No_Show', 'Escalated')
+                )
+            ) AS is_escalated"
+        );
+        $escalatedStmt->execute([$complaintId, $complaintId, $complaintId, $complaintId, $complaintId]);
+        if (!(bool) $escalatedStmt->fetchColumn()) {
+            return [
+                'allowed' => false,
+                'reason' => 'paanyaya_required',
+                'message' => 'Conduct the Paanyaya dialogue first. Formal complaint docketing and mediation summons are only unlocked if Paanyaya is not resolved.'
             ];
         }
 
