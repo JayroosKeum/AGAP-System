@@ -149,10 +149,11 @@ class Document
     public function getGeneratedById(int $documentId): array|false
     {
         $stmt = $this->conn->prepare(
-            "SELECT gd.*, dt.template_name, c.case_number
+            "SELECT gd.*, dt.template_name, c.case_number, co.status, co.resolved_without_docketing
              FROM generated_documents gd
              INNER JOIN document_templates dt ON dt.template_id = gd.template_id
              INNER JOIN cases c ON c.case_id = gd.case_id
+             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              WHERE gd.document_id = ?"
         );
         $stmt->execute([$documentId]);

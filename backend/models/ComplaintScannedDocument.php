@@ -236,11 +236,14 @@ class ComplaintScannedDocument
             SELECT csd.*,
                    c.complaint_number,
                    c.complaint_title,
+                   c.status,
+                   c.resolved_without_docketing,
+                   cs.case_id AS formal_case_id,
                    cs.case_number,
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS uploaded_by_name
             FROM complaint_scanned_documents csd
             INNER JOIN complaints c ON c.complaint_id = csd.complaint_id
-            LEFT JOIN cases cs ON cs.case_id = csd.case_id OR cs.complaint_id = csd.complaint_id
+            LEFT JOIN cases cs ON cs.complaint_id = csd.complaint_id
             LEFT JOIN users u ON u.user_id = csd.uploaded_by
             WHERE csd.doc_id = ?
         ");

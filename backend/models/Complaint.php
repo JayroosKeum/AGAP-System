@@ -87,6 +87,7 @@ class Complaint
 
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) {
+                $row['kp7_available'] = ComplaintLifecycleService::canAccessKpForm7($row);
                 $row['lifecycle_status'] = (new ComplaintLifecycleService($this->conn))->forComplaint((int) $row['complaint_id']);
                 $screening = $this->conn->prepare('SELECT * FROM complaint_intake_screenings WHERE complaint_id = ?');
                 $screening->execute([(int) $row['complaint_id']]);

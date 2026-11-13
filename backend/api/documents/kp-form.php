@@ -10,6 +10,7 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../services/PDFService.php';
 require_once __DIR__ . '/../../services/KpFormService.php';
+require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
 
 $conn = (new Database())->connect();
 $documentId = filter_input(INPUT_GET, 'document_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['document_id']) ? (int) $_GET['document_id'] : null);
@@ -24,11 +25,13 @@ if ($documentId) {
     // If document_id is specified, lookup document joined with cases, pangkat_groups, and hearings
     $docStmt = $conn->prepare("
         SELECT gd.*, dt.template_name, c.case_id, c.case_number, c.complaint_id,
+               co.status, co.resolved_without_docketing,
                pg.pangkat_id, pg.formation_date, pg.selection_method,
                h.hearing_id AS linked_hearing_id, h.hearing_date, h.venue AS hearing_venue
         FROM generated_documents gd
         INNER JOIN document_templates dt ON dt.template_id = gd.template_id
         INNER JOIN cases c ON c.case_id = gd.case_id
+        INNER JOIN complaints co ON co.complaint_id = c.complaint_id
         LEFT JOIN pangkat_groups pg ON pg.case_id = c.case_id
         LEFT JOIN hearings h ON (h.kp12_document_id = gd.document_id OR (h.case_id = c.case_id AND h.hearing_type = 'Conciliation'))
         WHERE gd.document_id = ?
@@ -39,6 +42,10 @@ if ($documentId) {
     $doc = $docStmt->fetch(PDO::FETCH_ASSOC);
 
     if ($doc) {
+        if (ComplaintLifecycleService::isKpForm7($doc['template_name']) && !ComplaintLifecycleService::canAccessKpForm7($doc)) {
+            http_response_code(403);
+            exit('KP Form 7 is on hold until formal docketing.');
+        }
         $caseId = (int) $doc['case_id'];
         $formCode = $doc['template_name'];
         if (!$hearingId && !empty($doc['linked_hearing_id'])) {
@@ -66,6 +73,25 @@ if ($documentId) {
             }
         }
     }
+}
+
+if (ComplaintLifecycleService::isKpForm7($formCode)) {
+    $complaint = $doc ?? null;
+    if (!$complaint) {
+        $lookup = $conn->prepare(
+            'SELECT co.status, co.resolved_without_docketing, c.case_id
+             FROM complaints co LEFT JOIN cases c ON c.complaint_id = co.complaint_id
+             WHERE ' . ($complaintId ? 'co.complaint_id' : 'c.case_id') . ' = ?'
+        );
+        $lookup->execute([$complaintId ?: $caseId]);
+        $complaint = $lookup->fetch(PDO::FETCH_ASSOC);
+    }
+    if (!$complaint || !ComplaintLifecycleService::canAccessKpForm7($complaint)) {
+        http_response_code(403);
+        exit('KP Form 7 is on hold until formal docketing.');
+    }
+    $caseId = (int) $complaint['case_id'];
+    $formCode = 'KP Form 7';
 }
 
 if (!$caseId && $complaintId) {

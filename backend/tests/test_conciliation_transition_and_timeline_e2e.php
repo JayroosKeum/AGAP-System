@@ -21,6 +21,7 @@ require_once __DIR__ . '/../services/PangkatService.php';
 require_once __DIR__ . '/../services/SummonDeliveryService.php';
 require_once __DIR__ . '/../controllers/GPSController.php';
 require_once __DIR__ . '/TestDataCleanup.php';
+require_once __DIR__ . '/TestLisoDuty.php';
 
 echo "====================================================================\n";
 echo "   CONCILIATION TRANSITION & STAGE-ISOLATED OFFICER'S RETURN TESTS \n";
@@ -84,6 +85,8 @@ try {
     $respondentResidentId = (int) $residents[1]['resident_id'];
 
     $complaintModel = new Complaint();
+    $lisoId = (int) $db->query("SELECT user_id FROM users WHERE username = 'luponmember' AND role_id = 3")->fetchColumn();
+    startTestLisoDuty($db, $lisoId);
     $compCreate = $complaintModel->create([
         'complaint_title' => 'E2E Conciliation Transition Boundary Test',
         'category_id' => 1,
@@ -100,11 +103,12 @@ try {
         'latitude' => 14.6525,
         'longitude' => 121.0850,
         'duplicate_acknowledged' => 1,
+        'liso_assigned_to' => $lisoId,
         'jurisdiction_screened' => 1,
         'created_by' => 1
     ]);
     $testComplaintId = (int)($compCreate['complaint_id'] ?? 0);
-    testAssert($testComplaintId > 0, "Test complaint created with ID: {$testComplaintId}");
+    testAssert($testComplaintId > 0, "Test complaint created with ID: {$testComplaintId} " . ($compCreate['message'] ?? ''));
     $cleanup->trackComplaint($testComplaintId);
 
     // Find open Tuesday slot
@@ -151,6 +155,10 @@ try {
     $firstHearing = $hearings[0];
     $firstHearingId = (int)$firstHearing['hearing_id'];
     $db->prepare("UPDATE hearings SET status = 'Completed', attendance_recorded_at = NOW() WHERE hearing_id = ?")->execute([$firstHearingId]);
+    $insertMinutes = $db->prepare("INSERT INTO hearing_minutes
+        (hearing_id, case_id, session_type, session_outcome, status, recorded_by)
+        VALUES (?, ?, ?, ?, 'Finalized', 1)");
+    $insertMinutes->execute([$firstHearingId, $testCaseId, '1st Mediation', 'Continue Mediation']);
 
     // Schedule and conclude 2nd mediation
     $med2Date = (new DateTime($medDateStr . ' +7 days'))->format('Y-m-d');
@@ -165,6 +173,7 @@ try {
     testAssert(!empty($med2Res['success']), "2nd Mediation session scheduled: " . ($med2Res['message'] ?? ''));
     $secondHearingId = (int)$med2Res['hearing_id'];
     $db->prepare("UPDATE hearings SET status = 'Completed', attendance_recorded_at = NOW() WHERE hearing_id = ?")->execute([$secondHearingId]);
+    $insertMinutes->execute([$secondHearingId, $testCaseId, '2nd Mediation', 'Elevate to Pangkat']);
     testAssert(true, "Completed 2 Mediation sessions; eligible for Pangkat elevation");
 
     // -------------------------------------------------------------
@@ -200,8 +209,8 @@ try {
         'venue' => 'Lupon Court Room'
     ], 1);
     testAssert(empty($tuesdayRes['success']), "Referral with Tuesday conciliation booking was properly rejected: " . ($tuesdayRes['message'] ?? ''));
-    testAssert(strpos($tuesdayRes['message'] ?? '', 'reserved exclusively for Punong Barangay Mediation') !== false,
-        "Tuesday rejection gives correct statutory reason");
+    testAssert(str_contains($tuesdayRes['message'] ?? '', 'Monday, Wednesday, Thursday, or Friday'),
+        'Referral explains the allowed conciliation days');
 
     // Refer with valid Thursday date
     $referralResult = $stageModel->referToPangkat($testCaseId, [

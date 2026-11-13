@@ -10,7 +10,10 @@ require_once __DIR__ . '/../controllers/CFAController.php';
 require_once __DIR__ . '/../services/KpFormService.php';
 require_once __DIR__ . '/../services/OfficeLogisticsService.php';
 
+require_once __DIR__ . '/TestDataCleanup.php';
+
 $db = (new Database())->connect();
+$cleanup = new TestDataCleanup($db);
 
 echo "====================================================================\n";
 echo "   E2E TESTING: CERTIFICATE TO FILE ACTION (CFA) & ARBITRATION      \n";
@@ -44,19 +47,6 @@ function getNonHolidayWeekday(string $startDate = 'now', int $daysAhead = 1): st
     return $curr->format('Y-m-d 10:00:00');
 }
 
-// Clean up old test data
-$db->exec("DELETE FROM cfa_records WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM arbitration_records WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM show_cause_evaluations WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM hearing_minutes WHERE hearing_id IN (SELECT hearing_id FROM hearings WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%'))");
-$db->exec("DELETE FROM hearing_attendance WHERE hearing_id IN (SELECT hearing_id FROM hearings WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%'))");
-$db->exec("DELETE FROM hearings WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM case_stages WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM generated_documents WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%'");
-$db->exec("DELETE FROM complaint_parties WHERE complaint_id IN (SELECT complaint_id FROM complaints WHERE complaint_title LIKE 'E2E Test%')");
-$db->exec("DELETE FROM complaints WHERE complaint_title LIKE 'E2E Test%'");
-
 // Ensure default residents exist
 $resId1 = $db->query("SELECT resident_id FROM residents ORDER BY resident_id ASC LIMIT 1")->fetchColumn() ?: 1;
 $resId2 = $db->query("SELECT resident_id FROM residents WHERE resident_id != {$resId1} ORDER BY resident_id ASC LIMIT 1")->fetchColumn() ?: 2;
@@ -73,6 +63,7 @@ echo "\n--- TEST 1: Complainant Default -> KP Form 20-A (Bar Action) ---\n";
 $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
 VALUES ('CMP-E2E-CFA-1', 'E2E Test Complainant Barred', 'Mediation', 1, 'Civil', CURDATE(), 'Dispute 1', 1, NOW())")->execute();
 $comp1 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp1);
 $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")->execute([$comp1, $resId1, $comp1, $resId2]);
 
 $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, 'E2E-CFA-001', 'Mediation', CURDATE(), NOW())")->execute([$comp1]);
@@ -135,6 +126,7 @@ echo "\n--- TEST 2: Respondent Default -> KP Form 20-B (Bar Counterclaim) & KP F
 $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
 VALUES ('CMP-E2E-CFA-2', 'E2E Test Respondent Default', 'Mediation', 1, 'Civil', CURDATE(), 'Dispute 2', 1, NOW())")->execute();
 $comp2 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp2);
 $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")->execute([$comp2, $resId1, $comp2, $resId2]);
 
 $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, 'E2E-CFA-002', 'Mediation', CURDATE(), NOW())")->execute([$comp2]);
@@ -188,6 +180,7 @@ echo "\n--- TEST 3: Conciliation Impasse -> KP Form 20 ---\n";
 $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
 VALUES ('CMP-E2E-CFA-3', 'E2E Test Conciliation Impasse', 'Conciliation', 1, 'Civil', CURDATE(), 'Dispute 3', 1, NOW())")->execute();
 $comp3 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp3);
 $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")->execute([$comp3, $resId1, $comp3, $resId2]);
 
 $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, 'E2E-CFA-003', 'Conciliation', CURDATE(), NOW())")->execute([$comp3]);
@@ -219,6 +212,7 @@ echo "\n--- TEST 4: Voluntary Arbitration during Mediation (Punong Barangay Pres
 $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
 VALUES ('CMP-E2E-ARB-1', 'E2E Test Arbitration Mediation', 'Mediation', 1, 'Civil', CURDATE(), 'Arbitration Dispute 1', 1, NOW())")->execute();
 $comp4 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp4);
 $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")->execute([$comp4, $resId1, $comp4, $resId2]);
 
 $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, 'E2E-ARB-001', 'Mediation', CURDATE(), NOW())")->execute([$comp4]);
@@ -310,6 +304,7 @@ echo "\n--- TEST 5: Voluntary Arbitration during Conciliation (Pangkat Chairman 
 $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
 VALUES ('CMP-E2E-ARB-2', 'E2E Test Arbitration Conciliation', 'Conciliation', 1, 'Civil', CURDATE(), 'Arbitration Dispute 2', 1, NOW())")->execute();
 $comp5 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp5);
 $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")->execute([$comp5, $resId1, $comp5, $resId2]);
 
 $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, 'E2E-ARB-002', 'Conciliation', CURDATE(), NOW())")->execute([$comp5]);
@@ -343,19 +338,6 @@ assertCondition(!empty($resSchedArb5['success']), "Arbitration hearing before Pa
 
 $presider5 = (int) $db->query("SELECT presiding_officer_id FROM hearings WHERE hearing_id = {$resSchedArb5['hearing_id']}")->fetchColumn();
 assertCondition($presider5 === (int) $pangkatOfficerId, "Presiding officer correctly auto-assigned to Pangkat Chairman");
-
-// Cleanup after test run
-$db->exec("DELETE FROM cfa_records WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM arbitration_records WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM show_cause_evaluations WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM hearing_minutes WHERE hearing_id IN (SELECT hearing_id FROM hearings WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%'))");
-$db->exec("DELETE FROM hearing_attendance WHERE hearing_id IN (SELECT hearing_id FROM hearings WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%'))");
-$db->exec("DELETE FROM hearings WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM case_stages WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM generated_documents WHERE case_id IN (SELECT case_id FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%')");
-$db->exec("DELETE FROM cases WHERE case_number LIKE 'E2E-CFA-%' OR case_number LIKE 'E2E-ARB-%'");
-$db->exec("DELETE FROM complaint_parties WHERE complaint_id IN (SELECT complaint_id FROM complaints WHERE complaint_title LIKE 'E2E Test%')");
-$db->exec("DELETE FROM complaints WHERE complaint_title LIKE 'E2E Test%'");
 
 echo "\n====================================================================\n";
 echo "   TOTAL TESTS: " . ($passCount + $failCount) . " | PASSED: {$passCount} | FAILED: {$failCount}\n";

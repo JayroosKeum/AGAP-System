@@ -4,6 +4,7 @@ session_start();
 
 require_once __DIR__ . '/../../models/ComplaintScannedDocument.php';
 require_once __DIR__ . '/../../services/AuditService.php';
+require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
 
 $isJson = (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) ||
     (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
@@ -39,8 +40,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             echo 'Scanned complaint document not found.';
             exit;
         }
+        if (!ComplaintLifecycleService::canAccessKpForm7([
+            'case_id' => $record['formal_case_id'],
+            'status' => $record['status'],
+            'resolved_without_docketing' => $record['resolved_without_docketing'],
+        ])) {
+            http_response_code(403);
+            exit('KP Form 7 is on hold until formal docketing.');
+        }
 
-        $root = dirname(__DIR__, 2);
+        $root = dirname(__DIR__, 3);
         $absolutePath = $root . '/' . $record['file_path'];
 
         if (!is_file($absolutePath)) {

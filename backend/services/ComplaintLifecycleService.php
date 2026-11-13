@@ -20,6 +20,18 @@ class ComplaintLifecycleService
             (new Database())->connect();
     }
 
+    public static function canAccessKpForm7(array $complaint): bool
+    {
+        return (int) ($complaint['case_id'] ?? 0) > 0
+            && empty($complaint['resolved_without_docketing'])
+            && stripos((string) ($complaint['status'] ?? ''), 'paanyaya') === false;
+    }
+
+    public static function isKpForm7(string $name): bool
+    {
+        return stripos($name, 'KP Form 7') !== false || stripos($name, 'Blg. 7') !== false;
+    }
+
     public static function allowedStatuses(): array
     {
         return [

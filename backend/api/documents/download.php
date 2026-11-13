@@ -3,6 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 require_once __DIR__ . '/../../controllers/DocumentController.php';
+require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
@@ -17,6 +18,10 @@ $record = $documentId ? (new DocumentController())->getDownload((int) $documentI
 if (!$record) {
     http_response_code(404);
     exit('Generated document not found.');
+}
+if (ComplaintLifecycleService::isKpForm7($record['template_name']) && !ComplaintLifecycleService::canAccessKpForm7($record)) {
+    http_response_code(403);
+    exit('KP Form 7 is on hold until formal docketing.');
 }
 $root = realpath(dirname(__DIR__, 3));
 $storage = realpath(dirname(__DIR__, 3) . '/storage');

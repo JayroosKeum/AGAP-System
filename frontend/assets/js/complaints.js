@@ -1776,17 +1776,7 @@ function renderOfficialKpForms(workspace, complaint) {
     const filedDate = activeComplaint.created_at ? formatDateReadable(activeComplaint.created_at) : 'N/A';
 
     const rawDocs = workspace?.documents || [];
-    const paanyayaStatuses = [
-        'Pre-Docketed (Paanyaya)',
-        '1st Paanyaya Failed (No-Show)',
-        'Paanyaya In Progress',
-        'Resolved at Paanyaya / Closed',
-        'Paanyaya'
-    ];
-    const isPaanyaya = (!activeComplaint.case_id && !workspace?.case?.case_id) ||
-                       paanyayaStatuses.includes(activeComplaint.status || '') ||
-                       Boolean(activeComplaint.resolved_without_docketing) ||
-                       (typeof activeComplaint.status === 'string' && activeComplaint.status.toLowerCase().includes('paanyaya'));
+    const kp7OnHold = activeComplaint.kp7_available !== true;
     const hasPaanyayaDoc = Boolean(
         activeComplaint.paanyaya ||
         window.paanyayaStagesData?.stage_1?.details?.invitation_date ||
@@ -1844,7 +1834,7 @@ function renderOfficialKpForms(workspace, complaint) {
         (stg2Details.status && stg2Details.status !== 'Not Started')
     );
 
-    const kp7IssuedCount = (complaintId > 0 && !isPaanyaya) ? 1 : 0;
+    const kp7IssuedCount = (complaintId > 0 && !kp7OnHold) ? 1 : 0;
     const paanyayaIssuedCount = (complaintId > 0 && hasPaanyayaDoc) ? (hasP2Attempt ? 2 : 1) : 0;
     const totalCount = docs.length + kp7IssuedCount + paanyayaIssuedCount;
     const countText = `${totalCount} Issued`;
@@ -1979,7 +1969,7 @@ function renderOfficialKpForms(workspace, complaint) {
 
     // 1. Primary Complaint Form: KP Form 7 (Reklamo)
     if (complaintId > 0) {
-        if (isPaanyaya) {
+        if (kp7OnHold) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #f8fafc; border-left: 4px solid #f59e0b;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
@@ -2023,7 +2013,7 @@ function renderOfficialKpForms(workspace, complaint) {
                             Preview / Print
                         </button>
                         ${hasScan ? `
-                            <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
+                            <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(scanDoc.doc_id)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
                                 View Scan
                             </a>
                             <button type="button" class="btn-small-link" onclick="openScanHistoryModal(${Number(complaintId)})" title="View version history">
@@ -7552,22 +7542,12 @@ document.addEventListener('DOMContentLoaded', () => {
 // ══════════════════════════════════════════════════════════════════════════════
 function renderKp7Overview(complaint) {
     if (!complaint) return;
-    const paanyayaStatuses = [
-        'Pre-Docketed (Paanyaya)',
-        '1st Paanyaya Failed (No-Show)',
-        'Paanyaya In Progress',
-        'Resolved at Paanyaya / Closed',
-        'Paanyaya'
-    ];
-    const isPaanyaya = (!complaint.case_id && !complaint.case_workspace?.case?.case_id) ||
-                       paanyayaStatuses.includes(complaint.status || '') ||
-                       Boolean(complaint.resolved_without_docketing) ||
-                       (typeof complaint.status === 'string' && complaint.status.toLowerCase().includes('paanyaya'));
+    const kp7OnHold = complaint.kp7_available !== true;
 
     const docStatus = complaint.document_status || (complaint.current_scan ? 'Scan Uploaded' : 'No Scan Uploaded');
     const badgeEl = document.getElementById('kp7DocStatusBadge');
     if (badgeEl) {
-        if (isPaanyaya) {
+        if (kp7OnHold) {
             badgeEl.className = 'badge-doc-status badge-doc-pending';
             badgeEl.style.background = '#fef3c7';
             badgeEl.style.color = '#b45309';
@@ -7584,7 +7564,7 @@ function renderKp7Overview(complaint) {
 
     const pillEl = document.getElementById('kp7ScanStatusPill');
     if (pillEl) {
-        if (isPaanyaya) {
+        if (kp7OnHold) {
             pillEl.textContent = 'Held in Pre-Docketing';
             pillEl.style.background = '#fffbeb';
             pillEl.style.color = '#b45309';
@@ -7605,9 +7585,9 @@ function renderKp7Overview(complaint) {
 
     if (!contentWrap) return;
 
-    if (complaint.current_scan) {
+    if (complaint.current_scan && !kp7OnHold) {
         const scan = complaint.current_scan;
-        const scanUrl = `../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(complaintId)}`;
+        const scanUrl = `../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(scan.doc_id)}`;
         const downloadUrl = `${scanUrl}&download=1`;
         const isImg = scan.file_type && scan.file_type.startsWith('image/');
         const sizeFormatted = scan.file_size ? (scan.file_size / 1024).toFixed(1) + ' KB' : '—';
@@ -7654,7 +7634,7 @@ function renderKp7Overview(complaint) {
             `;
         }
     } else {
-        if (isPaanyaya) {
+        if (kp7OnHold) {
             contentWrap.innerHTML = `
                 <div style="padding: 12px; background: #fffbeb; border: 1px dashed #fde68a; border-radius: 8px; text-align: center; color: #92400e; font-size: 0.82rem;">
                     <strong>KP Form 7 is On Hold</strong> during the informal Paanyaya dialogue phase. If the dispute is settled informally, KP Form 7 is never created.
@@ -7680,14 +7660,7 @@ window.renderKp7Overview = renderKp7Overview;
 
 function openKp7DigitalPreviewModal(complaintId) {
     const activeComp = window.complaintData;
-    const paanyayaStatuses = [
-        'Pre-Docketed (Paanyaya)',
-        '1st Paanyaya Failed (No-Show)',
-        'Paanyaya In Progress',
-        'Resolved at Paanyaya / Closed',
-        'Paanyaya'
-    ];
-    if (activeComp && (paanyayaStatuses.includes(activeComp.status || '') || Boolean(activeComp.resolved_without_docketing) || (typeof activeComp.status === 'string' && activeComp.status.toLowerCase().includes('paanyaya')))) {
+    if (Number(activeComp?.complaint_id) === Number(complaintId) && activeComp.kp7_available !== true) {
         window.agapNotify?.('KP Form 7 is on hold pending the outcome of the Paanyaya informal dialogue.', 'info');
         return;
     }
@@ -7949,7 +7922,7 @@ async function openScanHistoryModal(complaintId) {
     body.innerHTML = window.agapSkeleton?.block(4) || '<div style="text-align: center; color: #64748b; padding: 20px;">Loading version history...</div>';
 
     try {
-        const resp = await fetch(`../../../backend/api/complaints/scanned-document.php?id=${safeComplaintId}&action=history&_t=${Date.now()}`);
+        const resp = await fetch(`../../../backend/api/complaints/scanned-document.php?complaint_id=${safeComplaintId}&action=history&_t=${Date.now()}`);
         const result = await resp.json();
 
         if (!resp.ok || !result.success || !result.history || !result.history.length) {
@@ -7965,7 +7938,7 @@ async function openScanHistoryModal(complaintId) {
                 throw new Error('The document history contains an invalid version number.');
             }
             const sizeStr = item.file_size ? (item.file_size / 1024).toFixed(1) + ' KB' : '';
-            const downloadUrl = `../../../backend/api/complaints/scanned-document.php?id=${safeComplaintId}&version=${versionNumber}&download=1`;
+            const downloadUrl = `../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(item.doc_id)}&download=1`;
 
             html += `
                 <div style="background: ${isCurrent ? '#f0fdf4' : '#f8fafc'}; border: 1px solid ${isCurrent ? '#86efac' : '#e2e8f0'}; border-radius: 8px; padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">

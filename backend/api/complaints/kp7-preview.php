@@ -5,6 +5,7 @@ session_start();
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../services/PDFService.php';
 require_once __DIR__ . '/../../services/AuditService.php';
+require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
 
 if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
     header('Content-Type: application/json; charset=utf-8');
@@ -42,16 +43,10 @@ if (!$complaint) {
     exit;
 }
 
-$isPaanyayaStage = in_array($complaint['status'] ?? '', [
-    'Pre-Docketed (Paanyaya)',
-    '1st Paanyaya Failed (No-Show)',
-    'Paanyaya In Progress',
-    'Resolved at Paanyaya / Closed',
-    'Paanyaya'
-], true) || !empty($complaint['resolved_without_docketing']) || stripos($complaint['status'] ?? '', 'paanyaya') !== false;
-
-if ($isPaanyayaStage) {
-    if (isset($_GET['download']) && (string)$_GET['download'] === '1') {
+$isDownload = (string) ($_GET['download'] ?? '') === '1';
+$isJson = str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') || ($_GET['format'] ?? '') === 'json';
+if (!ComplaintLifecycleService::canAccessKpForm7($complaint)) {
+    if ($isDownload || $isJson) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(403);
         echo json_encode([
@@ -135,7 +130,7 @@ $pdfService = new PDFService();
 $audit = new AuditService();
 
 // Download PDF
-if (isset($_GET['download']) && (string)$_GET['download'] === '1') {
+if ($isDownload) {
     $audit->log((int) $_SESSION['user_id'], 'Downloaded KP Form 7 PDF', 'Complaints', $complaintId);
 
     $safeName = preg_replace('/[^A-Za-z0-9_-]/', '_', $data['case_number'] ?: $data['complaint_number']);
@@ -160,9 +155,6 @@ if (isset($_GET['download']) && (string)$_GET['download'] === '1') {
 }
 
 $html = $pdfService->renderKp7Html($data);
-
-$isJson = (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) ||
-    (isset($_GET['format']) && $_GET['format'] === 'json');
 
 if ($isJson) {
     header('Content-Type: application/json; charset=utf-8');

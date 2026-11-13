@@ -41,7 +41,9 @@ The application prioritizes `GEMINI_API_KEY` from the server environment. The da
 ```powershell
 php -l backend/config/database.php
 php -l backend/services/GeminiService.php
-php backend/tests/test_clerk_dashboard.php
+npm test
 ```
+
+Run the integration suite against an isolated local database using the [automated test setup](README.md#automated-tests).
 
 Before go-live, replace all development passwords, remove test accounts, confirm backup/restore works, and conduct an authenticated smoke test of login, dashboard, complaint intake, document generation, and one consented AI request.

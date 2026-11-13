@@ -23,6 +23,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
 - [Tech Stack](#tech-stack)
 - [Installation & Local Setup](#installation--local-setup)
 - [Local Test Credentials](#local-test-credentials)
+- [Automated tests](#automated-tests)
 - [Database & Migrations](#database--migrations)
 
 ---
@@ -293,7 +294,7 @@ http://localhost/AGAP-System/
 
 ## Local Test Credentials
 
-For development and testing, `database/schema.sql` seeds the following accounts. The seed password is documented in the schema's reference-data section.
+For development and testing, `database/schema.sql` seeds the Administrator account. Import `database/seeds/local_test_users.sql` for the remaining accounts.
 
 | Username | Role | Description |
 | :--- | :--- | :--- |
@@ -307,6 +308,12 @@ For development and testing, `database/schema.sql` seeds the following accounts.
 > **Note**: These credentials are strictly for local development and testing. Passwords must be changed before deploying to staging or production.
 
 ---
+
+## Automated tests
+
+Import `database/schema.sql` and `database/seeds/local_test_users.sql` into an isolated local MySQL database. The tests create complaints, service attempts, hearings, and documents with the seeded accounts. Point the runner at that test database by setting `DB_NAME` and the connection variables `DB_HOST`, `DB_PORT`, `DB_USER`, and `DB_PASS` as needed. Run `npm test` from the project root.
+
+The runner uses `php` from PATH by default. Set `PHP_BINARY` to select another executable with `pdo_mysql` and `mbstring` enabled. The Paanyaya suite starts a temporary PHP HTTP server on localhost. Use `npm run test:paanyaya` to run that suite on its own.
 
 ## Database & Migrations
 
