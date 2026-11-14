@@ -32,6 +32,11 @@ final class TestDataCleanup
                 $paanyayaFiles = $this->db->prepare('SELECT pdf_path FROM paanyaya_sessions WHERE complaint_id = ? AND pdf_path IS NOT NULL');
                 $paanyayaFiles->execute([$complaintId]);
                 $files = array_merge($files, $paanyayaFiles->fetchAll(PDO::FETCH_COLUMN));
+                try {
+                    $pRowFiles = $this->db->prepare('SELECT pdf_path FROM paanyayas WHERE complaint_id = ? AND pdf_path IS NOT NULL');
+                    $pRowFiles->execute([$complaintId]);
+                    $files = array_merge($files, $pRowFiles->fetchAll(PDO::FETCH_COLUMN));
+                } catch (Throwable) {}
 
                 $caseStmt = $this->db->prepare('SELECT case_id FROM cases WHERE complaint_id = ?');
                 $caseStmt->execute([$complaintId]);
@@ -94,7 +99,11 @@ final class TestDataCleanup
                     $this->deleteManagedFile((string) $file);
                 }
 
-                foreach (['paanyayas', 'paanyaya_stages', 'paanyaya_minutes', 'paanyaya_sessions', 'complaint_paanyaya', 'complaint_parties', 'incident_locations', 'complaint_attachments'] as $table) {
+                try {
+                    $this->db->prepare('DELETE FROM paanyaya_session_attendance WHERE session_id IN (SELECT session_id FROM paanyaya_sessions WHERE complaint_id = ?)')->execute([$complaintId]);
+                } catch (Throwable) {}
+
+                foreach (['paanyaya_service_attempts', 'paanyaya_preparations', 'paanyayas', 'paanyaya_stages', 'paanyaya_minutes', 'paanyaya_sessions', 'complaint_paanyaya', 'complaint_parties', 'incident_locations', 'complaint_attachments'] as $table) {
                     try {
                         $this->db->prepare("DELETE FROM {$table} WHERE complaint_id = ?")->execute([$complaintId]);
                     } catch (Throwable) {}

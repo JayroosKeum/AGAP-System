@@ -5,18 +5,34 @@ if (session_status() === PHP_SESSION_NONE) {
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../../controllers/HearingController.php';
+require_once __DIR__ . '/../../services/DocketScheduleService.php';
 
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
+    echo json_encode(['success' => false, 'code' => 'UNAUTHENTICATED', 'message' => 'Unauthorized access.']);
     exit;
 }
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
 $userId = (int) $_SESSION['user_id'];
 $controller = new HearingController();
+$docketService = new DocketScheduleService();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $action = trim((string) ($_GET['action'] ?? ''));
+    if ($action === 'check_slots' || $action === 'slots') {
+        $auth = $docketService->isAuthorizedStaff($userId, $roleId);
+        if (!$auth['authorized']) {
+            http_response_code($auth['http_code']);
+            echo json_encode(['success' => false, 'code' => 'UNAUTHORIZED', 'message' => $auth['message']]);
+            exit;
+        }
+        $res = $controller->getRescheduleSlots($_GET, $userId, $roleId);
+        http_response_code((int) ($res['http_code'] ?? ($res['success'] ? 200 : 422)));
+        echo json_encode($res);
+        exit;
+    }
+
     // Retrieve daily docket
     $params = [
         'date' => trim((string) ($_GET['date'] ?? '')),
@@ -28,13 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Actions: check_in, standby, start_session, conclude_session
-    if (!in_array($roleId, [1, 2, 3], true)) {
-        http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'Access denied. Authorized personnel only.']);
-        exit;
-    }
-
     $raw = file_get_contents('php://input');
     $input = json_decode($raw, true);
     if (!is_array($input) || empty($input)) {
@@ -42,6 +51,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $action = trim((string) ($input['action'] ?? $_GET['action'] ?? ''));
+
+    // Scheduling mutations (reorder_queue, reschedule_item, check_slots) are strictly restricted
+    // to Administrators and Lupon Clerks (derived from roles table).
+    if (in_array($action, ['reorder_queue', 'reschedule_item', 'check_slots'], true)) {
+        $auth = $docketService->isAuthorizedStaff($userId, $roleId);
+        if (!$auth['authorized']) {
+            http_response_code($auth['http_code']);
+            echo json_encode(['success' => false, 'code' => 'UNAUTHORIZED', 'message' => $auth['message']]);
+            exit;
+        }
+        $input['role_id'] = $auth['role_id'];
+    } elseif (!in_array($roleId, [1, 2, 3], true)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Access denied. Authorized personnel only.']);
+        exit;
+    }
 
     switch ($action) {
         case 'check_in':
@@ -70,7 +95,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         case 'reorder_queue':
             $res = $controller->reorderQueue($input, $userId);
-            http_response_code($res['success'] ? 200 : 422);
+            http_response_code((int) ($res['http_code'] ?? ($res['success'] ? 200 : 422)));
+            echo json_encode($res);
+            exit;
+
+        case 'reschedule_item':
+            $res = $controller->rescheduleItem($input, $userId, $roleId);
+            http_response_code((int) ($res['http_code'] ?? ($res['success'] ? 200 : 422)));
+            echo json_encode($res);
+            exit;
+
+        case 'check_slots':
+            $res = $controller->getRescheduleSlots($input, $userId, $roleId);
+            http_response_code((int) ($res['http_code'] ?? ($res['success'] ? 200 : 422)));
             echo json_encode($res);
             exit;
 

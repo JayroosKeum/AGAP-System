@@ -2,14 +2,33 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/Paanyaya.php';
+require_once __DIR__ . '/../services/DocketScheduleService.php';
 
 class Report
 {
     private $conn;
+    private DocketScheduleService $docketScheduleService;
 
     public function __construct()
     {
         $this->conn = (new Database())->connect();
+        $this->docketScheduleService = new DocketScheduleService($this->conn);
+    }
+
+    private function enrichHearingRows(array $rows): array
+    {
+        if (empty($rows)) {
+            return [];
+        }
+        foreach ($rows as &$row) {
+            $row['record_type'] = 'hearing';
+            $elig = $this->docketScheduleService->evaluateItemEligibility($row, 'hearing');
+            $row['is_locked'] = $elig['is_locked'];
+            $row['lock_code'] = $elig['lock_code'];
+            $row['lock_reason'] = $elig['lock_reason'];
+        }
+        unset($row);
+        return $rows;
     }
 
     private function enrichPaanyayaRows(array $rows): array
@@ -33,9 +52,33 @@ class Report
                 $row['current_workflow_status'] = $wf['current_workflow_status'] ?? $row['status'];
                 $row['status'] = $row['current_workflow_status'];
             }
+            $row['record_type'] = 'paanyaya';
+            $elig = $this->docketScheduleService->evaluateItemEligibility($row, 'paanyaya');
+            $row['is_locked'] = $elig['is_locked'];
+            $row['lock_code'] = $elig['lock_code'];
+            $row['lock_reason'] = $elig['lock_reason'];
         }
         unset($row);
         return $rows;
+    }
+
+    private static function sortCalendarItems(array &$items): void
+    {
+        usort($items, static function (array $a, array $b): int {
+            $dateA = substr((string) ($a['hearing_date'] ?? ''), 0, 10);
+            $dateB = substr((string) ($b['hearing_date'] ?? ''), 0, 10);
+            if ($dateA !== $dateB) {
+                return strcmp($dateA, $dateB);
+            }
+            $orderA = (int) ($a['queue_order'] ?? 0);
+            $orderB = (int) ($b['queue_order'] ?? 0);
+            $normOrderA = $orderA > 0 ? $orderA : 9999;
+            $normOrderB = $orderB > 0 ? $orderB : 9999;
+            if ($normOrderA !== $normOrderB) {
+                return $normOrderA <=> $normOrderB;
+            }
+            return strcmp((string) ($a['hearing_date'] ?? ''), (string) ($b['hearing_date'] ?? ''));
+        });
     }
 
     public function dashboardStats(string $period = 'all', ?string $startDate = null, ?string $endDate = null): array
@@ -55,8 +98,10 @@ class Report
 
             $todayHearings = $this->conn->prepare(
                 "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        h.actual_start_time, h.actual_end_time, h.attendance_recorded_at, h.presiding_officer_id, h.updated_at,
+                        h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
+                        c.case_id, c.case_number, c.case_status, co.complaint_id, co.complaint_title,
+                        TRIM(CONCAT_WS(' ', po.first_name, po.last_name)) AS presiding_officer_name,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
                             FROM complaint_parties cp
@@ -72,6 +117,7 @@ class Report
                  FROM hearings h
                  INNER JOIN cases c ON c.case_id = h.case_id
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                 LEFT JOIN users po ON po.user_id = h.presiding_officer_id
                  WHERE DATE(h.hearing_date) = ?
                    AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
                    AND h.status <> 'Completed'
@@ -79,16 +125,19 @@ class Report
                  ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC"
             );
             $todayHearings->execute([$today]);
+            $todayHearingItems = $this->enrichHearingRows($todayHearings->fetchAll(PDO::FETCH_ASSOC));
 
             // Paanyaya sessions (Stage 0 Informal Dialogues - prioritize today & scheduled, include all in All Time mode)
             $todayPaanyayas = $this->conn->prepare(
                 "SELECT p.paanyaya_id, p.complaint_id, p.escalated_to_complaint_id, p.complainant_name, p.invitee_name,
                         p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason, COALESCE(p.queue_order, ps.queue_order, 0) AS queue_order,
+                        p.attendance_recorded_at, p.updated_at,
                         co.complaint_number, co.complaint_title,
                         COALESCE(ps.session_id, 0) AS session_id,
                         COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
                         COALESCE(ps.complainant_attended, p.complainant_attended, 'Absent') AS complainant_attended,
                         COALESCE(ps.respondent_attended, p.invitee_attended, 'Absent') AS respondent_attended,
+                        ps.actual_start_time, ps.actual_end_time, ps.presiding_officer_ids,
                         ps.session_outcome,
                         ps.queue_status AS session_queue_status
                  FROM paanyayas p
@@ -172,8 +221,10 @@ class Report
 
             $calendarHearingsStmt = $this->conn->query(
                 "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        h.actual_start_time, h.actual_end_time, h.attendance_recorded_at, h.presiding_officer_id, h.updated_at,
+                        h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
+                        c.case_id, c.case_number, c.case_status, co.complaint_id, co.complaint_title,
+                        TRIM(CONCAT_WS(' ', po.first_name, po.last_name)) AS presiding_officer_name,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
                             FROM complaint_parties cp
@@ -189,16 +240,17 @@ class Report
                  FROM hearings h
                  INNER JOIN cases c ON c.case_id = h.case_id
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                 LEFT JOIN users po ON po.user_id = h.presiding_officer_id
                  WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
                    AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
                  ORDER BY h.hearing_date ASC"
             );
-            $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+            $calendarHearings = $this->enrichHearingRows($calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC));
             // Calendar markers represent active scheduled sessions: formal
             // hearings plus the current Paanyaya session for a dispute.
             // Completed/replaced Paanyaya attempts are filtered by the helper.
             $calendarHearings = array_merge($calendarHearings, $this->getCalendarPaanyayaItems());
-            usort($calendarHearings, static fn(array $a, array $b): int => strcmp((string) $a['hearing_date'], (string) $b['hearing_date']));
+            self::sortCalendarItems($calendarHearings);
 
             $walkinsTodayStmt = $this->conn->prepare(
                 "SELECT (
@@ -289,7 +341,7 @@ class Report
                 'pending_forms' => $pendingForms,
                 'audit_feed' => $auditFeed,
                 'deadlines_due' => (int) $deadlineCount->fetchColumn(),
-                'today_hearings' => $todayHearings->fetchAll(PDO::FETCH_ASSOC),
+                'today_hearings' => $todayHearingItems,
                 'today_paanyayas' => $paanyayaItems,
                 'calendar_hearings' => $calendarHearings,
                 'mediation_deadlines' => $deadlineRows,
@@ -314,8 +366,10 @@ class Report
 
         $hearingsStmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        h.actual_start_time, h.actual_end_time, h.attendance_recorded_at, h.presiding_officer_id, h.updated_at,
+                        h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
+                        c.case_id, c.case_number, c.case_status, co.complaint_id, co.complaint_title,
+                        TRIM(CONCAT_WS(' ', po.first_name, po.last_name)) AS presiding_officer_name,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
                             FROM complaint_parties cp
@@ -331,24 +385,27 @@ class Report
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             LEFT JOIN users po ON po.user_id = h.presiding_officer_id
              WHERE DATE(h.hearing_date) BETWEEN ? AND ?
                AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
                AND h.status <> 'Completed'
                AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
-             ORDER BY h.hearing_date ASC"
+             ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC"
         );
         $hearingsStmt->execute($params);
-        $periodHearings = $hearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+        $periodHearings = $this->enrichHearingRows($hearingsStmt->fetchAll(PDO::FETCH_ASSOC));
 
         // Period Paanyayas
         $paanyayasStmt = $this->conn->prepare(
             "SELECT p.paanyaya_id, p.complaint_id, p.escalated_to_complaint_id, p.complainant_name, p.invitee_name,
                     p.scheduled_date, p.scheduled_time, p.status, p.venue, p.salaysay AS reason, COALESCE(p.queue_order, ps.queue_order, 0) AS queue_order,
+                    p.attendance_recorded_at, p.updated_at,
                     co.complaint_number, co.complaint_title,
                     COALESCE(ps.session_id, 0) AS session_id,
                     COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
                     COALESCE(ps.complainant_attended, p.complainant_attended, 'Absent') AS complainant_attended,
                     COALESCE(ps.respondent_attended, p.invitee_attended, 'Absent') AS respondent_attended,
+                    ps.actual_start_time, ps.actual_end_time, ps.presiding_officer_ids,
                     ps.session_outcome,
                     ps.queue_status AS session_queue_status
              FROM paanyayas p
@@ -357,7 +414,7 @@ class Report
              WHERE (p.scheduled_date BETWEEN ? AND ? OR DATE(p.created_at) BETWEEN ? AND ?)
                AND p.status NOT IN ('Completed', 'Cancelled', 'Resolved', 'Unresolved', 'Escalated')
                AND (ps.session_id IS NULL OR COALESCE(ps.queue_status, 'Waiting') <> 'Concluded')
-             ORDER BY p.scheduled_date DESC, p.scheduled_time ASC, p.paanyaya_id DESC
+             ORDER BY CASE WHEN COALESCE(p.queue_order, 0) > 0 THEN p.queue_order ELSE 9999 END ASC, p.scheduled_date DESC, p.scheduled_time ASC, p.paanyaya_id DESC
             "
         );
         $paanyayasStmt->execute([$startDate, $endDate, $startDate, $endDate]);
@@ -494,8 +551,10 @@ class Report
 
         $calendarHearingsStmt = $this->conn->query(
             "SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
-                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
-                        c.case_id, c.case_number, co.complaint_id, co.complaint_title,
+                        h.actual_start_time, h.actual_end_time, h.attendance_recorded_at, h.presiding_officer_id, h.updated_at,
+                        h.complainant_attendance, h.respondent_attendance, h.attendance_notes, h.mediation_attempt, COALESCE(h.queue_order, 0) AS queue_order,
+                        c.case_id, c.case_number, c.case_status, co.complaint_id, co.complaint_title,
+                        TRIM(CONCAT_WS(' ', po.first_name, po.last_name)) AS presiding_officer_name,
                         COALESCE((
                             SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
                             FROM complaint_parties cp
@@ -511,13 +570,14 @@ class Report
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             LEFT JOIN users po ON po.user_id = h.presiding_officer_id
              WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
                AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
              ORDER BY h.hearing_date ASC"
         );
-        $calendarHearings = $calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC);
+        $calendarHearings = $this->enrichHearingRows($calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC));
         $calendarHearings = array_merge($calendarHearings, $this->getCalendarPaanyayaItems());
-        usort($calendarHearings, static fn(array $a, array $b): int => strcmp((string) $a['hearing_date'], (string) $b['hearing_date']));
+        self::sortCalendarItems($calendarHearings);
 
         $walkinsStmt = $this->conn->prepare(
             "SELECT (
@@ -580,55 +640,98 @@ class Report
     /** Calendar uses one event shape for active formal hearings and Paanyaya sessions. */
     private function getCalendarPaanyayaItems(): array
     {
-        $stmt = $this->conn->query("\n            SELECT CONCAT('paanyaya-', ps.session_id) AS hearing_id,
+        $stmt = $this->conn->query("
+            SELECT CONCAT('paanyaya-', p.paanyaya_id) AS hearing_id,
+                   p.paanyaya_id,
+                   COALESCE(ps.session_id, 0) AS session_id,
+                   'paanyaya' AS record_type,
                    c.case_id, 'Paanyaya' AS hearing_type,
-                   CONCAT(ps.scheduled_date, ' ', COALESCE(ps.scheduled_time, '09:00:00')) AS hearing_date,
-                   ps.venue, COALESCE(p.status, 'Scheduled') AS status,
+                   CONCAT(p.scheduled_date, ' ', COALESCE(p.scheduled_time, ps.scheduled_time, '09:00:00')) AS hearing_date,
+                   p.scheduled_date, COALESCE(p.scheduled_time, ps.scheduled_time, '09:00:00') AS scheduled_time,
+                   COALESCE(p.venue, ps.venue, 'Tanggapan ng Barangay Tumana') AS venue,
+                   COALESCE(p.status, 'Scheduled') AS status,
                    COALESCE(ps.queue_status, 'Waiting') AS queue_status,
-                   ps.actual_start_time, NULL AS complainant_attendance, NULL AS respondent_attendance,
-                   ps.session_remarks AS attendance_notes, ps.attempt_number AS mediation_attempt,
-                   COALESCE(ps.queue_order, 0) AS queue_order,
-                   co.complaint_id, COALESCE(c.case_number, co.complaint_number) AS case_number,
+                   ps.queue_status AS session_queue_status,
+                   ps.actual_start_time, ps.actual_end_time, ps.session_outcome,
+                   ps.presiding_officer_ids,
+                   COALESCE(ps.complainant_attended, p.complainant_attended, 'Absent') AS complainant_attended,
+                   COALESCE(ps.respondent_attended, p.invitee_attended, 'Absent') AS respondent_attended,
+                   p.invitee_attended,
+                   p.attendance_recorded_at, p.updated_at,
+                   NULL AS complainant_attendance, NULL AS respondent_attendance,
+                   ps.session_remarks AS attendance_notes,
+                   COALESCE(ps.attempt_number, p.attempt_number, 1) AS mediation_attempt,
+                   COALESCE(ps.attempt_number, p.attempt_number, 1) AS attempt_number,
+                   COALESCE(p.queue_order, ps.queue_order, 0) AS queue_order,
+                   COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id) AS complaint_id,
+                   COALESCE(c.case_number, co.complaint_number) AS case_number,
+                   co.complaint_number,
                    co.complaint_title,
                    COALESCE(p.complainant_name, '') AS complainant_names,
-                   COALESCE(ps.invitee_name, p.invitee_name, '') AS respondent_names
+                   COALESCE(p.complainant_name, '') AS complainant_name,
+                   COALESCE(p.invitee_name, ps.invitee_name, '') AS respondent_names,
+                   COALESCE(p.invitee_name, ps.invitee_name, '') AS invitee_name
+            FROM paanyayas p
+            LEFT JOIN complaints co ON co.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+            LEFT JOIN cases c ON c.complaint_id = co.complaint_id
+            LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id
+                AND ps.scheduled_date = p.scheduled_date
+                AND ps.session_id = (
+                    SELECT MAX(ps2.session_id)
+                    FROM paanyaya_sessions ps2
+                    WHERE ps2.complaint_id = p.complaint_id
+                      AND ps2.scheduled_date = p.scheduled_date
+                )
+            WHERE COALESCE(p.status, 'Scheduled') IN ('Scheduled', 'Pending')
+              AND (ps.session_id IS NULL OR (ps.session_outcome IS NULL AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'))
+            ORDER BY p.scheduled_date ASC, p.scheduled_time ASC
+        ");
+        $invitationItems = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        // Also include any paanyaya_sessions row that does not have a matching row in paanyayas
+        $orphanSessStmt = $this->conn->query("
+            SELECT CONCAT('paanyaya-session-', ps.session_id) AS hearing_id,
+                   0 AS paanyaya_id,
+                   ps.session_id,
+                   'paanyaya' AS record_type,
+                   c.case_id, 'Paanyaya' AS hearing_type,
+                   CONCAT(ps.scheduled_date, ' ', COALESCE(ps.scheduled_time, '09:00:00')) AS hearing_date,
+                   ps.scheduled_date, COALESCE(ps.scheduled_time, '09:00:00') AS scheduled_time,
+                   ps.venue, 'Scheduled' AS status,
+                   COALESCE(ps.queue_status, 'Waiting') AS queue_status,
+                   ps.queue_status AS session_queue_status,
+                   ps.actual_start_time, ps.actual_end_time, ps.session_outcome,
+                   ps.presiding_officer_ids,
+                   COALESCE(ps.complainant_attended, 'Absent') AS complainant_attended,
+                   COALESCE(ps.respondent_attended, 'Absent') AS respondent_attended,
+                   COALESCE(ps.respondent_attended, 'Absent') AS invitee_attended,
+                   NULL AS attendance_recorded_at, NULL AS resolved_at, NULL AS escalated_at, ps.updated_at,
+                   NULL AS complainant_attendance, NULL AS respondent_attendance,
+                   ps.session_remarks AS attendance_notes, ps.attempt_number AS mediation_attempt,
+                   ps.attempt_number,
+                   COALESCE(ps.queue_order, 0) AS queue_order,
+                   co.complaint_id, COALESCE(c.case_number, co.complaint_number) AS case_number,
+                   co.complaint_number,
+                   co.complaint_title,
+                   '' AS complainant_names,
+                   '' AS complainant_name,
+                   COALESCE(ps.invitee_name, '') AS respondent_names,
+                   COALESCE(ps.invitee_name, '') AS invitee_name
             FROM paanyaya_sessions ps
             INNER JOIN complaints co ON co.complaint_id = ps.complaint_id
             LEFT JOIN cases c ON c.complaint_id = co.complaint_id
-            LEFT JOIN paanyayas p ON p.complaint_id = co.complaint_id
-                AND p.paanyaya_id = (SELECT MAX(p2.paanyaya_id) FROM paanyayas p2 WHERE p2.complaint_id = co.complaint_id)
-            WHERE COALESCE(p.status, 'Scheduled') IN ('Scheduled', 'Pending')
-              AND ps.session_outcome IS NULL
+            WHERE ps.session_outcome IS NULL
               AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'
               AND NOT EXISTS (
-                  SELECT 1 FROM paanyaya_sessions later_ps
-                  WHERE later_ps.complaint_id = ps.complaint_id
-                    AND later_ps.attempt_number > ps.attempt_number
-                    AND later_ps.session_outcome IS NULL
-                    AND COALESCE(later_ps.queue_status, 'Waiting') <> 'Concluded'
+                  SELECT 1 FROM paanyayas p
+                  WHERE p.complaint_id = ps.complaint_id
+                    AND p.status IN ('Scheduled', 'Pending')
               )
-            ORDER BY ps.scheduled_date ASC, ps.scheduled_time ASC\n        ");
-        $sessionItems = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
-        // Stand-alone invitations (not yet mirrored to paanyaya_sessions)
-        // must also appear on the dashboard calendar.
-        $inviteStmt = $this->conn->query("\n            SELECT CONCAT('paanyaya-invitation-', p.paanyaya_id) AS hearing_id,
-                   c.case_id, 'Paanyaya' AS hearing_type,
-                   CONCAT(p.scheduled_date, ' ', COALESCE(p.scheduled_time, '09:00:00')) AS hearing_date,
-                   p.venue, COALESCE(p.status, 'Scheduled') AS status,
-                   'Waiting' AS queue_status, NULL AS actual_start_time,
-                   NULL AS complainant_attendance, NULL AS respondent_attendance,
-                   NULL AS attendance_notes, 1 AS mediation_attempt, 0 AS queue_order,
-                   co.complaint_id, COALESCE(c.case_number, co.complaint_number) AS case_number,
-                   co.complaint_title, COALESCE(p.complainant_name, '') AS complainant_names,
-                   COALESCE(p.invitee_name, '') AS respondent_names
-            FROM paanyayas p
-            LEFT JOIN complaints co ON co.complaint_id = p.complaint_id
-            LEFT JOIN cases c ON c.complaint_id = co.complaint_id
-            WHERE COALESCE(p.status, 'Scheduled') IN ('Scheduled', 'Pending')
-              AND NOT EXISTS (SELECT 1 FROM paanyaya_sessions ps WHERE ps.complaint_id = p.complaint_id)
-            ORDER BY p.scheduled_date ASC, p.scheduled_time ASC\n        ");
-        $invitationItems = $inviteStmt ? $inviteStmt->fetchAll(PDO::FETCH_ASSOC) : [];
-        return array_merge($sessionItems, $invitationItems);
+            ORDER BY ps.scheduled_date ASC, ps.scheduled_time ASC
+        ");
+        $orphanSessions = $orphanSessStmt ? $orphanSessStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+
+        return $this->enrichPaanyayaRows(array_merge($invitationItems, $orphanSessions));
     }
 
     /**

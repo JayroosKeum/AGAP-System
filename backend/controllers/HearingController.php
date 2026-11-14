@@ -614,9 +614,23 @@ class HearingController
         if (!is_array($items)) {
             $items = json_decode((string) ($data['items'] ?? '[]'), true) ?: [];
         }
-        $queueDate = !empty($data['queue_date']) ? trim((string) $data['queue_date']) : date('Y-m-d');
+        $queueDate = !empty($data['queue_date']) ? trim((string) $data['queue_date']) : (!empty($data['date']) ? trim((string) $data['date']) : date('Y-m-d'));
 
-        return $this->hearing->reorderDailyQueue($items, $userId, $queueDate);
+        return $this->hearing->reorderDailyQueue($items, $userId, $queueDate, $data);
+    }
+
+    public function rescheduleItem(array $data, int $userId, ?int $roleId = null): array
+    {
+        require_once __DIR__ . '/../services/DocketScheduleService.php';
+        $service = new DocketScheduleService();
+        return $service->rescheduleItem($data, $userId, $roleId);
+    }
+
+    public function getRescheduleSlots(array $params, ?int $userId = null, ?int $roleId = null): array
+    {
+        require_once __DIR__ . '/../services/DocketScheduleService.php';
+        $service = new DocketScheduleService();
+        return $service->getAvailableSlots($params, $userId, $roleId);
     }
     public function failMediation(array $data, int $userId): array
     {
@@ -982,7 +996,7 @@ class HearingController
         $sql = "
             SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status,
                    h.queue_status, COALESCE(h.queue_order, 0) AS queue_order, h.actual_start_time, h.actual_end_time, h.actual_duration_minutes,
-                   h.complainant_attendance, h.respondent_attendance,
+                   h.complainant_attendance, h.respondent_attendance, h.attendance_recorded_at, h.presiding_officer_id, h.updated_at,
                    c.case_number, c.complaint_id, c.case_status,
                    comp.complaint_title, comp.complaint_number,
                    (
@@ -1039,12 +1053,17 @@ class HearingController
         if ($hearingTypeFilter === '' || $hearingTypeFilter === 'Paanyaya') {
             try {
                 $pStmt = $db->prepare("
-                    SELECT ps.session_id AS hearing_id, NULL AS case_id, 'Paanyaya' AS hearing_type,
+                    SELECT ps.session_id AS hearing_id, ps.session_id, COALESCE(p.paanyaya_id, 0) AS paanyaya_id,
+                           NULL AS case_id, 'Paanyaya' AS hearing_type,
                            CONCAT(ps.scheduled_date, ' ', ps.scheduled_time) AS hearing_date,
-                           ps.venue, 'Scheduled' AS status,
-                           ps.queue_status, COALESCE(ps.queue_order, 0) AS queue_order, ps.actual_start_time, ps.actual_end_time, NULL AS actual_duration_minutes,
+                           ps.scheduled_date, ps.scheduled_time,
+                           ps.venue, COALESCE(p.status, 'Scheduled') AS status,
+                           ps.queue_status, COALESCE(p.queue_order, ps.queue_order, 0) AS queue_order,
+                           ps.actual_start_time, ps.actual_end_time, NULL AS actual_duration_minutes,
                            IF(ps.complainant_attended = 'Present', 'Present', 'Pending') AS complainant_attendance,
                            IF(ps.respondent_attended = 'Present', 'Present', 'Pending') AS respondent_attendance,
+                           ps.complainant_attended, ps.respondent_attended,
+                           p.attendance_recorded_at, p.updated_at, ps.attempt_number, ps.session_outcome,
                            co.complaint_number AS case_number, ps.complaint_id, 'Pre-Docketed (Paanyaya)' AS case_status,
                            co.complaint_title, co.complaint_number,
                            (
@@ -1067,9 +1086,12 @@ class HearingController
                            'paanyaya' AS session_source
                     FROM paanyaya_sessions ps
                     LEFT JOIN complaints co ON co.complaint_id = ps.complaint_id
+                    LEFT JOIN paanyayas p ON p.complaint_id = ps.complaint_id
+                        AND (p.attempt_number = ps.attempt_number OR p.scheduled_date = ps.scheduled_date)
                     WHERE ps.scheduled_date = ?
                       AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'
-                    ORDER BY CASE WHEN COALESCE(ps.queue_order, 0) > 0 THEN ps.queue_order ELSE 9999 END ASC, ps.scheduled_time ASC
+                      AND COALESCE(p.status, 'Scheduled') NOT IN ('Completed', 'Cancelled', 'Resolved', 'Unresolved', 'Escalated')
+                    ORDER BY CASE WHEN COALESCE(p.queue_order, ps.queue_order, 0) > 0 THEN COALESCE(p.queue_order, ps.queue_order, 0) ELSE 9999 END ASC, ps.scheduled_time ASC
                 ");
                 $pStmt->execute([$date]);
                 $paanyayaItems = $pStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1077,6 +1099,17 @@ class HearingController
         }
 
         $allSessions = array_merge($hearings, $paanyayaItems);
+        usort($allSessions, static function (array $a, array $b): int {
+            $oa = (int) ($a['queue_order'] ?? 0) ?: 9999;
+            $ob = (int) ($b['queue_order'] ?? 0) ?: 9999;
+            if ($oa !== $ob) {
+                return $oa <=> $ob;
+            }
+            return strcmp((string) ($a['hearing_date'] ?? ''), (string) ($b['hearing_date'] ?? ''));
+        });
+
+        require_once __DIR__ . '/../services/DocketScheduleService.php';
+        $docketService = new DocketScheduleService($db);
 
         // Normalize and compute readiness flags for waiting room docket
         $normalized = [];
@@ -1163,6 +1196,13 @@ class HearingController
             $s['is_grace_period_expired'] = $isGracePeriodExpired;
             $s['is_grace_period_active'] = $isGracePeriodActive;
             $s['grace_period_minutes_remaining'] = $isGracePeriodActive ? (60 - $delayMinutes) : 0;
+
+            $itemType = ($s['session_source'] ?? 'hearing') === 'paanyaya' ? 'paanyaya' : 'hearing';
+            $elig = $docketService->evaluateItemEligibility($s, $itemType);
+            $s['record_type'] = $itemType;
+            $s['is_locked'] = $elig['is_locked'];
+            $s['lock_code'] = $elig['lock_code'];
+            $s['lock_reason'] = $elig['lock_reason'];
 
             $normalized[] = $s;
         }

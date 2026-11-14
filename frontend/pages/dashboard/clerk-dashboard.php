@@ -506,6 +506,7 @@ include '../../layouts/header.php';
         window.AgapNewsWidget?.initStaffBulletin();
     });
 </script>
+<script src="../../assets/js/docket-drag-schedule.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/docket-drag-schedule.js'); ?>"></script>
 <script src="../../assets/js/clerk-dashboard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/clerk-dashboard.js'); ?>"></script>
 <script src="../../assets/js/liso-duty.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/liso-duty.js'); ?>"></script>
 

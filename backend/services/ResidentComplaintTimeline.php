@@ -78,7 +78,7 @@ final class ResidentComplaintTimeline
             $add($complaint['liso_reviewed_at'], self::SCREENING_LABELS[$screeningStatus]);
         }
 
-        $appointments = $this->db->prepare("SELECT a.invitation_number, a.appointment_at, p.venue, a.recorded_at
+        $appointments = $this->db->prepare("SELECT a.invitation_number, COALESCE(p.appointment_at, a.appointment_at) AS appointment_at, p.venue, a.recorded_at
             FROM paanyaya_service_attempts a JOIN paanyaya_preparations p
                 ON p.complaint_id = a.complaint_id AND p.invitation_number = a.invitation_number
             WHERE a.complaint_id = ? AND a.outcome = 'Delivered' ORDER BY a.attempt_id");
@@ -108,7 +108,9 @@ final class ResidentComplaintTimeline
             $add($complaint['docketed_at'] ?: $complaint['docket_date'], 'Formal case docketed', (string) $complaint['complaint_number']);
             $hearings = $this->db->prepare("SELECT hearing_type, hearing_date, venue, status, created_at FROM hearings
                 WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration')
-                AND status IN ('Scheduled', 'Attendance Recorded', 'Completed') ORDER BY hearing_id");
+                AND status IN ('Scheduled', 'Attendance Recorded', 'Completed')
+                AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = hearings.hearing_id)
+                ORDER BY hearing_id");
             $hearings->execute([$complaint['case_id']]);
             foreach ($hearings->fetchAll() as $hearing) {
                 $add($hearing['created_at'], $hearing['hearing_type'] . ' appointment scheduled',

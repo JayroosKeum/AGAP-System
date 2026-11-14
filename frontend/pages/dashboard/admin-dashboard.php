@@ -89,6 +89,7 @@ include '../../layouts/header.php';
 
 </div>
 
+<script src="../../assets/js/docket-drag-schedule.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/docket-drag-schedule.js'); ?>"></script>
 <script src="../../assets/js/dashboard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/dashboard.js'); ?>"></script>
 <script src="../../assets/js/official-reports.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/official-reports.js'); ?>"></script>
 <script src="../../assets/js/liso-duty.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/liso-duty.js'); ?>"></script>

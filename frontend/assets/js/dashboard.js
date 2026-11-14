@@ -1903,103 +1903,41 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
-    let draggedHearingCard = null;
-
-    const saveReorderedSequence = async (container) => {
-        if (state.isSavingQueue) return;
-        const itemsPayload = [];
-        const items = container.querySelectorAll('.dashboard-list-item[data-id]');
-        items.forEach((el, newIdx) => {
-            const orderNum = newIdx + 1;
-            const seqBadge = el.querySelector('.queue-seq-badge');
-            if (seqBadge) seqBadge.textContent = `#${orderNum}`;
-            el.dataset.index = String(newIdx);
-            itemsPayload.push({
-                type: el.dataset.type || 'hearing',
-                id: parseInt(el.dataset.id, 10),
-                session_id: el.dataset.sessionId ? parseInt(el.dataset.sessionId, 10) : null,
-                order: orderNum
-            });
+    const sortDocketItems = (items) => {
+        return [...(items || [])].sort((a, b) => {
+            const dateA = String(a.hearing_date || a.scheduled_date || '').slice(0, 10);
+            const dateB = String(b.hearing_date || b.scheduled_date || '').slice(0, 10);
+            if (dateA !== dateB) return dateA.localeCompare(dateB);
+            const orderA = Number(a.queue_order || 0) > 0 ? Number(a.queue_order) : 9999;
+            const orderB = Number(b.queue_order || 0) > 0 ? Number(b.queue_order) : 9999;
+            if (orderA !== orderB) return orderA - orderB;
+            const timeA = String(a.hearing_date || a.scheduled_time || '');
+            const timeB = String(b.hearing_date || b.scheduled_time || '');
+            return timeA.localeCompare(timeB);
         });
-        if (itemsPayload.length === 0) return;
-
-        const queueDate = items[0]?.dataset.queueDate || getTodayDateStr();
-        state.isSavingQueue = true;
-        items.forEach((item) => { item.draggable = false; });
-        try {
-            const res = await fetch('../../../backend/api/hearings/queue.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'X-CSRF-Token': getCsrfToken()
-                },
-                body: JSON.stringify({
-                    action: 'reorder_queue',
-                    items: itemsPayload,
-                    queue_date: queueDate
-                })
-            });
-            const data = await res.json().catch(() => ({}));
-            if (data.success) {
-                if (Array.isArray(data.updated_items)) {
-                    data.updated_items.forEach((up) => {
-                        const card = container.querySelector(`.dashboard-list-item[data-type="${up.type}"][data-id="${up.id}"]`);
-                        if (card) {
-                            const timePill = card.querySelector('.agenda-time-pill');
-                            if (timePill && up.formatted_time) {
-                                timePill.textContent = up.type === 'paanyaya'
-                                    ? `${formatDateClean(up.hearing_date)} · ${up.formatted_time}`
-                                    : up.formatted_time;
-                            }
-                        }
-                    });
-                }
-                renderDashboardCalendar();
-                window.dispatchEvent(new CustomEvent('agap:hearing-schedule-updated', { detail: data }));
-                setTimeout(fetchDashboardData, 0);
-            }
-        } catch (err) {
-            console.error('Error saving hearing sequence:', err);
-        } finally {
-            state.isSavingQueue = false;
-            items.forEach((item) => { item.draggable = true; });
-        }
-    };
-
-    const bindQueueDragAndDrop = (card, container) => {
-        card.draggable = true;
-        card.addEventListener('dragstart', (e) => {
-            draggedHearingCard = card;
-            card.classList.add('is-dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', card.dataset.index || '0');
-        });
-        card.addEventListener('dragend', () => {
-            card.classList.remove('is-dragging');
-            container.querySelectorAll('.dashboard-list-item').forEach((c) => c.classList.remove('drag-over'));
-            if (draggedHearingCard) {
-                draggedHearingCard = null;
-                saveReorderedSequence(container);
-            }
-        });
-        card.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            if (!draggedHearingCard || draggedHearingCard === card) return;
-            const bounds = card.getBoundingClientRect();
-            card.parentNode.insertBefore(draggedHearingCard, e.clientY - bounds.top > bounds.height / 2 ? card.nextSibling : card);
-            card.classList.add('drag-over');
-        });
-        card.addEventListener('dragleave', () => card.classList.remove('drag-over'));
     };
 
     const addPaanyayaItem = (container, item, displayIndex = 0) => {
         const art = document.createElement('article');
         art.className = 'dashboard-list-item';
-        art.dataset.id = item.paanyaya_id || item.id || '';
+        const paanyayaId = item.paanyaya_id || item.id || '';
+        const queueDate = String(item.scheduled_date || getTodayDateStr()).slice(0, 10);
+        const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Pre-Docketed';
+        art.dataset.index = String(displayIndex);
+        art.dataset.id = String(paanyayaId);
         art.dataset.type = 'paanyaya';
-        art.dataset.sessionId = item.session_id || '';
-        art.dataset.queueDate = String(item.scheduled_date || getTodayDateStr()).slice(0, 10);
+        art.dataset.sessionId = String(item.session_id || '');
+        art.dataset.complaintId = String(item.complaint_id || '');
+        art.dataset.queueDate = queueDate;
+        art.dataset.officialTime = String(item.scheduled_time || '09:00:00');
+        art.dataset.venue = String(item.venue || 'Tanggapan ng Barangay Tumana');
+        art.dataset.presidingOfficerId = String(item.presiding_officer_id || '');
+        art.dataset.presidingOfficerName = String(item.presiding_officer_name || '');
+        art.dataset.updatedAt = String(item.updated_at || '');
+        art.dataset.locked = item.is_locked ? '1' : '0';
+        art.dataset.lockCode = String(item.lock_code || '');
+        art.dataset.lockReason = String(item.lock_reason || '');
+        art.dataset.title = `${complaintRef} · Paanyaya Invitation`;
         art.style.cssText = 'padding: 12px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;';
 
         const content = document.createElement('div');
@@ -2011,14 +1949,13 @@ document.addEventListener('DOMContentLoaded', () => {
             : (formatTimeOnly(item.scheduled_time) || 'Scheduled');
         const invitee = item.invitee_name || 'Inanyayahan';
         const complainant = item.complainant_name || 'Nagpaanyaya';
-        const complaintRef = item.complaint_number ? `Complaint #${item.complaint_number}` : 'Pre-Docketed';
 
         const headerRow = document.createElement('div');
         headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 5px; flex-wrap: wrap;';
 
         const dragHandle = document.createElement('span');
         dragHandle.className = 'drag-handle';
-        dragHandle.title = 'I-drag para baguhin ang docket sequence';
+        dragHandle.title = 'I-drag sa kalendaryo para i-reschedule';
         dragHandle.innerHTML = '&#8942;&#8942;';
 
         const seqBadge = document.createElement('span');
@@ -2048,7 +1985,8 @@ document.addEventListener('DOMContentLoaded', () => {
         art.appendChild(content);
 
         const actions = document.createElement('div');
-        actions.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-shrink: 0;';
+        actions.className = 'hearing-card-actions';
+        actions.style.cssText = 'display: flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: wrap;';
 
         const statusPill = document.createElement('span');
         statusPill.style.cssText = 'font-size: 0.72rem; font-weight: 700; padding: 3px 9px; border-radius: 9999px; background: #e0e7ff; color: #3730a3; white-space: nowrap;';
@@ -2062,7 +2000,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         actions.append(statusPill, viewLink);
         art.appendChild(actions);
-        bindQueueDragAndDrop(art, container);
         container.appendChild(art);
     };
 
@@ -2070,11 +2007,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('todayPaanyayas');
         if (!container) return;
         container.replaceChildren();
-        const items = (paanyayas || []).filter(isActiveQueueSession);
+        const items = sortDocketItems((paanyayas || []).filter(isActiveQueueSession));
         if (!items.length) {
             return container.appendChild(emptyState('No active Paanyaya invitations scheduled in this timeframe.'));
         }
         items.slice(0, 10).forEach((item, idx) => addPaanyayaItem(container, item, idx));
+        window.AgapDocketDragSchedule?.attachDocketContainer(container, {
+            itemSelector: '.dashboard-list-item[data-id]',
+            selectedDate: state.selectedDate || getTodayDateStr(),
+            viewMode: 'multi_date_overview',
+            isFiltered: true,
+            isPaginated: items.length > 10,
+            fullDayLoaded: false,
+            canReorder: false,
+            disableReason: '',
+            onRefresh: () => fetchDashboardData(),
+            onToast: (msg, isErr) => setMessage(msg, isErr)
+        });
     };
 
     // =========================================================================
@@ -2372,23 +2321,43 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const addHearingItem = (container, hearing, displayIndex = 0) => {
+        const isPaanyaya = String(hearing.record_type || '').toLowerCase() === 'paanyaya'
+            || String(hearing.hearing_type || '').toLowerCase().includes('paanyaya');
+        const recordId = isPaanyaya ? (hearing.paanyaya_id || hearing.id || hearing.hearing_id) : hearing.hearing_id;
+        const dateKey = String(hearing.scheduled_date || hearing.hearing_date || getTodayDateStr()).slice(0, 10);
+
         const item = document.createElement('article');
         item.className = 'dashboard-list-item clerk-agenda-item';
         item.dataset.index = String(displayIndex);
-        item.dataset.id = hearing.hearing_id;
-        item.dataset.type = 'hearing';
-        item.dataset.queueDate = String(hearing.hearing_date || getTodayDateStr()).slice(0, 10);
-        item.style.cssText = 'padding: 13px 14px; border: 1px solid #eef2f6; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-radius: 10px; margin-bottom: 8px; background: #ffffff;';
+        item.dataset.id = String(recordId || '');
+        item.dataset.type = isPaanyaya ? 'paanyaya' : 'hearing';
+        item.dataset.sessionId = String(hearing.session_id || '');
+        item.dataset.complaintId = String(hearing.complaint_id || '');
+        item.dataset.caseId = String(hearing.case_id || '');
+        item.dataset.queueDate = dateKey;
+        item.dataset.officialTime = String(hearing.scheduled_time || hearing.hearing_date || '');
+        item.dataset.venue = String(hearing.venue || (isPaanyaya ? 'Tanggapan ng Barangay Tumana' : 'Lupon Court Room'));
+        item.dataset.presidingOfficerId = String(hearing.presiding_officer_id || '');
+        item.dataset.presidingOfficerName = String(hearing.presiding_officer_name || '');
+        item.dataset.updatedAt = String(hearing.updated_at || '');
+        item.dataset.locked = hearing.is_locked ? '1' : '0';
+        item.dataset.lockCode = String(hearing.lock_code || '');
+        item.dataset.lockReason = String(hearing.lock_reason || '');
 
-        bindQueueDragAndDrop(item, container);
+        const scheduledTimeStr = formatTimeOnly(hearing.hearing_date || hearing.scheduled_time) || 'Scheduled';
+        const hearingTypeStr = isPaanyaya
+            ? `Paanyaya Invitation${hearing.attempt_number ? ' #' + hearing.attempt_number : ''}`
+            : `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
+        const caseNumberStr = isPaanyaya
+            ? (hearing.complaint_number ? `Complaint #${hearing.complaint_number}` : 'Pre-Docketed')
+            : (hearing.case_number ? `Case #${hearing.case_number}` : 'Case');
+
+        item.dataset.title = `${caseNumberStr} · ${hearingTypeStr}`;
+        item.style.cssText = 'padding: 13px 14px; border: 1px solid #eef2f6; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; border-radius: 10px; margin-bottom: 8px; background: #ffffff;';
 
         const content = document.createElement('div');
         content.className = 'dashboard-list-content';
         content.style.flex = '1';
-
-        const scheduledTimeStr = formatTimeOnly(hearing.hearing_date) || 'Scheduled';
-        const hearingTypeStr = `${hearing.hearing_type || 'Hearing'}${hearing.mediation_attempt ? ' ' + hearing.mediation_attempt : ''}`;
-        const caseNumberStr = hearing.case_number ? `Case #${hearing.case_number}` : 'Case';
 
         const headerRow = document.createElement('div');
         headerRow.style.cssText = 'display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap;';
@@ -2404,7 +2373,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const timeBadge = document.createElement('span');
         timeBadge.className = 'agenda-time-pill';
-        timeBadge.style.cssText = 'font-size: 0.76rem; font-weight: 700; color: #0f172a; background: #e2e8f0; padding: 2px 8px; border-radius: 5px; white-space: nowrap;';
+        timeBadge.style.cssText = isPaanyaya
+            ? 'font-size: 0.76rem; font-weight: 700; color: #1e40af; background: #dbeafe; padding: 2px 8px; border-radius: 5px; white-space: nowrap;'
+            : 'font-size: 0.76rem; font-weight: 700; color: #0f172a; background: #e2e8f0; padding: 2px 8px; border-radius: 5px; white-space: nowrap;';
         timeBadge.textContent = scheduledTimeStr;
 
         const heading = document.createElement('h3');
@@ -2415,11 +2386,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const partiesRow = document.createElement('div');
         partiesRow.style.cssText = 'font-size: 0.83rem; color: #1e293b; margin-bottom: 4px;';
-        partiesRow.innerHTML = `<span style="color: #166534; font-weight: 700;">(C)</span> ${escapeHtml(hearing.complainant_names || 'Complainant')} <span style="color: #94a3b8; margin: 0 4px;">vs.</span> <span style="color: #991b1b; font-weight: 700;">(R)</span> ${escapeHtml(hearing.respondent_names || 'Respondent')}`;
+        partiesRow.innerHTML = `<span style="color: #166534; font-weight: 700;">(C)</span> ${escapeHtml(hearing.complainant_names || hearing.complainant_name || 'Complainant')} <span style="color: #94a3b8; margin: 0 4px;">vs.</span> <span style="color: #991b1b; font-weight: 700;">(R)</span> ${escapeHtml(hearing.respondent_names || hearing.invitee_name || 'Respondent')}`;
 
         const venueRow = document.createElement('p');
         venueRow.style.cssText = 'font-size: 0.76rem; color: #64748b; margin: 0;';
-        venueRow.innerHTML = `<span>${escapeHtml(hearing.venue || 'Lupon Court Room')}</span>${hearing.complaint_title ? ` • <span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
+        venueRow.innerHTML = `<span>${escapeHtml(hearing.venue || (isPaanyaya ? 'Tanggapan ng Barangay Tumana' : 'Lupon Court Room'))}</span>${hearing.complaint_title ? ` • <span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
 
         content.append(headerRow, partiesRow, venueRow);
         item.appendChild(content);
@@ -2441,7 +2412,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const nowD = new Date();
         const diffMinutes = (!Number.isNaN(hDate.getTime()) && nowD > hDate) ? Math.floor((nowD - hDate) / 60000) : 0;
 
-        let badgeBg = '#f1f5f9', badgeColor = '#475569', badgeBorder = '#cbd5e1', badgeLabel = 'Scheduled';
+        let badgeBg = '#f1f5f9', badgeColor = '#475569', badgeBorder = '#cbd5e1', badgeLabel = hearing.status || 'Scheduled';
         if (isInSession) {
             badgeBg = '#dbeafe'; badgeColor = '#1e40af'; badgeBorder = '#93c5fd';
             const startFormatted = formatTimeOnly(hearing.actual_start_time);
@@ -2455,10 +2426,10 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (isCompleteAndReady) {
             badgeBg = '#dcfce7'; badgeColor = '#15803d'; badgeBorder = '#86efac';
             badgeLabel = 'Complete & Ready';
-        } else if (diffMinutes >= 60) {
+        } else if (!isPaanyaya && diffMinutes >= 60) {
             badgeBg = '#fee2e2'; badgeColor = '#991b1b'; badgeBorder = '#fca5a5';
             badgeLabel = `1-Hour Expired (${diffMinutes}m late)`;
-        } else if (diffMinutes > 0) {
+        } else if (!isPaanyaya && diffMinutes > 0) {
             badgeBg = '#fef3c7'; badgeColor = '#b45309'; badgeBorder = '#fde68a';
             badgeLabel = `Grace Period (${60 - diffMinutes}m left)`;
         }
@@ -2469,45 +2440,49 @@ document.addEventListener('DOMContentLoaded', () => {
         statusPill.textContent = badgeLabel;
         actions.appendChild(statusPill);
 
-        if (isCompleteAndReady && !isInSession && !isConcluded) {
-            const startBtn = document.createElement('button');
-            startBtn.type = 'button';
-            startBtn.className = 'btn-action-start-hearing';
-            startBtn.textContent = '▶ Start Session';
-            startBtn.addEventListener('click', () => handleStartHearing(hearing.hearing_id, hearing.case_number));
-            actions.appendChild(startBtn);
-        }
-
-        if (!isConcluded && !isInSession) {
-            const standbyBtn = document.createElement('button');
-            standbyBtn.type = 'button';
-            standbyBtn.className = 'btn-action-standby-hearing';
-            if (isStandby) {
-                standbyBtn.style.cssText = 'background: #fffbeb; color: #b45309; border: 1.5px solid #b45309; padding: 5px 10px; font-weight: 700;';
-                standbyBtn.textContent = '▶ Resume';
-            } else {
-                standbyBtn.style.cssText = 'background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 5px 10px; font-weight: 600;';
-                standbyBtn.textContent = '⏸ Standby';
+        if (!isPaanyaya) {
+            if (isCompleteAndReady && !isInSession && !isConcluded) {
+                const startBtn = document.createElement('button');
+                startBtn.type = 'button';
+                startBtn.className = 'btn-action-start-hearing';
+                startBtn.textContent = '▶ Start Session';
+                startBtn.addEventListener('click', () => handleStartHearing(hearing.hearing_id, hearing.case_number));
+                actions.appendChild(startBtn);
             }
-            standbyBtn.addEventListener('click', () => handleToggleStandby(hearing.hearing_id, isStandby));
-            actions.appendChild(standbyBtn);
-        }
 
-        if (!isConcluded) {
-            const attBtn = document.createElement('button');
-            attBtn.type = 'button';
-            attBtn.className = 'btn-action-quick-att';
-            attBtn.textContent = 'Quick Attendance';
-            attBtn.addEventListener('click', () => openQuickAttendanceModal(hearing));
-            actions.appendChild(attBtn);
+            if (!isConcluded && !isInSession) {
+                const standbyBtn = document.createElement('button');
+                standbyBtn.type = 'button';
+                standbyBtn.className = 'btn-action-standby-hearing';
+                if (isStandby) {
+                    standbyBtn.style.cssText = 'background: #fffbeb; color: #b45309; border: 1.5px solid #b45309; padding: 5px 10px; font-weight: 700;';
+                    standbyBtn.textContent = '▶ Resume';
+                } else {
+                    standbyBtn.style.cssText = 'background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; padding: 5px 10px; font-weight: 600;';
+                    standbyBtn.textContent = '⏸ Standby';
+                }
+                standbyBtn.addEventListener('click', () => handleToggleStandby(hearing.hearing_id, isStandby));
+                actions.appendChild(standbyBtn);
+            }
+
+            if (!isConcluded) {
+                const attBtn = document.createElement('button');
+                attBtn.type = 'button';
+                attBtn.className = 'btn-action-quick-att';
+                attBtn.textContent = 'Quick Attendance';
+                attBtn.addEventListener('click', () => openQuickAttendanceModal(hearing));
+                actions.appendChild(attBtn);
+            }
         }
 
         const openCaseBtn = document.createElement('a');
         openCaseBtn.className = 'btn-open-case';
-        openCaseBtn.textContent = 'Open Case';
-        openCaseBtn.href = hearing.case_id
-            ? `../cases/case-details.php?id=${encodeURIComponent(hearing.case_id)}`
-            : (hearing.complaint_id ? `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}` : '#');
+        openCaseBtn.textContent = isPaanyaya ? 'Paanyaya' : 'Open Case';
+        openCaseBtn.href = isPaanyaya
+            ? (hearing.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(hearing.complaint_id)}` : '../paanyaya/index.php')
+            : (hearing.case_id
+                ? `../cases/case-details.php?id=${encodeURIComponent(hearing.case_id)}`
+                : (hearing.complaint_id ? `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}` : '#'));
         actions.appendChild(openCaseBtn);
 
         item.appendChild(actions);
@@ -2543,7 +2518,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.hearings.slice(startIndex, endIndex).forEach((hearing, idx) => addHearingItem(container, hearing, startIndex + idx));
 
         if (paginationWrap) paginationWrap.style.display = totalPages > 1 ? 'flex' : 'none';
-        if (infoEl) infoEl.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${totalHearings} hearing${totalHearings === 1 ? '' : 's'}`;
+        if (infoEl) infoEl.textContent = `Showing ${startIndex + 1} to ${endIndex} of ${totalHearings} session${totalHearings === 1 ? '' : 's'}`;
         if (prevBtn) prevBtn.disabled = state.hearingsPage <= 1;
         if (nextBtn) nextBtn.disabled = state.hearingsPage >= totalPages;
         if (pageNumbersContainer) {
@@ -2559,31 +2534,61 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
+
+        const isSingleDayView = Boolean(state.selectedDate);
+        const isPaginated = totalPages > 1;
+        const canReorder = isSingleDayView && !isPaginated;
+        let disableReason = '';
+        if (!isSingleDayView) {
+            disableReason = `Queue reordering is disabled in multi-day (${state.period}) view. Click a specific date on the Session Calendar to load and reorder that day's docket.`;
+        } else if (isPaginated) {
+            disableReason = 'Queue reordering is disabled while the docket list is paginated across multiple pages.';
+        }
+
+        window.AgapDocketDragSchedule?.attachDocketContainer(container, {
+            itemSelector: '.dashboard-list-item[data-id]',
+            selectedDate: state.selectedDate || getTodayDateStr(),
+            viewMode: isSingleDayView ? 'day' : state.period,
+            isFiltered: false,
+            isPaginated,
+            fullDayLoaded: canReorder,
+            canReorder,
+            disableReason,
+            onRefresh: () => fetchDashboardData(),
+            onToast: (msg, isErr) => setMessage(msg, isErr)
+        });
     };
 
     const renderHearings = (hearings, periodLabel) => {
-        state.hearings = [...(hearings || []).filter(isActiveQueueSession)].sort((a, b) => new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0));
-        state.hearingsPage = 1;
-        state.hearingsPeriodLabel = periodLabel;
-
         const heading = document.getElementById('hearingsPanelHeading');
         const sub = document.getElementById('hearingsPanelSub');
         const countBadge = document.getElementById('periodHearingCountBadge');
 
         if (state.period === 'all') {
-            state.selectedDate = getTodayDateStr();
-            if (heading) heading.textContent = "Today's Hearings";
+            const targetDate = state.selectedDate || getTodayDateStr();
+            state.selectedDate = targetDate;
+            const todayStr = getTodayDateStr();
+            const isToday = (targetDate === todayStr);
+            const dayItems = (state.calendarHearings || []).filter(
+                (h) => isActiveQueueSession(h) && getHearingDateKey(h.hearing_date) === targetDate
+            );
+            state.hearings = sortDocketItems(dayItems.length ? dayItems : (hearings || []).filter(isActiveQueueSession));
+            if (heading) heading.textContent = isToday ? "Today's Hearings" : `Hearings (${formatDateOnly(targetDate)})`;
             if (sub) sub.textContent = 'Scheduled formal sessions & Lupon Court Room queue (drag to reorder)';
         } else {
             state.selectedDate = null;
+            state.hearings = sortDocketItems((hearings || []).filter(isActiveQueueSession));
             if (heading) heading.textContent = `Hearings (${periodLabel})`;
-            if (sub) sub.textContent = 'Sessions scheduled within this timeframe';
+            if (sub) sub.textContent = 'Sessions scheduled within this timeframe (select a calendar date to reorder)';
         }
+
+        state.hearingsPage = 1;
+        state.hearingsPeriodLabel = periodLabel;
 
         if (countBadge) {
             const count = state.hearings.length;
             if (count > 0) {
-                countBadge.textContent = `${count} hearing${count === 1 ? '' : 's'}`;
+                countBadge.textContent = `${count} session${count === 1 ? '' : 's'}`;
                 countBadge.style.display = 'inline-block';
             } else {
                 countBadge.style.display = 'none';
@@ -2607,11 +2612,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const countBadge = document.getElementById('periodHearingCountBadge');
         if (countBadge) {
-            countBadge.textContent = `${matchingHearings.length} hearing${matchingHearings.length === 1 ? '' : 's'}`;
+            countBadge.textContent = `${matchingHearings.length} session${matchingHearings.length === 1 ? '' : 's'}`;
             countBadge.style.display = matchingHearings.length > 0 ? 'inline-block' : 'none';
         }
 
-        state.hearings = matchingHearings.sort((a, b) => new Date(a.hearing_date || 0) - new Date(b.hearing_date || 0));
+        state.hearings = sortDocketItems(matchingHearings);
         state.hearingsPage = 1;
         state.hearingsPeriodLabel = isToday ? 'today' : formattedDate;
         renderHearingsPage();
@@ -2686,7 +2691,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dot = document.createElement('span');
                 dot.className = 'dash-cal-hearing-dot';
                 cell.appendChild(dot);
-                cell.title = `${dayHearings.length} session(s) scheduled — click to view`;
+                cell.title = `${dayHearings.length} session(s) scheduled — click to view or drop a session card here to reschedule`;
             }
             cell.addEventListener('click', () => selectCalendarDate(dateStr));
             grid.appendChild(cell);
@@ -2707,6 +2712,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             grid.appendChild(cell);
         }
+
+        window.AgapDocketDragSchedule?.attachCalendarDropTargets(grid, {
+            onRefresh: () => fetchDashboardData(),
+            onToast: (msg, isErr) => setMessage(msg, isErr)
+        });
     };
 
     const renderFullCalendarSummary = () => {

@@ -4,6 +4,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../../controllers/HearingController.php';
+require_once __DIR__ . '/../../services/DocketScheduleService.php';
 
 if (!in_array($_SERVER['REQUEST_METHOD'], ['GET', 'POST'], true)) {
     http_response_code(405);
@@ -30,6 +31,15 @@ if (empty($input) && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (is_array($decoded)) {
         $input = $decoded;
     }
+}
+
+$action = trim((string) ($input['action'] ?? ''));
+if ($action === 'slots' || $action === 'check_slots' || !empty($input['item_type'])) {
+    $service = new DocketScheduleService();
+    $result = $service->getAvailableSlots($input, (int) $_SESSION['user_id'], (int) $_SESSION['role_id']);
+    http_response_code((int) ($result['http_code'] ?? ($result['success'] ? 200 : 422)));
+    echo json_encode($result);
+    exit;
 }
 
 $result = (new HearingController())->checkAvailability($input);

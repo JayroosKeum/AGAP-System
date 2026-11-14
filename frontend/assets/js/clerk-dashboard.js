@@ -14,6 +14,7 @@
         stats: null,
         activeAgendaFilter: 'all',
         calendarDate: new Date(),
+        selectedDate: null,
         activeQuickAttHearing: null,
         activeQuickAttHearingId: null,
         activeQuickAttData: null,
@@ -183,80 +184,16 @@
         }
     };
 
-    // Asynchronous Queue Order Persistence
-    const saveReorderedSequence = async (container) => {
-        if (state.isSavingQueue) return;
-        const itemsPayload = [];
-        const cards = container.querySelectorAll('.clerk-agenda-item');
-        cards.forEach((el, newIdx) => {
-            const orderNum = newIdx + 1;
-            const seqBadge = el.querySelector('.queue-seq-badge');
-            if (seqBadge) seqBadge.textContent = `#${orderNum}`;
-            el.dataset.index = newIdx;
-
-            itemsPayload.push({
-                type: el.dataset.type,
-                id: parseInt(el.dataset.id, 10),
-                session_id: el.dataset.sessionId ? parseInt(el.dataset.sessionId, 10) : null,
-                order: orderNum
-            });
+    const sortDocketItems = (items) => {
+        return [...(items || [])].sort((a, b) => {
+            const dateA = String(a.queue_date || a.scheduled_date || a.time || '').slice(0, 10);
+            const dateB = String(b.queue_date || b.scheduled_date || b.time || '').slice(0, 10);
+            if (dateA !== dateB) return dateA.localeCompare(dateB);
+            const orderA = Number(a.queue_order || 0) > 0 ? Number(a.queue_order) : 9999;
+            const orderB = Number(b.queue_order || 0) > 0 ? Number(b.queue_order) : 9999;
+            if (orderA !== orderB) return orderA - orderB;
+            return String(a.time || '').localeCompare(String(b.time || ''));
         });
-
-        if (itemsPayload.length === 0) return;
-
-        const queueDate = cards[0]?.dataset.queueDate || getLocalDate();
-        state.isSavingQueue = true;
-        cards.forEach(card => { card.draggable = false; });
-        try {
-            const res = await fetch('../../../backend/api/hearings/queue.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'X-CSRF-Token': getCsrfToken()
-                },
-                body: JSON.stringify({
-                    action: 'reorder_queue',
-                    items: itemsPayload,
-                    queue_date: queueDate
-                })
-            });
-            const data = await res.json().catch(() => ({}));
-            if (data.success) {
-                (data.updated_items || []).forEach((updated) => {
-                    const card = Array.from(cards).find((candidate) =>
-                        candidate.dataset.type === updated.type
-                        && Number(candidate.dataset.id) === Number(updated.id)
-                        && (!updated.session_id || Number(candidate.dataset.sessionId || 0) === Number(updated.session_id))
-                    );
-                    const timePill = card?.querySelector('.agenda-time-pill');
-                    if (timePill && updated.formatted_time) timePill.textContent = updated.formatted_time;
-
-                    if (updated.type === 'hearing') {
-                        const hearing = state.stats?.today_hearings?.find((item) => Number(item.hearing_id) === Number(updated.id));
-                        if (hearing) {
-                            hearing.hearing_date = updated.hearing_date;
-                            hearing.queue_order = updated.order;
-                        }
-                    } else if (updated.type === 'paanyaya') {
-                        const paanyaya = state.stats?.today_paanyayas?.find((item) => Number(item.paanyaya_id) === Number(updated.id)
-                            && (!updated.session_id || Number(item.session_id || 0) === Number(updated.session_id)));
-                        if (paanyaya) {
-                            paanyaya.scheduled_time = updated.scheduled_time || updated.formatted_time;
-                            paanyaya.queue_order = updated.order;
-                        }
-                    }
-                });
-                window.dispatchEvent(new CustomEvent('agap:queue-reordered', { detail: data }));
-                showToast(`Nai-save ang bagong docket sequence (#1 - #${itemsPayload.length})!`);
-            } else {
-                showToast(data.message || 'Nabigong i-save ang sequence.', true);
-            }
-        } catch (err) {
-            showToast('Error sa pag-save ng sequence.', true);
-        } finally {
-            state.isSavingQueue = false;
-            cards.forEach(card => { card.draggable = true; });
-        }
     };
 
     // Global Punong Barangay Unavailable Batch Rescheduler (Afternoon 1-5 PM or Entire Day)
@@ -309,7 +246,7 @@
                 showToast('Ipinoproseso ang batch reschedule at KP Form 8/9...', false);
                 const res = await postQuickAction({
                     action: 'batch_reschedule_pb_unavailable',
-                    target_date: getLocalDate(),
+                    target_date: state.selectedDate || getLocalDate(),
                     slot_scope: slotScope,
                     reason: 'Punong Barangay Unavailable'
                 });
@@ -330,57 +267,123 @@
         const container = document.getElementById('clerkAgendaStream');
         if (!container) return;
 
-        const hearings = (state.stats?.today_hearings || []).filter(isActiveQueueSession);
-        const paanyayas = (state.stats?.today_paanyayas || []).filter(isActiveQueueSession);
+        const isSingleDayView = state.period === 'all' || Boolean(state.selectedDate);
+        const activeDate = isSingleDayView ? (state.selectedDate || getLocalDate()) : null;
+        if (state.period === 'all' && !state.selectedDate) {
+            state.selectedDate = activeDate;
+        }
 
-        // Normalize items
         const agendaItems = [];
 
-        hearings.forEach(h => {
-            agendaItems.push({
-                type: 'hearing',
-                id: h.hearing_id,
-                case_id: h.case_id,
-                complaint_id: h.complaint_id,
-                time: h.hearing_date,
-                title: `${h.case_number ? 'Case #' + h.case_number : 'Hearing'} · ${h.hearing_type || 'Mediation Session'}`,
-                subTitle: h.complaint_title || '',
-                parties: `${h.complainant_names ? '(C) ' + h.complainant_names : 'Complainant'} vs. ${h.respondent_names ? '(R) ' + h.respondent_names : 'Respondent'}`,
-                venue: h.venue || 'Lupon Court Room',
-                status: h.queue_status || h.status || 'Scheduled',
-                raw: h
+        if (isSingleDayView && Array.isArray(state.stats?.calendar_hearings) && state.stats.calendar_hearings.length > 0) {
+            const dayRecords = state.stats.calendar_hearings.filter((rec) => {
+                if (!isActiveQueueSession(rec)) return false;
+                const recDate = String(rec.scheduled_date || rec.hearing_date || '').slice(0, 10);
+                return recDate === activeDate;
             });
-        });
 
-        paanyayas.forEach(p => {
-            agendaItems.push({
-                type: 'paanyaya',
-                id: p.paanyaya_id,
-                complaint_id: p.complaint_id,
-                session_id: p.session_id,
-                time: p.scheduled_time || p.scheduled_date,
-                title: `${p.complaint_number ? 'Complaint #' + p.complaint_number : 'Pre-Docketed'} · Paanyaya Invitation (Stage 0)`,
-                subTitle: p.complaint_title || '',
-                parties: `Inanyayahan: ${p.invitee_name || 'Invitee'}`,
-                venue: p.venue || 'Tanggapan ng Barangay Tumana',
-                status: p.status || 'Scheduled',
-                complainant_attended: p.complainant_attended,
-                respondent_attended: p.respondent_attended,
-                raw: p
+            dayRecords.forEach((rec) => {
+                const isPaanyaya = String(rec.record_type || '').toLowerCase() === 'paanyaya'
+                    || String(rec.hearing_type || '').toLowerCase().includes('paanyaya');
+                if (isPaanyaya) {
+                    agendaItems.push({
+                        type: 'paanyaya',
+                        id: rec.paanyaya_id || rec.id,
+                        complaint_id: rec.complaint_id,
+                        session_id: rec.session_id,
+                        queue_date: String(rec.scheduled_date || rec.hearing_date || activeDate).slice(0, 10),
+                        queue_order: Number(rec.queue_order || 0),
+                        time: rec.scheduled_time || rec.hearing_date || rec.scheduled_date,
+                        title: `${rec.complaint_number ? 'Complaint #' + rec.complaint_number : 'Pre-Docketed'} · Paanyaya Invitation (Stage 0)`,
+                        subTitle: rec.complaint_title || '',
+                        parties: `Inanyayahan: ${rec.invitee_name || rec.respondent_names || 'Invitee'}`,
+                        venue: rec.venue || 'Tanggapan ng Barangay Tumana',
+                        status: rec.status || 'Scheduled',
+                        complainant_attended: rec.complainant_attended,
+                        respondent_attended: rec.respondent_attended,
+                        raw: rec
+                    });
+                } else {
+                    agendaItems.push({
+                        type: 'hearing',
+                        id: rec.hearing_id,
+                        case_id: rec.case_id,
+                        complaint_id: rec.complaint_id,
+                        queue_date: String(rec.hearing_date || activeDate).slice(0, 10),
+                        queue_order: Number(rec.queue_order || 0),
+                        time: rec.hearing_date,
+                        title: `${rec.case_number ? 'Case #' + rec.case_number : 'Hearing'} · ${rec.hearing_type || 'Mediation Session'}`,
+                        subTitle: rec.complaint_title || '',
+                        parties: `${rec.complainant_names ? '(C) ' + rec.complainant_names : 'Complainant'} vs. ${rec.respondent_names ? '(R) ' + rec.respondent_names : 'Respondent'}`,
+                        venue: rec.venue || 'Lupon Court Room',
+                        status: rec.queue_status || rec.status || 'Scheduled',
+                        raw: rec
+                    });
+                }
             });
-        });
+        } else {
+            const hearings = (state.stats?.today_hearings || []).filter(isActiveQueueSession);
+            const paanyayas = (state.stats?.today_paanyayas || []).filter((p) => {
+                if (!isActiveQueueSession(p)) return false;
+                if (activeDate) {
+                    return String(p.scheduled_date || '').slice(0, 10) === activeDate;
+                }
+                return true;
+            });
+
+            hearings.forEach((h) => {
+                agendaItems.push({
+                    type: 'hearing',
+                    id: h.hearing_id,
+                    case_id: h.case_id,
+                    complaint_id: h.complaint_id,
+                    queue_date: String(h.hearing_date || activeDate || getLocalDate()).slice(0, 10),
+                    queue_order: Number(h.queue_order || 0),
+                    time: h.hearing_date,
+                    title: `${h.case_number ? 'Case #' + h.case_number : 'Hearing'} · ${h.hearing_type || 'Mediation Session'}`,
+                    subTitle: h.complaint_title || '',
+                    parties: `${h.complainant_names ? '(C) ' + h.complainant_names : 'Complainant'} vs. ${h.respondent_names ? '(R) ' + h.respondent_names : 'Respondent'}`,
+                    venue: h.venue || 'Lupon Court Room',
+                    status: h.queue_status || h.status || 'Scheduled',
+                    raw: h
+                });
+            });
+
+            paanyayas.forEach((p) => {
+                agendaItems.push({
+                    type: 'paanyaya',
+                    id: p.paanyaya_id,
+                    complaint_id: p.complaint_id,
+                    session_id: p.session_id,
+                    queue_date: String(p.scheduled_date || activeDate || getLocalDate()).slice(0, 10),
+                    queue_order: Number(p.queue_order || 0),
+                    time: p.scheduled_time || p.scheduled_date,
+                    title: `${p.complaint_number ? 'Complaint #' + p.complaint_number : 'Pre-Docketed'} · Paanyaya Invitation (Stage 0)`,
+                    subTitle: p.complaint_title || '',
+                    parties: `Inanyayahan: ${p.invitee_name || 'Invitee'}`,
+                    venue: p.venue || 'Tanggapan ng Barangay Tumana',
+                    status: p.status || 'Scheduled',
+                    complainant_attended: p.complainant_attended,
+                    respondent_attended: p.respondent_attended,
+                    raw: p
+                });
+            });
+        }
+
+        const sortedAll = sortDocketItems(agendaItems);
 
         // Filter based on activeAgendaFilter
-        const filtered = agendaItems.filter(item => {
+        const isFiltered = state.activeAgendaFilter !== 'all';
+        const filtered = sortedAll.filter((item) => {
             if (state.activeAgendaFilter === 'hearings') return item.type === 'hearing';
             if (state.activeAgendaFilter === 'paanyaya') return item.type === 'paanyaya';
             return true;
         });
 
         // Update count badges
-        const countAll = agendaItems.length;
-        const countHearings = agendaItems.filter(i => i.type === 'hearing').length;
-        const countPaanyaya = agendaItems.filter(i => i.type === 'paanyaya').length;
+        const countAll = sortedAll.length;
+        const countHearings = sortedAll.filter((i) => i.type === 'hearing').length;
+        const countPaanyaya = sortedAll.filter((i) => i.type === 'paanyaya').length;
 
         setText('badgeFilterAll', countAll);
         setText('badgeFilterHearings', countHearings);
@@ -392,61 +395,33 @@
             const emptyDiv = document.createElement('div');
             emptyDiv.style.cssText = 'padding: 32px 16px; text-align: center; color: #64748b; font-size: 0.88rem; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;';
             emptyDiv.innerHTML = `
-                
-                <strong>Walang nakatakdang sesyon para sa kasalukuyang filter.</strong>
+                <strong>Walang nakatakdang sesyon para sa kasalukuyang filter (${escapeHtml(activeDate ? formatDateClean(activeDate) : state.period)}).</strong>
                 <p style="margin: 4px 0 0; font-size: 0.78rem;">Ang mga pormal na hearing at Paanyaya dialogue para sa araw na ito ay awtomatikong lilitaw dito.</p>
             `;
             container.appendChild(emptyDiv);
             return;
         }
 
-        let draggedCard = null;
-
         filtered.forEach((item, index) => {
+            const raw = item.raw || {};
             const card = document.createElement('article');
             card.className = `clerk-agenda-item item-${item.type}`;
-            card.draggable = true;
-            card.dataset.index = index;
-            card.dataset.id = item.id;
+            card.dataset.index = String(index);
+            card.dataset.id = String(item.id || '');
             card.dataset.type = item.type;
-            card.dataset.sessionId = item.session_id || '';
-            card.dataset.queueDate = String(item.hearing_date || item.scheduled_date || item.date || getLocalDate()).slice(0, 10);
-
-            // Drag and Drop Event Listeners
-            card.addEventListener('dragstart', (e) => {
-                draggedCard = card;
-                card.classList.add('is-dragging');
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', card.dataset.index);
-            });
-
-            card.addEventListener('dragend', () => {
-                card.classList.remove('is-dragging');
-                container.querySelectorAll('.clerk-agenda-item').forEach(c => c.classList.remove('drag-over'));
-                if (draggedCard) {
-                    draggedCard = null;
-                    saveReorderedSequence(container);
-                }
-            });
-
-            card.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                if (!draggedCard || draggedCard === card) return;
-
-                const bounding = card.getBoundingClientRect();
-                const offset = e.clientY - bounding.top;
-                if (offset > bounding.height / 2) {
-                    card.parentNode.insertBefore(draggedCard, card.nextSibling);
-                } else {
-                    card.parentNode.insertBefore(draggedCard, card);
-                }
-                card.classList.add('drag-over');
-            });
-
-            card.addEventListener('dragleave', () => {
-                card.classList.remove('drag-over');
-            });
+            card.dataset.sessionId = String(item.session_id || '');
+            card.dataset.complaintId = String(item.complaint_id || '');
+            card.dataset.caseId = String(item.case_id || '');
+            card.dataset.queueDate = String(item.queue_date || activeDate || getLocalDate()).slice(0, 10);
+            card.dataset.officialTime = String(item.time || '');
+            card.dataset.venue = String(item.venue || '');
+            card.dataset.presidingOfficerId = String(raw.presiding_officer_id || '');
+            card.dataset.presidingOfficerName = String(raw.presiding_officer_name || '');
+            card.dataset.updatedAt = String(raw.updated_at || '');
+            card.dataset.locked = raw.is_locked ? '1' : '0';
+            card.dataset.lockCode = String(raw.lock_code || '');
+            card.dataset.lockReason = String(raw.lock_reason || '');
+            card.dataset.title = item.title;
 
             // Header
             const header = document.createElement('div');
@@ -692,6 +667,27 @@
             card.append(header, body, actions);
             container.appendChild(card);
         });
+
+        const canReorder = isSingleDayView && !isFiltered;
+        let disableReason = '';
+        if (isFiltered) {
+            disableReason = `Queue reordering is disabled while filtered by '${state.activeAgendaFilter}'. Select 'Lahat (All)' so the complete day is loaded.`;
+        } else if (!isSingleDayView) {
+            disableReason = `Queue reordering is disabled in multi-day (${state.period}) view. Click a specific date on the Hearing Calendar to load and reorder that day's docket.`;
+        }
+
+        window.AgapDocketDragSchedule?.attachDocketContainer(container, {
+            itemSelector: '.clerk-agenda-item[data-id]',
+            selectedDate: activeDate || getLocalDate(),
+            viewMode: isSingleDayView ? 'day' : state.period,
+            isFiltered,
+            isPaginated: false,
+            fullDayLoaded: canReorder,
+            canReorder,
+            disableReason,
+            onRefresh: () => fetchDashboardData(),
+            onToast: (msg, isErr) => showToast(msg, isErr)
+        });
     };
 
     // Render Macro Dispute Analytics
@@ -856,6 +852,14 @@
         });
     };
 
+    const selectClerkCalendarDate = (dateStr) => {
+        state.selectedDate = dateStr;
+        renderAgendaStream();
+        document.querySelectorAll('#dashboardCalendarGrid .mini-cal-day[data-date]').forEach((cell) => {
+            cell.classList.toggle('is-selected', cell.dataset.date === dateStr);
+        });
+    };
+
     // Mini Calendar implementation
     const renderMiniCalendar = () => {
         const grid = document.getElementById('dashboardCalendarGrid');
@@ -871,7 +875,7 @@
 
         const firstDay = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const today = new Date();
+        const todayStr = getLocalDate();
 
         // Get dates with hearings from calendar_hearings
         const hearingsDates = new Set();
@@ -891,20 +895,29 @@
         }
 
         for (let d = 1; d <= daysInMonth; d++) {
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
             const cell = document.createElement('span');
             cell.className = 'mini-cal-day';
+            cell.dataset.date = dateStr;
+            cell.style.cursor = 'pointer';
             cell.textContent = String(d);
 
-            const isToday = (today.getFullYear() === year && today.getMonth() === month && today.getDate() === d);
-            if (isToday) cell.classList.add('today');
+            if (dateStr === todayStr) cell.classList.add('today');
+            if (dateStr === state.selectedDate) cell.classList.add('is-selected');
 
             if (hearingsDates.has(d)) {
                 cell.classList.add('has-hearings');
-                cell.title = `May nakatakdang pagdinig sa petsang ito`;
+                cell.title = `May nakatakdang pagdinig sa petsang ito — click to view or drop a session card here to reschedule`;
             }
 
+            cell.addEventListener('click', () => selectClerkCalendarDate(dateStr));
             grid.appendChild(cell);
         }
+
+        window.AgapDocketDragSchedule?.attachCalendarDropTargets(grid, {
+            onRefresh: () => fetchDashboardData(),
+            onToast: (msg, isErr) => showToast(msg, isErr)
+        });
     };
 
     // Fetch Dashboard Data from Backend
@@ -1066,6 +1079,7 @@
                 tab.classList.add('active');
                 state.period = tab.getAttribute('data-period') || 'all';
                 state.offset = 0;
+                state.selectedDate = state.period === 'all' ? getLocalDate() : null;
 
                 const navBtns = document.getElementById('periodNavButtons');
                 if (navBtns) navBtns.style.display = state.period === 'all' ? 'none' : 'flex';
@@ -1099,6 +1113,7 @@
         });
         document.getElementById('dashCalTodayBtn')?.addEventListener('click', () => {
             state.calendarDate = new Date();
+            selectClerkCalendarDate(getLocalDate());
             renderMiniCalendar();
         });
 
