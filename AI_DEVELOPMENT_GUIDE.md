@@ -64,6 +64,29 @@ The Administrator dashboard (`frontend/assets/js/dashboard.js`) and Clerk Agenda
   - Every submitted `paanyaya_sessions.session_id` is verified against the submitted `complaint_id` and `paanyayas.paanyaya_id`.
   - Stale (`expected_updated_at`, `expected_hearing_date`, `expected_queue_order`), duplicate, cross-date, incomplete, and filtered/paginated payloads are rejected safely (`409`/`422`) inside `FOR UPDATE` row-locked transactions.
 
+## Pending implementation for attendance, show cause, and CFA
+
+Use the existing hearing workspace, daily docket, Proof of Service, and Outcomes tab. Build on the recipient-specific replacement notices and apply their database migration before testing against an existing installation. Confirm any change to session limits, summons-attempt limits, certificate mappings, or deadlines with the barangay policy owner.
+
+### Mediation and Conciliation attendance and show cause
+
+- Use one server-side service check across the hearing workspace, docket check-in, and direct attendance and show-cause endpoints. For failure to appear, require verified service for the exact recipient on the operative notice for that hearing. A prior-notice exception requires a recorded basis for that recipient and hearing. Superseded returns remain available as historical evidence.
+- Keep `Not Served`, `Pending Verification`, `Excused`, and verified non-appearance distinct. Tie each show-cause determination to the party, hearing, and relevant notice. Require a recorded determination before applying a bar or default where the existing procedure requires one. Show staff the party awaiting service and the next available action.
+- Add a retry action in Proof of Service for an unserved replacement notice. Create a new attempt for the same hearing, recipient, and current notice. Preserve the failed return and its proof, apply the configured limit to that recipient's service sequence, and reject submissions against a superseded notice. Lock or recheck the current notice when saving the retry or return.
+
+### CFA eligibility, preview, and issuance
+
+- Use one server-side eligibility decision for the Outcomes tab, form preview, and issuance. Derive the ground and allowed KP Forms 20, 20-A, and 20-B from saved evidence. A client-supplied workflow flag, status, or reason cannot grant eligibility. If the noncompliance reopening action applies under existing policy, verify the saved settlement and required grounds on the server.
+- Scope evidence to the relevant stage, hearing, and recipient. A conciliation impasse requires a finalized Conciliation outcome. Exclude draft and wrong-stage minutes, superseded service returns, and unverified or excused absences from eligibility. Count summons failures and no-shows for the applicable recipient and service sequence.
+- Recheck authorization and eligibility under a transaction. Keep the certificate and its document, case and complaint status, and history consistent. A document-generation failure must leave issuance available for retry. Return the existing certificate on duplicate submissions and preserve its original date and reason.
+
+### Regression coverage
+
+- Reschedule a hearing with two respondents and serve one. Verify that the other remains pending and cannot advance to failure to appear or show cause.
+- Record a failed replacement delivery, retry it successfully, and reject a stale submission against the superseded notice. Verify that the failed return and proof remain available.
+- Reject a direct CFA request with `noncompliance_reopen` and no documented ground, and reject draft or wrong-stage minutes as a basis for issuance.
+- Verify valid CFA issuance, a duplicate submission, and a document-generation failure followed by a successful retry. Exercise the staff browser path from Proof of Service through attendance and the Outcomes tab.
+
 ## Implementation and verification
 
 - Use prepared PDO statements and enforce session, role, record ownership, and CSRF checks on the server.
