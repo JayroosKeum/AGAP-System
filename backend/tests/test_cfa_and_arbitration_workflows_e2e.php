@@ -55,6 +55,33 @@ $cfaModel = new CFA($db);
 $cfaController = new CFAController();
 $kpService = new KpFormService($db);
 
+function recordVerifiedDefault(PDO $db, int $caseId, int $originId, int $residentId, string $role): void
+{
+    $form = $role === 'Complainant' ? 'KP Form 18' : 'KP Form 19';
+    $originalForm = $role === 'Complainant' ? 'KP Form 8' : 'KP Form 9';
+    $db->prepare("INSERT INTO hearing_attendance (hearing_id, resident_id, attendance_status) VALUES (?, ?, 'Absent')")
+        ->execute([$originId, $residentId]);
+    $service = $db->prepare("
+        INSERT INTO summon_deliveries (case_id, hearing_id, party_type, resident_id, form_type, delivery_status)
+        VALUES (?, ?, ?, ?, ?, 'Served Personal')
+    ");
+    $service->execute([$caseId, $originId, $role, $residentId, $originalForm]);
+    $db->prepare("
+        INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, rescheduled_from_id)
+        SELECT case_id, ?, DATE_ADD(hearing_date, INTERVAL 1 DAY), venue, 'Completed', hearing_id
+        FROM hearings WHERE hearing_id = ?
+    ")->execute(["Show Cause ({$role})", $originId]);
+    $showCauseId = (int) $db->lastInsertId();
+    $service->execute([$caseId, $showCauseId, $role, $residentId, $form]);
+    $noticeId = (int) $db->lastInsertId();
+    $db->prepare("
+        INSERT INTO show_cause_evaluations
+            (hearing_id, case_id, party_type, resident_id, notice_delivery_id, form_type, is_justified, action_taken)
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+    ")->execute([$showCauseId, $caseId, $role, $residentId, $noticeId, $form,
+        $role === 'Complainant' ? 'Barred Action' : 'Respondent Default']);
+}
+
 // ====================================================================
 // TEST 1: COMPLAINANT DEFAULT -> KP FORM 20-A (CERTIFICATE TO BAR ACTION)
 // ====================================================================
@@ -74,9 +101,7 @@ $hDate1 = getNonHolidayWeekday('now', 1);
 $db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Mediation', ?, 'Lupon Court Room', 'Scheduled')")->execute([$case1, $hDate1]);
 $h1 = (int) $db->lastInsertId();
 
-// Record Complainant unjustified absence in show_cause_evaluations
-$db->prepare("INSERT INTO show_cause_evaluations (hearing_id, case_id, party_type, form_type, is_justified, justification_notes, action_taken)
-VALUES (?, ?, 'Complainant', 'KP Form 18', 0, 'Complainant deliberately failed to appear without justifiable cause.', 'Barred Action')")->execute([$h1, $case1]);
+recordVerifiedDefault($db, $case1, $h1, (int) $resId1, 'Complainant');
 
 // 1.1 Test Backend Eligibility
 $elig1 = $cfaModel->determineCfaEligibility($case1);
@@ -136,9 +161,7 @@ $hDate2 = getNonHolidayWeekday('now', 2);
 $db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Mediation', ?, 'Lupon Court Room', 'Scheduled')")->execute([$case2, $hDate2]);
 $h2 = (int) $db->lastInsertId();
 
-// Record Respondent unjustified absence in show_cause_evaluations
-$db->prepare("INSERT INTO show_cause_evaluations (hearing_id, case_id, party_type, form_type, is_justified, justification_notes, action_taken)
-VALUES (?, ?, 'Respondent', 'KP Form 19', 0, 'Respondent failed to appear after summons without justifiable cause.', 'Respondent Default')")->execute([$h2, $case2]);
+recordVerifiedDefault($db, $case2, $h2, (int) $resId2, 'Respondent');
 
 // 2.1 Test Backend Eligibility
 $elig2 = $cfaModel->determineCfaEligibility($case2);

@@ -1526,7 +1526,15 @@ function renderAttendanceParties(parties) {
         ? activeHearingAttendanceData.summons_servers.map(s => `<option value="${s.user_id}">${escapeHtml(s.full_name)}</option>`).join('')
         : '<option value="">Current User / Summons Server</option>';
 
-    container.innerHTML = parties.map((p) => {
+    const waitingParties = parties.filter(p => (p.party_type === 'Complainant' || p.party_type === 'Respondent') && !p.service_confirmed);
+    const waitingBannerHtml = waitingParties.length
+        ? `<div style="margin-bottom: 12px; padding: 12px 14px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 0.84rem;">
+                <strong>Waiting for verified service (${waitingParties.length}):</strong>
+                ${waitingParties.map(p => `${escapeHtml(p.full_name)} (${escapeHtml(p.party_type)}) — ${escapeHtml(p.service_verification?.next_action || 'Serve notice and log Officer Return in Proof of Service')}`).join(' · ')}
+           </div>`
+        : '';
+
+    container.innerHTML = waitingBannerHtml + parties.map((p) => {
         const isComplainant = p.party_type === 'Complainant';
         const isRespondent = p.party_type === 'Respondent';
         const cardClass = isComplainant ? 'card-complainant' : (isRespondent ? 'card-respondent' : '');
@@ -1536,15 +1544,19 @@ function renderAttendanceParties(parties) {
         if (p.attendance_status === 'Present') currentChoice = 'Present';
         else if (p.attendance_status === 'Late') currentChoice = 'Late';
         else if (p.attendance_status === 'Not Served') currentChoice = 'Not Served';
+        else if (p.attendance_status === 'Pending Verification') currentChoice = 'Pending Verification';
         else if (p.attendance_status === 'Excused' || Number(p.is_justified) === 1) currentChoice = 'Excused';
         else if (p.attendance_status === 'Absent') currentChoice = 'Unjustified';
 
         const isExcused = currentChoice === 'Excused';
         const initialStatus = p.party_type === 'Witness'
             ? (p.attendance_status && p.attendance_status !== 'Pending' ? p.attendance_status : 'Present')
-            : (['Present', 'Absent', 'Late', 'Excused', 'Not Served'].includes(p.attendance_status)
+            : (['Present', 'Absent', 'Late', 'Excused', 'Not Served', 'Pending Verification'].includes(p.attendance_status)
                 ? p.attendance_status
                 : (currentChoice === 'Unjustified' ? 'Absent' : currentChoice));
+        const sv = p.service_verification || {};
+        const nextActionText = sv.next_action || (p.service_confirmed ? 'Service verified — mark Present, Late, Excused, or Failure to Appear.' : 'Serve operative notice in Proof of Service before marking Failure to Appear.');
+        const canIssueShowCauseNotice = Boolean(p.service_confirmed && (p.attendance_status === 'Absent' || currentChoice === 'Unjustified') && !isExcused);
         const historyMarkup = (p.service_history || []).length
             ? p.service_history.map((attempt) => `
                 <li style="margin-bottom: 6px;">
@@ -1578,9 +1590,12 @@ function renderAttendanceParties(parties) {
                             <span style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.03em;">Summon Delivery Status:</span>
                             ${getHearingSummonDeliveryBadge(p)}
                         </div>
-                        <a href="../gps/proof-service.php?case_id=${encodeURIComponent(activeHearingAttendanceData?.case_id || '')}" target="_blank" style="font-size: 0.78rem; font-weight: 600; color: #0284c7; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #f0f9ff; border: 1px solid #bae6fd; padding: 3px 8px; border-radius: 4px;">
-                            Record in Proof of Service &rarr;
+                        <a href="../gps/proof-service.php?case_id=${encodeURIComponent(activeHearingAttendanceData?.case_id || '')}&hearing_id=${encodeURIComponent(activeHearingAttendanceData?.hearing_id || '')}" target="_blank" style="font-size: 0.78rem; font-weight: 600; color: #0284c7; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; background: #f0f9ff; border: 1px solid #bae6fd; padding: 3px 8px; border-radius: 4px;">
+                            Record / Retry in Proof of Service &rarr;
                         </a>
+                    </div>
+                    <div style="margin-top: 6px; font-size: 0.8rem; color: ${p.service_confirmed ? '#166534' : '#92400e'};">
+                        <strong>Next Action:</strong> ${escapeHtml(nextActionText)}
                     </div>
 
                     ${(p.service_history || []).length ? `
@@ -1601,11 +1616,14 @@ function renderAttendanceParties(parties) {
                     <button type="button" class="att-status-pill-btn ${currentChoice === 'Present' ? 'selected-present' : ''}" data-choice="Present" ${!canManageHearings ? 'disabled' : ''}>
                         Present
                     </button>
-                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Unjustified' ? 'selected-unjustified' : ''}" data-choice="Unjustified" ${!canManageHearings || (!p.service_confirmed && (isComplainant || isRespondent)) ? 'disabled title="Confirm delivery for this party before marking Failure to Appear. Select Not Served if party could not be served."' : ''}>
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Unjustified' ? 'selected-unjustified' : ''}" data-choice="Unjustified" ${!canManageHearings || (!p.service_confirmed && (isComplainant || isRespondent)) ? 'disabled title="Confirm delivery for this party on the operative notice before marking Failure to Appear. Select Not Served or Pending Verification instead."' : ''}>
                         Failure to Appear
                     </button>
                     <button type="button" class="att-status-pill-btn ${currentChoice === 'Not Served' ? 'selected-not-served' : ''}" data-choice="Not Served" ${!canManageHearings ? 'disabled' : ''}>
                         Not Served
+                    </button>
+                    <button type="button" class="att-status-pill-btn ${currentChoice === 'Pending Verification' ? 'selected-not-served' : ''}" data-choice="Pending Verification" ${!canManageHearings ? 'disabled' : ''}>
+                        Pending Verification
                     </button>
                     <button type="button" class="att-status-pill-btn ${currentChoice === 'Excused' ? 'selected-excused' : ''}" data-choice="Excused" ${!canManageHearings ? 'disabled' : ''}>
                         Excused / Justified
@@ -1659,9 +1677,10 @@ function renderAttendanceParties(parties) {
                                         ${officerOptions}
                                     </select>
                                 </div>
-                                <button type="button" class="btn-create" data-issue-notice="${Number(p.resident_id)}" style="margin-top: 4px;">
+                                <button type="button" class="btn-create" data-issue-notice="${Number(p.resident_id)}" style="margin-top: 4px;" ${canIssueShowCauseNotice ? '' : 'disabled title="Verify service for this party and record an unexcused Failure to Appear (Absent) before issuing a show-cause notice."'}>
                                     Generate ${isComplainant ? 'KP Form 18' : 'KP Form 19'} &amp; Assign Server
                                 </button>
+                                ${!canIssueShowCauseNotice ? `<div style="font-size: 0.76rem; color: #92400e; margin-top: 4px;">Locked until this party has verified service and is recorded as Absent (Failure to Appear).</div>` : ''}
                                 <div class="notice-download-container" style="margin-top: 6px;"></div>
                             </div>
                         </div>
@@ -1922,9 +1941,14 @@ function renderAttendanceParties(parties) {
                     statusInput.value = 'Not Served';
                     justifiedInput.value = '0';
                     if (justBox) justBox.style.display = 'none';
+                } else if (choice === 'Pending Verification') {
+                    btn.classList.add('selected-not-served');
+                    statusInput.value = 'Pending Verification';
+                    justifiedInput.value = '0';
+                    if (justBox) justBox.style.display = 'none';
                 } else if (choice === 'Excused') {
                     btn.classList.add('selected-excused');
-                    statusInput.value = 'Absent';
+                    statusInput.value = 'Excused';
                     justifiedInput.value = '1';
                     if (justBox) justBox.style.display = 'block';
                 } else if (choice === 'Late') {
@@ -1970,6 +1994,7 @@ function evaluateLiveAttendanceSituation() {
     let complainantExcused = 0;
     let complainantLate = 0;
     let complainantNotServed = 0;
+    let complainantPendingVerification = 0;
 
     let respondentCount = 0;
     let respondentPresent = 0;
@@ -1977,6 +2002,7 @@ function evaluateLiveAttendanceSituation() {
     let respondentExcused = 0;
     let respondentLate = 0;
     let respondentNotServed = 0;
+    let respondentPendingVerification = 0;
 
     cards.forEach((card) => {
         const type = card.dataset.partyType;
@@ -1988,14 +2014,16 @@ function evaluateLiveAttendanceSituation() {
             if (status === 'Present') complainantPresent++;
             else if (status === 'Late') complainantLate++;
             else if (status === 'Not Served') complainantNotServed++;
-            else if (status === 'Absent' && isJustified) complainantExcused++;
+            else if (status === 'Pending Verification') complainantPendingVerification++;
+            else if (status === 'Excused' || (status === 'Absent' && isJustified)) complainantExcused++;
             else if (status === 'Absent' && !isJustified) complainantUnjustified++;
         } else if (type === 'Respondent') {
             respondentCount++;
             if (status === 'Present') respondentPresent++;
             else if (status === 'Late') respondentLate++;
             else if (status === 'Not Served') respondentNotServed++;
-            else if (status === 'Absent' && isJustified) respondentExcused++;
+            else if (status === 'Pending Verification') respondentPendingVerification++;
+            else if (status === 'Excused' || (status === 'Absent' && isJustified)) respondentExcused++;
             else if (status === 'Absent' && !isJustified) respondentUnjustified++;
         }
     });
@@ -2008,8 +2036,8 @@ function evaluateLiveAttendanceSituation() {
     situationBox.style.display = '';
 
     // If completely unrecorded
-    if (complainantPresent === 0 && complainantUnjustified === 0 && complainantExcused === 0 && complainantLate === 0 && complainantNotServed === 0
-        && respondentPresent === 0 && respondentUnjustified === 0 && respondentExcused === 0 && respondentLate === 0 && respondentNotServed === 0) {
+    if (complainantPresent === 0 && complainantUnjustified === 0 && complainantExcused === 0 && complainantLate === 0 && complainantNotServed === 0 && complainantPendingVerification === 0
+        && respondentPresent === 0 && respondentUnjustified === 0 && respondentExcused === 0 && respondentLate === 0 && respondentNotServed === 0 && respondentPendingVerification === 0) {
         situationBox.classList.add('sit-neutral');
         iconEl.textContent = '';
         badgeTextEl.textContent = 'Pending Appearance Intake';
@@ -2017,6 +2045,21 @@ function evaluateLiveAttendanceSituation() {
         consequencesListEl.innerHTML = '<li>Record attendance for Complainant and Respondent to determine statutory proceedings.</li>';
         recommendationTextEl.textContent = 'Select appearance status for each party above.';
         shortcutsEl.innerHTML = '';
+        return;
+    }
+
+    // Situation: Pending Verification
+    if (complainantPendingVerification > 0 || respondentPendingVerification > 0) {
+        situationBox.classList.add('sit-warning');
+        iconEl.textContent = '';
+        badgeTextEl.textContent = 'Pending Service Verification — Record Return in Proof of Service';
+        refEl.textContent = 'R.A. 7160 Sec. 410(b)';
+        consequencesListEl.innerHTML = `
+            <li>At least one party is awaiting service verification on the operative notice for this hearing.</li>
+            <li>Do not record Failure to Appear or escalate to Show Cause until Officer's Return confirms delivery for that recipient.</li>
+        `;
+        recommendationTextEl.textContent = 'Log or verify the Officer’s Return in Proof of Service before proceeding with attendance enforcement.';
+        shortcutsEl.innerHTML = caseId ? `<a href="../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&hearing_id=${encodeURIComponent(hearingId)}" target="_blank" class="btn-att-action btn-att-action-primary">Open Proof of Service &rarr;</a>` : '';
         return;
     }
 

@@ -108,37 +108,64 @@ final class SummonServiceGate
         $deliveryService = new SummonDeliveryService($this->db);
         if ($deliveryService->hasReplacementNotices($hearingId)) {
             $service = $deliveryService->checkServiceStatus($hearingId);
-            return $this->result($service['allowed'], $service['status'], $service['message'], $hearing);
+            return $this->result($service['allowed'], $service['status'], $service['message'], $hearing, [], false);
         }
 
-        if (strcasecmp((string) $hearing['hearing_type'], 'Mediation') !== 0) {
+        $hTypeLower = strtolower(trim((string) $hearing['hearing_type']));
+        $gatedTypes = ['initial hearing', 'mediation', 'conciliation', 'pangkat conciliation'];
+        if (!in_array($hTypeLower, $gatedTypes, true)) {
             return $this->result(
                 true,
-                'NOT_MEDIATION',
+                'NOT_GATED_HEARING_TYPE',
                 'The summon-service gate does not apply to this hearing type.',
                 $hearing
             );
         }
 
-        $caseId = (int) ($hearing['case_id'] ?? 0);
-        if ($caseId > 0) {
-            $seqStmt = $this->db->prepare("
-                SELECT COUNT(*) FROM hearings
-                WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation') AND hearing_id <= ?
-            ");
-            $seqStmt->execute([$caseId, $hearingId]);
-            $hearingSequence = (int) $seqStmt->fetchColumn() ?: 1;
+        $serviceCheck = $deliveryService->checkServiceStatus($hearingId);
+        if (!$serviceCheck['allowed']) {
+            return $this->result(
+                false,
+                $serviceCheck['status'] ?? 'SERVICE_NOT_CONFIRMED',
+                $serviceCheck['message'] ?? 'Hearing attendance locked until notice service is confirmed.',
+                $hearing,
+                [],
+                false
+            );
+        }
 
-            if ($hearingSequence >= 2) {
-                return $this->result(
-                    true,
-                    'SUBSEQUENT_MEDIATION',
-                    'Second or subsequent mediation session does not require re-issuance of summons. Attendance tracking is unlocked.',
-                    $hearing,
-                    [],
-                    false
-                );
+        if (strcasecmp((string) $hearing['hearing_type'], 'Mediation') === 0) {
+            $caseId = (int) ($hearing['case_id'] ?? 0);
+            if ($caseId > 0) {
+                $seqStmt = $this->db->prepare("
+                    SELECT COUNT(*) FROM hearings
+                    WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation')
+                      AND status NOT IN ('Cancelled', 'Office Cancelled')
+                      AND hearing_id <= ?
+                ");
+                $seqStmt->execute([$caseId, $hearingId]);
+                $hearingSequence = (int) $seqStmt->fetchColumn() ?: 1;
+
+                if ($hearingSequence >= 2) {
+                    return $this->result(
+                        true,
+                        'SUBSEQUENT_MEDIATION',
+                        'All parties verified for second or subsequent mediation session. Attendance tracking is unlocked.',
+                        $hearing,
+                        [],
+                        false
+                    );
+                }
             }
+        } else {
+            return $this->result(
+                true,
+                'SERVICE_CONFIRMED',
+                $serviceCheck['message'] ?? 'All required parties have verified notice service for this hearing.',
+                $hearing,
+                [],
+                false
+            );
         }
 
         $serviceCheck = $deliveryService->checkServiceStatus($hearingId);

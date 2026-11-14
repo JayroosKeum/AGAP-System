@@ -1033,6 +1033,8 @@ CREATE TABLE IF NOT EXISTS show_cause_evaluations (
     hearing_id INT UNSIGNED NOT NULL,
     case_id INT UNSIGNED NOT NULL,
     party_type ENUM('Complainant', 'Respondent') NOT NULL,
+    resident_id INT UNSIGNED NULL,
+    notice_delivery_id INT UNSIGNED NULL,
     form_type ENUM('KP Form 18', 'KP Form 19') NOT NULL,
     is_justified TINYINT(1) NOT NULL,
     justification_category ENUM('Medical Emergency', 'Force Majeure', 'Official Duty', 'Unjustified Absence', 'Willful Refusal', 'Other') NOT NULL,
@@ -1045,6 +1047,8 @@ CREATE TABLE IF NOT EXISTS show_cause_evaluations (
     KEY idx_show_cause_case (case_id),
     CONSTRAINT fk_show_cause_hearing FOREIGN KEY (hearing_id) REFERENCES hearings (hearing_id) ON DELETE CASCADE,
     CONSTRAINT fk_show_cause_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE,
+    CONSTRAINT fk_show_cause_resident FOREIGN KEY (resident_id) REFERENCES residents (resident_id) ON DELETE SET NULL,
+    CONSTRAINT fk_show_cause_notice_delivery FOREIGN KEY (notice_delivery_id) REFERENCES summon_deliveries (delivery_id) ON DELETE SET NULL,
     CONSTRAINT fk_show_cause_rescheduled FOREIGN KEY (rescheduled_hearing_id) REFERENCES hearings (hearing_id) ON DELETE SET NULL,
     CONSTRAINT fk_show_cause_evaluated_by FOREIGN KEY (evaluated_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

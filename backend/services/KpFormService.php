@@ -463,7 +463,7 @@ class KpFormService
 
      */
 
-    public function getFormData(string $formCode, int $caseId, ?int $hearingId = null): array
+    public function getFormData(string $formCode, int $caseId, ?int $hearingId = null, ?int $residentId = null): array
 
     {
 
@@ -510,6 +510,37 @@ class KpFormService
 
         $primaryRespondent = !empty($respondents[0]['full_name']) ? $respondents[0]['full_name'] : 'Respondent';
 
+        if (in_array($formCode, ['KP Form 20-A', 'KP Form 20-B', 'KP Form 21', 'KP Form 22'], true)) {
+            $role = in_array($formCode, ['KP Form 20-A', 'KP Form 21'], true) ? 'Complainant' : 'Respondent';
+            if ($residentId === null) {
+                require_once __DIR__ . '/SummonDeliveryService.php';
+                foreach ((new SummonDeliveryService($this->conn))->getVerifiedShowCauseFindings($caseId) as $finding) {
+                    if ($finding['party_type'] === $role) {
+                        $residentId = (int) $finding['resident_id'];
+                        break;
+                    }
+                }
+            }
+            if ($residentId !== null) {
+                $parties = $role === 'Complainant' ? $complainants : $respondents;
+                foreach ($parties as $party) {
+                    if ((int) $party['resident_id'] === $residentId) {
+                        if ($role === 'Complainant') {
+                            $complainants = [$party];
+                            $primaryComplainant = $party['full_name'];
+                        } else {
+                            $respondents = [$party];
+                            $primaryRespondent = $party['full_name'];
+                        }
+                        $findingKey = $role === 'Complainant' ? 'complainant_sc' : 'respondent_sc';
+                        if ((int) ($d[$findingKey]['resident_id'] ?? 0) !== $residentId) {
+                            $d[$findingKey] = null;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
 
 
         // Pangkat official names
@@ -973,11 +1004,11 @@ class KpFormService
 
      */
 
-    public function generatePdf(string $formCode, int $caseId, ?int $hearingId = null, ?string $outputPath = null): string
+    public function generatePdf(string $formCode, int $caseId, ?int $hearingId = null, ?string $outputPath = null, ?int $residentId = null): string
 
     {
 
-        $data = $this->getFormData($formCode, $caseId, $hearingId);
+        $data = $this->getFormData($formCode, $caseId, $hearingId, $residentId);
 
         $tempPath = $outputPath ?: sys_get_temp_dir() . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $formCode) . '_' . $caseId . '_' . time() . '.pdf';
 
@@ -1244,103 +1275,56 @@ class KpFormService
             ];
         }
 
-        // Check CFA & Consequence Forms (KP Form 20, 20-A, 20-B, 21, 22)
+        // Check CFA & Consequence Forms (KP Form 20, 20-A, 20-B, 21, 22) via authoritative CFA eligibility
+        require_once __DIR__ . '/../models/CFA.php';
+        $cfaElig = (new CFA($this->conn))->determineCfaEligibility($caseId);
+        $availCfaForms = $cfaElig['available_forms'] ?? [];
+        $hasBarredComp = !empty($cfaElig['barred_complainant']) || in_array('KP Form 20-A', $availCfaForms, true);
+        $hasBarredResp = !empty($cfaElig['defaulted_respondent']) || in_array('KP Form 20-B', $availCfaForms, true);
+        $canKp20 = in_array('KP Form 20', $availCfaForms, true);
 
-        $hasCfa = (!empty($cfa) || $lastOutcome === 'Pending CFA' || $caseStatus === 'CFA Issued' ||
-                   $caseStatus === 'Dismissed' || $caseStatus === 'DISMISSED_BARRED' ||
-                   $caseStatus === 'RESPONDENT_DEFAULT' || $isRepudiated ||
-                   (!empty($d['respondent_sc']) && empty($d['respondent_sc']['is_justified'])) ||
-                   (!empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified'])));
+        if ($hasBarredComp) {
+            $forms[] = [
+                'code' => 'KP Form 20-A',
+                'title' => 'Pormularyo ng KP Blg. 20-A (Katibayan Upang Hadlangan ang Paghahain ng Aksyon)',
+                'category' => 'CFA',
+                'status' => 'Barred',
+                'description' => 'Certificate to Bar Action issued due to willful failure of complainant to appear.'
+            ];
+            $forms[] = [
+                'code' => 'KP Form 21',
+                'title' => 'Pormularyo ng KP Blg. 21 (Katibayan Upang Hadlangan na Makapagsakdal)',
+                'category' => 'CFA',
+                'status' => 'Barred Action',
+                'description' => 'Certificate to Bar Action issued due to willful failure of complainant to appear.'
+            ];
+        }
 
-        if ($hasCfa) {
+        if ($hasBarredResp) {
+            $forms[] = [
+                'code' => 'KP Form 20-B',
+                'title' => 'Pormularyo ng KP Blg. 20-B (Katibayan Upang Hadlangan ang Ganting-Sakdal)',
+                'category' => 'CFA',
+                'status' => 'Barred Counterclaim',
+                'description' => 'Certificate to Bar Counterclaim issued due to willful failure of respondent to appear.'
+            ];
+            $forms[] = [
+                'code' => 'KP Form 22',
+                'title' => 'Pormularyo ng KP Blg. 22 (Katibayan Upang Hadlangan ang Ganting-Sakdal / Sanction Notice)',
+                'category' => 'CFA',
+                'status' => 'Barred Counterclaim',
+                'description' => 'Certificate to Bar Counterclaim issued due to willful failure of respondent to appear.'
+            ];
+        }
 
-            $cfaType = $cfa['cfa_type'] ?? 'KP Form 20';
-
-            if (str_contains($cfaType, '20-A') || (!empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified'])) || $caseStatus === 'DISMISSED_BARRED') {
-
-                $forms[] = [
-
-                    'code' => 'KP Form 20-A',
-
-                    'title' => 'Pormularyo ng KP Blg. 20-A (Katibayan Upang Hadlangan ang Paghahain ng Aksyon)',
-
-                    'category' => 'CFA',
-
-                    'status' => 'Barred',
-
-                    'description' => 'Certificate to Bar Action issued due to willful failure of complainant to appear.'
-
-                ];
-
-                $forms[] = [
-
-                    'code' => 'KP Form 21',
-
-                    'title' => 'Pormularyo ng KP Blg. 21 (Katibayan Upang Hadlangan na Makapagsakdal)',
-
-                    'category' => 'CFA',
-
-                    'status' => 'Barred Action',
-
-                    'description' => 'Certificate to Bar Action issued due to willful failure of complainant to appear.'
-
-                ];
-
-            }
-
-            if (str_contains($cfaType, '20-B') || (!empty($d['respondent_sc']) && empty($d['respondent_sc']['is_justified'])) || $caseStatus === 'RESPONDENT_DEFAULT') {
-
-                $forms[] = [
-
-                    'code' => 'KP Form 20-B',
-
-                    'title' => 'Pormularyo ng KP Blg. 20-B (Katibayan Upang Hadlangan ang Ganting-Sakdal)',
-
-                    'category' => 'CFA',
-
-                    'status' => 'Barred Counterclaim',
-
-                    'description' => 'Certificate to Bar Counterclaim issued due to willful failure of respondent to appear.'
-
-                ];
-
-                $forms[] = [
-
-                    'code' => 'KP Form 22',
-
-                    'title' => 'Pormularyo ng KP Blg. 22 (Katibayan Upang Hadlangan ang Ganting-Sakdal / Sanction Notice)',
-
-                    'category' => 'CFA',
-
-                    'status' => 'Barred Counterclaim',
-
-                    'description' => 'Certificate to Bar Counterclaim issued due to willful failure of respondent to appear.'
-
-                ];
-
-            }
-
-            // Complainant is eligible for KP Form 20 (CFA) unless Complainant is barred from action
-            $isCompBarred = ($caseStatus === 'DISMISSED_BARRED' && !empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified']));
-
-            if (!$isCompBarred) {
-
-                $forms[] = [
-
-                    'code' => 'KP Form 20',
-
-                    'title' => 'Pormularyo ng KP Blg. 20 (Katibayan Upang Makadulog sa Hukuman / CFA)',
-
-                    'category' => 'CFA',
-
-                    'status' => 'Ready for Court Filing',
-
-                    'description' => 'Official Certificate to File Action endorsed by Punong Barangay authorizing court filing.'
-
-                ];
-
-            }
-
+        if ($canKp20 && !$hasBarredComp) {
+            $forms[] = [
+                'code' => 'KP Form 20',
+                'title' => 'Pormularyo ng KP Blg. 20 (Katibayan Upang Makadulog sa Hukuman / CFA)',
+                'category' => 'CFA',
+                'status' => 'Ready for Court Filing',
+                'description' => 'Official Certificate to File Action endorsed by Punong Barangay authorizing court filing.'
+            ];
         }
 
 
@@ -1768,121 +1752,43 @@ class KpFormService
 
 
 
-        // KP Form 20-A: Certificate to Bar Action
-
-        if (str_contains($code, '20-A') || str_contains($code, '20A')) {
-
-            $hasBarredComp = (!empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified'])) ||
-
-                             (($cfa['cfa_type'] ?? '') === 'KP Form 20-A') || ($caseStatus === 'DISMISSED_BARRED');
+        // KP Form 20-A / 21: Certificate to Bar Action (Complainant unjustified non-appearance)
+        if (str_contains($code, '20-A') || str_contains($code, '20A') || str_contains($code, '21')) {
+            require_once __DIR__ . '/../models/CFA.php';
+            $cfaElig = (new CFA($this->conn))->determineCfaEligibility($caseId);
+            $hasBarredComp = !empty($cfaElig['barred_complainant'])
+                || in_array('KP Form 20-A', $cfaElig['available_forms'] ?? [], true);
+            $label = (str_contains($code, '20-A') || str_contains($code, '20A')) ? 'KP Form 20-A' : 'KP Form 21';
 
             if (!$hasBarredComp) {
-
                 return [
-
                     'eligible' => false,
-
-                    'reason' => 'KP Form 20-A requires willful non-appearance of Complainant without justifiable reason.',
-
+                    'reason' => $label . ' requires a documented unjustified non-appearance determination for the Complainant on a verified-served hearing.',
                     'prerequisite' => 'Unjustified Non-Appearance (Complainant)'
-
                 ];
-
             }
 
             return ['eligible' => true, 'reason' => 'Complainant unjustified non-appearance established.', 'prerequisite' => 'Met'];
-
         }
 
-
-
-        // KP Form 21: Certificate to Bar Action (Complainant failure to appear)
-
-        if (str_contains($code, '21')) {
-
-            $hasBarredComp = (!empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified'])) ||
-
-                             (($cfa['cfa_type'] ?? '') === 'KP Form 21') || (($cfa['cfa_type'] ?? '') === 'KP Form 20-A') ||
-
-                             in_array($caseStatus, ['DISMISSED_BARRED', 'Dismissed'], true);
-
-            if (!$hasBarredComp) {
-
-                return [
-
-                    'eligible' => false,
-
-                    'reason' => 'KP Form 21 requires willful non-appearance of Complainant without justifiable reason.',
-
-                    'prerequisite' => 'Unjustified Non-Appearance (Complainant)'
-
-                ];
-
-            }
-
-            return ['eligible' => true, 'reason' => 'Complainant unjustified non-appearance established.', 'prerequisite' => 'Met'];
-
-        }
-
-
-
-        // KP Form 20-B: Certificate to Bar Counterclaim
-
-        if (str_contains($code, '20-B') || str_contains($code, '20B')) {
-
-            $hasBarredResp = (!empty($d['respondent_sc']) && empty($d['respondent_sc']['is_justified'])) ||
-
-                             (($cfa['cfa_type'] ?? '') === 'KP Form 20-B') || ($caseStatus === 'RESPONDENT_DEFAULT');
+        // KP Form 20-B / 22: Certificate to Bar Counterclaim (Respondent unjustified non-appearance)
+        if (str_contains($code, '20-B') || str_contains($code, '20B') || str_contains($code, '22')) {
+            require_once __DIR__ . '/../models/CFA.php';
+            $cfaElig = (new CFA($this->conn))->determineCfaEligibility($caseId);
+            $hasBarredResp = !empty($cfaElig['defaulted_respondent'])
+                || in_array('KP Form 20-B', $cfaElig['available_forms'] ?? [], true);
+            $label = (str_contains($code, '20-B') || str_contains($code, '20B')) ? 'KP Form 20-B' : 'KP Form 22';
 
             if (!$hasBarredResp) {
-
                 return [
-
                     'eligible' => false,
-
-                    'reason' => 'KP Form 20-B requires willful non-appearance of Respondent without justifiable reason.',
-
+                    'reason' => $label . ' requires a documented unjustified non-appearance determination for the Respondent on a verified-served hearing.',
                     'prerequisite' => 'Unjustified Non-Appearance (Respondent)'
-
                 ];
-
             }
 
             return ['eligible' => true, 'reason' => 'Respondent unjustified non-appearance established.', 'prerequisite' => 'Met'];
-
         }
-
-
-
-        // KP Form 22: Certificate to Bar Counterclaim (Respondent failure to appear)
-
-        if (str_contains($code, '22')) {
-
-            $hasBarredResp = (!empty($d['respondent_sc']) && empty($d['respondent_sc']['is_justified'])) ||
-
-                             (($cfa['cfa_type'] ?? '') === 'KP Form 22') || (($cfa['cfa_type'] ?? '') === 'KP Form 20-B') ||
-
-                             ($caseStatus === 'RESPONDENT_DEFAULT');
-
-            if (!$hasBarredResp) {
-
-                return [
-
-                    'eligible' => false,
-
-                    'reason' => 'KP Form 22 requires willful non-appearance of Respondent without justifiable reason.',
-
-                    'prerequisite' => 'Unjustified Non-Appearance (Respondent)'
-
-                ];
-
-            }
-
-            return ['eligible' => true, 'reason' => 'Respondent unjustified non-appearance established.', 'prerequisite' => 'Met'];
-
-        }
-
-
 
         // KP Form 23: Motion for Execution
         if (str_contains($code, '23')) {
@@ -1907,61 +1813,27 @@ class KpFormService
 
         // KP Form 20: Certificate to File Action
         $isKp20 = (trim($code) === 'KP Form 20' || trim($code) === 'KP Form No. 20' || preg_match('/^KP\s*Form\s*20\b(?!-[AB])/i', trim($code)));
-
         if ($isKp20) {
+            require_once __DIR__ . '/../models/CFA.php';
+            $cfaElig = (new CFA($this->conn))->determineCfaEligibility($caseId);
 
-            $hasBarredComp = ($caseStatus === 'DISMISSED_BARRED') || (($cfa['cfa_type'] ?? '') === 'KP Form 20-A') || ($caseStatus === 'Dismissed' && !empty($d['complainant_sc']) && empty($d['complainant_sc']['is_justified']));
-
-            if ($hasBarredComp && ($cfa['cfa_type'] ?? '') !== 'KP Form 20') {
-
+            if (!empty($cfaElig['barred_complainant'])) {
                 return [
-
                     'eligible' => false,
-
                     'reason' => 'KP Form 20 is barred: Complainant has an unjustified non-appearance on record.',
-
                     'prerequisite' => 'Complainant In Good Standing'
-
                 ];
-
             }
 
-            $hasCfaElig = (!empty($cfa) || $lastOutcome === 'Pending CFA' || $caseStatus === 'CFA Issued' ||
-
-                           $caseStatus === 'For CFA' || $caseStatus === 'Repudiated' ||
-
-                           $caseStatus === 'RESPONDENT_DEFAULT' ||
-
-                           (!empty($d['respondent_sc']) && empty($d['respondent_sc']['is_justified'])) ||
-
-                           $caseStatus === 'Dismissed' || !empty($settlement['repudiation_date']) ||
-
-                           ($settlement['repudiation_status'] ?? '') === 'Repudiated');
-
-            if (!$hasCfaElig) {
-                require_once __DIR__ . '/SummonDeliveryService.php';
-                $summonCheck = (new SummonDeliveryService($this->conn))->getCfaEligibility($caseId);
-                if (!empty($summonCheck['eligible'])) {
-                    $hasCfaElig = true;
-                }
-            }
-
-            if (!$hasCfaElig) {
-
+            if (empty($cfaElig['eligible']) || !in_array('KP Form 20', $cfaElig['available_forms'] ?? [], true)) {
                 return [
-
                     'eligible' => false,
-
-                    'reason' => 'KP Form 20 requires conciliation failure/impasse, respondent default, repudiated settlement, or breach of settlement.',
-
+                    'reason' => $cfaElig['reason'] ?? 'KP Form 20 requires a finalized conciliation impasse, documented respondent default, repudiated settlement, summons delivery failure, or documented settlement non-compliance.',
                     'prerequisite' => 'Conciliation Impasse or Repudiation or Settlement Breach'
-
                 ];
-
             }
 
-            return ['eligible' => true, 'reason' => 'Grounds for Certificate to File Action established.', 'prerequisite' => 'Met'];
-
+            return ['eligible' => true, 'reason' => $cfaElig['reason'] ?? 'Grounds for Certificate to File Action established.', 'prerequisite' => 'Met'];
         }
 
 
@@ -2120,7 +1992,7 @@ class KpFormService
 
         $timestamp = date('Ymd-His');
 
-        $fileName = sprintf('%s-Case-%s-%s.pdf', $safeCode, $safeCase, $timestamp);
+        $fileName = sprintf('%s-Case-%s-%s-%s.pdf', $safeCode, $safeCase, $timestamp, bin2hex(random_bytes(6)));
 
         $relativePath = $relativeDir . '/' . $fileName;
 
@@ -2129,15 +2001,16 @@ class KpFormService
 
 
         // 3. Generate PDF file
-
         try {
-
-            $this->generatePdf($code, $caseId, $hearingId, $absolutePath);
-
+            $this->generatePdf($code, $caseId, $hearingId, $absolutePath, $options['resident_id'] ?? null);
         } catch (Throwable $e) {
-
+            if (!empty($options['strict_pdf'])) {
+                if (is_file($absolutePath)) {
+                    @unlink($absolutePath);
+                }
+                throw $e;
+            }
             file_put_contents($absolutePath, "%PDF-1.4 {$code} for Case {$caseNumber}");
-
         }
 
 

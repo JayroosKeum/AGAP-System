@@ -3,16 +3,19 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/Paanyaya.php';
 require_once __DIR__ . '/../services/DocketScheduleService.php';
+require_once __DIR__ . '/../services/SummonDeliveryService.php';
 
 class Report
 {
     private $conn;
     private DocketScheduleService $docketScheduleService;
+    private SummonDeliveryService $summonDeliveryService;
 
     public function __construct()
     {
         $this->conn = (new Database())->connect();
         $this->docketScheduleService = new DocketScheduleService($this->conn);
+        $this->summonDeliveryService = new SummonDeliveryService($this->conn);
     }
 
     private function enrichHearingRows(array $rows): array
@@ -20,12 +23,79 @@ class Report
         if (empty($rows)) {
             return [];
         }
+        $partyStmt = $this->conn->prepare("
+            SELECT cp.resident_id, cp.party_type,
+                   TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name,
+                   COALESCE(ha.attendance_status, 'Pending') AS attendance_status
+            FROM complaint_parties cp
+            INNER JOIN residents r ON r.resident_id = cp.resident_id
+            LEFT JOIN hearing_attendance ha ON ha.hearing_id = ? AND ha.resident_id = cp.resident_id
+            WHERE cp.complaint_id = ?
+            ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name ASC, r.first_name ASC, cp.resident_id ASC
+        ");
+
         foreach ($rows as &$row) {
             $row['record_type'] = 'hearing';
             $elig = $this->docketScheduleService->evaluateItemEligibility($row, 'hearing');
             $row['is_locked'] = $elig['is_locked'];
             $row['lock_code'] = $elig['lock_code'];
             $row['lock_reason'] = $elig['lock_reason'];
+
+            $hearingId = (int) ($row['hearing_id'] ?? 0);
+            $complaintId = (int) ($row['complaint_id'] ?? 0);
+            $parties = [];
+            $hasComplainant = false;
+            $hasRespondent = false;
+            $allComplainantsCheckedIn = true;
+            $allRespondentsCheckedIn = true;
+
+            if ($hearingId > 0 && $complaintId > 0) {
+                $partyStmt->execute([$hearingId, $complaintId]);
+                $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($parties as &$party) {
+                    $verif = $this->summonDeliveryService->verifyRecipientServiceForHearing(
+                        $hearingId,
+                        (int) $party['resident_id'],
+                        (string) $party['party_type']
+                    );
+                    $party['service_verified'] = !empty($verif['verified']);
+                    $party['service_status'] = $verif['status'] ?? 'Not Served';
+                    $party['service_basis'] = $verif['basis'] ?? null;
+                    $party['service_verification'] = $verif;
+
+                    $isCheckedIn = in_array((string) ($party['attendance_status'] ?? ''), ['Present', 'Late'], true);
+                    if ($party['party_type'] === 'Complainant') {
+                        $hasComplainant = true;
+                        if (!$isCheckedIn) {
+                            $allComplainantsCheckedIn = false;
+                        }
+                    } elseif ($party['party_type'] === 'Respondent') {
+                        $hasRespondent = true;
+                        if (!$isCheckedIn) {
+                            $allRespondentsCheckedIn = false;
+                        }
+                    }
+                }
+                unset($party);
+            }
+
+            if (!$hasComplainant) {
+                $allComplainantsCheckedIn = in_array((string) ($row['complainant_attendance'] ?? ''), ['Present', 'Late'], true);
+            }
+            if (!$hasRespondent) {
+                $allRespondentsCheckedIn = in_array((string) ($row['respondent_attendance'] ?? ''), ['Present', 'Late'], true);
+            }
+
+            $isCompleteAndReady = $allComplainantsCheckedIn && $allRespondentsCheckedIn;
+            $row['parties'] = $parties;
+            $row['complainant_checked_in'] = $allComplainantsCheckedIn;
+            $row['respondent_checked_in'] = $allRespondentsCheckedIn;
+            $row['is_complete_and_ready'] = $isCompleteAndReady;
+
+            $qRaw = trim((string) ($row['queue_status'] ?? ''));
+            if ($qRaw === '' || strcasecmp($qRaw, 'Waiting') === 0 || strcasecmp($qRaw, 'Ready') === 0) {
+                $row['queue_status'] = $isCompleteAndReady ? 'Ready' : 'Waiting';
+            }
         }
         unset($row);
         return $rows;
@@ -122,6 +192,11 @@ class Report
                    AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
                    AND h.status <> 'Completed'
                    AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM hearings nh
+                       WHERE nh.rescheduled_from_id = h.hearing_id
+                         AND nh.status NOT IN ('Cancelled', 'Office Cancelled')
+                   )
                  ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC"
             );
             $todayHearings->execute([$today]);
@@ -243,6 +318,11 @@ class Report
                  LEFT JOIN users po ON po.user_id = h.presiding_officer_id
                  WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
                    AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM hearings nh
+                       WHERE nh.rescheduled_from_id = h.hearing_id
+                         AND nh.status NOT IN ('Cancelled', 'Office Cancelled')
+                   )
                  ORDER BY h.hearing_date ASC"
             );
             $calendarHearings = $this->enrichHearingRows($calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC));
@@ -390,6 +470,11 @@ class Report
                AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
                AND h.status <> 'Completed'
                AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
+               AND NOT EXISTS (
+                   SELECT 1 FROM hearings nh
+                   WHERE nh.rescheduled_from_id = h.hearing_id
+                     AND nh.status NOT IN ('Cancelled', 'Office Cancelled')
+               )
              ORDER BY CASE WHEN COALESCE(h.queue_order, 0) > 0 THEN h.queue_order ELSE 9999 END ASC, h.hearing_date ASC"
         );
         $hearingsStmt->execute($params);
@@ -573,6 +658,11 @@ class Report
              LEFT JOIN users po ON po.user_id = h.presiding_officer_id
              WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
                AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
+               AND NOT EXISTS (
+                   SELECT 1 FROM hearings nh
+                   WHERE nh.rescheduled_from_id = h.hearing_id
+                     AND nh.status NOT IN ('Cancelled', 'Office Cancelled')
+               )
              ORDER BY h.hearing_date ASC"
         );
         $calendarHearings = $this->enrichHearingRows($calendarHearingsStmt->fetchAll(PDO::FETCH_ASSOC));

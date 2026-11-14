@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../models/Paanyaya.php';
 require_once __DIR__ . '/../../models/HearingAttendance.php';
 require_once __DIR__ . '/../../services/AuditService.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
 // Authentication & Authorization: Admin (1) and Lupon Clerk (2)
 $userId = (int) ($_SESSION['user_id'] ?? 0);
@@ -43,23 +44,58 @@ try {
     switch ($action) {
         // ── 1. Mark Hearing Attendance (1-click Present / Absent) ───────────────────
         case 'mark_hearing_attendance':
+            CsrfService::enforceForApiRequest();
             $hearingId = (int) ($payload['hearing_id'] ?? 0);
             $status = trim((string) ($payload['status'] ?? 'Present'));
-            if ($hearingId <= 0) {
-                throw new InvalidArgumentException('Valid hearing ID is required.');
+            if ($hearingId <= 0 || !in_array($status, ['Present', 'Absent'], true)) {
+                throw new InvalidArgumentException('A valid hearing and attendance status are required.');
             }
 
             // Fetch hearing and case parties
-            $hStmt = $db->prepare("SELECT h.*, c.complaint_id FROM hearings h INNER JOIN cases c ON c.case_id = h.case_id WHERE h.hearing_id = ?");
+            $db->beginTransaction();
+            $hStmt = $db->prepare("SELECT h.*, c.complaint_id FROM hearings h INNER JOIN cases c ON c.case_id = h.case_id WHERE h.hearing_id = ? FOR UPDATE");
             $hStmt->execute([$hearingId]);
             $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
-            if (!$hearing) {
-                throw new RuntimeException('Hearing not found.');
+            if (!$hearing || in_array($hearing['status'], ['Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed'], true)) {
+                throw new InvalidArgumentException('Select an active hearing.');
             }
 
-            $partiesStmt = $db->prepare("SELECT resident_id, party_type FROM complaint_parties WHERE complaint_id = ?");
+            require_once __DIR__ . '/../../services/SummonServiceGate.php';
+            $gate = (new SummonServiceGate($db))->forHearing($hearingId);
+            if (empty($gate['allowed'])) {
+                $db->rollBack();
+                http_response_code(422);
+                echo json_encode([
+                    'success' => false,
+                    'code' => $gate['code'] ?? 'SUMMONS_NOT_SERVED',
+                    'message' => $gate['message'] ?? 'Serve notice and record proof of service before marking attendance.',
+                ]);
+                break;
+            }
+
+            $partiesStmt = $db->prepare("SELECT resident_id, party_type FROM complaint_parties WHERE complaint_id = ? AND party_type IN ('Complainant', 'Respondent')");
             $partiesStmt->execute([$hearing['complaint_id']]);
             $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+            if ($status === 'Absent') {
+                $respondents = array_keys(array_column($parties, 'party_type'), 'Respondent', true);
+                if (count($respondents) !== 1) {
+                    $db->rollBack();
+                    http_response_code(422);
+                    echo json_encode([
+                        'success' => false,
+                        'message' => 'Use Detailed Check-in to select which respondent was absent.',
+                    ]);
+                    break;
+                }
+                $recipient = (int) $parties[$respondents[0]]['resident_id'];
+                $service = (new SummonDeliveryService($db))->verifyRecipientServiceForHearing($hearingId, $recipient, 'Respondent');
+                if (empty($service['verified'])) {
+                    $db->rollBack();
+                    http_response_code(422);
+                    echo json_encode(['success' => false, 'message' => $service['next_action']]);
+                    break;
+                }
+            }
 
             // Record attendance for each party
             $upsertStmt = $db->prepare("
@@ -90,13 +126,14 @@ try {
             $updH = $db->prepare("
                 UPDATE hearings 
                 SET status = 'Attendance Recorded', 
-                    queue_status = 'In Progress',
+                    queue_status = CASE WHEN queue_status IN ('Waiting', 'Ready') THEN ? ELSE queue_status END,
                     complainant_attendance = ?,
                     respondent_attendance = ?
                 WHERE hearing_id = ?
             ");
-            $updH->execute([$compAttended, $respAttended, $hearingId]);
+            $updH->execute([$status === 'Present' ? 'Ready' : 'Waiting', $compAttended, $respAttended, $hearingId]);
 
+            $db->commit();
             $auditService->log($userId, "1-Click Attendance Marked: Hearing #{$hearingId} ({$status})", "Hearings");
 
             echo json_encode([
@@ -263,6 +300,9 @@ try {
             throw new InvalidArgumentException("Unrecognized quick action: {$action}");
     }
 } catch (Throwable $e) {
+    if (isset($db) && $db->inTransaction()) {
+        $db->rollBack();
+    }
     http_response_code(400);
     echo json_encode([
         'success' => false,

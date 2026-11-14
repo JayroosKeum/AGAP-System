@@ -1660,11 +1660,12 @@ function renderCaseWorkspace(workspace, complaint) {
         caseData?.case_status === 'Repudiated' ||
         complaint?.case_status === 'Repudiated'
     );
+    const cfaEligWs = workspace?.cfa_eligibility || complaint?.cfa_eligibility || null;
     const isCfa = Boolean(
         complaint?.cfa ||
         workspace?.cfa ||
+        (cfaEligWs ? Boolean(cfaEligWs.eligible) : (caseData?.case_status === 'For CFA')) ||
         caseData?.case_status === 'CFA Issued' ||
-        caseData?.case_status === 'For CFA' ||
         complaint?.case_status === 'CFA Issued' ||
         complaint?.status === 'CFA Issued'
     );
@@ -2152,18 +2153,21 @@ function renderOfficialKpForms(workspace, complaint) {
                                 medOutcome.includes('pangkat') || sessionOutcomes.some(o => o.includes('pangkat') || o.includes('elevate')) ||
                                 Boolean(activeComplaint?.pangkat || workspace?.conciliation?.pangkat_id);
 
-    const isFailedConciliation = compStatus.includes('cfa') || concOutcome.includes('cfa') || concOutcome.includes('fail') ||
-                                sessionOutcomes.some(o => o.includes('cfa') || o.includes('fail of conciliation')) ||
-                                Boolean(activeComplaint?.cfa || workspace?.cfa);
-
+    const cfaElig = workspace?.cfa_eligibility || activeComplaint?.cfa_eligibility || null;
+    const availableCfaForms = Array.isArray(cfaElig?.available_forms) ? cfaElig.available_forms : [];
+    const hasServerCfaElig = Boolean(cfaElig);
     const hasDocTpl = (tpl) => docs.some(d => (d.template_name || '').toLowerCase().includes(tpl.toLowerCase()));
     const cfaDetails = activeComplaint?.cfa || workspace?.cfa || {};
     const cfaType = String(cfaDetails.cfa_type || cfaDetails.form_code || '').toLowerCase();
-    const repudiatingParty = String(activeComplaint?.settlement?.repudiating_party || workspace?.settlement?.repudiating_party || '').toLowerCase();
-    const isComplainantBarred = cfaType.includes('20-a') || compStatus.includes('dismiss') ||
-        sessionOutcomes.some(o => o.includes('complainant absent')) || repudiatingParty.includes('complainant');
-    const isRespondentBarred = cfaType.includes('20-b') ||
-        sessionOutcomes.some(o => o.includes('respondent absent')) || repudiatingParty.includes('respondent');
+    const canShowKp20 = hasServerCfaElig
+        ? (Boolean(cfaElig.eligible) && availableCfaForms.includes('KP Form 20'))
+        : Boolean(activeComplaint?.cfa || workspace?.cfa);
+    const isComplainantBarred = hasServerCfaElig
+        ? (Boolean(cfaElig.eligible) && availableCfaForms.includes('KP Form 20-A'))
+        : cfaType.includes('20-a');
+    const isRespondentBarred = hasServerCfaElig
+        ? (Boolean(cfaElig.eligible) && availableCfaForms.includes('KP Form 20-B'))
+        : cfaType.includes('20-b');
 
     const appendCfaVariant = (code, title, description) => {
         if (hasDocTpl(code) || !activeCaseId) return;
@@ -2303,7 +2307,7 @@ function renderOfficialKpForms(workspace, complaint) {
                 </div>
             `;
         }
-        if (!isComplainantBarred && !isRespondentBarred && !hasDocTpl('KP Form 20')) {
+        if (canShowKp20 && !hasDocTpl('KP Form 20')) {
             rowsHtml += `
                 <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
                     <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
@@ -2439,34 +2443,42 @@ function renderOfficialKpForms(workspace, complaint) {
         }
     }
 
-    // 5. When Outcome = "Failure of Conciliation / Elevate to Court"
-    if (isFailedConciliation && !isRepudiated && !hasDocTpl('KP Form 20') && activeCaseId > 0) {
-        rowsHtml += `
-            <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
-                <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
-                    <div>
-                        <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span style="font-weight: 700; color: #7f1d1d;">Pormularyo ng KP Blg. 20 (Katibayan Upang Makadulog sa Hukuman / CFA)</span>
-                            <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">
-                                CFA READY
-                            </span>
-                        </div>
-                        <div class="kp-form-meta-text">
-                            <span>Certificate to File Action &bull; Signed by Pangkat Secretary/Chairman and endorsed by Punong Barangay</span>
+    // 5. Server-verified CFA / Bar Certificates (when not already rendered under Repudiation)
+    if (!isRepudiated && activeCaseId > 0 && cfaElig?.eligible) {
+        if (canShowKp20 && !hasDocTpl('KP Form 20')) {
+            rowsHtml += `
+                <div class="kp-form-item-row" style="background: #fef2f2; border-left: 4px solid #ef4444;">
+                    <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
+                        <div>
+                            <div class="kp-form-name-text" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <span style="font-weight: 700; color: #7f1d1d;">Pormularyo ng KP Blg. 20 (Katibayan Upang Makadulog sa Hukuman / CFA)</span>
+                                <span style="display: inline-block; padding: 1px 7px; border-radius: 4px; font-weight: 700; font-size: 0.72rem; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5;">
+                                    CFA READY
+                                </span>
+                            </div>
+                            <div class="kp-form-meta-text">
+                                <span>${escapeHtml(cfaElig.reason || 'Certificate to File Action — Eligible under verified statutory grounds.')}</span>
+                            </div>
                         </div>
                     </div>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 20')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;" title="Preview / Print KP Form 20">
+                            Preview / Print
+                        </button>
+                        <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+20&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
+                    </div>
                 </div>
-                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                    <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 20')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;" title="Preview / Print KP Form 20">
-                        Preview / Print
-                    </button>
-                    <a href="../../../backend/api/documents/kp-form.php?case_id=${encodeURIComponent(activeCaseId)}&form_code=KP+Form+20&pdf=1" class="btn-pdf-chip" download title="Download official PDF">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        <span>PDF</span>
-                    </a>
-                </div>
-            </div>
-        `;
+            `;
+        }
+        if (isComplainantBarred) {
+            appendCfaVariant('KP Form 20-A', 'Pormularyo ng KP Blg. 20-A (Katibayan Upang Hadlangan ang Paghahain ng Aksyon)', cfaElig.reason || 'Certificate to Bar Action — Complainant barred after verified show-cause nonappearance.');
+        }
+        if (isRespondentBarred) {
+            appendCfaVariant('KP Form 20-B', 'Pormularyo ng KP Blg. 20-B (Katibayan Upang Hadlangan ang Ganting-Sakdal)', cfaElig.reason || 'Certificate to Bar Counterclaim — Respondent barred after verified show-cause nonappearance.');
+        }
     }
 
     // 3. Official Printable Blank Minutes Sheet
@@ -7355,7 +7367,7 @@ async function openHearingSessionDetails(hearingId) {
                         <div>
                             <strong style="font-size: 0.88rem; color: #0f172a;">${escapeHtml(p.full_name || 'Party Member')}</strong>
                             <div style="font-size: 0.74rem; color: #64748b; margin-top: 1px;">
-                                ${p.service_confirmed ? '<span style="color: #15803d; font-weight: 600;">Summons Confirmed Served</span>' : '<span style="color: #64748b;">Summons Service In Progress</span>'}
+                                ${p.service_confirmed ? '<span style="color: #15803d; font-weight: 600;">Summons Confirmed Served</span>' : `<span style="color: #b45309; font-weight: 600;">${escapeHtml(p.service_verification?.next_action || 'Awaiting Verified Service')}</span>`}
                                 ${p.justification_reason ? ` &bull; <em>Excuse: ${escapeHtml(p.justification_reason)}</em>` : ''}
                                 ${p.remarks ? ` &bull; <span>Remarks: ${escapeHtml(p.remarks)}</span>` : ''}
                             </div>

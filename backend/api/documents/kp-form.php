@@ -22,11 +22,15 @@ $asPdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
 $isPreview = isset($_GET['preview']) && in_array((string) $_GET['preview'], ['1', 'true'], true);
 
 if ($documentId) {
-    $notice = $conn->prepare('SELECT n.form_data, dt.template_name, sd.delivery_status
+    $notice = $conn->prepare('SELECT n.form_data, dt.template_name,
+        (SELECT sd.delivery_status
+           FROM summon_deliveries sd
+          WHERE sd.document_id = n.document_id
+          ORDER BY sd.delivery_id DESC
+          LIMIT 1) AS delivery_status
         FROM hearing_reschedule_notices n
         JOIN generated_documents gd USING (document_id)
         JOIN document_templates dt USING (template_id)
-        LEFT JOIN summon_deliveries sd USING (document_id)
         WHERE n.document_id = ?');
     $notice->execute([$documentId]);
     $replacement = $notice->fetch(PDO::FETCH_ASSOC);
@@ -156,7 +160,16 @@ try {
     exit(htmlspecialchars($e->getMessage()));
 }
 
-// Enforce strict party eligibility and locking rules for show cause unless in preview mode
+// Enforce unified server-side eligibility for CFA and Bar forms in both preview and print modes
+if (preg_match('/^KP\s*Form\s*(?:No\.?\s*)?(?:20(?:-?[AB])?|21|22)\b/i', $formCode)) {
+    $prereq = $kpFormService->checkPrerequisites($formCode, $caseId, $hearingId);
+    if (empty($prereq['eligible'])) {
+        http_response_code(403);
+        exit(htmlspecialchars($prereq['reason'] ?? ($formCode . ' is not eligible for this case.')));
+    }
+}
+
+// Enforce strict party eligibility and locking rules for show cause / execution unless in preview mode
 if (!$isPreview) {
     if ($formCode === 'KP Form 18') {
         $isCompAbsent = false;

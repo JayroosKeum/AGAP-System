@@ -29,8 +29,10 @@ if (empty($input)) {
 
 $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $hearingId = filter_var($input['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+$deliveryId = filter_var($input['delivery_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+$residentId = filter_var($input['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
 $partyType = trim((string)($input['party_type'] ?? 'Respondent'));
-if (!in_array($partyType, ['Complainant', 'Respondent'], true)) {
+if (!in_array($partyType, ['Complainant', 'Respondent', 'Witness'], true)) {
     $partyType = 'Respondent';
 }
 
@@ -43,7 +45,7 @@ if (!$caseId) {
 try {
     $db = (new Database())->connect();
     $service = new SummonDeliveryService($db);
-    $result = $service->initiateNextAttempt((int) $caseId, (int) $_SESSION['user_id'], $hearingId, $partyType);
+    $result = $service->initiateNextAttempt((int) $caseId, (int) $_SESSION['user_id'], $hearingId, $partyType, $deliveryId, $residentId);
 
     http_response_code(!empty($result['success']) ? 200 : 422);
     echo json_encode($result);

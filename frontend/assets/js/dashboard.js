@@ -2106,6 +2106,25 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    const handleDashboardCheckIn = async ({ hearingId, partyType, residentId, status }) => {
+        const res = await fetch('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+            body: JSON.stringify({
+                action: 'check_in',
+                hearing_id: hearingId,
+                party_type: partyType,
+                resident_id: residentId,
+                status
+            })
+        });
+        const data = await res.json().catch(() => ({ success: false, message: 'Unable to update check-in.' }));
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || `Check-in failed (${res.status})`);
+        }
+        return data;
+    };
+
     const handleStartHearing = async (hearingId, caseNumber) => {
         if (!confirm(`Simulan na ba ang sesyon para sa ${caseNumber ? `Case #${caseNumber}` : 'ang kasong ito'}?`)) return;
         try {
@@ -2393,6 +2412,60 @@ document.addEventListener('DOMContentLoaded', () => {
         venueRow.innerHTML = `<span>${escapeHtml(hearing.venue || (isPaanyaya ? 'Tanggapan ng Barangay Tumana' : 'Lupon Court Room'))}</span>${hearing.complaint_title ? ` • <span>${escapeHtml(hearing.complaint_title)}</span>` : ''}`;
 
         content.append(headerRow, partiesRow, venueRow);
+
+        if (!isPaanyaya && Array.isArray(hearing.parties) && hearing.parties.length > 0) {
+            const checkInStrip = document.createElement('div');
+            checkInStrip.className = 'dashboard-party-checkin-strip';
+            checkInStrip.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;';
+            hearing.parties.forEach((p) => {
+                const isCheckedIn = ['Present', 'Late'].includes(String(p.attendance_status || ''));
+                const isServiceOk = Boolean(p.service_verified);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'dashboard-party-checkin-btn';
+                btn.dataset.hearingId = String(hearing.hearing_id);
+                btn.dataset.residentId = String(p.resident_id || '');
+                btn.dataset.partyType = String(p.party_type || '');
+                if (!isServiceOk && !isCheckedIn) {
+                    const statusText = p.service_status || 'Not Served';
+                    btn.disabled = true;
+                    btn.dataset.blocked = '1';
+                    btn.style.cssText = 'font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; cursor: not-allowed; font-weight: 600;';
+                    btn.title = `Blocked: ${statusText}`;
+                    btn.textContent = `${p.party_type} (${p.full_name}): Blocked (${statusText})`;
+                } else {
+                    btn.style.cssText = isCheckedIn
+                        ? 'font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; border: 1px solid #86efac; background: #dcfce7; color: #15803d; cursor: pointer; font-weight: 700;'
+                        : 'font-size: 0.72rem; padding: 3px 8px; border-radius: 6px; border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; cursor: pointer; font-weight: 600;';
+                    btn.textContent = isCheckedIn
+                        ? `${p.party_type} (${p.full_name}): Checked In`
+                        : `Check In ${p.party_type} (${p.full_name})`;
+                    btn.addEventListener('click', async () => {
+                        const nextStatus = isCheckedIn ? 'Waiting' : 'Checked In';
+                        btn.disabled = true;
+                        btn.textContent = 'Saving...';
+                        try {
+                            await handleDashboardCheckIn({
+                                hearingId: Number(hearing.hearing_id),
+                                partyType: String(p.party_type),
+                                residentId: Number(p.resident_id),
+                                status: nextStatus
+                            });
+                            fetchDashboardData();
+                        } catch (err) {
+                            alert(err.message || 'Check-in failed.');
+                            btn.disabled = false;
+                            btn.textContent = isCheckedIn
+                                ? `${p.party_type} (${p.full_name}): Checked In`
+                                : `Check In ${p.party_type} (${p.full_name})`;
+                        }
+                    });
+                }
+                checkInStrip.appendChild(btn);
+            });
+            content.appendChild(checkInStrip);
+        }
+
         item.appendChild(content);
 
         const actions = document.createElement('div');
@@ -2404,9 +2477,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const isConcluded = normQueue === 'concluded' || normStatus === 'concluded' || normStatus === 'completed';
         const isInSession = normQueue === 'in_session';
         const isStandby = normQueue === 'standby' || normQueue === 'on_standby';
-        const compCheckedIn = ['present', 'late'].includes((hearing.complainant_attendance || '').toLowerCase());
-        const respCheckedIn = ['present', 'late'].includes((hearing.respondent_attendance || '').toLowerCase());
-        const isCompleteAndReady = (compCheckedIn && respCheckedIn) || normQueue === 'ready' || normQueue === 'ready_for_hearing';
+        const compCheckedIn = typeof hearing.complainant_checked_in === 'boolean'
+            ? hearing.complainant_checked_in
+            : ['present', 'late'].includes((hearing.complainant_attendance || '').toLowerCase());
+        const respCheckedIn = typeof hearing.respondent_checked_in === 'boolean'
+            ? hearing.respondent_checked_in
+            : ['present', 'late'].includes((hearing.respondent_attendance || '').toLowerCase());
+        const isCompleteAndReady = typeof hearing.is_complete_and_ready === 'boolean'
+            ? hearing.is_complete_and_ready
+            : ((compCheckedIn && respCheckedIn) || normQueue === 'ready' || normQueue === 'ready_for_hearing');
 
         const hDate = new Date(hearing.hearing_date ? String(hearing.hearing_date).replace(' ', 'T') : '');
         const nowD = new Date();

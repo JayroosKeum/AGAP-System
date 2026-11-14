@@ -421,7 +421,7 @@ class CaseModel
         $attendanceModel = new HearingAttendance($this->conn);
 
         $partyAttendanceStmt = $this->conn->prepare("
-            SELECT 
+            SELECT
                 cp.party_type,
                 cp.resident_id,
                 TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name,
@@ -429,12 +429,7 @@ class CaseModel
                 ha.is_justified,
                 ha.justification_reason,
                 ha.remarks AS appearance_remarks,
-                ha.recorded_at,
-                (
-                    (SELECT COUNT(*) FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) AND sd.delivery_status IN ('Served Personal', 'Served Substituted', 'Served Refused'))
-                    +
-                    (SELECT COUNT(*) FROM proof_of_service pos WHERE pos.case_id = ? AND pos.service_result = 'Served')
-                ) AS service_confirmed_count
+                ha.recorded_at
             FROM complaint_parties cp
             INNER JOIN residents r ON r.resident_id = cp.resident_id
             LEFT JOIN hearing_attendance ha ON ha.hearing_id = ? AND ha.resident_id = cp.resident_id
@@ -466,12 +461,20 @@ class CaseModel
         $summonsCountStmt->execute([$id]);
         $summonsCount = (int) $summonsCountStmt->fetchColumn();
 
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        $deliverySvc = new SummonDeliveryService($this->conn);
+
         foreach ($hearingsList as &$hItem) {
             $hId = (int) $hItem['hearing_id'];
-            $partyAttendanceStmt->execute([$hId, $id, $hId, $case['complaint_id']]);
+            $partyAttendanceStmt->execute([$hId, $case['complaint_id']]);
             $rawParties = $partyAttendanceStmt->fetchAll(PDO::FETCH_ASSOC);
 
-            $parties = array_map(function ($p) {
+            $parties = array_map(function ($p) use ($deliverySvc, $hId) {
+                $ver = $deliverySvc->verifyRecipientServiceForHearing(
+                    $hId,
+                    (int) $p['resident_id'],
+                    (string) $p['party_type']
+                );
                 return [
                     'resident_id' => (int) $p['resident_id'],
                     'party_type' => $p['party_type'],
@@ -480,7 +483,8 @@ class CaseModel
                     'is_justified' => (int) ($p['is_justified'] ?? 0),
                     'justification_reason' => $p['justification_reason'] ?? '',
                     'remarks' => $p['appearance_remarks'] ?? '',
-                    'service_confirmed' => (int) ($p['service_confirmed_count'] ?? 0) > 0,
+                    'service_confirmed' => !empty($ver['verified']),
+                    'service_verification' => $ver,
                     'recorded_at' => $p['recorded_at'] ?? null,
                 ];
             }, $rawParties);
@@ -557,6 +561,11 @@ class CaseModel
         $concurrentDisputes = $partyModel->checkConcurrentDisputesForComplaint((int)$case['complaint_id']);
         $case['concurrent_disputes'] = $concurrentDisputes;
 
+        require_once __DIR__ . '/CFA.php';
+        $cfaModel = new CFA($this->conn);
+        $cfaRecord = $cfaModel->getByCase($id);
+        $cfaEligibility = $cfaModel->determineCfaEligibility($id);
+
         return [
             'case' => $case,
             'concurrent_disputes' => $concurrentDisputes,
@@ -571,7 +580,9 @@ class CaseModel
             ] : null,
             'settlement' => $settlement ?: null,
             'arbitration' => $arbitration ?: null,
-            'transmittal' => $transmittal ?: null
+            'transmittal' => $transmittal ?: null,
+            'cfa' => $cfaRecord ?: null,
+            'cfa_eligibility' => $cfaEligibility
         ];
     }
 

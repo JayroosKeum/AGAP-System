@@ -148,6 +148,31 @@ class HearingWorkflow
                 }
 
                 $partyType = $p['party_type'];
+
+                // Verify exact recipient has verified service AND recorded Failure to Appear ('Absent')
+                require_once __DIR__ . '/../services/SummonDeliveryService.php';
+                $ver = (new SummonDeliveryService($this->db))->verifyRecipientServiceForHearing($hearing, $resident, $partyType);
+                if (empty($ver['verified'])) {
+                    return [
+                        'success' => false,
+                        'message' => 'Cannot issue Show Cause notice: notice service for this exact recipient has not been verified (' . ($ver['status'] ?? 'Unverified') . ').'
+                    ];
+                }
+                $attCheck = $this->db->prepare("
+                    SELECT attendance_status, is_justified
+                    FROM hearing_attendance
+                    WHERE hearing_id = ? AND resident_id = ?
+                    LIMIT 1
+                ");
+                $attCheck->execute([$hearing, $resident]);
+                $attRow = $attCheck->fetch(PDO::FETCH_ASSOC);
+                if (!$attRow || ($attRow['attendance_status'] ?? '') !== 'Absent' || (int) ($attRow['is_justified'] ?? 0) === 1) {
+                    return [
+                        'success' => false,
+                        'message' => 'Cannot issue Show Cause notice: recipient must have an unexcused Failure to Appear (Absent) record on this hearing.'
+                    ];
+                }
+
                 $formCode = ($partyType === 'Complainant') ? 'KP Form 18' : 'KP Form 19';
                 $formDesc = ($partyType === 'Complainant')
                     ? 'Notice of Hearing (Failure to Appear - Complainant)'
@@ -313,72 +338,142 @@ class HearingWorkflow
                     return ['success' => false, 'message' => 'Provide a valid proposed legal action and review status.'];
                 }
 
-                $partyCheck = $this->db->prepare(
-                    "SELECT cp.party_type, c.case_id, c.case_number, co.complaint_title,
-                            TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name
-                     FROM hearings h
-                     JOIN cases c ON c.case_id = h.case_id
-                     JOIN complaints co ON co.complaint_id = c.complaint_id
-                     JOIN complaint_parties cp ON cp.complaint_id = c.complaint_id AND cp.resident_id = ?
-                     JOIN residents r ON r.resident_id = cp.resident_id
-                     WHERE h.hearing_id = ? AND cp.party_type IN ('Complainant', 'Respondent')"
-                );
-                $partyCheck->execute([$resident, $hearing]);
-                $p = $partyCheck->fetch(PDO::FETCH_ASSOC);
-                if (!$p) {
-                    return ['success' => false, 'message' => 'The selected party does not belong to this hearing.'];
+                $startedTrans = false;
+                $certificatePath = null;
+                if (!$this->db->inTransaction()) {
+                    $this->db->beginTransaction();
+                    $startedTrans = true;
                 }
 
-                $reviewedBy = ($status === 'Pending Review') ? null : $userId;
-                $reviewedAt = ($status === 'Pending Review') ? null : date('Y-m-d H:i:s');
-
-                $q = $this->db->prepare(
-                    'INSERT INTO hearing_legal_actions (hearing_id, resident_id, action_type, status, details, reviewed_by, reviewed_at, created_by)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-                );
-                $q->execute([$hearing, $resident, $type, $status, $details, $reviewedBy, $reviewedAt, $userId]);
-                $id = (int) $this->db->lastInsertId();
-
-                // If approved and action involves issuing Certificate to Bar Action (KP Form 21 / 22), generate document:
-                $generatedDocId = null;
-                if ($status === 'Approved' && (str_contains($type, 'KP Form 21') || str_contains($type, 'KP Form 22') || str_contains($type, 'Bar Action'))) {
-                    $formCode = str_contains($type, 'Counterclaim') || str_contains($type, 'KP Form 22') || $p['party_type'] === 'Respondent'
-                        ? 'KP Form 22'
-                        : 'KP Form 21';
-                    $formDesc = ($formCode === 'KP Form 21')
-                        ? 'Certificate to Bar Action'
-                        : 'Certificate to Bar Action Counterclaim';
-
-                    $tplStmt = $this->db->prepare("INSERT INTO document_templates (template_name, description) VALUES (?, ?) ON DUPLICATE KEY UPDATE description = VALUES(description), template_id = LAST_INSERT_ID(template_id)");
-                    $tplStmt->execute([$formCode, $formDesc]);
-                    $tplId = (int) $this->db->lastInsertId();
-                    if (!$tplId) {
-                        $getTpl = $this->db->prepare("SELECT template_id FROM document_templates WHERE template_name = ? LIMIT 1");
-                        $getTpl->execute([$formCode]);
-                        $tplId = (int) $getTpl->fetchColumn();
+                try {
+                    $partyCheck = $this->db->prepare(
+                        "SELECT cp.party_type, c.case_id, c.case_number, co.complaint_title,
+                                h.status AS hearing_status,
+                                TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS resident_name
+                         FROM hearings h
+                         JOIN cases c ON c.case_id = h.case_id
+                         JOIN complaints co ON co.complaint_id = c.complaint_id
+                         JOIN complaint_parties cp ON cp.complaint_id = c.complaint_id AND cp.resident_id = ?
+                         JOIN residents r ON r.resident_id = cp.resident_id
+                         WHERE h.hearing_id = ? AND cp.party_type IN ('Complainant', 'Respondent')
+                         FOR UPDATE"
+                    );
+                    $partyCheck->execute([$resident, $hearing]);
+                    $p = $partyCheck->fetch(PDO::FETCH_ASSOC);
+                    if (!$p) {
+                        if ($startedTrans && $this->db->inTransaction()) {
+                            $this->db->rollBack();
+                        }
+                        return ['success' => false, 'message' => 'The selected party does not belong to this hearing.'];
                     }
 
-                    // On-demand generation: no physical disk file created ahead of time
-                    $relativePath = null;
+                    $isBarCertificateAction = ($status === 'Approved')
+                        && (stripos($type, 'KP Form 21') !== false
+                            || stripos($type, 'KP Form 22') !== false
+                            || stripos($type, 'Bar Action') !== false
+                            || stripos($type, 'Bar Counterclaim') !== false);
 
-                    $insDoc = $this->db->prepare("INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status) VALUES (?, ?, ?, ?, 'Generated')");
-                    $insDoc->execute([$p['case_id'], $tplId, $userId, $relativePath]);
-                    $generatedDocId = (int) $this->db->lastInsertId();
+                    // Recheck eligibility inside transaction BEFORE inserting any approval or certificate row
+                    $formCode = null;
+                    if ($isBarCertificateAction) {
+                        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+                        $delivery = new SummonDeliveryService($this->db);
+                        $ver = $delivery->verifyRecipientServiceForHearing($hearing, $resident, $p['party_type']);
+
+                        $attChk = $this->db->prepare("
+                            SELECT attendance_status, is_justified
+                            FROM hearing_attendance
+                            WHERE hearing_id = ? AND resident_id = ?
+                            LIMIT 1
+                            FOR UPDATE
+                        ");
+                        $attChk->execute([$hearing, $resident]);
+                        $attRec = $attChk->fetch(PDO::FETCH_ASSOC);
+
+                        $hasUnexcusedAbsence = $attRec
+                            && ($attRec['attendance_status'] ?? '') === 'Absent'
+                            && (int) ($attRec['is_justified'] ?? 0) === 0;
+
+                        $expChk = $this->db->prepare("
+                            SELECT outcome FROM hearing_explanations
+                            WHERE hearing_id = ? AND resident_id = ?
+                            ORDER BY explanation_id DESC LIMIT 1 FOR UPDATE
+                        ");
+                        $expChk->execute([$hearing, $resident]);
+                        $explanation = $expChk->fetchColumn();
+                        $hasDetermination = $explanation === 'Unjustified';
+                        if ($explanation === false) {
+                            foreach ($delivery->getVerifiedShowCauseFindings((int) $p['case_id'], $hearing) as $finding) {
+                                if ((int) $finding['resident_id'] === $resident && $finding['party_type'] === $p['party_type']) {
+                                    $hasDetermination = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (empty($ver['verified']) || !$hasUnexcusedAbsence || !$hasDetermination
+                            || in_array($p['hearing_status'], ['Cancelled', 'Office Cancelled', 'Rescheduled'], true)) {
+                            if ($startedTrans && $this->db->inTransaction()) {
+                                $this->db->rollBack();
+                            }
+                            return [
+                                'success' => false,
+                                'message' => 'Cannot approve bar/default certificate: requires verified service, unexcused Failure to Appear (Absent), and an applicable unjustified show-cause determination for this recipient and hearing.'
+                            ];
+                        }
+
+                        $formCode = $p['party_type'] === 'Respondent' ? 'KP Form 22' : 'KP Form 21';
+                        $explicitForm = (stripos($type, 'KP Form 22') !== false || stripos($type, 'Counterclaim') !== false)
+                            ? 'KP Form 22'
+                            : (stripos($type, 'KP Form 21') !== false ? 'KP Form 21' : null);
+                        if ($explicitForm !== null && $explicitForm !== $formCode) {
+                            throw new DomainException('The requested bar certificate does not match the selected party role.');
+                        }
+                    }
+
+                    $reviewedBy = ($status === 'Pending Review') ? null : $userId;
+                    $reviewedAt = ($status === 'Pending Review') ? null : date('Y-m-d H:i:s');
+
+                    $q = $this->db->prepare(
+                        'INSERT INTO hearing_legal_actions (hearing_id, resident_id, action_type, status, details, reviewed_by, reviewed_at, created_by)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+                    );
+                    $q->execute([$hearing, $resident, $type, $status, $details, $reviewedBy, $reviewedAt, $userId]);
+                    $id = (int) $this->db->lastInsertId();
+
+                    $generatedDocId = null;
+                    if ($isBarCertificateAction && $formCode !== null) {
+                        $certificate = $this->createBarCertificateDocument((int) $p['case_id'], $formCode, $userId, $resident);
+                        $generatedDocId = (int) $certificate['document_id'];
+                        $certificatePath = dirname(__DIR__, 2) . '/' . ltrim($certificate['file_path'], '/');
+                    }
+
+                    // Log in Case History
+                    $histStmt = $this->db->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) SELECT case_id, case_status, ?, ? FROM cases WHERE case_id = ?");
+                    $histRemarks = sprintf('Legal action review (%s): %s for %s (%s). Details: %s', $status, $type, $p['resident_name'], $p['party_type'], $details);
+                    $histStmt->execute([$histRemarks, $userId, $p['case_id']]);
+
+                    $this->audit($userId, 'Recorded legal action ' . $status . ' for ' . $p['resident_name'], 'Hearings', $id);
+
+                    if ($startedTrans && $this->db->inTransaction()) {
+                        $this->db->commit();
+                    }
+
+                    return [
+                        'success' => true,
+                        'message' => 'Legal action review recorded. AGAP does not automatically impose any consequence without authorized human review.',
+                        'legal_action_id' => $id,
+                        'generated_document_id' => $generatedDocId
+                    ];
+                } catch (Throwable $txErr) {
+                    if ($startedTrans && $this->db->inTransaction()) {
+                        $this->db->rollBack();
+                    }
+                    if ($certificatePath && is_file($certificatePath)) {
+                        unlink($certificatePath);
+                    }
+                    throw $txErr;
                 }
-
-                // Log in Case History
-                $histStmt = $this->db->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) SELECT case_id, case_status, ?, ? FROM cases WHERE case_id = ?");
-                $histRemarks = sprintf('Legal action review (%s): %s for %s (%s). Details: %s', $status, $type, $p['resident_name'], $p['party_type'], $details);
-                $histStmt->execute([$histRemarks, $userId, $p['case_id']]);
-
-                $this->audit($userId, 'Recorded legal action ' . $status . ' for ' . $p['resident_name'], 'Hearings', $id);
-
-                return [
-                    'success' => true,
-                    'message' => 'Legal action review recorded. AGAP does not automatically impose any consequence without authorized human review.',
-                    'legal_action_id' => $id,
-                    'generated_document_id' => $generatedDocId
-                ];
             }
 
             return ['success' => false, 'message' => 'Unknown workflow action.'];
@@ -386,6 +481,21 @@ class HearingWorkflow
             error_log('HearingWorkflow error: ' . $e->getMessage());
             return ['success' => false, 'message' => 'Unable to save the hearing workflow record: ' . $e->getMessage()];
         }
+    }
+
+    protected function createBarCertificateDocument(int $caseId, string $formCode, int $userId, int $residentId): array
+    {
+        require_once __DIR__ . '/../services/KpFormService.php';
+        $kpService = new KpFormService($this->db);
+        $genDoc = $kpService->generateAndPersistForm($formCode, $caseId, $userId ?: 1, [
+            'bypass_prerequisites' => true,
+            'strict_pdf' => true,
+            'resident_id' => $residentId,
+        ]);
+        if (empty($genDoc['success']) || empty($genDoc['document_id']) || empty($genDoc['file_path'])) {
+            throw new RuntimeException($genDoc['message'] ?? "Unable to persist generated certificate record for {$formCode}.");
+        }
+        return $genDoc;
     }
 
     private function audit(int $user, string $action, string $module, int $id): void

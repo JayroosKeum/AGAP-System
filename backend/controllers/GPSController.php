@@ -51,6 +51,7 @@ class GPSController
         require_once __DIR__ . '/../services/SummonDeliveryService.php';
         require_once __DIR__ . '/../config/database.php';
         $db = (new Database())->connect();
+        $cfa = new CFA($db);
 
         $requestedStage = trim((string)($_GET['stage'] ?? $_GET['stage_type'] ?? ''));
         $requestedHearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
@@ -91,6 +92,7 @@ class GPSController
                 'data' => [
                     'hearings' => [],
                     'has_hearings' => false,
+                    'cfa_eligibility' => $cfa->determineCfaEligibility($caseId),
                     'message' => 'No hearings scheduled yet for this case. Issue a summons to schedule 1st Mediation.'
                 ]
             ];
@@ -122,22 +124,19 @@ class GPSController
                     'respondent_attempts' => $delivResult['respondent_attempts'] ?? [],
                     'can_initiate_next_attempt' => $delivResult['can_initiate_next_attempt'] ?? false,
                     'next_attempt_number' => $delivResult['next_attempt_number'] ?? null,
-                    'cfa_eligibility' => $delivResult['cfa_eligibility'] ?? null,
+                    'delivery_eligibility' => $delivResult['cfa_eligibility'] ?? null,
                     'attendance_unlocked' => $delivResult['attendance_unlocked'],
                     'service_notice' => $delivResult['service_notice'],
                 ];
             }
         }
 
-        $primaryHearingId = !empty($hearingsWithDeliveries[0]['hearing_id']) ? (int) $hearingsWithDeliveries[0]['hearing_id'] : null;
-        $cfaEligibility = $deliveryService->getCfaEligibility($caseId, $primaryHearingId);
-
         return [
             'success' => true,
             'data' => [
                 'hearings' => $hearingsWithDeliveries,
                 'has_hearings' => true,
-                'cfa_eligibility' => $cfaEligibility,
+                'cfa_eligibility' => $cfa->determineCfaEligibility($caseId),
             ]
         ];
     }
@@ -212,15 +211,21 @@ class GPSController
         }
     }
 
-    public function initiateNextAttempt(int $caseId, int $userId, ?int $hearingId = null, string $partyType = 'Respondent'): array
-    {
+    public function initiateNextAttempt(
+        int $caseId,
+        int $userId,
+        ?int $hearingId = null,
+        string $partyType = 'Respondent',
+        ?int $deliveryId = null,
+        ?int $residentId = null
+    ): array {
         require_once __DIR__ . '/../services/SummonDeliveryService.php';
         require_once __DIR__ . '/../config/database.php';
         $db = (new Database())->connect();
         require_once __DIR__ . '/../models/Setting.php';
         $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
-        return $deliveryService->initiateNextAttempt($caseId, $userId, $hearingId, $partyType);
+        return $deliveryService->initiateNextAttempt($caseId, $userId, $hearingId, $partyType, $deliveryId, $residentId);
     }
 
     public function markKp8Served(int $caseId, int $documentId, ?int $hearingId, int $userId): array
@@ -236,15 +241,10 @@ class GPSController
 
     public function cfaEligibility(int $caseId): array
     {
-        require_once __DIR__ . '/../services/SummonDeliveryService.php';
-        require_once __DIR__ . '/../config/database.php';
         $db = (new Database())->connect();
-        require_once __DIR__ . '/../models/Setting.php';
-        $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
-        $deliveryService = new SummonDeliveryService($db);
         return [
             'success' => true,
-            'data' => $deliveryService->getCfaEligibility($caseId, filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT) ?: null)
+            'data' => (new CFA($db))->determineCfaEligibility($caseId)
         ];
     }
 

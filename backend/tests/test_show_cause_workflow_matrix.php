@@ -113,6 +113,9 @@ $scStmt1->execute([$caseId1]);
 $scHearingId1 = (int) $scStmt1->fetchColumn();
 runAssertion($scHearingId1 > 0, "Show Cause (Respondent) hearing created (ID: {$scHearingId1})");
 
+$serveShowCause = $db->prepare("UPDATE summon_deliveries SET delivery_status = 'Served Personal' WHERE hearing_id = ? AND resident_id = ?");
+$serveShowCause->execute([$scHearingId1, $respResidentId]);
+
 // Evaluate Show Cause as UNJUSTIFIED
 $evalResult1 = $showCauseService->evaluateShowCause($scHearingId1, [
     'party_type' => 'Respondent',
@@ -236,6 +239,9 @@ $scRespHearingId = (int) $scRespStmt->fetchColumn();
 
 runAssertion($scCompHearingId > 0, "Show Cause (Complainant) hearing created (ID: {$scCompHearingId})");
 runAssertion($scRespHearingId > 0, "Show Cause (Respondent) hearing created (ID: {$scRespHearingId})");
+
+$serveShowCause->execute([$scCompHearingId, $compResidentId]);
+$serveShowCause->execute([$scRespHearingId, $respResidentId]);
 
 // Step 2A: Evaluate Complainant Show Cause first as UNJUSTIFIED
 echo "  Evaluating Complainant Show Cause (1st evaluation)...\n";

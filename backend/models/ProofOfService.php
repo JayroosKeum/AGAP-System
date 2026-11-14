@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/CFA.php';
 
 class ProofOfService
 {
@@ -204,10 +205,14 @@ class ProofOfService
                 h.hearing_date ASC,
                 c.case_id DESC
         ");
-                $stmt->execute();
-        $formalCases = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        return $formalCases;
+        $stmt->execute();
+        $cases = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $cfa = new CFA($this->conn);
+        foreach ($cases as &$case) {
+            $case['cfa_eligibility'] = $cfa->determineCfaEligibility((int) $case['case_id']);
+        }
+        unset($case);
+        return $cases;
     }
     public function getCaseSummary(int $caseId): array|false
     {

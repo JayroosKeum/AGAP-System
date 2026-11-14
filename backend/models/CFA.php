@@ -44,31 +44,16 @@ class CFA
             ];
         }
 
-        // 1. Check Complainant Show Cause Evaluation & Default
-        $scCompStmt = $this->conn->prepare("
-            SELECT * FROM show_cause_evaluations
-            WHERE case_id = ? AND party_type = 'Complainant'
-            ORDER BY evaluation_id DESC LIMIT 1
-        ");
-        $scCompStmt->execute([$caseId]);
-        $scComp = $scCompStmt->fetch(PDO::FETCH_ASSOC);
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        $summonService = new SummonDeliveryService($this->conn);
+        $findingsByRole = [];
+        foreach ($summonService->getVerifiedShowCauseFindings($caseId) as $finding) {
+            $findingsByRole[$finding['party_type']] ??= $finding;
+        }
+        $isCompBarred = isset($findingsByRole['Complainant']);
+        $isRespDefault = isset($findingsByRole['Respondent']);
 
-        $isCompBarred = ($case['case_status'] === 'DISMISSED_BARRED')
-            || (!empty($scComp) && (int) ($scComp['is_justified'] ?? 1) === 0);
-
-        // 2. Check Respondent Show Cause Evaluation & Default
-        $scRespStmt = $this->conn->prepare("
-            SELECT * FROM show_cause_evaluations
-            WHERE case_id = ? AND party_type = 'Respondent'
-            ORDER BY evaluation_id DESC LIMIT 1
-        ");
-        $scRespStmt->execute([$caseId]);
-        $scResp = $scRespStmt->fetch(PDO::FETCH_ASSOC);
-
-        $isRespDefault = ($case['case_status'] === 'RESPONDENT_DEFAULT')
-            || (!empty($scResp) && (int) ($scResp['is_justified'] ?? 1) === 0);
-
-        // 3. Check Conciliation / Pangkat Stage outcome
+        // 3. Check Conciliation / Pangkat Stage outcome & Finalized Conciliation minutes ONLY
         $pangkatStmt = $this->conn->prepare("
             SELECT outcome, stage_status FROM case_stages
             WHERE case_id = ? AND stage_type = 'Conciliation'
@@ -77,36 +62,41 @@ class CFA
         $pangkatStmt->execute([$caseId]);
         $pangkatStage = $pangkatStmt->fetch(PDO::FETCH_ASSOC);
 
-        // Check conciliation hearings
+        // Check active conciliation hearings
         $conHStmt = $this->conn->prepare("
             SELECT COUNT(*) FROM hearings
-            WHERE case_id = ? AND hearing_type = 'Conciliation' AND status != 'Cancelled'
+            WHERE case_id = ? AND hearing_type = 'Conciliation'
+              AND status NOT IN ('Cancelled', 'Office Cancelled')
         ");
         $conHStmt->execute([$caseId]);
         $conCount = (int) $conHStmt->fetchColumn();
 
-        // Check hearing minutes outcomes
+        // Check FINALIZED Conciliation hearing minutes ONLY (exclude Draft and non-Conciliation hearings)
         $minOutcomeStmt = $this->conn->prepare("
-            SELECT hm.session_outcome FROM hearing_minutes hm
+            SELECT hm.session_outcome
+            FROM hearing_minutes hm
             INNER JOIN hearings h ON h.hearing_id = hm.hearing_id
             WHERE h.case_id = ?
+              AND h.hearing_type = 'Conciliation'
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+              AND hm.status = 'Finalized'
             ORDER BY hm.minute_id DESC LIMIT 1
         ");
         $minOutcomeStmt->execute([$caseId]);
-        $lastOutcome = (string) ($minOutcomeStmt->fetchColumn() ?: '');
+        $lastConOutcome = (string) ($minOutcomeStmt->fetchColumn() ?: '');
 
-        // 4. Check Repudiation
+        // 4. Check Saved Settlement (Repudiation or Non-Compliance under RA 7160 Sec. 417)
         $repudStmt = $this->conn->prepare("
-            SELECT settlement_id, repudiation_status, repudiation_date FROM settlements
+            SELECT settlement_id, repudiation_status, repudiation_date, repudiation_reason, compliance_status
+            FROM settlements
             WHERE case_id = ? ORDER BY settlement_id DESC LIMIT 1
         ");
         $repudStmt->execute([$caseId]);
-        $settlement = $repudStmt->fetch(PDO::FETCH_ASSOC);
-        $isRepudiated = ($case['case_status'] === 'Repudiated' || $lastOutcome === 'Repudiated' || !empty($settlement['repudiation_date']) || ($settlement['repudiation_status'] ?? '') === 'Repudiated');
+        $settlement = $repudStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $isRepudiated = !empty($settlement)
+            && (($settlement['repudiation_status'] ?? '') === 'Repudiated' || !empty($settlement['repudiation_date']));
 
         // 5. Check Summons Delivery
-        require_once __DIR__ . '/../services/SummonDeliveryService.php';
-        $summonService = new SummonDeliveryService($this->conn);
         $summonElig = $summonService->getCfaEligibility($caseId);
 
         // 6. Check existing CFA records
@@ -121,12 +111,15 @@ class CFA
             return [
                 'eligible' => true,
                 'recommended_form' => 'KP Form 20-A',
-                'available_forms' => ['KP Form 20-A'],
+                'available_forms' => $isRespDefault ? ['KP Form 20-A', 'KP Form 20-B'] : ['KP Form 20-A'],
                 'barred_complainant' => true,
-                'defaulted_respondent' => false,
+                'defaulted_respondent' => (bool) $isRespDefault,
                 'ground' => 'COMPLAINANT_DEFAULT',
-                'reason' => 'Complainant willfully failed to appear for hearings without justifiable cause. Complainant is barred from filing an action in court (RA 7160 Sec. 412(b)(1)).',
-                'responsible_party' => 'Complainant',
+                'reason' => $isRespDefault
+                    ? 'Both parties willfully failed to appear without justifiable cause. Complainant is barred from filing an action (KP Form 20-A / 21) and Respondent is barred from filing a counterclaim (KP Form 20-B / 22); KP Form 20 is strictly barred.'
+                    : 'Complainant willfully failed to appear for hearings without justifiable cause. Complainant is barred from filing an action in court (RA 7160 Sec. 412(b)(1)).',
+                'responsible_party' => $isRespDefault ? 'Both' : 'Complainant',
+                'complainant_resident_id' => (int) $findingsByRole['Complainant']['resident_id'],
                 'existing_forms' => $existingTypes
             ];
         }
@@ -143,6 +136,7 @@ class CFA
                 'ground' => 'RESPONDENT_DEFAULT',
                 'reason' => 'Respondent willfully failed to appear for hearings without justifiable cause. Respondent is barred from filing a counterclaim and Complainant is entitled to a Certificate to File Action (RA 7160 Sec. 412(b)(2)).',
                 'responsible_party' => 'Respondent',
+                'respondent_resident_id' => (int) $findingsByRole['Respondent']['resident_id'],
                 'existing_forms' => $existingTypes
             ];
         }
@@ -162,10 +156,16 @@ class CFA
             ];
         }
 
-        // Priority D: Conciliation Impasse / Failure before Pangkat
-        $isConFailed = in_array($pangkatStage['outcome'] ?? '', ['Unsuccessful', 'Failed', 'Pending CFA'], true)
-            || in_array($lastOutcome, ['Failed', 'Pending CFA'], true)
-            || ($conCount >= 3 && ($pangkatStage['stage_status'] ?? '') === 'Completed');
+        // Priority D: Finalized Conciliation Impasse / Failure before Pangkat
+        $isStageConFailed = !empty($pangkatStage)
+            && ($pangkatStage['stage_status'] ?? '') === 'Completed'
+            && in_array($pangkatStage['outcome'] ?? '', ['Unsuccessful', 'Failed', 'Pending CFA'], true);
+        $isMinutesConFailed = in_array($lastConOutcome, ['Failed', 'Pending CFA'], true);
+        $isMaxConFailed = ($conCount >= 3
+            && ($pangkatStage['stage_status'] ?? '') === 'Completed'
+            && !in_array($pangkatStage['outcome'] ?? '', ['Settled', 'Arbitration', 'Arbitration Award'], true));
+
+        $isConFailed = $isStageConFailed || $isMinutesConFailed || $isMaxConFailed;
         if ($isConFailed) {
             return [
                 'eligible' => true,
@@ -195,43 +195,55 @@ class CFA
             ];
         }
 
-        // Priority F: Mediation Impasse / Lapsed (or For CFA / CFA Issued)
-        if (in_array($case['case_status'], ['For CFA', 'CFA Issued'], true) || in_array($lastOutcome, ['Pending CFA', 'Unsuccessful'], true)) {
-            return [
-                'eligible' => true,
-                'recommended_form' => 'KP Form 20',
-                'available_forms' => ['KP Form 20'],
-                'barred_complainant' => false,
-                'defaulted_respondent' => false,
-                'ground' => 'MEDIATION_IMPASSE',
-                'reason' => 'Mediation failed to produce a settlement or referral within statutory timeframe.',
-                'responsible_party' => 'Mediation Impasse',
-                'existing_forms' => $existingTypes
-            ];
+        // Priority F: Documented Settlement Non-Compliance / Breach (RA 7160 Sec. 417)
+        if (!empty($settlement) && in_array($settlement['compliance_status'] ?? '', ['Violated', 'Breached'], true)) {
+            $noncompHistStmt = $this->conn->prepare("
+                SELECT COUNT(*) FROM case_history
+                WHERE case_id = ?
+                  AND (remarks LIKE '%Non-compliance%' OR remarks LIKE '%breach%' OR remarks LIKE '%Violated%' OR remarks LIKE '%reopened for CFA%')
+            ");
+            $noncompHistStmt->execute([$caseId]);
+            $hasDocumentedBreach = ((int) $noncompHistStmt->fetchColumn() > 0) || !empty($settlement['repudiation_reason']);
+
+            if ($hasDocumentedBreach) {
+                return [
+                    'eligible' => true,
+                    'recommended_form' => 'KP Form 20',
+                    'available_forms' => ['KP Form 20'],
+                    'barred_complainant' => false,
+                    'defaulted_respondent' => false,
+                    'ground' => 'SETTLEMENT_NONCOMPLIANCE',
+                    'reason' => 'Amicable Settlement was breached / marked non-compliant with documented grounds on record (RA 7160 Sec. 417).',
+                    'responsible_party' => 'Settlement Non-Compliance',
+                    'existing_forms' => $existingTypes
+                ];
+            }
         }
 
-        // Priority G: Reopened Settled Case for Non-compliance
+        // Priority G: Settled Case without recorded breach/repudiation
         if ($case['case_status'] === 'Settled') {
             return [
                 'eligible' => false,
-                'reason' => 'This case is already Settled. To issue a CFA for non-compliance, use the "Reopen for CFA" action on the Case Details page.',
+                'reason' => 'This case is already Settled. To issue a CFA for non-compliance, first record the documented settlement breach using the "Reopen for CFA" action.',
                 'recommended_form' => null,
                 'available_forms' => [],
                 'barred_complainant' => false,
                 'defaulted_respondent' => false,
-                'ground' => 'CASE_SETTLED'
+                'ground' => 'CASE_SETTLED',
+                'existing_forms' => $existingTypes
             ];
         }
 
         // Not eligible
         return [
             'eligible' => false,
-            'reason' => 'Case is not currently eligible for CFA. CFA requires conciliation failure, respondent default, complainant default (bar action), repudiated settlement, or failed summons delivery.',
+            'reason' => 'Case is not currently eligible for CFA. CFA requires a finalized conciliation failure, respondent default, complainant default (bar action), repudiated settlement, documented settlement non-compliance, or exhausted summons delivery failure.',
             'recommended_form' => null,
             'available_forms' => [],
             'barred_complainant' => false,
             'defaulted_respondent' => false,
-            'ground' => 'NOT_ELIGIBLE'
+            'ground' => 'NOT_ELIGIBLE',
+            'existing_forms' => $existingTypes
         ];
     }
 
@@ -248,40 +260,10 @@ class CFA
             return ['success' => false, 'message' => 'Please provide the reason for issuing the Certificate to File Action.'];
         }
 
-        $isReopenWorkflow = !empty($data['workflow']) && in_array($data['workflow'], ['noncompliance_reopen', 'settled_noncompliance'], true);
-
-        // Server-side eligibility determination
-        $eligibility = $this->determineCfaEligibility($caseId);
-
-        if (!$eligibility['eligible'] && !$isReopenWorkflow) {
-            return [
-                'success' => false,
-                'message' => $eligibility['reason'] ?? 'Case is not currently eligible for CFA issuance.'
-            ];
-        }
-
-        // Determine CFA form type
         $requestedType = trim((string) ($data['cfa_type'] ?? ''));
-        $targetForm = 'KP Form 20';
-
-        if ($requestedType !== '') {
-            // Verify requested form is authorized for this case
-            if ($eligibility['barred_complainant'] && $requestedType !== 'KP Form 20-A') {
-                return [
-                    'success' => false,
-                    'message' => 'KP Form 20 is barred: Complainant has an unjustified non-appearance on record. Only KP Form 20-A (Certificate to Bar Action) is permitted.'
-                ];
-            }
-            if (!$isReopenWorkflow && !empty($eligibility['available_forms']) && !in_array($requestedType, $eligibility['available_forms'], true)) {
-                $allowed = implode(', ', $eligibility['available_forms']);
-                return [
-                    'success' => false,
-                    'message' => "Requested form {$requestedType} is not applicable to the case outcome. Allowed: {$allowed}."
-                ];
-            }
-            $targetForm = $requestedType;
-        } else {
-            $targetForm = $eligibility['recommended_form'] ?? 'KP Form 20';
+        $allowedCfaTypes = ['KP Form 20', 'KP Form 20-A', 'KP Form 20-B'];
+        if ($requestedType !== '' && !in_array($requestedType, $allowedCfaTypes, true)) {
+            return ['success' => false, 'message' => "Invalid certificate type requested: {$requestedType}."];
         }
 
         $startedTrans = false;
@@ -289,6 +271,8 @@ class CFA
             $this->conn->beginTransaction();
             $startedTrans = true;
         }
+
+        $generatedAbsolutePath = null;
 
         try {
             $caseStmt = $this->conn->prepare('SELECT case_id, complaint_id, case_status, case_number FROM cases WHERE case_id = ? FOR UPDATE');
@@ -305,20 +289,91 @@ class CFA
                 return ['success' => false, 'message' => 'Cannot issue CFA for an archived case.'];
             }
 
-            if ($case['case_status'] === 'Settled' && !$isReopenWorkflow) {
+            // Re-evaluate authoritative server-side eligibility inside transaction lock (no client workflow/status/reason bypasses)
+            $eligibility = $this->determineCfaEligibility($caseId);
+            if (empty($eligibility['eligible'])) {
                 if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
-                return ['success' => false, 'message' => 'This case is already Settled. To issue a CFA for non-compliance, use the "Reopen for CFA" button on the Case Details page.'];
+                return [
+                    'success' => false,
+                    'message' => $eligibility['reason'] ?? 'Case is not currently eligible for CFA issuance.'
+                ];
             }
 
-            // Insert into cfa_records with exact cfa_type
+            $targetForm = $requestedType !== '' ? $requestedType : ($eligibility['recommended_form'] ?? '');
+            if ($targetForm === '') {
+                if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                return ['success' => false, 'message' => 'No eligible CFA form could be determined for this case.'];
+            }
+
+            if (!empty($eligibility['barred_complainant']) && $targetForm !== 'KP Form 20-A') {
+                if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'KP Form 20 is barred: Complainant has an unjustified non-appearance on record. Only KP Form 20-A (Certificate to Bar Action) is permitted.'
+                ];
+            }
+
+            $availableForms = $eligibility['available_forms'] ?? [];
+            if (empty($availableForms) || !in_array($targetForm, $availableForms, true)) {
+                $allowed = implode(', ', $availableForms);
+                if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => "Requested form {$targetForm} is not applicable to the recorded ground ({$eligibility['ground']}). Allowed: {$allowed}."
+                ];
+            }
+
+            // Idempotent duplicate check: return existing issuance without modifying original date, reason, or history
+            $dupStmt = $this->conn->prepare("
+                SELECT cfa_id, cfa_type, issuance_date, reason
+                FROM cfa_records
+                WHERE case_id = ? AND cfa_type = ?
+                LIMIT 1
+                FOR UPDATE
+            ");
+            $dupStmt->execute([$caseId, $targetForm]);
+            $existingCfa = $dupStmt->fetch(PDO::FETCH_ASSOC);
+            if ($existingCfa) {
+                $docStmt = $this->conn->prepare("
+                    SELECT gd.document_id, gd.file_path
+                    FROM generated_documents gd
+                    INNER JOIN document_templates dt ON dt.template_id = gd.template_id
+                    WHERE gd.case_id = ? AND dt.template_name = ?
+                    ORDER BY gd.document_id DESC
+                    LIMIT 1
+                ");
+                $docStmt->execute([$caseId, $targetForm]);
+                $existingDoc = $docStmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($startedTrans && $this->conn->inTransaction()) {
+                    $this->conn->commit();
+                }
+
+                $filePath = $existingDoc['file_path'] ?? null;
+                return [
+                    'success' => true,
+                    'duplicate' => true,
+                    'message' => "{$targetForm} was already issued on {$existingCfa['issuance_date']}. Returning existing issuance.",
+                    'cfa_id' => (int) $existingCfa['cfa_id'],
+                    'cfa_type' => $existingCfa['cfa_type'],
+                    'issuance_date' => $existingCfa['issuance_date'],
+                    'reason' => $existingCfa['reason'],
+                    'case_id' => $caseId,
+                    'case_number' => $case['case_number'],
+                    'case_status' => $case['case_status'],
+                    'document_id' => $existingDoc ? (int) $existingDoc['document_id'] : null,
+                    'file_path' => $filePath,
+                    'pdf_url' => $filePath ? ('../../' . $filePath) : null,
+                ];
+            }
+
+            // Insert new cfa_records entry
             $stmt = $this->conn->prepare("
                 INSERT INTO cfa_records (case_id, cfa_type, issuance_date, reason)
                 VALUES (?, ?, CURDATE(), ?)
-                ON DUPLICATE KEY UPDATE
-                    issuance_date = VALUES(issuance_date),
-                    reason = VALUES(reason)
             ");
             $stmt->execute([$caseId, $targetForm, $reason]);
+            $newCfaId = (int) $this->conn->lastInsertId();
 
             // Determine new case & complaint status based on form type
             $newCaseStatus = 'CFA Issued';
@@ -327,7 +382,7 @@ class CFA
             if ($targetForm === 'KP Form 20-A') {
                 $newCaseStatus = 'DISMISSED_BARRED';
                 $newCompStatus = 'Dismissed';
-            } elseif ($targetForm === 'KP Form 20-B') {
+            } elseif ($targetForm === 'KP Form 20-B' && !in_array('KP Form 20', $eligibility['existing_forms'] ?? [], true)) {
                 $newCaseStatus = 'RESPONDENT_DEFAULT';
                 $newCompStatus = 'Mediation'; // Keeps proceeding for complainant's CFA
             }
@@ -346,49 +401,69 @@ class CFA
             $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, ?, ?, ?)");
             $history->execute([$caseId, $newCaseStatus, "{$targetForm} issued: {$reason}", $userId]);
 
-            // Generate and persist the exact KP Form document
-            $docId = null;
-            $filePath = null;
-            try {
-                require_once __DIR__ . '/../services/KpFormService.php';
-                $kpService = new KpFormService($this->conn);
-                $genDoc = $kpService->generateAndPersistForm($targetForm, $caseId, $userId ?: 1, ['reason' => $reason]);
-                $docId = $genDoc['document_id'] ?? null;
-                $filePath = $genDoc['file_path'] ?? null;
-            } catch (Throwable $pe) {
-                error_log("{$targetForm} generation notice: " . $pe->getMessage());
+            // Generate and persist the exact KP Form document; failures must abort & roll back cleanly so retry stays open
+            $kpService = $this->createKpFormService();
+            $genDoc = $kpService->generateAndPersistForm($targetForm, $caseId, $userId ?: 1, [
+                'reason' => $reason,
+                'strict_pdf' => true,
+                'resident_id' => match ($targetForm) {
+                    'KP Form 20-A' => $eligibility['complainant_resident_id'] ?? null,
+                    'KP Form 20-B' => $eligibility['respondent_resident_id'] ?? null,
+                    default => null,
+                },
+            ]);
+            if (empty($genDoc['success']) || empty($genDoc['document_id']) || empty($genDoc['file_path'])) {
+                throw new RuntimeException($genDoc['message'] ?? "Document generation failed for {$targetForm}.");
             }
+            $docId = (int) $genDoc['document_id'];
+            $filePath = (string) $genDoc['file_path'];
+            $generatedAbsolutePath = dirname(__DIR__, 2) . '/' . ltrim($filePath, '/');
 
             if ($startedTrans && $this->conn->inTransaction()) {
                 $this->conn->commit();
             }
 
-            try {
-                require_once __DIR__ . '/../services/NotificationService.php';
-                $notif = new NotificationService();
-                $notif->notifyCfaIssued($caseId, (string)$case['case_number'], $targetForm, $userId);
-            } catch (Throwable $ne) {
-                error_log('Failed to dispatch CFA notification: ' . $ne->getMessage());
+            if ($startedTrans) {
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notif = new NotificationService();
+                    $notif->notifyCfaIssued($caseId, (string)$case['case_number'], $targetForm, $userId);
+                } catch (Throwable $ne) {
+                    error_log('Failed to dispatch CFA notification: ' . $ne->getMessage());
+                }
             }
 
             return [
                 'success' => true,
+                'duplicate' => false,
                 'message' => "{$targetForm} has been issued successfully.",
+                'cfa_id' => $newCfaId,
                 'cfa_type' => $targetForm,
+                'issuance_date' => date('Y-m-d'),
+                'reason' => $reason,
                 'case_id' => $caseId,
                 'case_number' => $case['case_number'],
                 'case_status' => $newCaseStatus,
                 'document_id' => $docId,
                 'file_path' => $filePath,
-                'pdf_url' => $filePath ? ('../../' . $filePath) : null,
+                'pdf_url' => '../../' . $filePath,
             ];
         } catch (Throwable $e) {
             if ($startedTrans && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
+            if ($generatedAbsolutePath && is_file($generatedAbsolutePath)) {
+                @unlink($generatedAbsolutePath);
+            }
             error_log($e->getMessage());
             return ['success' => false, 'message' => 'Failed to issue CFA: ' . $e->getMessage()];
         }
+    }
+
+    protected function createKpFormService(): KpFormService
+    {
+        require_once __DIR__ . '/../services/KpFormService.php';
+        return new KpFormService($this->conn);
     }
 
     public function getByCase(int $caseId): array|false

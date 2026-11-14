@@ -96,9 +96,10 @@ async function loadCasePreview(caseId) {
         const cfaElig = cfaStatusRes.cfa_eligibility || null;
         window.currentCaseCfaEligibility = cfaElig;
 
-        // Populate cfaType options based on backend determination
         if (cfaTypeSelect && cfaElig) {
-            const avail = cfaElig.available_forms || ['KP Form 20'];
+            const avail = (Array.isArray(cfaElig.available_forms) && cfaElig.available_forms.length)
+                ? cfaElig.available_forms
+                : ['KP Form 20'];
             cfaTypeSelect.innerHTML = '';
 
             const formLabels = {
@@ -117,9 +118,13 @@ async function loadCasePreview(caseId) {
             if (cfaElig.recommended_form && avail.includes(cfaElig.recommended_form)) {
                 cfaTypeSelect.value = cfaElig.recommended_form;
             }
+            cfaTypeSelect.disabled = !cfaElig.eligible;
             if (submitBtn) {
+                submitBtn.disabled = !cfaElig.eligible;
                 submitBtn.textContent = `Issue ${cfaTypeSelect.value || 'CFA'}`;
             }
+        } else if (submitBtn) {
+            submitBtn.disabled = false;
         }
 
         let statusBannerHtml = '';
@@ -164,6 +169,9 @@ async function loadCasePreview(caseId) {
                             presetSelect.value = 'Amicable settlement was formally repudiated by a party within the 10-day statutory period.';
                         } else if (cfaElig.ground === 'SUMMONS_DELIVERY_FAILURE') {
                             presetSelect.value = 'Respondent summons unserved after documented delivery attempts (Delivery Failure).';
+                        } else if (cfaElig.ground === 'SETTLEMENT_NONCOMPLIANCE') {
+                            presetSelect.value = 'custom';
+                            reasonText.value = cfaElig.reason || 'Documented non-compliance with executed amicable settlement.';
                         }
                         if (presetSelect.value && presetSelect.value !== 'custom') {
                             reasonText.value = presetSelect.value;
@@ -238,6 +246,13 @@ async function handleCfaSubmit(event) {
 
     if (elig?.barred_complainant && cfaType !== 'KP Form 20-A') {
         const msg = 'Complainant is barred from action: Only KP Form 20-A can be issued.';
+        setMessage(msg, false);
+        window.agapNotify?.(msg, 'error', 'Invalid Form Selection');
+        return;
+    }
+
+    if (Array.isArray(elig?.available_forms) && elig.available_forms.length && !elig.available_forms.includes(cfaType)) {
+        const msg = `${cfaType} is not eligible for this case ground. Allowed: ${elig.available_forms.join(', ')}.`;
         setMessage(msg, false);
         window.agapNotify?.(msg, 'error', 'Invalid Form Selection');
         return;

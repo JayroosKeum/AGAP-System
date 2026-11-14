@@ -75,10 +75,15 @@ class HearingAttendance
                     r.contact_no, r.purok, r.address,
                     ha.attendance_id, ha.attendance_status, ha.is_justified, ha.justification_reason,
                     ha.remarks AS attendance_remarks, ha.recorded_at,
-                    (SELECT COUNT(*) FROM hearing_party_services hps WHERE hps.hearing_id = ? AND hps.resident_id = cp.resident_id AND hps.service_result = 'Served') AS successful_service_count,
-                    (SELECT sd.delivery_status FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_delivery_status,
-                    (SELECT sd.unserved_reason FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_unserved_reason,
-                    (SELECT sd.served_at FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_served_at,
+                    (SELECT sd.delivery_status FROM summon_deliveries sd
+                      WHERE sd.hearing_id = ? AND sd.resident_id = cp.resident_id AND sd.delivery_status <> 'Superseded'
+                      ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_delivery_status,
+                    (SELECT sd.unserved_reason FROM summon_deliveries sd
+                      WHERE sd.hearing_id = ? AND sd.resident_id = cp.resident_id AND sd.delivery_status <> 'Superseded'
+                      ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_unserved_reason,
+                    (SELECT sd.served_at FROM summon_deliveries sd
+                      WHERE sd.hearing_id = ? AND sd.resident_id = cp.resident_id AND sd.delivery_status <> 'Superseded'
+                      ORDER BY sd.delivery_id DESC LIMIT 1) AS summon_served_at,
                     TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS recorded_by_name
              FROM complaint_parties cp
              INNER JOIN residents r ON r.resident_id = cp.resident_id
@@ -87,27 +92,32 @@ class HearingAttendance
              WHERE cp.complaint_id = ?
              ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name"
         );
-        $partiesStmt->execute([$hearingId, $hearingId, $hearingId, $hearingId, $hearingId, $hearing['complaint_id']]);
+        $partiesStmt->execute([$hearingId, $hearingId, $hearingId, $hearingId, $hearing['complaint_id']]);
         $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Determine mediation hearing sequence for data validation
+        // Determine mediation hearing sequence
         $seqStmt = $this->conn->prepare("
             SELECT COUNT(*) FROM hearings 
-            WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation') AND hearing_id <= ?
+            WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation')
+              AND status NOT IN ('Cancelled', 'Office Cancelled')
+              AND hearing_id <= ?
         ");
         $seqStmt->execute([(int) $hearing['case_id'], $hearingId]);
         $hearingSequence = (int) $seqStmt->fetchColumn() ?: 1;
         $hearing['hearing_sequence'] = $hearingSequence;
-        $isSecondOrLaterMediation = ($hearingSequence >= 2 || !in_array($hearing['hearing_type'] ?? '', ['Initial Hearing', 'Mediation'], true));
+        $isSecondOrLaterMediation = (($hearing['hearing_type'] ?? '') === 'Conciliation') || $hearingSequence >= 2;
 
-        // Normalize party attendance info
-        $parties = array_map(function ($p) use ($isSecondOrLaterMediation) {
-            $summonStatus = $p['summon_delivery_status'] ?? null;
-            $summonServed = in_array($summonStatus, ['Served Personal', 'Served Substituted', 'Served Refused'], true);
-            $serviceConfirmed = $isSecondOrLaterMediation || ((int) ($p['successful_service_count'] ?? 0) > 0) || $summonServed;
-            $displayStatus = $isSecondOrLaterMediation
-                ? ($summonServed ? $summonStatus : 'Served (Prior Notice)')
-                : ($summonStatus ?: 'Pending');
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        $deliverySvc = new SummonDeliveryService($this->conn);
+
+        // Normalize party attendance info using unified per-recipient verification
+        $parties = array_map(function ($p) use ($deliverySvc, $hearingId) {
+            $ver = in_array($p['party_type'], ['Complainant', 'Respondent'], true)
+                ? $deliverySvc->verifyRecipientServiceForHearing($hearingId, (int) $p['resident_id'], (string) $p['party_type'])
+                : ['verified' => true, 'status' => $p['summon_delivery_status'] ?: 'Pending', 'basis' => 'witness', 'waiting' => false, 'next_action' => ''];
+
+            $serviceConfirmed = !empty($ver['verified']);
+            $displayStatus = $ver['status'] ?: ($p['summon_delivery_status'] ?: 'Pending');
 
             return [
                 'resident_id' => (int) $p['resident_id'],
@@ -120,6 +130,7 @@ class HearingAttendance
                 'address' => $p['address'] ?? '',
                 'attendance_id' => $p['attendance_id'] ? (int) $p['attendance_id'] : null,
                 'service_confirmed' => $serviceConfirmed,
+                'service_verification' => $ver,
                 'summon_delivery_status' => $displayStatus,
                 'summon_unserved_reason' => $p['summon_unserved_reason'] ?? '',
                 'summon_served_at' => $p['summon_served_at'] ?? null,
@@ -289,13 +300,8 @@ class HearingAttendance
                      recorded_at = CURRENT_TIMESTAMP"
             );
 
-            $serviceLookup = $this->conn->prepare("
-                SELECT (
-                    (SELECT COUNT(*) FROM hearing_party_services WHERE hearing_id = ? AND resident_id = ? AND service_result = 'Served')
-                    +
-                    (SELECT COUNT(*) FROM summon_deliveries WHERE hearing_id = ? AND (resident_id = ? OR party_type = ?) AND delivery_status IN ('Served Personal', 'Served Substituted', 'Served Refused'))
-                ) AS total_served
-            ");
+            require_once __DIR__ . '/../services/SummonDeliveryService.php';
+            $deliverySvc = new SummonDeliveryService($this->conn);
 
             $savedCount = 0;
             $updatedParties = [];
@@ -326,14 +332,17 @@ class HearingAttendance
                         throw new InvalidArgumentException('Choose a valid attendance status (Present, Absent, Late, Excused, Not Served, or Pending Verification).');
                     }
                     if ($status === 'Absent') {
-                        $serviceLookup->execute([$hearingId, $residentId, $hearingId, $residentId, $partyType]);
-                        if ((int) $serviceLookup->fetchColumn() < 1) {
-                            throw new InvalidArgumentException('Cannot record Failure to Appear because service for this party has not been confirmed. Record Not Served, Pending Verification, or verify service first.');
+                        $ver = $deliverySvc->verifyRecipientServiceForHearing($hearingId, (int) $residentId, (string) $partyType);
+                        if (empty($ver['verified'])) {
+                            throw new InvalidArgumentException(
+                                'Cannot record Failure to Appear for this party: '
+                                . ($ver['next_action'] ?? 'service for this exact recipient has not been verified on the operative notice.')
+                            );
                         }
                     }
                 }
 
-                $isJustified = !empty($item['is_justified']) || $status === 'Excused' ? 1 : 0;
+                $isJustified = (!empty($item['is_justified']) || $status === 'Excused') && $status !== 'Absent' ? 1 : 0;
                 $justificationReason = trim((string) ($item['justification_reason'] ?? ''));
                 if ($isJustified && $justificationReason === '') {
                     $justificationReason = ($status === 'Excused') ? 'Excused Non-Appearance' : 'Verified Justification';

@@ -69,6 +69,14 @@ contain justification tracking and user audit fields, apply
 `database/migrations/20260929_hearing_attendance_monitoring.sql` once. Fresh
 databases receive these fields and constraints directly from `schema.sql`.
 
+## Show-cause recipient and service upgrade
+
+Existing installations must apply
+[`20261115_001_link_show_cause_recipients.sql`](migrations/20261115_001_link_show_cause_recipients.sql)
+before deploying recipient-specific show-cause evaluation. Existing determinations
+remain in history. New issuance based on a determination requires verified evidence
+for the named recipient.
+
 ## Relationship rules
 
 - A complaint can be docketed into only one case.

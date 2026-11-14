@@ -1945,6 +1945,8 @@ function renderWorkspaceActions(stage) {
 
     const unfinished = sessions.find((session) => !['Finalized', 'Completed'].includes(session.minutes_status || ''));
 
+    const hId = Number((unfinished && unfinished.hearing_id) || stageWorkspaceState.activeSessionHearingId || (sessions[0] && sessions[0].hearing_id) || 0);
+
     let label = 'Schedule hearing';
 
     let handler = 'openScheduleModal()';
@@ -1985,7 +1987,10 @@ function renderWorkspaceActions(stage) {
 
 
 
-    primary.innerHTML = `<button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px; background:#fff; border:1px solid #cbd5e1; cursor:pointer; font-weight:600; color:#334155; margin-right:6px;" title="Print official blank ruled minutes sheet">🖨️ Print Blank Minutes Sheet</button><button type="button" class="btn-create" onclick="${handler}" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px;">${escapeHtml(label)} &rarr;</button>`;
+    const printBlankBtn = hId > 0
+        ? `<button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px; background:#fff; border:1px solid #cbd5e1; cursor:pointer; font-weight:600; color:#334155; margin-right:6px;" title="Print official blank ruled minutes sheet">🖨️ Print Blank Minutes Sheet</button>`
+        : '';
+    primary.innerHTML = `${printBlankBtn}<button type="button" class="btn-create" onclick="${handler}" style="font-size:.82rem; padding:7px 14px; display:inline-flex; align-items:center; gap:5px;">${escapeHtml(label)} &rarr;</button>`;
 
 
 
@@ -1997,7 +2002,7 @@ function renderWorkspaceActions(stage) {
 
         : `<button type="button" class="btn-secondary" onclick="openReferPangkatModal()">Refer to Pangkat</button>`;
 
-    const cfaAction = mode === 'Conciliation' ? `<a class="btn-secondary" href="../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}">CFA workflow</a>` : '';
+    const cfaAction = (mode === 'Conciliation' && actions.can_issue_cfa) ? `<a class="btn-secondary" href="../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}">CFA workflow</a>` : '';
 
     const outcomeAction = (mode === 'Mediation') ? '' : `<button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()">Record stage outcome</button>`;
 
@@ -2370,9 +2375,21 @@ function renderSessionsList(data, stage) {
 
 
 
-        const compIn = (s.complainant_attendance === 'Present' || s.complainant_attendance === 'Late');
+        const compParties = Array.isArray(s.parties) ? s.parties.filter(p => p.party_type === 'Complainant') : [];
 
-        const respIn = (s.respondent_attendance === 'Present' || s.respondent_attendance === 'Late');
+        const respParties = Array.isArray(s.parties) ? s.parties.filter(p => p.party_type === 'Respondent') : [];
+
+        const compIn = compParties.length > 0
+
+            ? compParties.every(p => p.attendance_status === 'Present' || p.attendance_status === 'Late')
+
+            : (s.complainant_attendance === 'Present' || s.complainant_attendance === 'Late');
+
+        const respIn = respParties.length > 0
+
+            ? respParties.every(p => p.attendance_status === 'Present' || p.attendance_status === 'Late')
+
+            : (s.respondent_attendance === 'Present' || s.respondent_attendance === 'Late');
 
         const isReady = compIn && respIn;
 
@@ -2706,15 +2723,35 @@ function renderSessionsList(data, stage) {
 
                         <span style="font-size: 0.76rem; font-weight: 700; color: #475569; text-transform: uppercase;">Party Arrival Check-In:</span>
 
-                        ${(s.parties && s.parties.length > 2) ? s.parties.map(p => {
+                        ${(s.parties && s.parties.length > 0) ? s.parties.map(p => {
 
                             const isPIn = (p.attendance_status === 'Present' || p.attendance_status === 'Late');
 
+                            const isMediationSession = (s.hearing_type === 'Mediation' || s.hearing_type === 'Initial Hearing');
+
+                            const isServiceVerified = !isMediationSession || p.service_verified === true || (p.service_verification && p.service_verification.verified === true);
+
+                            const blockedLabel = p.service_status || (p.service_verification && p.service_verification.status) || 'Not Served';
+
+                            if (!isServiceVerified && !isPIn) {
+
+                                return `
+
+                                    <button type="button" disabled data-party-checkin-blocked="1" data-resident-id="${p.resident_id}" style="font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; font-weight: 600; cursor: not-allowed;" title="Check-in blocked for ${escapeHtml(p.full_name)}: ${escapeHtml(blockedLabel)}">
+
+                                        ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): [ Blocked · ${escapeHtml(blockedLabel)} ]
+
+                                    </button>
+
+                                `;
+
+                            }
+
                             return `
 
-                                <button type="button" onclick="handleDocketCheckIn(${s.hearing_id}, '${p.party_type}', '${isPIn ? 'Waiting' : 'Checked In'}', ${p.resident_id})" style="font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid ${isPIn ? '#86efac' : '#cbd5e1'}; background: ${isPIn ? '#dcfce7' : '#fff'}; color: ${isPIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;" title="Toggle arrival for ${escapeHtml(p.full_name)}">
+                                <button type="button" data-resident-id="${p.resident_id}" onclick="handleDocketCheckIn(${s.hearing_id}, '${p.party_type}', '${isPIn ? 'Waiting' : 'Checked In'}', ${p.resident_id})" style="font-size: 0.76rem; padding: 3px 8px; border-radius: 6px; border: 1px solid ${isPIn ? '#86efac' : '#cbd5e1'}; background: ${isPIn ? '#dcfce7' : '#fff'}; color: ${isPIn ? '#15803d' : '#475569'}; font-weight: 600; cursor: pointer;" title="Toggle arrival for ${escapeHtml(p.full_name)}">
 
-                                    ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): [ ${isPIn ? 'Checked In' : 'Waiting'} ]
+                                    ${escapeHtml(p.party_type)} (${escapeHtml(p.full_name)}): ${isPIn ? '[ Checked In ]' : 'Check In'}
 
                                 </button>
 
@@ -4280,6 +4317,9 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
         `;
 
     } else if (outcomeVal === 'Repudiated' || outcomeVal === 'Repudiated Settlement') {
+        const wsCfaElig = stageWorkspaceState?.data?.cfa_eligibility || stageWorkspaceState?.data?.stages?.conciliation?.documents_and_actions?.cfa_eligibility || null;
+        const canIssueCfaBanner = wsCfaElig ? Boolean(wsCfaElig.eligible) : Boolean(stageWorkspaceState?.data?.stages?.conciliation?.documents_and_actions?.can_issue_cfa);
+        const recCfaForm = wsCfaElig?.recommended_form || 'KP Form 20';
 
         unlockOutcomesTab();
 
@@ -4289,12 +4329,15 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
                 <div style="color: #991b1b; font-size: 0.85rem;">
 
-                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Settlement Repudiated Â· Unlocked KP Form 17 &amp; CFA</strong>
+                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Settlement Repudiated · ${canIssueCfaBanner ? 'Unlocked KP Form 17 &amp; CFA' : 'Pending Repudiation Record Verification'}</strong>
 
-                    A party filed repudiation under oath. Proceed with KP Form 17 and issuance of Certificate to File Action.
+                    ${canIssueCfaBanner
+                        ? 'A party filed repudiation under oath. Proceed with KP Form 17 and issuance of Certificate to File Action.'
+                        : escapeHtml(wsCfaElig?.reason || 'Record formal settlement repudiation and finalize minutes before previewing or issuing CFA.')}
 
                 </div>
 
+                ${canIssueCfaBanner ? `
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
 
                     <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 17', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px;">
@@ -4303,9 +4346,9 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
                     </button>
 
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 20', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px;">
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, '${escapeHtml(recCfaForm)}', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px;">
 
-                        Preview CFA (KP Form 20)
+                        Preview CFA (${escapeHtml(recCfaForm)})
 
                     </button>
 
@@ -4316,12 +4359,16 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                     </a>
 
                 </div>
+                ` : ''}
 
             </div>
 
         `;
 
     } else if (outcomeVal === 'Pending CFA') {
+        const wsCfaElig = stageWorkspaceState?.data?.cfa_eligibility || stageWorkspaceState?.data?.stages?.conciliation?.documents_and_actions?.cfa_eligibility || null;
+        const canIssueCfaBanner = wsCfaElig ? Boolean(wsCfaElig.eligible) : Boolean(stageWorkspaceState?.data?.stages?.conciliation?.documents_and_actions?.can_issue_cfa);
+        const recCfaForm = wsCfaElig?.recommended_form || 'KP Form 20';
 
         unlockOutcomesTab();
 
@@ -4331,17 +4378,20 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
                 <div style="color: #991b1b; font-size: 0.85rem;">
 
-                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">Conciliation Concluded Â· Ready for CFA (KP Form 20)</strong>
+                    <strong style="font-size: 0.92rem; display: block; color: #7f1d1d;">${canIssueCfaBanner ? `Conciliation Concluded · Ready for CFA (${escapeHtml(recCfaForm)})` : 'Conciliation Outcome Selected · Finalize Minutes to Unlock CFA'}</strong>
 
-                    Proceedings have failed to reach an amicable settlement. Eligible for Certificate to File Action. Outcomes tab is unlocked.
+                    ${canIssueCfaBanner
+                        ? 'Proceedings have failed to reach an amicable settlement. Eligible for Certificate to File Action. Outcomes tab is unlocked.'
+                        : escapeHtml(wsCfaElig?.reason || 'Minutes are still Draft or awaiting finalized Conciliation outcome before CFA preview/issuance is permitted.')}
 
                 </div>
 
+                ${canIssueCfaBanner ? `
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
 
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 20', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, '${escapeHtml(recCfaForm)}', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
 
-                        Preview KP Form 20
+                        Preview ${escapeHtml(recCfaForm)}
 
                     </button>
 
@@ -4352,6 +4402,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
                     </a>
 
                 </div>
+                ` : ''}
 
             </div>
 

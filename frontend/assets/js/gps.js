@@ -145,6 +145,9 @@ function isCasePending(item) {
     const compStatus = String(item.complainant_service_status || 'Pending');
     const compServed = compStatus.startsWith('Served');
     const respServed = Number(item.respondent_served_attempts || 0) > 0 || String(item.respondent_service_status || '').startsWith('Served');
+    if (!item.is_paanyaya) {
+        return !compServed || (!respServed && !isCaseCfaReady(item));
+    }
     const respFailed = Number(item.respondent_failed_attempts || 0);
 
     // Pending delivery if either party's service obligation is incomplete
@@ -153,14 +156,7 @@ function isCasePending(item) {
 }
 
 function isCaseCfaReady(item) {
-    if (item && item.is_paanyaya) return false;
-    const respFailed = Number(item.respondent_failed_attempts || 0);
-    const respServed = Number(item.respondent_served_attempts || 0);
-    const respStatus = String(item.respondent_service_status || '');
-    const caseStatus = String(item.case_status || '');
-
-    const maxAttempts = Number(window.AGAP_SETTINGS?.summons_max_attempts || 6);
-    return respFailed >= maxAttempts && respServed === 0 && respStatus === 'Unserved' && caseStatus !== 'Archived' && caseStatus !== 'Settled';
+    return !item?.is_paanyaya && Boolean(item?.cfa_eligibility?.eligible);
 }
 
 function updateSummaryMetrics() {
@@ -445,8 +441,7 @@ function applySummonFilterAndRender() {
 
 function renderTableServiceStatus(item) {
     if (isCaseCfaReady(item)) {
-        const maxCfaAtt = Number(window.AGAP_SETTINGS?.summons_max_attempts || 6);
-        return `<span class="service-status-pill badge-cfa-ready">CFA Ready (${maxCfaAtt}/${maxCfaAtt} Failed)</span>`;
+        return `<span class="service-status-pill badge-cfa-ready" title="${escapeGpsHtml(item.cfa_eligibility.reason || '')}">CFA Ready</span>`;
     }
 
     if (item && item.is_paanyaya) {
@@ -732,35 +727,115 @@ async function renderExpandedCaseView(caseId) {
         window.activeExpandedHearingData = activeHearing;
         if (activeHearing.replacement_notices?.length) {
             const rows = activeHearing.replacement_notices;
+            const awaitingRecipients = rows.filter(n => !n.is_superseded && n.delivery_status !== 'Superseded' && n.is_latest_for_recipient !== false && !String(n.delivery_status || '').startsWith('Served'));
+            const awaitingBannerHtml = awaitingRecipients.length
+                ? `<div style="margin: 8px 0 12px; padding: 10px 12px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 0.84rem;">
+                        <strong>Waiting for service (${awaitingRecipients.length}):</strong>
+                        ${awaitingRecipients.map(n => `${escapeGpsHtml(n.notice_recipient)} (${escapeGpsHtml(n.party_type)}) — ${escapeGpsHtml(n.next_action || 'Log Officer Return')}`).join(' · ')}
+                   </div>`
+                : `<div style="margin: 8px 0 12px; padding: 10px 12px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; font-size: 0.84rem;">
+                        All active recipient notices for this hearing have been verified as served.
+                   </div>`;
+
             container.innerHTML = `
                 <div class="delivery-card">
                     <h3>Rescheduled hearing notices</h3>
                     <p>${escapeGpsHtml(activeHearing.service_notice)}</p>
+                    ${awaitingBannerHtml}
                     <ul class="paanyaya-prep-list">
-                        ${rows.map(notice => `
+                        ${rows.map(notice => {
+                            const isSuperseded = Boolean(notice.is_superseded || notice.delivery_status === 'Superseded');
+                            const isPriorArchived = !isSuperseded && notice.is_latest_for_recipient === false;
+                            const isReadOnly = isSuperseded || isPriorArchived;
+                            const attemptLabel = Number(notice.attempt_number || 1);
+                            const usedAttempts = Number(notice.attempts_used || attemptLabel);
+                            const maxAttempts = Number(notice.max_attempts || 6);
+                            const statusLabel = isSuperseded
+                                ? 'Superseded (Read-Only)'
+                                : (isPriorArchived
+                                    ? `${notice.delivery_status} · Attempt #${attemptLabel} (Preserved)`
+                                    : `${notice.delivery_status} · Attempt #${attemptLabel}/${maxAttempts}`);
+                            return `
                             <li>
                                 <div>
                                     <strong>${escapeGpsHtml(notice.notice_recipient)}</strong>
                                     · ${escapeGpsHtml(notice.party_type)} · ${escapeGpsHtml(notice.form_type)}
-                                    <div>${escapeGpsHtml(formatDateTime(notice.appointment_at))} · ${escapeGpsHtml(notice.delivery_status)}</div>
+                                    <div>${escapeGpsHtml(formatDateTime(notice.appointment_at))} · <strong>${escapeGpsHtml(statusLabel)}</strong></div>
+                                    ${notice.next_action && !isPriorArchived ? `<div style="font-size: 0.8rem; color: #475569; margin-top: 2px;">Next step: ${escapeGpsHtml(notice.next_action)}</div>` : ''}
+                                    ${notice.unserved_reason && notice.delivery_status === 'Unserved' ? `<div style="font-size: 0.78rem; color: #991b1b;">Reason: ${escapeGpsHtml(notice.unserved_reason)}${notice.remarks ? ` — ${escapeGpsHtml(notice.remarks)}` : ''}</div>` : ''}
                                 </div>
-                                <div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
                                     <a href="../../../backend/api/documents/kp-form.php?document_id=${Number(notice.document_id)}" target="_blank" rel="noopener">Preview notice</a>
                                     <a href="../../../backend/api/documents/kp-form.php?document_id=${Number(notice.document_id)}&amp;pdf=1" target="_blank" rel="noopener">Open printable PDF</a>
-                                    ${notice.delivery_status === 'Superseded' ? '' :
-                                        `<button type="button" class="btn-log-return" data-replacement-return="${Number(notice.delivery_id)}">${notice.delivery_status === 'Pending' ? 'Log return' : 'Edit return'}</button>`}
                                     ${notice.proof_file_path ? `<a href="../../../${escapeGpsHtml(notice.proof_file_path)}" target="_blank" rel="noopener">View proof</a>` : ''}
+                                    ${isReadOnly ? '' : `<button type="button" class="btn-log-return" data-replacement-return="${Number(notice.delivery_id)}">${notice.delivery_status === 'Pending' ? 'Log return' : 'Edit return'}</button>`}
+                                    ${(!isReadOnly && notice.can_retry) ? `<button type="button" class="btn-create" data-replacement-retry="${Number(notice.delivery_id)}" style="font-size: 0.78rem; padding: 5px 10px;">Retry delivery (Attempt ${usedAttempts + 1}/${maxAttempts})</button>` : ''}
                                 </div>
                             </li>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </ul>
                 </div>`;
             container.querySelectorAll('[data-replacement-return]').forEach(button => {
                 button.addEventListener('click', () => {
                     const notice = rows.find(row => Number(row.delivery_id) === Number(button.dataset.replacementReturn));
-                    openOfficerReturnModal(notice.party_type, Number(notice.resident_id), activeHearing.hearing_id, caseId,
-                        notice.delivery_status, notice.recipient_name || notice.notice_recipient, notice.relationship || '',
-                        notice.remarks || '', notice.unserved_reason || '', Number(notice.attempt_number), Number(notice.delivery_id), notice);
+                    if (!notice || notice.is_superseded || notice.delivery_status === 'Superseded' || notice.is_latest_for_recipient === false) return;
+                    openOfficerReturnModal(
+                        notice.party_type,
+                        Number(notice.resident_id),
+                        Number(notice.hearing_id || activeHearing.hearing_id),
+                        caseId,
+                        notice.delivery_status,
+                        notice.recipient_name || notice.notice_recipient,
+                        notice.relationship || notice.recipient_relationship || '',
+                        notice.remarks || '',
+                        notice.unserved_reason || '',
+                        Number(notice.attempt_number || 1),
+                        Number(notice.delivery_id),
+                        notice
+                    );
+                });
+            });
+            container.querySelectorAll('[data-replacement-retry]').forEach(button => {
+                button.addEventListener('click', async () => {
+                    const notice = rows.find(row => Number(row.delivery_id) === Number(button.dataset.replacementRetry));
+                    if (!notice || !notice.can_retry) return;
+                    const nextNum = Number(notice.attempts_used || notice.attempt_number || 1) + 1;
+                    if (!window.confirm(`Initiate delivery retry (Attempt #${nextNum}) for ${notice.notice_recipient}? The previous unserved return and proof will be preserved.`)) {
+                        return;
+                    }
+                    const origHtml = button.innerHTML;
+                    button.disabled = true;
+                    button.textContent = 'Retrying...';
+                    try {
+                        const fd = new FormData();
+                        fd.set('action', 'next_attempt');
+                        fd.set('case_id', String(caseId));
+                        fd.set('hearing_id', String(notice.hearing_id || activeHearing.hearing_id));
+                        fd.set('party_type', String(notice.party_type || 'Respondent'));
+                        if (notice.resident_id) fd.set('resident_id', String(notice.resident_id));
+                        fd.set('delivery_id', String(notice.delivery_id));
+
+                        const res = await fetch('../../../backend/api/gps/proof-service.php', {
+                            method: 'POST',
+                            body: fd,
+                            credentials: 'same-origin',
+                            headers: { 'Accept': 'application/json' }
+                        });
+                        const result = await res.json();
+                        if (!res.ok || !result.success) {
+                            throw new Error(result.message || 'Failed to initiate delivery retry.');
+                        }
+                        window.agapNotify?.(result.message || 'Delivery retry initiated.', 'success', 'Delivery Retry');
+                        await loadCases();
+                        if (activeExpandedCaseId) {
+                            await renderExpandedCaseView(activeExpandedCaseId);
+                        }
+                    } catch (err) {
+                        window.agapNotify?.(err.message || 'Unable to initiate retry.', 'error', 'Retry Failed');
+                        button.disabled = false;
+                        button.innerHTML = origHtml;
+                    }
                 });
             });
             return;
@@ -784,13 +859,9 @@ async function renderExpandedCaseView(caseId) {
             ? Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.paanyaya_max_attempts || 6)
             : Number(activeHearing.max_attempts || window.AGAP_SETTINGS?.summons_max_attempts || 6);
 
-        const cfaElig = data.cfa_eligibility || activeHearing.cfa_eligibility || {
-            eligible: false,
-            failed_count: 0,
-            attempts_count: 0,
-            reason: `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`
-        };
-        const failedCount = Number(cfaElig.failed_count || 0);
+        const cfaElig = data.cfa_eligibility || currentCaseItem.cfa_eligibility || {};
+        const deliveryEligibility = activeHearing.delivery_eligibility || {};
+        const failedCount = Number(deliveryEligibility.failed_count || 0);
         const isCfaEligible = Boolean(cfaElig.eligible);
 
         const kpNumber = currentCaseItem.case_number || `Case #${caseId}`;
@@ -960,16 +1031,16 @@ async function renderExpandedCaseView(caseId) {
             let circleClass = isCfaEligible ? 'cfa-ready' : 'cfa-locked';
             let iconText = isCfaEligible ? 'CFA' : '—';
             let statusText = isCfaEligible ? 'CFA Ready' : 'CFA';
-            const noShowCount = Number(cfaElig.no_show_count || 0);
+            const noShowCount = Number(deliveryEligibility.no_show_count || 0);
             let subText = isCfaEligible
                 ? 'Eligible'
                 : (noShowCount > 0 ? `${noShowCount}/${maxAllowedAttempts} No-shows` : `${failedCount}/${maxAllowedAttempts} Failed`);
             let clickAction = isCfaEligible
                 ? `onclick="window.location.href='../documents/cfa.php?case_id=${encodeURIComponent(caseId)}'"`
-                : `onclick="window.agapNotify ? window.agapNotify('${escapeGpsHtml(cfaElig.reason || `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`)}', 'warning', 'CFA Locked') : alert('${escapeGpsHtml(cfaElig.reason || `CFA is locked until all ${maxAllowedAttempts} summons attempts have failed.`)}')`;
+                : `onclick="window.agapNotify ? window.agapNotify(this.dataset.reason, 'warning', 'CFA Locked') : alert(this.dataset.reason)"`;
 
             return `
-                <button type="button" class="stepper-step" ${clickAction} title="${statusText} — ${escapeGpsHtml(cfaElig.reason || '')}" style="${!isCfaEligible ? 'cursor: not-allowed;' : ''}">
+                <button type="button" class="stepper-step" ${clickAction} data-reason="${escapeGpsHtml(cfaElig.reason || 'CFA eligibility is unavailable.')}" title="${statusText} — ${escapeGpsHtml(cfaElig.reason || '')}" style="${!isCfaEligible ? 'cursor: not-allowed;' : ''}">
                     <div class="step-circle ${circleClass}">${iconText}</div>
                     <span class="step-label">${statusText}</span>
                     <span class="step-subtext">${subText}</span>
@@ -1082,9 +1153,18 @@ async function renderExpandedCaseView(caseId) {
             `;
         }
 
+        const waitingPartiesList = Array.isArray(activeHearing.waiting_parties) ? activeHearing.waiting_parties : [];
+        const waitingSummaryHtml = (!isPaanyayaCase && waitingPartiesList.length)
+            ? `<div style="margin-bottom: 12px; padding: 10px 12px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a; color: #92400e; font-size: 0.84rem;">
+                    <strong>Waiting for service (${waitingPartiesList.length}):</strong>
+                    ${waitingPartiesList.map(w => `${escapeGpsHtml(w.full_name)} (${escapeGpsHtml(w.party_type)}) — ${escapeGpsHtml(w.next_action || 'Serve notice and log Officer Return')}`).join(' · ')}
+               </div>`
+            : '';
+
         // Render complete expanded panel
         container.innerHTML = `
             ${viewCaseActionHtml ? `<div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">${viewCaseActionHtml}</div>` : ''}
+            ${waitingSummaryHtml}
             <!-- Two-Column Side-by-Side Service Records Grid -->
             <div class="expanded-columns-grid" ${isPaanyayaCase ? 'style="grid-template-columns: 1fr;"' : ''}>
                 <!-- Left Column: Complainant Notice (KP Form 12 for Conciliation / KP Form 8 for Mediation) -->

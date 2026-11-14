@@ -27,14 +27,16 @@ try {
         if ($action === 'next_attempt') {
             $caseId = filter_var($_POST['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
             $hearingId = filter_var($_POST['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+            $deliveryId = filter_var($_POST['delivery_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+            $residentId = filter_var($_POST['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
             $partyType = trim((string)($_POST['party_type'] ?? 'Respondent'));
-            if (!in_array($partyType, ['Complainant', 'Respondent'], true)) {
+            if (!in_array($partyType, ['Complainant', 'Respondent', 'Witness'], true)) {
                 $partyType = 'Respondent';
             }
             if (!$caseId) {
                 $result = ['success' => false, 'message' => 'A valid case ID is required.'];
             } else {
-                $result = $controller->initiateNextAttempt((int) $caseId, (int) $_SESSION['user_id'], $hearingId, $partyType);
+                $result = $controller->initiateNextAttempt((int) $caseId, (int) $_SESSION['user_id'], $hearingId, $partyType, $deliveryId, $residentId);
             }
         } elseif ($action === 'mark_kp8_served') {
             $caseId = filter_var($_POST['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);

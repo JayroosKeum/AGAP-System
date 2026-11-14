@@ -169,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // 3. Extract Complainant & Respondent attendance if not directly keyed
+    // 3. Extract Complainant & Respondent summary attendance while preserving exact per-resident statuses
     if ((!isset($inputData['complainant_attendance']) || !isset($inputData['respondent_attendance'])) && !empty($parties)) {
         $stmtCp = (new Database())->connect()->prepare("
             SELECT cp.resident_id, cp.party_type 
@@ -184,34 +184,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $typeMap[(int) $row['resident_id']] = $row['party_type'];
         }
 
-        foreach ($parties as $p) {
+        $compStatuses = [];
+        $respStatuses = [];
+        $compReasons = [];
+        $respReasons = [];
+
+        foreach ($parties as &$p) {
             $rId = (int) ($p['resident_id'] ?? 0);
             $pType = $p['party_type'] ?? ($typeMap[$rId] ?? '');
-            $status = $p['attendance_status'] ?? 'Present';
+            $p['party_type'] = $pType;
+            $status = trim((string) ($p['attendance_status'] ?? 'Pending Verification'));
             $reason = trim((string) ($p['justification_reason'] ?? $p['remarks'] ?? ''));
 
-            if ($pType === 'Complainant' && !isset($inputData['complainant_attendance'])) {
-                $inputData['complainant_attendance'] = in_array($status, ['Absent', 'Excused'], true) ? 'Absent' : 'Present';
-                if ($reason !== '') $inputData['complainant_explanation'] = $reason;
-            } elseif ($pType === 'Respondent' && !isset($inputData['respondent_attendance'])) {
-                $inputData['respondent_attendance'] = in_array($status, ['Absent', 'Excused'], true) ? 'Absent' : 'Present';
-                if ($reason !== '') $inputData['respondent_explanation'] = $reason;
+            if ($pType === 'Complainant') {
+                $compStatuses[] = $status;
+                if ($reason !== '') $compReasons[] = $reason;
+            } elseif ($pType === 'Respondent') {
+                $respStatuses[] = $status;
+                if ($reason !== '') $respReasons[] = $reason;
             }
+        }
+        unset($p);
+
+        $summarize = function (array $statuses): string {
+            if (in_array('Absent', $statuses, true)) return 'Absent';
+            if (in_array('Not Served', $statuses, true) || in_array('Pending Verification', $statuses, true)) {
+                if (in_array('Present', $statuses, true) || in_array('Late', $statuses, true)) return 'Present';
+                return 'Pending Verification';
+            }
+            if (in_array('Excused', $statuses, true)) {
+                if (in_array('Present', $statuses, true) || in_array('Late', $statuses, true)) return 'Present';
+                return 'Excused';
+            }
+            if (in_array('Late', $statuses, true) && !in_array('Present', $statuses, true)) return 'Late';
+            return !empty($statuses) ? 'Present' : 'Pending Verification';
+        };
+
+        if (!isset($inputData['complainant_attendance'])) {
+            $inputData['complainant_attendance'] = $summarize($compStatuses);
+            if (!empty($compReasons)) $inputData['complainant_explanation'] = implode('; ', $compReasons);
+        }
+        if (!isset($inputData['respondent_attendance'])) {
+            $inputData['respondent_attendance'] = $summarize($respStatuses);
+            if (!empty($respReasons)) $inputData['respondent_explanation'] = implode('; ', $respReasons);
         }
     }
 
-    // 4. Save via ShowCauseService
+    // 4. Validate and persist per-resident attendance + ShowCauseService workflow
     require_once __DIR__ . '/../../services/ShowCauseService.php';
     if (!isset($inputData['complainant_attendance']) || !isset($inputData['respondent_attendance'])) {
-        // Fallback default to Present if not explicitly marked
         $inputData['complainant_attendance'] = $inputData['complainant_attendance'] ?? 'Present';
         $inputData['respondent_attendance'] = $inputData['respondent_attendance'] ?? 'Present';
+    }
+    if (!empty($parties)) {
+        $inputData['parties'] = $parties;
     }
 
     $result = (new ShowCauseService())->recordAttendance((int) $hearingId, $inputData, (int) $_SESSION['user_id']);
 
     if (!empty($result['success'])) {
-        // Update actual_start_time and scheduled_datetime if provided
         try {
             $db = (new Database())->connect();
             if (!empty($inputData['actual_start_time'])) {
@@ -232,12 +263,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (Throwable $e) {
             error_log('Error saving start time / schedule date: ' . $e->getMessage());
         }
-        // Sync resident-level attendance records if provided
+
         if (!empty($parties)) {
             try {
                 $hearingAttendance->recordAttendance((int) $hearingId, $parties, (int) $_SESSION['user_id']);
             } catch (Throwable $e) {
-                error_log('HearingAttendance sync notice: ' . $e->getMessage());
+                http_response_code(422);
+                echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                exit;
             }
         }
 

@@ -465,10 +465,12 @@ class CaseStage
                 $savedMinutesCount++;
                 $latestMinutesStatus = $h['minutes_status'] ?: 'Draft';
                 $latestMinutesSessionDate = $h['hearing_date'];
-                if ($h['session_outcome'] === 'Settled') {
-                    $hasSettledSession = true;
-                } elseif (in_array($h['session_outcome'], ['Failed', 'Pending CFA'], true)) {
-                    $hasFailedSession = true;
+                if ($latestMinutesStatus === 'Finalized') {
+                    if ($h['session_outcome'] === 'Settled') {
+                        $hasSettledSession = true;
+                    } elseif (in_array($h['session_outcome'], ['Failed', 'Pending CFA'], true)) {
+                        $hasFailedSession = true;
+                    }
                 }
             }
         }
@@ -533,6 +535,10 @@ class CaseStage
             $stageStatus = 'Completed';
         }
 
+        require_once __DIR__ . '/CFA.php';
+        $cfaElig = (new CFA($this->conn))->determineCfaEligibility($caseId);
+        $canIssueCfa = $isUnlocked && !empty($cfaElig['eligible']) && in_array('KP Form 20', $cfaElig['available_forms'] ?? [], true);
+
         return [
             'stage_type' => 'Conciliation',
             'stage_title' => '8. Pangkat Conciliation',
@@ -562,8 +568,9 @@ class CaseStage
                 'can_print_notice' => ($isUnlocked && ($sessionCount > 0 || $pangkatInfo['is_constituted'])),
                 'can_record_outcome' => ($isUnlocked && $sessionCount > 0),
                 'can_generate_settlement' => ($isUnlocked && ($hasSettledSession || $outcome === 'Settled' || $case['case_status'] === 'Settled')),
-                'can_issue_cfa' => ($isUnlocked && ($hasFailedSession || $outcome === 'Unsuccessful' || $case['case_status'] === 'CFA Issued'))
+                'can_issue_cfa' => $canIssueCfa
             ],
+            'cfa_eligibility' => $cfaElig,
             'deadline' => $conciliationDeadline,
             'outcome' => $outcome,
             'outcome_remarks' => $stageRecord['outcome_remarks'] ?? null
@@ -943,12 +950,7 @@ class CaseStage
                    TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name,
                    r.address,
                    ha.attendance_status, ha.is_justified, ha.justification_reason,
-                   ha.remarks AS party_remarks, ha.verification_status, ha.determination_notes,
-                   (
-                       (SELECT COUNT(*) FROM hearing_party_services hps WHERE hps.hearing_id = ? AND hps.resident_id = cp.resident_id AND hps.service_result = 'Served')
-                       +
-                       (SELECT COUNT(*) FROM summon_deliveries sd WHERE sd.hearing_id = ? AND (sd.resident_id = cp.resident_id OR sd.party_type = cp.party_type) AND sd.delivery_status IN ('Served Personal', 'Served Substituted', 'Served Refused'))
-                   ) AS service_confirmed_count
+                   ha.remarks AS party_remarks, ha.verification_status, ha.determination_notes
             FROM complaint_parties cp
             INNER JOIN residents r ON r.resident_id = cp.resident_id
             INNER JOIN cases c ON c.complaint_id = cp.complaint_id
@@ -1010,12 +1012,23 @@ class CaseStage
             }
         }
 
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        $deliveryService = new SummonDeliveryService($this->conn);
+
         $sessions = [];
         $index = 1;
         foreach ($hearings as $h) {
             $hId = (int) $h['hearing_id'];
-            $partyStmt->execute([$hId, $hId, $hId, $caseId]);
+            $partyStmt->execute([$hId, $caseId]);
             $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($parties as &$partyRow) {
+                $verif = $deliveryService->verifyRecipientServiceForHearing($hId, (int) $partyRow['resident_id'], (string) ($partyRow['party_type'] ?? 'Respondent'));
+                $partyRow['service_verified'] = !empty($verif['verified']);
+                $partyRow['service_confirmed_count'] = !empty($verif['verified']) ? 1 : 0;
+                $partyRow['service_status'] = $verif['status'] ?? 'Not Served';
+                $partyRow['service_verification'] = $verif;
+            }
+            unset($partyRow);
 
             // Summons-return gate: attendance check-in unlocks only after an
             // appropriate Officer's Return (successful service) is logged for all required parties.

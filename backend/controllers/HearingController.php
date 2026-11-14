@@ -1312,10 +1312,26 @@ class HearingController
             return ['success' => false, 'message' => 'Party check-in cannot be changed after a hearing has started, concluded, or become unavailable.'];
         }
 
-        // Enforce Summons Return gate before allowing Mediation check-in
+        // Enforce per-recipient / hearing Summons Return gate before allowing check-in
+        $residentId = filter_var($data['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         require_once __DIR__ . '/../services/SummonServiceGate.php';
+        require_once __DIR__ . '/../services/SummonDeliveryService.php';
+        $deliverySvc = new SummonDeliveryService($db);
+
+        if ($residentId) {
+            $ver = $deliverySvc->verifyRecipientServiceForHearing((int) $hearingId, (int) $residentId, (string) $partyType);
+            if (empty($ver['verified'])) {
+                return [
+                    'success' => false,
+                    'code' => 'RECIPIENT_SERVICE_NOT_CONFIRMED',
+                    'message' => 'Check-in locked for this recipient: ' . ($ver['next_action'] ?? 'Service has not been verified on the operative notice.'),
+                    'service_verification' => $ver
+                ];
+            }
+        }
+
         $serviceGate = (new SummonServiceGate($db))->forHearing((int) $hearingId);
-        if (empty($serviceGate['allowed'])) {
+        if (empty($serviceGate['allowed']) && !$residentId) {
             return [
                 'success' => false,
                 'code' => $serviceGate['code'] ?? 'SERVICE_NOT_CONFIRMED',
@@ -1323,10 +1339,7 @@ class HearingController
                 'service_gate' => $serviceGate
             ];
         }
-        if (false) {
-        }
 
-        $residentId = filter_var($data['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $attVal = ($status === 'Checked In') ? 'Present' : 'Pending Verification';
 
         // Synchronize hearing_attendance records
@@ -1337,7 +1350,12 @@ class HearingController
             WHERE c.case_id = ? AND cp.party_type = ?
         ");
         $syncCp->execute([(int) $hearing['case_id'], $partyType]);
-        $residentIds = $syncCp->fetchAll(PDO::FETCH_COLUMN);
+        $residentIds = array_map('intval', $syncCp->fetchAll(PDO::FETCH_COLUMN));
+
+        if ($residentId > 0 && !in_array((int) $residentId, $residentIds, true)) {
+            $db->rollBack();
+            return ['success' => false, 'message' => 'Specified recipient does not belong to this hearing and party role.'];
+        }
 
         if (!empty($residentIds)) {
             $haUpsert = $db->prepare("

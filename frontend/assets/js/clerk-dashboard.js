@@ -140,6 +140,29 @@
         return data;
     };
 
+    const postDocketCheckIn = async ({ hearingId, partyType, residentId, status }) => {
+        const res = await fetch('../../../backend/api/hearings/queue.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Accept': 'application/json',
+                'X-CSRF-Token': getCsrfToken()
+            },
+            body: JSON.stringify({
+                action: 'check_in',
+                hearing_id: hearingId,
+                party_type: partyType,
+                resident_id: residentId,
+                status
+            })
+        });
+        const data = await res.json().catch(() => ({ success: false, message: 'Server communication error.' }));
+        if (!res.ok || !data.success) {
+            throw new Error(data.message || `Check-in failed (${res.status})`);
+        }
+        return data;
+    };
+
     // Render Daily Intake & Docket Queue
     const renderIntakeQueue = (data) => {
         setText('clerkWalkinsToday', data.walkins_today ?? 0);
@@ -455,8 +478,15 @@
             timeWrap.append(dragHandle, seqBadge, timePill, titleHeading);
 
             const statusBadge = document.createElement('span');
-            statusBadge.style.cssText = 'font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #f1f5f9; color: #475569;';
-            statusBadge.textContent = item.status;
+            const docketReadyText = item.type === 'hearing'
+                ? (raw.is_complete_and_ready ? 'Complete & Ready' : (raw.queue_status || item.status || 'Waiting'))
+                : item.status;
+            const isReadyBadge = item.type === 'hearing' && Boolean(raw.is_complete_and_ready);
+            statusBadge.className = 'docket-readiness-badge';
+            statusBadge.style.cssText = isReadyBadge
+                ? 'font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #dcfce7; color: #15803d; border: 1px solid #86efac;'
+                : 'font-size: 0.74rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; background: #f1f5f9; color: #475569;';
+            statusBadge.textContent = docketReadyText;
 
             header.append(timeWrap, statusBadge);
 
@@ -473,6 +503,60 @@
             venueMeta.innerHTML = `<span>${escapeHtml(item.venue)}</span>${item.subTitle ? `<span style="color:#cbd5e1;">•</span><span>${escapeHtml(item.subTitle)}</span>` : ''}`;
 
             body.append(partiesDiv, venueMeta);
+
+            if (item.type === 'hearing' && Array.isArray(raw.parties) && raw.parties.length > 0) {
+                const checkInStrip = document.createElement('div');
+                checkInStrip.className = 'docket-party-checkin-strip';
+                checkInStrip.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e2e8f0;';
+                raw.parties.forEach((p) => {
+                    const isCheckedIn = ['Present', 'Late'].includes(String(p.attendance_status || ''));
+                    const isServiceOk = Boolean(p.service_verified);
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'btn-quick-att docket-party-checkin-btn';
+                    btn.dataset.hearingId = String(item.id);
+                    btn.dataset.residentId = String(p.resident_id || '');
+                    btn.dataset.partyType = String(p.party_type || '');
+                    if (!isServiceOk && !isCheckedIn) {
+                        const statusText = p.service_status || 'Not Served';
+                        btn.disabled = true;
+                        btn.dataset.blocked = '1';
+                        btn.style.cssText = 'font-size: 0.74rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; cursor: not-allowed; font-weight: 600;';
+                        btn.title = `Blocked: ${statusText}`;
+                        btn.textContent = `${p.party_type} (${p.full_name}): Blocked (${statusText})`;
+                    } else {
+                        btn.style.cssText = isCheckedIn
+                            ? 'font-size: 0.74rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #86efac; background: #dcfce7; color: #15803d; cursor: pointer; font-weight: 700;'
+                            : 'font-size: 0.74rem; padding: 4px 8px; border-radius: 6px; border: 1px solid #93c5fd; background: #eff6ff; color: #1d4ed8; cursor: pointer; font-weight: 600;';
+                        btn.textContent = isCheckedIn
+                            ? `${p.party_type} (${p.full_name}): Checked In`
+                            : `Check In ${p.party_type} (${p.full_name})`;
+                        btn.addEventListener('click', async () => {
+                            const nextStatus = isCheckedIn ? 'Waiting' : 'Checked In';
+                            btn.disabled = true;
+                            btn.textContent = 'Saving...';
+                            try {
+                                const resp = await postDocketCheckIn({
+                                    hearingId: Number(item.id),
+                                    partyType: String(p.party_type),
+                                    residentId: Number(p.resident_id),
+                                    status: nextStatus
+                                });
+                                showToast(resp.message || `Updated check-in for ${p.full_name}`);
+                                await fetchDashboardData();
+                            } catch (err) {
+                                showToast(err.message || 'Check-in failed.', true);
+                                btn.disabled = false;
+                                btn.textContent = isCheckedIn
+                                    ? `${p.party_type} (${p.full_name}): Checked In`
+                                    : `Check In ${p.party_type} (${p.full_name})`;
+                            }
+                        });
+                    }
+                    checkInStrip.appendChild(btn);
+                });
+                body.appendChild(checkInStrip);
+            }
 
             // Actions: 1-Click Attendance & 1-Click Outcome Logging
             const actions = document.createElement('div');
@@ -524,6 +608,10 @@
             btnAbsent.className = 'btn-quick-att att-absent';
             btnAbsent.textContent = 'Absent';
             btnAbsent.title = '1-click mark respondent/invitee absent';
+            if (item.type === 'hearing' && (raw.parties || []).filter(p => p.party_type === 'Respondent').length > 1) {
+                btnAbsent.disabled = true;
+                btnAbsent.title = 'Use Detailed Check-in to select which respondent was absent.';
+            }
             btnAbsent.addEventListener('click', async () => {
                 btnAbsent.disabled = true;
                 btnAbsent.textContent = 'Saving...';

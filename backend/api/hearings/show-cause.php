@@ -4,6 +4,7 @@ session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/../../services/ShowCauseService.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
 if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
     http_response_code(403);
@@ -12,6 +13,7 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    CsrfService::enforceForApiRequest();
     $inputData = [];
     $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
     if (str_contains($contentType, 'application/json')) {

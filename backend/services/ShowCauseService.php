@@ -32,7 +32,7 @@ class ShowCauseService
 
         $this->conn = $conn ?? (new Database())->connect();
 
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->conn);
 
         $this->deliveryService = new SummonDeliveryService($this->conn);
 
@@ -66,7 +66,72 @@ class ShowCauseService
 
     {
 
-        if (empty($data['bypass_service_check'])) {
+        $partiesInput = (!empty($data['parties']) && is_array($data['parties'])) ? $data['parties'] : [];
+
+        $absentComplainantIds = [];
+
+        $absentRespondentIds = [];
+
+        $validPerPartyStatuses = ['Present', 'Absent', 'Late', 'Excused', 'Not Served', 'Pending Verification'];
+
+        if (!empty($partiesInput)) {
+            $cpLookup = $this->conn->prepare("
+                SELECT cp.party_type, TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                INNER JOIN cases c ON c.complaint_id = cp.complaint_id
+                INNER JOIN hearings h ON h.case_id = c.case_id
+                WHERE h.hearing_id = ? AND cp.resident_id = ?
+                LIMIT 1
+            ");
+            $compStatuses = [];
+            $respStatuses = [];
+            foreach ($partiesInput as $pItem) {
+                $rId = (int) ($pItem['resident_id'] ?? 0);
+                $cpLookup->execute([$hearingId, $rId]);
+                $cpRow = $cpLookup->fetch(PDO::FETCH_ASSOC);
+                if (!$cpRow) {
+                    return ['success' => false, 'message' => 'All attendance records must belong to registered parties of this hearing.'];
+                }
+                $pType = (string) ($pItem['party_type'] ?? $cpRow['party_type']);
+                $pStatus = trim((string) ($pItem['attendance_status'] ?? 'Pending Verification'));
+                if ($pType !== 'Witness' && !in_array($pStatus, $validPerPartyStatuses, true)) {
+                    return ['success' => false, 'message' => 'Invalid per-party attendance status: ' . $pStatus];
+                }
+                if ($pStatus === 'Absent' && in_array($pType, ['Complainant', 'Respondent'], true)) {
+                    $ver = $this->deliveryService->verifyRecipientServiceForHearing($hearingId, $rId, $pType);
+                    if (empty($ver['verified'])) {
+                        return [
+                            'success' => false,
+                            'message' => 'Attendance locked for ' . ($cpRow['full_name'] ?: $pType) . ': '
+                                . ($ver['next_action'] ?? 'Service has not been verified on the operative notice for this recipient.')
+                        ];
+                    }
+                    if ($pType === 'Complainant') {
+                        $absentComplainantIds[] = $rId;
+                    } else {
+                        $absentRespondentIds[] = $rId;
+                    }
+                }
+                if ($pType === 'Complainant') $compStatuses[] = $pStatus;
+                if ($pType === 'Respondent') $respStatuses[] = $pStatus;
+            }
+
+            $mapSummaryEnum = function (array $statuses): string {
+                if (in_array('Absent', $statuses, true)) return 'Absent';
+                if (in_array('Not Served', $statuses, true) || in_array('Pending Verification', $statuses, true)) {
+                    return 'Pending';
+                }
+                if (in_array('Excused', $statuses, true) && !in_array('Present', $statuses, true) && !in_array('Late', $statuses, true)) {
+                    return 'Excused';
+                }
+                if (in_array('Late', $statuses, true) && !in_array('Present', $statuses, true)) return 'Late';
+                return !empty($statuses) ? 'Present' : 'Pending';
+            };
+
+            $complainantAtt = $mapSummaryEnum($compStatuses);
+            $respondentAtt = $mapSummaryEnum($respStatuses);
+        } else {
             $serviceCheck = $this->deliveryService->checkServiceStatus($hearingId);
 
             if (!$serviceCheck['allowed']) {
@@ -77,31 +142,29 @@ class ShowCauseService
 
                     'message' => 'Attendance locked: ' . $serviceCheck['message'],
 
+                    'waiting_parties' => $serviceCheck['waiting_parties'] ?? [],
+
                 ];
 
             }
-        }
 
+            $complainantAtt = trim($data['complainant_attendance'] ?? '');
 
+            $respondentAtt = trim($data['respondent_attendance'] ?? '');
 
-        $complainantAtt = trim($data['complainant_attendance'] ?? '');
+            $validStatuses = ['Present', 'Absent', 'Late', 'Excused'];
 
-        $respondentAtt = trim($data['respondent_attendance'] ?? '');
+            if (!in_array($complainantAtt, $validStatuses, true) || !in_array($respondentAtt, $validStatuses, true)) {
 
+                return [
 
+                    'success' => false,
 
-        $validStatuses = ['Present', 'Absent', 'Late', 'Excused'];
+                    'message' => 'Both Complainant and Respondent attendance must be marked (Present, Absent, Late, or Excused).',
 
-        if (!in_array($complainantAtt, $validStatuses, true) || !in_array($respondentAtt, $validStatuses, true)) {
+                ];
 
-            return [
-
-                'success' => false,
-
-                'message' => 'Both Complainant and Respondent attendance must be marked (Present, Absent, Late, or Excused).',
-
-            ];
-
+            }
         }
 
 
@@ -336,7 +399,9 @@ class ShowCauseService
 
             $compExplanation ?: null,
 
-            $respExplanation ?: null
+            $respExplanation ?: null,
+
+            $partiesInput
 
         );
 
@@ -344,7 +409,11 @@ class ShowCauseService
 
         // Fetch parties for document and hearing generation
 
-        $parties = $this->getCaseParties((int) $hearing['complaint_id']);
+        $parties = $this->getCaseParties(
+            (int) $hearing['complaint_id'],
+            $absentComplainantIds[0] ?? null,
+            $absentRespondentIds[0] ?? null
+        );
 
 
 
@@ -426,6 +495,18 @@ class ShowCauseService
 
 
 
+        // 1c. Partial / awaiting service verification (no Absent party)
+        if ($complainantAtt !== 'Absent' && $respondentAtt !== 'Absent') {
+            $msg = "{$hTypeName} hearing on " . date('F j, Y', strtotime($hearing['hearing_date'])) . " attendance saved while awaiting notice service verification.";
+            $this->logCaseHistory($caseId, $stage, $msg, $actorUserId);
+            return [
+                'success' => true,
+                'outcome' => 'pending_service_verification',
+                'message' => 'Attendance recorded. Unserved parties remain in Not Served / Pending Verification and cannot advance to show cause.',
+                'results' => $results,
+            ];
+        }
+
         // 2. Complainant Absent -> Trigger KP Form 18 Workflow
 
         if ($complainantAtt === 'Absent') {
@@ -484,6 +565,9 @@ class ShowCauseService
 
 
 
+            $targetCompId = !empty($absentComplainantIds) ? (int) $absentComplainantIds[0] : ($parties['complainant']['resident_id'] ?? null);
+            $targetCompName = $parties['complainant']['full_name'] ?? null;
+
             // Create Summon Delivery record for this Show Cause hearing
 
             $this->createShowCauseDelivery(
@@ -494,13 +578,13 @@ class ShowCauseService
 
                 'KP Form 18',
 
-                $parties['complainant']['resident_id'] ?? null,
+                $targetCompId,
 
                 $caseId,
 
                 $doc18['document_id'] ?? null,
 
-                $parties['complainant']['full_name'] ?? null
+                $targetCompName
 
             );
 
@@ -514,7 +598,7 @@ class ShowCauseService
 
             // Auto-trigger re-issuance for Complainant subsequent notice attempt
             try {
-                $this->deliveryService->initiateNextAttempt($caseId, $actorUserId, $hearingId, 'Complainant');
+                $this->deliveryService->initiateNextAttempt($caseId, $actorUserId, $hearingId, 'Complainant', null, $targetCompId);
             } catch (Throwable $reCompEx) {
                 error_log("Notice re-issuance attempt error: " . $reCompEx->getMessage());
             }
@@ -597,6 +681,9 @@ class ShowCauseService
 
 
 
+            $targetRespId = !empty($absentRespondentIds) ? (int) $absentRespondentIds[0] : ($parties['respondent']['resident_id'] ?? null);
+            $targetRespName = $parties['respondent']['full_name'] ?? null;
+
             // Create Summon Delivery record for this Show Cause hearing
 
             $this->createShowCauseDelivery(
@@ -607,13 +694,13 @@ class ShowCauseService
 
                 'KP Form 19',
 
-                $parties['respondent']['resident_id'] ?? null,
+                $targetRespId,
 
                 $caseId,
 
                 $doc19['document_id'] ?? null,
 
-                $parties['respondent']['full_name'] ?? null
+                $targetRespName
 
             );
 
@@ -627,7 +714,7 @@ class ShowCauseService
 
             // Auto-trigger re-issuance for Respondent subsequent summons attempt
             try {
-                $this->deliveryService->initiateNextAttempt($caseId, $actorUserId, $hearingId, 'Respondent');
+                $this->deliveryService->initiateNextAttempt($caseId, $actorUserId, $hearingId, 'Respondent', null, $targetRespId);
             } catch (Throwable $reRespEx) {
                 error_log("Summons re-issuance attempt error: " . $reRespEx->getMessage());
             }
@@ -679,494 +766,248 @@ class ShowCauseService
      */
 
     public function evaluateShowCause(int $hearingId, array $data, int $actorUserId): array
-
     {
+        $startedTrans = !$this->conn->inTransaction();
+        $newFiles = [];
 
-        $stmt = $this->conn->prepare("
-
-            SELECT h.*, c.case_number, c.case_status, c.complaint_id, co.complaint_title
-
-            FROM hearings h
-
-            INNER JOIN cases c ON c.case_id = h.case_id
-
-            INNER JOIN complaints co ON co.complaint_id = c.complaint_id
-
-            WHERE h.hearing_id = ?
-
-        ");
-
-        $stmt->execute([$hearingId]);
-
-        $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
-
-
-
-        if (!$hearing) {
-
-            return ['success' => false, 'message' => 'Show-cause hearing not found.'];
-
-        }
-
-
-
-        $caseId = (int) $hearing['case_id'];
-
-        $complaintId = (int) $hearing['complaint_id'];
-
-
-
-        $partyType = trim($data['party_type'] ?? '');
-        $isBoth = ($partyType === 'Both');
-
-        if (!in_array($partyType, ['Complainant', 'Respondent', 'Both'], true)) {
-
-            // Infer from hearing_type if not explicitly passed
-
-            if ($hearing['hearing_type'] === 'Show Cause (Complainant)') {
-
-                $partyType = 'Complainant';
-
-            } elseif ($hearing['hearing_type'] === 'Show Cause (Respondent)') {
-
-                $partyType = 'Respondent';
-
-            } else {
-
-                return ['success' => false, 'message' => 'Invalid party type for show-cause evaluation.'];
-
+        try {
+            if ($startedTrans) {
+                $this->conn->beginTransaction();
             }
 
-        }
-
-
-
-        $formType = ($partyType === 'Complainant') ? 'KP Form 18' : 'KP Form 19';
-
-        $isJustified = !empty($data['is_justified']) ? 1 : 0;
-
-        $justificationCategory = trim($data['justification_category'] ?? '');
-
-        $justificationNotes = trim($data['justification_notes'] ?? '');
-
-
-
-        $validCategories = ['Medical Emergency', 'Force Majeure', 'Official Duty', 'Unjustified Absence', 'Willful Refusal', 'Other'];
-
-        if (!in_array($justificationCategory, $validCategories, true)) {
-
-            $justificationCategory = $isJustified ? 'Medical Emergency' : 'Unjustified Absence';
-
-        }
-
-
-
-        $parties = $this->getCaseParties($complaintId);
-
-        $rescheduledHearingId = null;
-
-        $actionTaken = '';
-
-        $clientMessage = '';
-
-
-
-        if ($isJustified) {
-
-            // OUTCOME 1: Justified Reason -> Reschedule Hearing
-            $origHearing = null;
-            if (!empty($hearing['rescheduled_from_id'])) {
-                $origStmt = $this->conn->prepare("SELECT hearing_id, hearing_type, hearing_date, venue FROM hearings WHERE hearing_id = ?");
-                $origStmt->execute([$hearing['rescheduled_from_id']]);
-                $origHearing = $origStmt->fetch(PDO::FETCH_ASSOC);
+            $stmt = $this->conn->prepare("
+                SELECT sh.*, c.case_number, c.case_status, c.complaint_id, co.complaint_title,
+                       origin.hearing_type AS origin_type
+                FROM hearings sh
+                JOIN cases c ON c.case_id = sh.case_id
+                JOIN complaints co ON co.complaint_id = c.complaint_id
+                JOIN hearings origin ON origin.hearing_id = sh.rescheduled_from_id AND origin.case_id = sh.case_id
+                WHERE sh.hearing_id = ?
+                  AND sh.hearing_type IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
+                  AND sh.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+                  AND origin.hearing_type IN ('Initial Hearing', 'Mediation', 'Conciliation')
+                  AND origin.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+                  AND c.case_status NOT IN ('Archived', 'Settled')
+                FOR UPDATE
+            ");
+            $stmt->execute([$hearingId]);
+            $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$hearing) {
+                throw new DomainException('Select an open show-cause hearing linked to the original hearing.');
             }
-            $targetType = ($origHearing && $origHearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
 
-            $rescheduleDate = !empty($data['reschedule_date'])
+            $caseId = (int) $hearing['case_id'];
+            $originId = (int) $hearing['rescheduled_from_id'];
+            $hearingRole = $hearing['hearing_type'] === 'Show Cause (Complainant)' ? 'Complainant' : 'Respondent';
+            $partyType = trim((string) ($data['party_type'] ?? $hearingRole));
+            if ($partyType !== $hearingRole && $partyType !== 'Both') {
+                throw new DomainException('The selected party type does not match this show-cause hearing.');
+            }
 
-                ? date('Y-m-d H:i:s', strtotime($data['reschedule_date']))
-
-                : date('Y-m-d 09:00:00', strtotime('+3 days'));
-
-            $rescheduleVenue = trim($data['reschedule_venue'] ?? 'Lupon Court Room');
-
-
-
-            $rescheduledHearingId = $this->createRescheduledHearing(
-
-                $caseId,
-
-                $targetType,
-
-                $rescheduleDate,
-
-                $rescheduleVenue,
-
-                $hearingId,
-
-                "Show-cause absence justified ({$justificationCategory}). Notes: {$justificationNotes}"
-
-            );
-
-
-
-            // Re-initialize summon deliveries for the new hearing
-
-            $this->deliveryService->getHearingDeliveries($rescheduledHearingId);
-
-
-
-            $actionTaken = 'Rescheduled';
-
-            $clientMessage = "Absence was accepted as justified ({$justificationCategory}). {$targetType} hearing rescheduled to " . date('F j, Y g:i A', strtotime($rescheduleDate)) . ".";
-
-
-
-            $hist = "Show-cause evaluation: {$partyType} absence justified ({$justificationCategory}). {$targetType} rescheduled for " . date('M j, Y g:i A', strtotime($rescheduleDate)) . ".";
-
-            $this->logCaseHistory($caseId, $hearing['case_status'], $hist, $actorUserId);
-
-            $this->audit->log($actorUserId, "Show-cause absence justified for {$partyType} in Case #{$hearing['case_number']}", 'Hearings', $caseId);
-
-        } else {
-
-            // OUTCOME 2: Unjustified / Willful Refusal / Ignored Notice
-
-            // Checking mechanism: Check if the other party also has an unjustified show-cause evaluation
-            $otherPartyType = ($partyType === 'Complainant') ? 'Respondent' : 'Complainant';
-            $origHearingId = !empty($hearing['rescheduled_from_id']) ? (int) $hearing['rescheduled_from_id'] : null;
-
-            $otherEval = null;
-            if ($isBoth) {
-                $otherEval = ['evaluation_id' => 1];
-            } elseif ($origHearingId) {
-                $chkOther = $this->conn->prepare("
-                    SELECT sce.*
-                    FROM show_cause_evaluations sce
-                    INNER JOIN hearings h ON h.hearing_id = sce.hearing_id
-                    WHERE sce.case_id = ?
-                      AND sce.party_type = ?
-                      AND sce.is_justified = 0
-                      AND h.rescheduled_from_id = ?
-                    ORDER BY sce.evaluation_id DESC
-                    LIMIT 1
+            $targets = [$hearingRole => $hearingId];
+            if ($partyType === 'Both') {
+                $otherRole = $hearingRole === 'Complainant' ? 'Respondent' : 'Complainant';
+                $siblings = $this->conn->prepare("
+                    SELECT hearing_id FROM hearings
+                    WHERE case_id = ? AND rescheduled_from_id = ? AND hearing_type = ?
+                      AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+                    FOR UPDATE
                 ");
-                $chkOther->execute([$caseId, $otherPartyType, $origHearingId]);
-                $otherEval = $chkOther->fetch(PDO::FETCH_ASSOC);
+                $siblings->execute([$caseId, $originId, "Show Cause ({$otherRole})"]);
+                $siblingIds = $siblings->fetchAll(PDO::FETCH_COLUMN);
+                if (count($siblingIds) !== 1) {
+                    throw new DomainException('Select one show-cause hearing at a time when there is no unique companion hearing.');
+                }
+                $targets[$otherRole] = (int) $siblingIds[0];
             }
 
-            if (!$otherEval) {
-                $chkOtherFallback = $this->conn->prepare("
-                    SELECT sce.*
-                    FROM show_cause_evaluations sce
-                    WHERE sce.case_id = ?
-                      AND sce.party_type = ?
-                      AND sce.is_justified = 0
-                    ORDER BY sce.evaluation_id DESC
-                    LIMIT 1
+            $residentId = filter_var($data['resident_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if (isset($data['resident_id']) && !$residentId) {
+                throw new DomainException('Select a valid show-cause recipient.');
+            }
+
+            $parties = $this->getCaseParties((int) $hearing['complaint_id']);
+            $absent = $this->conn->prepare("
+                SELECT ha.resident_id, cp.party_type,
+                       TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name
+                FROM hearing_attendance ha
+                JOIN complaint_parties cp ON cp.complaint_id = ? AND cp.resident_id = ha.resident_id
+                JOIN residents r ON r.resident_id = ha.resident_id
+                WHERE ha.hearing_id = ? AND cp.party_type = ?
+                  AND ha.attendance_status = 'Absent' AND ha.is_justified = 0
+                FOR UPDATE
+            ");
+            $evaluated = [];
+            foreach ($targets as $role => $targetHearingId) {
+                $absent->execute([$hearing['complaint_id'], $originId, $role]);
+                $matches = [];
+                foreach ($absent->fetchAll(PDO::FETCH_ASSOC) as $party) {
+                    $id = (int) $party['resident_id'];
+                    if ($residentId && $role === $hearingRole && $id !== $residentId) {
+                        continue;
+                    }
+                    $noticeId = $this->deliveryService->getServedShowCauseNotice($targetHearingId, $id, $role);
+                    $originalService = $this->deliveryService->verifyRecipientServiceForHearing($originId, $id, $role);
+                    if ($noticeId && !empty($originalService['verified'])) {
+                        $matches[] = ['party' => $party, 'notice_id' => $noticeId];
+                    }
+                }
+                if (count($matches) !== 1) {
+                    throw new DomainException("Select one {$role} with recorded unexcused absence and verified service of both the original and show-cause notices.");
+                }
+                $evaluated[$role] = $matches[0];
+                $parties[strtolower($role)] = $matches[0]['party'];
+            }
+
+            $justified = !empty($data['is_justified']);
+            $category = trim((string) ($data['justification_category'] ?? ''));
+            if (!in_array($category, ['Medical Emergency', 'Force Majeure', 'Official Duty', 'Unjustified Absence', 'Willful Refusal', 'Other'], true)) {
+                $category = $justified ? 'Medical Emergency' : 'Unjustified Absence';
+            }
+            $notes = trim((string) ($data['justification_notes'] ?? ''));
+            $rescheduledHearingId = null;
+            $barredRoles = $targets;
+            if (!$justified) {
+                foreach ($this->deliveryService->getVerifiedShowCauseFindings($caseId, $originId) as $finding) {
+                    $role = $finding['party_type'];
+                    if (!isset($barredRoles[$role])) {
+                        $barredRoles[$role] = (int) $finding['hearing_id'];
+                    }
+                }
+            }
+
+            if ($justified) {
+                $action = 'Rescheduled';
+                $date = !empty($data['reschedule_date']) ? strtotime((string) $data['reschedule_date']) : strtotime('+3 days 09:00');
+                if ($date === false) {
+                    throw new DomainException('Enter a valid date for the rescheduled hearing.');
+                }
+                $venue = trim((string) ($data['reschedule_venue'] ?? 'Lupon Court Room'));
+                $type = $hearing['origin_type'] === 'Conciliation' ? 'Conciliation' : 'Mediation';
+                $rescheduledHearingId = $this->createRescheduledHearing(
+                    $caseId, $type, date('Y-m-d H:i:s', $date), $venue, $hearingId,
+                    "Show-cause absence justified ({$category}). Notes: {$notes}"
+                );
+                $justify = $this->conn->prepare("
+                    UPDATE hearing_attendance SET is_justified = 1, justification_reason = ?
+                    WHERE hearing_id = ? AND resident_id = ?
                 ");
-                $chkOtherFallback->execute([$caseId, $otherPartyType]);
-                $otherEval = $chkOtherFallback->fetch(PDO::FETCH_ASSOC);
+                foreach ($evaluated as $target) {
+                    $justify->execute([$category, $originId, $target['party']['resident_id']]);
+                }
+                $message = "Absence was accepted as justified ({$category}). {$type} hearing rescheduled.";
+            } elseif (isset($barredRoles['Complainant'])) {
+                $action = 'Barred Action';
+                $this->conn->prepare("UPDATE cases SET case_status = 'DISMISSED_BARRED' WHERE case_id = ?")->execute([$caseId]);
+                $this->conn->prepare("UPDATE complaints SET status = 'DISMISSED_BARRED' WHERE complaint_id = ?")->execute([$hearing['complaint_id']]);
+                $message = isset($barredRoles['Respondent'])
+                    ? 'Ang kaso ay permanenteng isinara (DISMISSED_BARRED) dahil sa hindi makatwirang pagliban ng parehong panig. Inisyu ang KP Form 21 at KP Form 22.'
+                    : 'Complainant absence was ruled unjustified. KP Form 21 records the bar.';
+            } else {
+                $action = 'CFA Issued';
+                $message = 'Respondent absence was ruled unjustified. KP Form 20, KP Form 20-B, and KP Form 22 were issued.';
             }
 
-            if ($otherEval) {
-                // =========================================================================
-                // COMBINED EVALUATION: Both Parties Failed / Unjustified
-                // =========================================================================
-                $actionTaken = 'Barred Action';
-                $newStatus = 'DISMISSED_BARRED';
+            $insert = $this->conn->prepare("
+                INSERT INTO show_cause_evaluations
+                    (hearing_id, case_id, party_type, resident_id, notice_delivery_id, form_type, is_justified,
+                     justification_category, justification_notes, rescheduled_hearing_id, action_taken, evaluated_by)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            $complete = $this->conn->prepare("UPDATE hearings SET status = 'Completed' WHERE hearing_id = ?");
+            foreach ($targets as $role => $targetHearingId) {
+                $target = $evaluated[$role];
+                $insert->execute([
+                    $targetHearingId, $caseId, $role, $target['party']['resident_id'], $target['notice_id'],
+                    $role === 'Complainant' ? 'KP Form 18' : 'KP Form 19', (int) $justified,
+                    $category, $notes ?: null, $rescheduledHearingId, $action, $actorUserId,
+                ]);
+                $complete->execute([$targetHearingId]);
+            }
 
-                // Update case and complaint status to DISMISSED_BARRED (Permanent Dismissal)
-                $uCase = $this->conn->prepare("UPDATE cases SET case_status = 'DISMISSED_BARRED' WHERE case_id = ?");
-                $uCase->execute([$caseId]);
-
-                $uComp = $this->conn->prepare("UPDATE complaints SET status = 'DISMISSED_BARRED' WHERE complaint_id = ?");
-                $uComp->execute([$complaintId]);
-
-                // Auto-generate KP Form 21 (Certificate to Bar Action para sa Complainant)
-                $doc21 = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 21',
-                    'Complainant',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
-
-                // Auto-generate KP Form 22 (Certificate to Bar Counterclaim para sa Respondent)
-                $doc22 = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 22',
-                    'Respondent',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
-
-                $generatedDocs = [$doc21, $doc22];
-
-                $clientMessage = "Parehong hindi tumugon o idineklarang UNJUSTIFIED ang magkabilang panig (Complainant at Respondent) matapos ang Show-Cause hearings. Ang kaso ay permanenteng isinara (DISMISSED_BARRED). Awtomatikong nabuo ang KP Form 21 at KP Form 22. Walang panig na maaaring dumulog sa hukuman.";
-
-                $hist = "Show-cause combined evaluation: Parehong hindi tumugon o unjustified ang magkabilang panig matapos ang KP Form 18 at KP Form 19 ({$justificationCategory}). Ang kaso ay permanenteng isinara (DISMISSED_BARRED). Parehong panig ay hindi na maaaring dumulog sa korte dahil sa kusang pagliban ng magkabilang panig nang walang sapat na dahilan. Inisyu ang KP Form 21 (Doc #{$doc21['document_id']}) at KP Form 22 (Doc #{$doc22['document_id']}).";
-                $this->logCaseHistory($caseId, 'DISMISSED_BARRED', $hist, $actorUserId);
-                $this->audit->log($actorUserId, "Combined show-cause unjustified for both parties in Case #{$hearing['case_number']}. Status permanently set to DISMISSED_BARRED.", 'Hearings', $caseId);
-
-                // Dispatch combined dismissal notifications
-                try {
-                    require_once __DIR__ . '/NotificationService.php';
-                    $notifService = new NotificationService();
-                    $notifTitle = "Kaso Permanenteng Isinara (Dismissed & Barred)";
-                    $notifMsg = "Ang kaso #{$hearing['case_number']} ay permanenteng isinara (DISMISSED_BARRED) dahil sa hindi makatwirang pagliban ng parehong panig sa Show-Cause hearings. Inisyu ang KP Form 21 at KP Form 22; walang panig na maaaring dumulog sa hukuman.";
-                    $actionUrl = "../cases/case-details.php?id=" . $caseId;
-
-                    $notifService->notifyRoles(['Administrator', 'Lupon Clerk'], $notifTitle, $notifMsg, $actorUserId, 'warning', $actionUrl, $caseId);
-                    $notifService->notifyCaseMembers($caseId, $notifTitle, $notifMsg, $actorUserId, 'warning', $actionUrl);
-                } catch (Throwable $ne) {
-                    error_log('Failed to dispatch combined dismissal notifications: ' . $ne->getMessage());
+            if ($action === 'CFA Issued') {
+                require_once __DIR__ . '/../models/CFA.php';
+                $cfa = new CFA($this->conn);
+                foreach (['KP Form 20-B', 'KP Form 20'] as $form) {
+                    $issued = $cfa->create([
+                        'case_id' => $caseId,
+                        'cfa_type' => $form,
+                        'reason' => "Respondent unjustified absence after show-cause notice ({$category}).",
+                    ], $actorUserId);
+                    if (empty($issued['success'])) {
+                        throw new RuntimeException($issued['message']);
+                    }
+                    if (empty($issued['duplicate']) && !empty($issued['file_path'])) {
+                        $newFiles[] = $issued['file_path'];
+                    }
                 }
-
-            } elseif ($partyType === 'Complainant') {
-                // =========================================================================
-                // COMPLAINANT UNJUSTIFIED (Single Party Default)
-                // =========================================================================
-                $actionTaken = 'Barred Action';
-                $newStatus = 'DISMISSED_BARRED';
-
-                // Update case and complaint status
-                $uCase = $this->conn->prepare("UPDATE cases SET case_status = 'DISMISSED_BARRED' WHERE case_id = ?");
-                $uCase->execute([$caseId]);
-
-                $uComp = $this->conn->prepare("UPDATE complaints SET status = 'DISMISSED_BARRED' WHERE complaint_id = ?");
-                $uComp->execute([$complaintId]);
-
-                // Auto-generate KP Form 21 (Certificate to Bar Action)
-                $docBar = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 21',
-                    'Complainant',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
-                $generatedDocs = [$docBar];
-
-                $clientMessage = "Complainant absence was ruled UNJUSTIFIED. Case is DISMISSED and complainant is BARRED from refiling or taking matter to court. KP Form 21 issued.";
-                $hist = "Complainant absence unjustified ({$justificationCategory}). Case marked DISMISSED_BARRED. KP Form 21 issued (Doc #{$docBar['document_id']}). Locked from further mediation.";
-                $this->logCaseHistory($caseId, 'DISMISSED_BARRED', $hist, $actorUserId);
-                $this->audit->log($actorUserId, "Complainant barred from action for Case #{$hearing['case_number']}. Status set to DISMISSED_BARRED.", 'Hearings', $caseId);
-
-            } else {
-                // =========================================================================
-                // RESPONDENT UNJUSTIFIED (Single Party Default - Section 1 Enhancement)
-                // =========================================================================
-                $actionTaken = 'CFA Issued';
-                $newStatus = 'CFA Issued';
-
-                // 1. Update case and complaint status
-                $uCase = $this->conn->prepare("UPDATE cases SET case_status = 'CFA Issued' WHERE case_id = ?");
-                $uCase->execute([$caseId]);
-
-                $uComp = $this->conn->prepare("UPDATE complaints SET status = 'CFA Issued' WHERE complaint_id = ?");
-                $uComp->execute([$complaintId]);
-
-                // Ensure cfa_records entry exists
-                $chkCfa = $this->conn->prepare("SELECT cfa_id FROM cfa_records WHERE case_id = ?");
-                $chkCfa->execute([$caseId]);
-                if (!$chkCfa->fetchColumn()) {
-                    $insCfa = $this->conn->prepare("INSERT INTO cfa_records (case_id, issuance_date, reason) VALUES (?, CURDATE(), ?)");
-                    $insCfa->execute([
-                        $caseId,
-                        "Respondent unjustified absence after show-cause notice (KP Form 19). Certificate to File Action granted to Complainant; Counterclaim barred (KP Form 20-B & KP Form 22)."
-                    ]);
+            }
+            if (!$justified) {
+                foreach ($targets as $role => $targetHearingId) {
+                    $doc = $this->generateKpForm(
+                        $caseId, $targetHearingId, $role === 'Complainant' ? 'KP Form 21' : 'KP Form 22',
+                        $role, $parties, $hearing, null, null, $actorUserId, true
+                    );
+                    $newFiles[] = $doc['file_path'];
                 }
+            }
 
-                // 2. Automatically generate and save the three consequence documents:
-                // - KP Form 20-B (Certificate to Bar Counterclaim) para sa Respondent
-                $doc20B = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 20-B',
-                    'Respondent',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
+            $historyStatus = $justified ? $hearing['case_status'] : ($action === 'CFA Issued' ? 'CFA Issued' : 'Dismissed');
+            $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, ?, ?, ?)");
+            $history->execute([$caseId, $historyStatus, $message, $actorUserId]);
+            if (!$this->audit->log($actorUserId, $message, 'Hearings', $hearingId)) {
+                throw new RuntimeException('Unable to record the show-cause audit entry.');
+            }
+            if ($startedTrans) {
+                $this->conn->commit();
+            }
+        } catch (Throwable $e) {
+            if ($startedTrans && $this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            foreach ($newFiles as $path) {
+                $absolute = dirname(__DIR__, 2) . '/' . ltrim($path, '/');
+                if (is_file($absolute)) {
+                    unlink($absolute);
+                }
+            }
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
 
-                // - KP Form 20 (Certificate to File Action / CFA) para sa Complainant
-                $doc20 = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 20',
-                    'Complainant',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
-
-                // - KP Form 22 (Certificate to Bar Action Counterclaim / Contempt Sanction Notice) para sa Respondent
-                $doc22 = $this->generateKpForm(
-                    $caseId,
-                    $hearingId,
-                    'KP Form 22',
-                    'Respondent',
-                    $parties,
-                    $hearing,
-                    null,
-                    null,
-                    $actorUserId
-                );
-
-                $generatedDocs = [$doc20B, $doc20, $doc22];
-
-                $clientMessage = "Respondent absence evaluated as UNJUSTIFIED. Awtomatikong binuo ang KP Form 20-B (Bar Counterclaim), KP Form 20 (CFA), at KP Form 22 (Sanction Notice). Ang status ng kaso ay 'CFA Issued'. Handa na para sa pagsasampa sa hukuman ng nagrereklamo.";
-
-                // 3. Log entry in case_history
-                $hist = "Respondent absence unjustified ({$justificationCategory}) matapos ang KP Form 19. Case status: CFA Issued. Awtomatikong inisyu ang KP Form 20 (CFA Doc #{$doc20['document_id']}), KP Form 20-B (Doc #{$doc20B['document_id']}), at KP Form 22 (Doc #{$doc22['document_id']}). Pinagkalooban ng CFA ang nagrereklamo at barred ang anumang ganting-sakdal ng inirereklamo.";
-                $this->logCaseHistory($caseId, 'CFA Issued', $hist, $actorUserId);
-                $this->audit->log($actorUserId, "Respondent unjustified absence for Case #{$hearing['case_number']}. CFA Issued with KP Form 20, 20-B, and 22.", 'Hearings', $caseId);
-
-                // 4. Send notifications to Complainant and Lupon
-                try {
-                    require_once __DIR__ . '/NotificationService.php';
-                    $notifService = new NotificationService();
-                    $notifTitle = "CFA Issued & Counterclaim Barred";
-                    $notifMsg = "Pinagkalooban na ng Certificate to File Action (KP Form 20) ang nagrereklamo para sa Usapin Blg. {$hearing['case_number']}, at barred ang anumang ganting-sakdal ng inirereklamo (KP Form 20-B / KP Form 22) dahil sa hindi makatwirang pagliban.";
-                    $actionUrl = "../cases/case-details.php?id=" . $caseId;
-
-                    // Notify Lupon / Staff
-                    $notifService->notifyRoles(['Administrator', 'Lupon Clerk'], $notifTitle, $notifMsg, $actorUserId, 'warning', $actionUrl, $caseId);
-                    $notifService->notifyCaseMembers($caseId, $notifTitle, $notifMsg, $actorUserId, 'warning', $actionUrl);
-
-                    // Notify Complainant user account if exists
-                    $compUserStmt = $this->conn->prepare("
-                        SELECT u.user_id 
-                        FROM users u
-                        INNER JOIN complaint_parties cp ON cp.resident_id = u.resident_id
+        if ($startedTrans && !$justified) {
+            try {
+                require_once __DIR__ . '/NotificationService.php';
+                $notifications = new NotificationService();
+                $url = '../cases/case-details.php?id=' . $caseId;
+                $title = $action === 'CFA Issued' ? 'CFA Issued & Counterclaim Barred' : 'Case Dismissed and Barred';
+                $notifications->notifyRoles(['Administrator', 'Lupon Clerk'], $title, $message, $actorUserId, 'warning', $url, $caseId);
+                $notifications->notifyCaseMembers($caseId, $title, $message, $actorUserId, 'warning', $url);
+                if ($action === 'CFA Issued') {
+                    $complainants = $this->conn->prepare("
+                        SELECT u.user_id FROM users u
+                        JOIN complaint_parties cp ON cp.resident_id = u.resident_id
                         WHERE cp.complaint_id = ? AND cp.party_type = 'Complainant'
                         UNION
-                        SELECT created_by AS user_id FROM complaints WHERE complaint_id = ? AND created_by IS NOT NULL
+                        SELECT created_by FROM complaints WHERE complaint_id = ? AND created_by IS NOT NULL
                     ");
-                    $compUserStmt->execute([$complaintId, $complaintId]);
-                    $compUsers = $compUserStmt->fetchAll(PDO::FETCH_COLUMN);
-                    foreach ($compUsers as $cuId) {
-                        if ($cuId) {
-                            $notifService->notifyUser((int) $cuId, $notifTitle, $notifMsg, $actorUserId, 'success', $actionUrl, $caseId);
-                        }
+                    $complainants->execute([$hearing['complaint_id'], $hearing['complaint_id']]);
+                    foreach ($complainants->fetchAll(PDO::FETCH_COLUMN) as $recipient) {
+                        $notifications->notifyUser((int) $recipient, $title, $message, $actorUserId, 'success', $url, $caseId);
                     }
-                } catch (Throwable $ne) {
-                    error_log('Failed to dispatch respondent default notifications: ' . $ne->getMessage());
                 }
+            } catch (Throwable $e) {
+                error_log('Failed to dispatch show-cause outcome notifications: ' . $e->getMessage());
             }
-
         }
-
-
-
-        // Save Show-Cause Evaluation record
-
-        $insEval = $this->conn->prepare("
-
-            INSERT INTO show_cause_evaluations (
-
-                hearing_id, case_id, party_type, form_type, is_justified,
-
-                justification_category, justification_notes, rescheduled_hearing_id,
-
-                action_taken, evaluated_by
-
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-
-        ");
-
-        if ($isBoth) {
-            $insEval->execute([
-                $hearingId,
-                $caseId,
-                'Complainant',
-                'KP Form 18',
-                $isJustified,
-                $justificationCategory,
-                $justificationNotes ?: null,
-                $rescheduledHearingId,
-                $actionTaken,
-                $actorUserId,
-            ]);
-            $insEval->execute([
-                $hearingId,
-                $caseId,
-                'Respondent',
-                'KP Form 19',
-                $isJustified,
-                $justificationCategory,
-                $justificationNotes ?: null,
-                $rescheduledHearingId,
-                $actionTaken,
-                $actorUserId,
-            ]);
-        } else {
-            $insEval->execute([
-                $hearingId,
-                $caseId,
-                $partyType,
-                $formType,
-                $isJustified,
-                $justificationCategory,
-                $justificationNotes ?: null,
-                $rescheduledHearingId,
-                $actionTaken,
-                $actorUserId,
-            ]);
-        }
-
-
-
-        // Mark the Show Cause hearing as completed
-
-        $origId = !empty($hearing['rescheduled_from_id']) ? (int) $hearing['rescheduled_from_id'] : 0;
-        if ($isBoth && $origId) {
-            $compH = $this->conn->prepare("
-                UPDATE hearings 
-                SET status = 'Completed' 
-                WHERE hearing_id = ? 
-                   OR (case_id = ? AND rescheduled_from_id = ? AND hearing_type IN ('Show Cause (Complainant)', 'Show Cause (Respondent)'))
-            ");
-            $compH->execute([$hearingId, $caseId, $origId]);
-        } else {
-            $compH = $this->conn->prepare("UPDATE hearings SET status = 'Completed' WHERE hearing_id = ?");
-            $compH->execute([$hearingId]);
-        }
-
-
 
         return [
-
             'success' => true,
-
-            'is_justified' => (bool) $isJustified,
-
-            'action_taken' => $actionTaken,
-
-            'message' => $clientMessage,
-
+            'is_justified' => $justified,
+            'action_taken' => $action,
+            'message' => $message,
             'rescheduled_hearing_id' => $rescheduledHearingId,
-
         ];
-
     }
-
 
 
     /**
@@ -1193,7 +1034,8 @@ class ShowCauseService
 
         ?string $venue,
 
-        int $actorUserId
+        int $actorUserId,
+        bool $strictPdf = false
 
     ): array {
 
@@ -1228,7 +1070,7 @@ class ShowCauseService
 
 
         $safeCaseNum = preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) ($hearing['case_number'] ?? ('case_' . $caseId)));
-        $fileName = 'kp_form_' . strtolower(str_replace(' ', '_', $formCode)) . '_' . $caseId . '_' . time() . '.pdf';
+        $fileName = 'kp_form_' . strtolower(str_replace(' ', '_', $formCode)) . '_' . $caseId . '_' . bin2hex(random_bytes(8)) . '.pdf';
         $relativeDir = 'storage/generated-documents/' . date('Y') . '/' . $safeCaseNum;
         $fullDir = dirname(__DIR__, 2) . '/' . $relativeDir;
         if (!is_dir($fullDir)) {
@@ -1253,11 +1095,21 @@ class ShowCauseService
                 ];
                 $this->pdfService->generateNotice($formCode, $pdfData, $absolutePath);
             } catch (Throwable $e) {
+                if ($strictPdf) {
+                    if (is_file($absolutePath)) {
+                        unlink($absolutePath);
+                    }
+                    throw $e;
+                }
                 error_log("Failed to render PDF for {$formCode}: " . $e->getMessage());
             }
         }
 
 
+
+        if ($strictPdf && !is_file($absolutePath)) {
+            throw new RuntimeException("Unable to generate {$formCode}.");
+        }
 
         // Insert into generated_documents
 
@@ -1269,17 +1121,19 @@ class ShowCauseService
 
         ");
 
-        $insDoc->execute([
-
-            $caseId,
-
-            $templateId,
-
-            $actorUserId,
-
-            $relativePath,
-
-        ]);
+        try {
+            $insDoc->execute([
+                $caseId,
+                $templateId,
+                $actorUserId,
+                $relativePath,
+            ]);
+        } catch (Throwable $e) {
+            if (is_file($absolutePath)) {
+                unlink($absolutePath);
+            }
+            throw $e;
+        }
 
         $docId = (int) $this->conn->lastInsertId();
 
@@ -1461,13 +1315,13 @@ class ShowCauseService
 
             SELECT delivery_id FROM summon_deliveries
 
-            WHERE hearing_id = ? AND party_type = ?
+            WHERE hearing_id = ? AND party_type = ? AND resident_id = ? AND form_type = ?
 
             LIMIT 1
 
         ");
 
-        $check->execute([$hearingId, $partyType]);
+        $check->execute([$hearingId, $partyType, $residentId, $formType]);
 
         $existingId = $check->fetchColumn();
 
@@ -1545,13 +1399,11 @@ class ShowCauseService
 
         ?string $compReason = null,
 
-        ?string $respReason = null
+        ?string $respReason = null,
+
+        array $partiesInput = []
 
     ): void {
-
-        $parties = $this->getCaseParties($complaintId);
-
-
 
         $upsertAtt = $this->conn->prepare("
 
@@ -1571,11 +1423,28 @@ class ShowCauseService
 
         ");
 
+        if (!empty($partiesInput)) {
+            foreach ($partiesInput as $pItem) {
+                $rId = (int) ($pItem['resident_id'] ?? 0);
+                if ($rId <= 0) continue;
+                $st = trim((string) ($pItem['attendance_status'] ?? 'Pending Verification'));
+                $isJust = ($st === 'Excused' || (!empty($pItem['is_justified']) && $st !== 'Absent')) ? 1 : 0;
+                $justReason = trim((string) ($pItem['justification_reason'] ?? $pItem['remarks'] ?? ''));
+                if ($isJust && $justReason === '') {
+                    $justReason = 'Excused Non-Appearance';
+                } elseif (!$isJust) {
+                    $justReason = $justReason !== '' ? $justReason : null;
+                }
+                $upsertAtt->execute([$hearingId, $rId, $st, $isJust, $justReason, $actorUserId]);
+            }
+            return;
+        }
 
+        $parties = $this->getCaseParties($complaintId);
 
         if (isset($parties['complainant']['resident_id'])) {
 
-            $isJust = ($complainantAtt === 'Excused' || ($compReason !== null && $compReason !== '')) ? 1 : 0;
+            $isJust = ($complainantAtt === 'Excused') ? 1 : 0;
 
             $justReason = $compReason ?: ($complainantAtt === 'Excused' ? 'Excused Non-Appearance' : null);
 
@@ -1597,11 +1466,9 @@ class ShowCauseService
 
         }
 
-
-
         if (isset($parties['respondent']['resident_id'])) {
 
-            $isJust = ($respondentAtt === 'Excused' || ($respReason !== null && $respReason !== '')) ? 1 : 0;
+            $isJust = ($respondentAtt === 'Excused') ? 1 : 0;
 
             $justReason = $respReason ?: ($respondentAtt === 'Excused' ? 'Excused Non-Appearance' : null);
 
@@ -1627,7 +1494,7 @@ class ShowCauseService
 
 
 
-    public function getCaseParties(int $complaintId): array
+    public function getCaseParties(int $complaintId, ?int $complainantId = null, ?int $respondentId = null): array
 
     {
 
@@ -1657,11 +1524,11 @@ class ShowCauseService
 
         foreach ($rows as $r) {
 
-            if ($r['party_type'] === 'Complainant' && !$result['complainant']) {
+            if ($r['party_type'] === 'Complainant' && (!$result['complainant'] || (int) $r['resident_id'] === $complainantId)) {
 
                 $result['complainant'] = $r;
 
-            } elseif ($r['party_type'] === 'Respondent' && !$result['respondent']) {
+            } elseif ($r['party_type'] === 'Respondent' && (!$result['respondent'] || (int) $r['resident_id'] === $respondentId)) {
 
                 $result['respondent'] = $r;
 
