@@ -730,6 +730,41 @@ async function renderExpandedCaseView(caseId) {
             ? (data.hearings.find(h => Number(h.hearing_id) === Number(urlHearingId)) || data.hearings[0])
             : data.hearings[0];
         window.activeExpandedHearingData = activeHearing;
+        if (activeHearing.replacement_notices?.length) {
+            const rows = activeHearing.replacement_notices;
+            container.innerHTML = `
+                <div class="delivery-card">
+                    <h3>Rescheduled hearing notices</h3>
+                    <p>${escapeGpsHtml(activeHearing.service_notice)}</p>
+                    <ul class="paanyaya-prep-list">
+                        ${rows.map(notice => `
+                            <li>
+                                <div>
+                                    <strong>${escapeGpsHtml(notice.notice_recipient)}</strong>
+                                    · ${escapeGpsHtml(notice.party_type)} · ${escapeGpsHtml(notice.form_type)}
+                                    <div>${escapeGpsHtml(formatDateTime(notice.appointment_at))} · ${escapeGpsHtml(notice.delivery_status)}</div>
+                                </div>
+                                <div>
+                                    <a href="../../../backend/api/documents/kp-form.php?document_id=${Number(notice.document_id)}" target="_blank" rel="noopener">Preview notice</a>
+                                    <a href="../../../backend/api/documents/kp-form.php?document_id=${Number(notice.document_id)}&amp;pdf=1" target="_blank" rel="noopener">Open printable PDF</a>
+                                    ${notice.delivery_status === 'Superseded' ? '' :
+                                        `<button type="button" class="btn-log-return" data-replacement-return="${Number(notice.delivery_id)}">${notice.delivery_status === 'Pending' ? 'Log return' : 'Edit return'}</button>`}
+                                    ${notice.proof_file_path ? `<a href="../../../${escapeGpsHtml(notice.proof_file_path)}" target="_blank" rel="noopener">View proof</a>` : ''}
+                                </div>
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>`;
+            container.querySelectorAll('[data-replacement-return]').forEach(button => {
+                button.addEventListener('click', () => {
+                    const notice = rows.find(row => Number(row.delivery_id) === Number(button.dataset.replacementReturn));
+                    openOfficerReturnModal(notice.party_type, Number(notice.resident_id), activeHearing.hearing_id, caseId,
+                        notice.delivery_status, notice.recipient_name || notice.notice_recipient, notice.relationship || '',
+                        notice.remarks || '', notice.unserved_reason || '', Number(notice.attempt_number), Number(notice.delivery_id), notice);
+                });
+            });
+            return;
+        }
         const isPaanyayaCase = Boolean(currentCaseItem.is_paanyaya || activeHearing.is_paanyaya);
         const isConciliation = (activeHearing.hearing_type === 'Conciliation' || currentCaseItem.case_status === 'Conciliation');
         const canAccessCaseDetails = Number(window.AGAP_USER_ROLE_ID || window.AGAP_SETTINGS?.user_role_id || 0) !== 4;
@@ -1662,12 +1697,14 @@ function populateDrawerAttemptHistory(partyType, caseId, activeAttemptNum) {
 }
 window.populateDrawerAttemptHistory = populateDrawerAttemptHistory;
 
-function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason, attemptNumber = 1, deliveryId = null) {
+function openOfficerReturnModal(partyType, residentId, hearingId, caseId, currentStatus, currentRecipient, currentRelationship, currentNotes, currentUnservedReason, attemptNumber = 1, deliveryId = null, replacement = null) {
+    if (currentStatus === 'Superseded') return;
     const modal = document.getElementById('officerReturnModal');
     const overlay = document.getElementById('officerReturnDrawerOverlay');
     if (!modal) return;
 
     document.getElementById('returnCaseId').value = caseId || '';
+    document.getElementById('returnDocumentId').value = replacement?.document_id || '';
     document.getElementById('returnHearingId').value = hearingId || '';
     document.getElementById('returnPartyType').value = partyType || 'Respondent';
     document.getElementById('returnResidentId').value = residentId || '';
@@ -1676,8 +1713,9 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     if (attemptInput) attemptInput.value = attemptNumber || 1;
 
     const deliveryIdInput = document.getElementById('returnDeliveryId');
-    const isEditMode = Boolean(deliveryId && deliveryId !== 'null' && Number(deliveryId) > 0);
-    if (deliveryIdInput) deliveryIdInput.value = isEditMode ? deliveryId : '';
+    const hasDelivery = Boolean(deliveryId && deliveryId !== 'null' && Number(deliveryId) > 0);
+    const isEditMode = hasDelivery && (!replacement || currentStatus !== 'Pending');
+    if (deliveryIdInput) deliveryIdInput.value = hasDelivery ? deliveryId : '';
 
     // Header Badges & Titles
     const caseItem = allLoadedSummonCases.find(c => Number(c.case_id) === Number(caseId)) || {};
@@ -1710,7 +1748,10 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     let stageBadgeText = '';
     let docBadgeText = '';
 
-    if (isPaanyaya) {
+    if (replacement) {
+        docBadgeText = replacement.form_type;
+        stageBadgeText = `${partyType} · Rescheduled hearing`;
+    } else if (isPaanyaya) {
         docBadgeText = `${caseItem.paanyaya_stage_type || 'Paanyaya'} Invitation`;
         stageBadgeText = `Paanyaya Stage · Invitation Attempt ${attemptNumber} of ${maxAtt}`;
     } else if (isConciliationStage) {
@@ -1763,7 +1804,7 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     const servedAtInput = document.getElementById('returnServedAt');
     if (servedAtInput) {
-        servedAtInput.value = nowLocal;
+        servedAtInput.value = replacement?.served_at ? replacement.served_at.replace(' ', 'T').slice(0, 16) : nowLocal;
         servedAtInput.max = nowLocal;
     }
 
@@ -1795,7 +1836,7 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
 
     const failNotesInput = document.getElementById('returnFailureNotes');
     if (failNotesInput) {
-        failNotesInput.value = (String(currentStatus || '').toLowerCase().startsWith('unserved') ? (currentNotes || '') : '');
+        failNotesInput.value = replacement?.failure_notes || (String(currentStatus || '').toLowerCase().startsWith('unserved') ? (currentNotes || '') : '');
     }
 
     const proofImgInput = document.getElementById('returnProofImage');
@@ -1805,7 +1846,7 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
         const stateObj = window.activePartyAttemptsState?.[`${caseId}_${partyType || 'Respondent'}`];
         const attempts = stateObj?.attempts || [];
         const activeAtt = attempts.find(a => Number(a.attempt_number) === Number(attemptNumber || 1)) || attempts[attempts.length - 1];
-        const targetServerId = Number(activeAtt?.served_by || window.AGAP_CURRENT_USER_ID || 0);
+        const targetServerId = Number(replacement?.served_by || (!replacement && activeAtt?.served_by) || window.AGAP_CURRENT_USER_ID || 0);
         if (targetServerId && Array.from(servedBySelect.options).some(o => Number(o.value) === targetServerId)) {
             servedBySelect.value = String(targetServerId);
         } else if (window.AGAP_CURRENT_USER_ID && Array.from(servedBySelect.options).some(o => Number(o.value) === Number(window.AGAP_CURRENT_USER_ID))) {
@@ -1821,7 +1862,12 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
     }
 
     handleDeliveryStatusChange();
-    populateDrawerAttemptHistory(partyType || 'Respondent', caseId, attemptNumber || 1);
+    if (replacement) {
+        const history = document.getElementById('drawerAttemptStepperSection');
+        if (history) history.style.display = 'none';
+    } else {
+        populateDrawerAttemptHistory(partyType || 'Respondent', caseId, attemptNumber || 1);
+    }
 
     modal.classList.add('is-open');
     if (overlay) overlay.classList.add('is-open');
@@ -2041,6 +2087,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (shouldOpenReturn) {
                 setTimeout(() => {
                     const activeHearing = window.activeExpandedHearingData || {};
+                    if (activeHearing.replacement_notices?.length) return;
                     const respAttempts = activeHearing.respondent_attempts || [];
                     const compAttempts = activeHearing.complainant_attempts || [];
                     const compDeliv = activeHearing.complainant_delivery || activeHearing.deliveries?.find(d => d.party_type === 'Complainant');

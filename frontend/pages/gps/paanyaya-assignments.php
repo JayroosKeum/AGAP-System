@@ -16,7 +16,7 @@ $serviceCsrf = $escapeService(CsrfService::token());
         <?php foreach ($paanyayaAssignments as $assignment): ?>
             <?php
             $attemptId = (int) $assignment['attempt_id'];
-            $pending = $assignment['outcome'] === null;
+            $pending = $assignment['is_current'] && $assignment['outcome'] === null;
             $parties = $pending ? json_decode($assignment['verified_parties'], true) : [];
             ?>
             <details class="paanyaya-prep-preview">
@@ -24,7 +24,8 @@ $serviceCsrf = $escapeService(CsrfService::token());
                     <?= $escapeService($assignment['intake_reference'] ?: 'Intake #' . $assignment['complaint_id']) ?>
                     · Paanyaya <?= (int) $assignment['invitation_number'] ?>
                     · <?= $escapeService($assignment['complaint_title']) ?>
-                    · <?= $escapeService($assignment['outcome'] ?? 'Pending delivery') ?>
+                    · <?= $escapeService($assignment['outcome'] ?? ($pending ? 'Pending delivery' : 'Superseded')) ?>
+                    <?php if (!$assignment['is_current'] && $assignment['outcome'] !== null): ?> · Superseded invitation<?php endif; ?>
                 </summary>
                 <?php if ($pending): ?>
                     <ul class="paanyaya-prep-list">
@@ -60,6 +61,10 @@ $serviceCsrf = $escapeService(CsrfService::token());
                         <button type="submit" class="btn-create">Record delivery result</button>
                     </form>
                 <?php else: ?>
+                    <p>Dialogue <?= $escapeService(date('M j, Y, g:i a', strtotime($assignment['appointment_at']))) ?><?= $assignment['venue'] ? ' · ' . $escapeService($assignment['venue']) : '' ?></p>
+                    <?php if ($assignment['has_pdf']): ?>
+                        <a href="<?= $serviceUrl ?>?view=invitation&amp;attempt_id=<?= $attemptId ?>" target="_blank" rel="noopener">View invitation PDF</a>
+                    <?php endif; ?>
                     <?php if ($assignment['notes']): ?>
                         <p><?= nl2br($escapeService($assignment['notes'])) ?></p>
                     <?php endif; ?>

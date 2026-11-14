@@ -22,6 +22,32 @@ $asPdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
 $isPreview = isset($_GET['preview']) && in_array((string) $_GET['preview'], ['1', 'true'], true);
 
 if ($documentId) {
+    $notice = $conn->prepare('SELECT n.form_data, dt.template_name, sd.delivery_status
+        FROM hearing_reschedule_notices n
+        JOIN generated_documents gd USING (document_id)
+        JOIN document_templates dt USING (template_id)
+        LEFT JOIN summon_deliveries sd USING (document_id)
+        WHERE n.document_id = ?');
+    $notice->execute([$documentId]);
+    $replacement = $notice->fetch(PDO::FETCH_ASSOC);
+    if ($replacement) {
+        $data = json_decode($replacement['form_data'], true, 512, JSON_THROW_ON_ERROR);
+        $pdfService = new PDFService($conn);
+        header('Cache-Control: private, no-store');
+        if ($asPdf) {
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="hearing-notice-' . $documentId . '.pdf"');
+            echo $pdfService->noticePdf($replacement['template_name'], $data);
+        } else {
+            header('Content-Type: text/html; charset=utf-8');
+            $header = '<div style="padding: 12px; text-align: center; background: #fff">'
+                . ($replacement['delivery_status'] === 'Superseded' ? 'Superseded notice · ' : '')
+                . '<a href="?document_id=' . $documentId . '&amp;pdf=1">Open printable PDF</a></div>';
+            echo str_replace('<body>', '<body>' . $header, $pdfService->getFormHtml($replacement['template_name'], $data));
+        }
+        exit;
+    }
+
     // If document_id is specified, lookup document joined with cases, pangkat_groups, and hearings
     $docStmt = $conn->prepare("
         SELECT gd.*, dt.template_name, c.case_id, c.case_number, c.complaint_id,

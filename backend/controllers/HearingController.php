@@ -1250,11 +1250,16 @@ class HearingController
         $db = (new Database())->connect();
 
         if ($sessionSource === 'paanyaya') {
-            $pStmt = $db->prepare('SELECT session_id, complainant_attended, respondent_attended, queue_status FROM paanyaya_sessions WHERE session_id = ?');
+            $pStmt = $db->prepare('SELECT session_id, complaint_id, attempt_number, scheduled_date, scheduled_time,
+                complainant_attended, respondent_attended, queue_status FROM paanyaya_sessions WHERE session_id = ?');
             $pStmt->execute([$hearingId]);
             $session = $pStmt->fetch(PDO::FETCH_ASSOC);
             if (!$session) {
                 return ['success' => false, 'message' => 'Paanyaya session not found.'];
+            }
+            require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
+            if (!PaanyayaServiceDelivery::canOpenDialogue($db, $session)) {
+                return ['success' => false, 'message' => 'Confirm delivery of the current invitation before checking in parties.'];
             }
             if (in_array($session['queue_status'], ['In_Session', 'Concluded'], true)) {
                 return ['success' => false, 'message' => 'Party check-in cannot be changed after a session has started or concluded.'];
@@ -1268,8 +1273,22 @@ class HearingController
             $isBoth = ($compIn && $respIn);
             $newQueue = $isBoth ? 'Ready' : ($session['queue_status'] === 'Standby' ? 'Standby' : 'Waiting');
 
-            $upd = $db->prepare("UPDATE paanyaya_sessions SET {$col} = ?, queue_status = ? WHERE session_id = ?");
-            $upd->execute([$newVal, $newQueue, $hearingId]);
+            $upd = $db->prepare("UPDATE paanyaya_sessions SET {$col} = ?, queue_status = ?
+                WHERE session_id = ? AND scheduled_date = ? AND scheduled_time = ?
+                AND queue_status NOT IN ('In_Session', 'Concluded')
+                AND NOT EXISTS (
+                    SELECT 1 FROM paanyaya_preparations p
+                    WHERE p.complaint_id = paanyaya_sessions.complaint_id AND p.invitation_number = paanyaya_sessions.attempt_number
+                      AND NOT EXISTS (
+                        SELECT 1 FROM paanyaya_service_attempts a WHERE a.complaint_id = p.complaint_id
+                          AND a.invitation_number = p.invitation_number AND a.outcome = 'Delivered'
+                          AND a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . "
+                      )
+                )");
+            $upd->execute([$newVal, $newQueue, $hearingId, $session['scheduled_date'], $session['scheduled_time']]);
+            if (!$upd->rowCount() && ($session[$col] !== $newVal || $session['queue_status'] !== $newQueue)) {
+                return ['success' => false, 'message' => 'The Paanyaya session changed. Reload the docket and try again.'];
+            }
 
             return [
                 'success' => true,
@@ -1506,12 +1525,18 @@ class HearingController
         if ($sessionSource === 'paanyaya') {
             try {
                 $db->beginTransaction();
-                $pStmt = $db->prepare('SELECT session_id, scheduled_date, venue, complainant_attended, respondent_attended, queue_status FROM paanyaya_sessions WHERE session_id = ? FOR UPDATE');
+                $pStmt = $db->prepare('SELECT session_id, complaint_id, attempt_number, scheduled_date, venue,
+                    complainant_attended, respondent_attended, queue_status FROM paanyaya_sessions WHERE session_id = ? FOR UPDATE');
                 $pStmt->execute([$hearingId]);
                 $session = $pStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$session) {
                     $db->rollBack();
                     return ['success' => false, 'message' => 'Paanyaya session not found.'];
+                }
+                require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
+                if (!PaanyayaServiceDelivery::canOpenDialogue($db, $session)) {
+                    $db->rollBack();
+                    return ['success' => false, 'message' => 'Confirm delivery of the current invitation before starting dialogue.'];
                 }
                 if ($session['scheduled_date'] !== date('Y-m-d')) {
                     $db->rollBack();

@@ -196,6 +196,13 @@ class PDFService
         array $data,
         string $absolutePath
     ): void {
+        if (file_put_contents($absolutePath, $this->noticePdf($formCode, $data), LOCK_EX) === false) {
+            throw new RuntimeException('Unable to save the generated PDF.');
+        }
+    }
+
+    public function noticePdf(string $formCode, array $data): string
+    {
         $options = new Options();
         $options->set('isRemoteEnabled', false);
         $options->set('isHtml5ParserEnabled', true);
@@ -203,8 +210,7 @@ class PDFService
 
         $dompdf = new Dompdf($options);
         $dompdf->setPaper('A4', 'portrait');
-$htmlToLoad = $this->getFormHtml($formCode, $data, true);
-        $dompdf->loadHtml($htmlToLoad, 'UTF-8');
+        $dompdf->loadHtml($this->getFormHtml($formCode, $data, true), 'UTF-8');
         $dompdf->render();
 
         $pdf = $dompdf->output();
@@ -212,9 +218,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             throw new RuntimeException('The PDF renderer returned an empty document.');
         }
 
-        if (file_put_contents($absolutePath, $pdf, LOCK_EX) === false) {
-            throw new RuntimeException('Unable to save the generated PDF.');
-        }
+        return $pdf;
     }
 
     public function generateKp7(
@@ -593,11 +597,12 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         foreach ($respList as $r) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($r) . '</div>'; }
         for ($i = 0; $i < max(0, 2 - count($respList)); $i++) { $respLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px;">&nbsp;</div>'; }
 
+        $addressees = isset($data['notice_recipient']) ? [$data['notice_recipient']] : $respList;
         $targetRespLines = '';
-        if (empty($respList)) {
+        if (!$addressees) {
             $targetRespLines = '<div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>';
         } else {
-            foreach ($respList as $r) {
+            foreach ($addressees as $r) {
                 $targetRespLines .= '<div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px; font-weight: bold; font-size: 11pt;">' . $this->escape($r) . '</div>';
             }
         }
@@ -1154,6 +1159,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         <div style="font-size: 11.5pt; font-weight: bold;">(Conciliation Proceedings)</div>
     </div>
 
+    ' . $this->noticeRecipientLine($data) . '
     <div style="font-size: 11pt; line-height: 2.1; text-align: justify; margin-bottom: 25px;">
         <p style="text-indent: 40px; margin: 0;">
             Ikaw ay hinihilingang humarap sa Pangkat sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 150px; font-weight: bold;">' . $venue . '</span> araw ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hearingDay . ' ng ' . $hearingMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 50px; font-weight: bold; text-align: center;">' . $hearingYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hearingTime . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hearingMonth . '</span> para sa pagdinig ng usaping nakasaad sa itaas.
@@ -1222,13 +1228,14 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
             $compList[] = trim((string)$data['target_party_name']);
         }
 
+        $addressees = isset($data['notice_recipient']) ? [$data['notice_recipient']] : $compList;
         $compLinesHtml = '';
-        if (empty($compList)) {
+        if (!$addressees) {
             $compLinesHtml = '
                 <div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px;">&nbsp;</div>
             ';
         } else {
-            foreach ($compList as $idx => $cName) {
+            foreach ($addressees as $cName) {
                 $compLinesHtml .= '<div style="border-bottom: 1px solid #111; min-height: 20px; margin-bottom: 6px; font-weight: bold; font-size: 11pt;">' . $this->escape($cName) . '</div>';
             }
         }
@@ -1379,6 +1386,14 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         return $this->kp13Html($data, $forPdf);
     }
 
+    private function noticeRecipientLine(array $data): string
+    {
+        if (empty($data['notice_recipient'])) {
+            return '';
+        }
+        return '<p>Para kay: <strong>' . $this->escape($data['notice_recipient']) . '</strong></p>';
+    }
+
     private function kp13Html(array $data, bool $forPdf = false): string
     {
         $tumanaPath = __DIR__ . '/../../frontend/assets/images/tumana_logo.jpg';
@@ -1389,6 +1404,8 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
         $caseNumber = !empty($data['case_number']) ? $this->escape((string) $data['case_number']) : '__________';
         $title = !empty($data['complaint_title']) ? $this->escape((string) $data['complaint_title']) : '__________';
         $witnessNames = !empty($data['witness_names']) ? $this->escape((string) $data['witness_names']) : (!empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : '________________________');
+        $witnessSchedule = !empty($data['is_replacement_notice'])
+            ? '<p>' . $this->escape(date('M j, Y, g:i A', strtotime($data['hearing_date'])) . ' · ' . $data['venue']) . '</p>' : '';
 
         $compList = [];
         if (!empty($data['complainants']) && is_array($data['complainants'])) {
@@ -1495,6 +1512,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     <div style="margin-bottom: 16px; font-size: 11pt;">
         <div>Para kay/kina: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold;">' . $witnessNames . '</span></div>
         <div style="text-align: center; font-size: 10.5pt; margin-top: 4px; font-weight: bold;">Mga Testigo</div>
+        ' . $witnessSchedule . '
     </div>
 
     <div style="font-size: 11pt; line-height: 2.1; text-align: justify; margin-bottom: 25px;">
@@ -2259,7 +2277,9 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
                 if (trim($rName) !== '') $respList[] = trim($rName);
             }
         }
-        $targetParty = !empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : (!empty($compList) ? implode(' / ', $compList) : '________________________');
+        $addressee = $data['notice_recipient'] ?? $data['target_party_name'] ?? '';
+        $targetParty = $this->escape((string) ($addressee ?: (implode(' / ', $compList) ?: '________________________')));
+        $venue = $this->escape((string) ($data['venue'] ?? 'Tanggapan ng Punong Barangay'));
 
         $compLines = '';
         foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
@@ -2359,7 +2379,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
 
     <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 25px;">
         <p style="text-indent: 40px; margin: 0 0 16px 0;">
-            Ikaw ay hinihilingan na humarap sa akin/Pangkat <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">' . ($data['venue'] ?? 'Tanggapan ng Punong Barangay') . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">ika-' . $hDay . ' ng ' . $hMonth . ', ' . $hYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hTime . '</span> upang ipaliwanag kung bakit nabigo kang humarap para sa pamamagitan/pagkakasundo na itinakda noong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $missedDateStr . '</span> at kung bakit ang iyong reklamo ay hindi dapat ipawalang-saysay, ang katibayan upang humadlang sa paghahain ng sakdal sa hukuman/tanggapan ng pamahalaan ay di-dapat ipalabas, at ang paglilitis ng paglapastangan sa hukuman ay di-dapat ihain sa hukuman dahil sa pagkabigo o pagtangging humarap sa Punong Barangay/Pangkat ng Tagapagkasundo.
+            Ikaw ay hinihilingan na humarap sa akin/Pangkat <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">' . $venue . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 140px; font-weight: bold; text-align: center;">ika-' . $hDay . ' ng ' . $hMonth . ', ' . $hYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 80px; font-weight: bold; text-align: center;">' . $hTime . '</span> upang ipaliwanag kung bakit nabigo kang humarap para sa pamamagitan/pagkakasundo na itinakda noong <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $missedDateStr . '</span> at kung bakit ang iyong reklamo ay hindi dapat ipawalang-saysay, ang katibayan upang humadlang sa paghahain ng sakdal sa hukuman/tanggapan ng pamahalaan ay di-dapat ipalabas, at ang paglilitis ng paglapastangan sa hukuman ay di-dapat ihain sa hukuman dahil sa pagkabigo o pagtangging humarap sa Punong Barangay/Pangkat ng Tagapagkasundo.
         </p>
         <p style="text-indent: 40px; margin: 0;">
             Ipinagbibigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.
@@ -2406,7 +2426,10 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
                 if (trim($rName) !== '') $respList[] = trim($rName);
             }
         }
-        $targetParty = !empty($data['target_party_name']) ? $this->escape((string) $data['target_party_name']) : (!empty($respList) ? implode(' / ', $respList) : '________________________');
+        $addressee = $data['notice_recipient'] ?? $data['target_party_name'] ?? '';
+        $targetParty = $this->escape((string) ($addressee ?: (implode(' / ', $respList) ?: '________________________')));
+        $venue = $this->escape((string) ($data['venue'] ?? 'Tanggapan ng Punong Barangay'));
+        $venueLine = !empty($data['is_replacement_notice']) ? '<div>Lugar: <strong>' . $venue . '</strong></div>' : '';
 
         $compLines = '';
         foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
@@ -2506,6 +2529,7 @@ $htmlToLoad = $this->getFormHtml($formCode, $data, true);
     <div style="margin-bottom: 16px; font-size: 11pt;">
         <div>Para kay: <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 250px; font-weight: bold;">' . $targetParty . '</span></div>
         <div style="text-align: center; font-size: 10.5pt; margin-top: 4px;">(Mga) Inerereklamo</div>
+        ' . $venueLine . '
     </div>
 
     <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 25px;">

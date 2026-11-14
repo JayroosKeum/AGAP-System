@@ -93,6 +93,13 @@ if (!$hearing) {
     exit;
 }
 
+require_once __DIR__ . '/../../services/SummonDeliveryService.php';
+if ((new SummonDeliveryService($db))->hasReplacementNotices((int) $hearing['hearing_id'])) {
+    http_response_code(409);
+    echo json_encode(['success' => false, 'message' => 'Open Proof of Service for the recipient-specific replacement notices.']);
+    exit;
+}
+
 // Fetch parties
 $partiesStmt = $db->prepare("
     SELECT cp.party_type, cp.resident_id,
@@ -140,6 +147,7 @@ if ($documentId) {
         FROM generated_documents gd
         INNER JOIN document_templates dt ON dt.template_id = gd.template_id
         WHERE gd.document_id = ? AND gd.case_id = ?
+          AND NOT EXISTS (SELECT 1 FROM hearing_reschedule_notices n WHERE n.document_id = gd.document_id)
     ");
     $dStmt->execute([$documentId, $caseId]);
     $doc = $dStmt->fetch(PDO::FETCH_ASSOC);
@@ -151,6 +159,7 @@ if (!$doc) {
         FROM generated_documents gd
         INNER JOIN document_templates dt ON dt.template_id = gd.template_id
         WHERE gd.case_id = ? AND (dt.template_name = 'KP Form 9' OR dt.template_name LIKE '%Summon%')
+          AND NOT EXISTS (SELECT 1 FROM hearing_reschedule_notices n WHERE n.document_id = gd.document_id)
         ORDER BY gd.generated_at DESC, gd.document_id DESC
         LIMIT 1
     ");
@@ -189,6 +198,7 @@ $dKp8Stmt = $db->prepare("
     FROM generated_documents gd
     INNER JOIN document_templates dt ON dt.template_id = gd.template_id
     WHERE gd.case_id = ? AND dt.template_name = 'KP Form 8'
+      AND NOT EXISTS (SELECT 1 FROM hearing_reschedule_notices n WHERE n.document_id = gd.document_id)
     ORDER BY gd.generated_at DESC, gd.document_id DESC
     LIMIT 1
 ");
@@ -224,9 +234,9 @@ if (!$docKp8 || empty($docKp8['document_id'])) {
         $updDeliv8 = $db->prepare("
             UPDATE summon_deliveries
             SET document_id = ?
-            WHERE case_id = ? AND party_type = 'Complainant'
+            WHERE hearing_id = ? AND party_type = 'Complainant' AND delivery_status = 'Pending' AND document_id IS NULL
         ");
-        $updDeliv8->execute([$newDocId8, $caseId]);
+        $updDeliv8->execute([$newDocId8, $hearing['hearing_id']]);
 
         $docKp8 = [
             'document_id' => $newDocId8,
@@ -271,9 +281,9 @@ if (!$doc || empty($doc['document_id'])) {
         $updDeliv = $db->prepare("
             UPDATE summon_deliveries
             SET document_id = ?
-            WHERE case_id = ? AND party_type = 'Respondent' AND delivery_status = 'Pending'
+            WHERE hearing_id = ? AND party_type = 'Respondent' AND delivery_status = 'Pending' AND document_id IS NULL
         ");
-        $updDeliv->execute([$newDocId, $caseId]);
+        $updDeliv->execute([$newDocId, $hearing['hearing_id']]);
 
         $doc = [
             'document_id' => $newDocId,

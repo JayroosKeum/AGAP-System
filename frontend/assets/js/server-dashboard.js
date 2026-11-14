@@ -179,8 +179,11 @@
                     ${task.proof_file_path ? `<span>•</span><a href="../../../${escapeHtml(task.proof_file_path)}" target="_blank" style="color:#0284c7; font-weight:700;">Tingnan ang Litrato</a>` : ''}
                 </div>
 
-                <!-- 1-Tap Service Logger Quick Buttons -->
                 <div class="tap-actions-toolbar">
+                    ${task.replacement_document_id ? `
+                    <a class="btn-secondary" href="../../../backend/api/documents/kp-form.php?document_id=${Number(task.replacement_document_id)}&amp;pdf=1" target="_blank" rel="noopener">Open printable notice</a>
+                    <a class="btn-secondary" href="../gps/proof-service.php?case_id=${Number(task.case_id)}&amp;hearing_id=${Number(task.hearing_id)}">Open Proof of Service</a>
+                    ` : `
                     <button type="button" class="btn-tap-action btn-tap-served" data-action="served" data-id="${task.delivery_id}">
                         Served
                     </button>
@@ -193,6 +196,7 @@
                     <button type="button" class="btn-tap-action btn-tap-photo" data-action="photo" data-id="${task.delivery_id}">
                         Upload Proof
                     </button>
+                    `}
                 </div>
             `;
 

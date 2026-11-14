@@ -442,6 +442,7 @@ CREATE TABLE IF NOT EXISTS paanyaya_preparations (
     venue VARCHAR(255) NOT NULL,
     verified_parties JSON NOT NULL,
     document_pdf MEDIUMBLOB NOT NULL,
+    document_version CHAR(64) NULL,
     prepared_by INT UNSIGNED NULL,
     prepared_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     ready_by INT UNSIGNED NULL,
@@ -450,6 +451,18 @@ CREATE TABLE IF NOT EXISTS paanyaya_preparations (
     FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
     FOREIGN KEY (prepared_by) REFERENCES users (user_id) ON DELETE SET NULL,
     FOREIGN KEY (ready_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS paanyaya_invitation_versions (
+    complaint_id INT UNSIGNED NOT NULL,
+    invitation_number TINYINT UNSIGNED NOT NULL,
+    document_version CHAR(64) NOT NULL,
+    appointment_at DATETIME NOT NULL,
+    venue VARCHAR(255) NOT NULL,
+    document_pdf MEDIUMBLOB NOT NULL,
+    PRIMARY KEY (complaint_id, invitation_number, document_version),
+    CONSTRAINT fk_paanyaya_version_preparation FOREIGN KEY (complaint_id, invitation_number)
+        REFERENCES paanyaya_preparations (complaint_id, invitation_number) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS paanyaya_service_attempts (
@@ -1275,6 +1288,13 @@ CREATE TABLE IF NOT EXISTS generated_documents (
         FOREIGN KEY (template_id) REFERENCES document_templates (template_id) ON DELETE RESTRICT,
     CONSTRAINT fk_generated_documents_user
         FOREIGN KEY (generated_by) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS hearing_reschedule_notices (
+    document_id INT UNSIGNED PRIMARY KEY,
+    form_data JSON NOT NULL,
+    CONSTRAINT fk_reschedule_notice_document FOREIGN KEY (document_id)
+        REFERENCES generated_documents (document_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS proof_of_service (

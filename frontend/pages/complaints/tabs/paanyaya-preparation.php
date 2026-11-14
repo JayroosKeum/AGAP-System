@@ -4,7 +4,6 @@ $prepEndpoint = '../../../backend/api/paanyaya/preparation.php';
 $savedAppointment = $preparation['appointment_at'] ?? '';
 $formValues = $preparationFlash['old'] ?? [];
 $prepCsrf = $escapePrep(CsrfService::token());
-$latestService = $paanyayaServiceHistory[0] ?? null;
 $serviceOutcome = $latestService['outcome'] ?? null;
 $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
 ?>
@@ -22,7 +21,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
             <?= match (true) {
                 $paanyayaMinutes !== null => 'Dialogue recorded',
                 $serviceOutcome === 'Delivered' => 'Delivered',
-                !$preparation['ready_at'] => $preparation['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation',
+                !$preparation['ready_at'] => $preparation['rescheduled'] ? 'Revised invitation awaiting review' : ($preparation['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation'),
                 $serviceOutcome === 'Not Delivered' => 'Delivery unsuccessful',
                 $latestService !== null => 'Assigned for delivery',
                 default => 'Ready for Release',
@@ -55,15 +54,15 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
                 <input type="hidden" name="party_version" value="<?= PaanyayaPreparationService::partyVersion($preparationParties) ?>">
                 <div class="paanyaya-prep-fields">
                     <label>Appointment date
-                        <input type="date" name="appointment_date" min="<?= date('Y-m-d') ?>"
+                        <input type="date" name="appointment_date" min="<?= date('Y-m-d') ?>" <?= $preparation['rescheduled'] ? 'readonly' : '' ?>
                                value="<?= $escapePrep($formValues['appointment_date'] ?? substr($savedAppointment, 0, 10)) ?>" required>
                     </label>
                     <label>Appointment time
-                        <input type="time" name="appointment_time"
+                        <input type="time" name="appointment_time" <?= $preparation['rescheduled'] ? 'readonly' : '' ?>
                                value="<?= $escapePrep($formValues['appointment_time'] ?? substr($savedAppointment, 11, 5)) ?>" required>
                     </label>
                     <label>Venue
-                        <input type="text" name="venue" maxlength="255"
+                        <input type="text" name="venue" maxlength="255" <?= $preparation['rescheduled'] ? 'readonly' : '' ?>
                                value="<?= $escapePrep($formValues['venue'] ?? $preparation['venue'] ?? 'Tanggapan ng Barangay Tumana') ?>" required>
                     </label>
                 </div>
@@ -108,6 +107,8 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
                         <li>
                             <div>
                                 <strong><?= $escapePrep($attempt['outcome'] ?? 'Assigned for delivery') ?></strong>
+                                <?php if (!$attempt['is_current']): ?> · Superseded invitation<?php endif; ?>
+                                <div><?= $escapePrep(date('M j, Y, g:i a', strtotime($attempt['appointment_at']))) ?><?= $attempt['venue'] ? ' · ' . $escapePrep($attempt['venue']) : '' ?></div>
                                 <div><?= $escapePrep($attempt['server_name']) ?> · Released <?= $escapePrep($attempt['released_at']) ?> by <?= $escapePrep($attempt['released_by_name'] ?: 'Staff account') ?></div>
                                 <?php if ($attempt['recorded_at']): ?>
                                     <div>Result recorded <?= $escapePrep($attempt['recorded_at']) ?></div>
@@ -116,6 +117,9 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
                                     <div><?= nl2br($escapePrep($attempt['notes'])) ?></div>
                                 <?php endif; ?>
                             </div>
+                            <?php if ($attempt['has_pdf']): ?>
+                                <a href="<?= $serviceEndpoint ?>?view=invitation&amp;attempt_id=<?= (int) $attempt['attempt_id'] ?>" target="_blank" rel="noopener">View invitation PDF</a>
+                            <?php endif; ?>
                             <?php if ($attempt['proof_mime']): ?>
                                 <a href="<?= $serviceEndpoint ?>?view=proof&amp;attempt_id=<?= (int) $attempt['attempt_id'] ?>" target="_blank" rel="noopener">View proof image</a>
                             <?php endif; ?>
@@ -151,7 +155,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
                         <button type="submit" class="btn-case-primary"><?= $latestService ? 'Assign next attempt' : 'Release and assign' ?></button>
                     </form>
                 <?php else: ?>
-                    <p>The appointment has passed. Revise the invitation before assigning delivery.</p>
+                    <p><?= $preparation['rescheduled'] ? 'The appointment has passed. Reschedule it from the docket before assigning delivery.' : 'The appointment has passed. Revise the invitation before assigning delivery.' ?></p>
                 <?php endif; ?>
                 <form class="paanyaya-service-form" method="post" action="<?= $prepEndpoint ?>">
                     <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">

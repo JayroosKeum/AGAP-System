@@ -2335,6 +2335,7 @@ class Paanyaya
                 return ['success' => false, 'message' => 'Enter the minutes or attendance notes.'];
             }
             $data = [
+                'document_version' => $data['document_version'] ?? null,
                 'dialogue_date' => $date,
                 'actual_start_time' => $parsed->format('H:i'),
                 'complainant_attended' => $data['complainant_attended'],
@@ -2490,12 +2491,15 @@ class Paanyaya
                 $lock = $this->conn->prepare('SELECT status FROM complaints WHERE complaint_id = ? FOR UPDATE');
                 $lock->execute([$complaintId]);
                 $status = $lock->fetchColumn();
-                $delivery = $this->conn->prepare("SELECT MAX(recorded_at) FROM paanyaya_service_attempts
-                    WHERE complaint_id = ? AND invitation_number = ? AND outcome = 'Delivered'");
-                $delivery->execute([$complaintId, $number]);
-                $deliveredAt = $delivery->fetchColumn();
+                require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
+                $delivery = PaanyayaServiceDelivery::latestAttempt($this->conn, $complaintId, $number);
+                $deliveredAt = ($delivery['outcome'] ?? null) === 'Delivered' ? $delivery['recorded_at'] : null;
                 if ($status !== 'Pre-Docketed (Paanyaya)' || !$deliveredAt) {
                     throw new DomainException('Confirm delivery of this invitation before recording dialogue minutes.');
+                }
+                $submittedVersion = $data['document_version'];
+                if ($submittedVersion !== null && $submittedVersion !== $delivery['document_version']) {
+                    throw new DomainException('This invitation changed. Reload the complaint before recording dialogue minutes.');
                 }
                 if (strtotime($dialogueDate) < strtotime(date('Y-m-d H:i:00', strtotime($deliveredAt)))) {
                     throw new DomainException('The dialogue cannot be recorded as occurring before delivery.');

@@ -251,3 +251,5 @@ The [Barangay News migration](migrations/20261111_002_barangay_news.sql) is inde
 
 Apply the [complaint information requests migration](migrations/20261114_001_complaint_information_requests.sql)
 before deploying the resident reply and complaint timeline features to an existing database.
+
+Apply [Version rescheduled notices](migrations/20261114_002_version_rescheduled_notices.sql) before deploying the notice changes to an existing database. It adds storage for prior Paanyaya PDFs and the issued details of each formal replacement notice. Existing service attempts retain their saved versions and evidence. Earlier appointment details overwritten by previous releases cannot be reconstructed by this migration.

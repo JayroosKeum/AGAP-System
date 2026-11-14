@@ -9,6 +9,8 @@ require_once __DIR__ . '/MediationDeadlineService.php';
 require_once __DIR__ . '/NotificationService.php';
 require_once __DIR__ . '/OfficeLogisticsService.php';
 require_once __DIR__ . '/PDFService.php';
+require_once __DIR__ . '/PaanyayaPreparationService.php';
+require_once __DIR__ . '/SummonDeliveryService.php';
 require_once __DIR__ . '/ValidationService.php';
 require_once __DIR__ . '/../models/Hearing.php';
 require_once __DIR__ . '/../models/Setting.php';
@@ -1822,77 +1824,11 @@ class DocketScheduleService
             $newFmt = date('M j, Y g:i A', strtotime($startTime));
             $supersededNote = "Superseded by reschedule from {$oldFmt} ({$oldVenue}) to {$newFmt} ({$newVenue}). Reason: {$reason}";
 
-            // Supersede conflicting summon_deliveries and generated_documents for this hearing, and issue fresh ones
-            $existingDeliveriesStmt = $this->conn->prepare("
-                SELECT * FROM summon_deliveries
-                WHERE hearing_id = ? AND delivery_status <> 'Superseded'
-                ORDER BY delivery_id ASC
-                FOR UPDATE
-            ");
-            $existingDeliveriesStmt->execute([$hearingId]);
-            $existingDeliveries = $existingDeliveriesStmt->fetchAll(PDO::FETCH_ASSOC);
-
-            if (!empty($existingDeliveries)) {
-                $supDelivStmt = $this->conn->prepare("
-                    UPDATE summon_deliveries
-                    SET delivery_status = 'Superseded',
-                        remarks = TRIM(CONCAT(COALESCE(remarks, ''), ' [', ?, ']'))
-                    WHERE delivery_id = ?
-                ");
-                $supDocStmt = $this->conn->prepare("
-                    UPDATE generated_documents
-                    SET regeneration_reason = ?,
-                        file_path = ''
-                    WHERE document_id = ?
-                ");
-                $insNewDelivStmt = $this->conn->prepare("
-                    INSERT INTO summon_deliveries (
-                        hearing_id, case_id, party_type, resident_id, form_type, attempt_number,
-                        delivery_status, recipient_name, document_id, created_by, remarks
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?)
-                ");
-
-                // Create regenerated document record if linked
-                $tStmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = ? LIMIT 1");
-                $tStmt->execute([$hearingType === 'Conciliation' ? 'KP Form 12' : 'KP Form 9']);
-                $templateId = (int) ($tStmt->fetchColumn() ?: 3);
-
-                $insDocStmt = $this->conn->prepare("
-                    INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                    VALUES (?, ?, ?, '', 'For Service', ?)
-                ");
-                $insDocStmt->execute([$caseId, $templateId, $userId, "Rescheduled from {$oldFmt} to {$newFmt}: {$reason}"]);
-                $newDocId = (int) $this->conn->lastInsertId();
-
-                foreach ($existingDeliveries as $ed) {
-                    $supDelivStmt->execute([$supersededNote, (int) $ed['delivery_id']]);
-                    if (!empty($ed['document_id'])) {
-                        $supDocStmt->execute([$supersededNote, (int) $ed['document_id']]);
-                    }
-                    $nextAttempt = max(1, (int) ($ed['attempt_number'] ?? 1)) + 1;
-                    $newFormType = ($ed['form_type'] === 'KP Form 12') ? 'KP Form 12' : 'Notice of Rescheduled Hearing';
-                    $insNewDelivStmt->execute([
-                        $hearingId,
-                        $caseId,
-                        $ed['party_type'],
-                        $ed['resident_id'] ?: null,
-                        $newFormType,
-                        $nextAttempt,
-                        $ed['recipient_name'],
-                        $newDocId,
-                        $userId,
-                        "Rescheduled hearing notice ({$newFmt} at {$newVenue}). Reason: {$reason}"
-                    ]);
-                }
-            } else {
-                // Also mark any case-level generated_documents for KP Form 8/9/12 with regeneration_reason
-                $this->conn->prepare("
-                    UPDATE generated_documents gd
-                    INNER JOIN document_templates dt ON dt.template_id = gd.template_id
-                    SET gd.regeneration_reason = ?, gd.file_path = ''
-                    WHERE gd.case_id = ? AND dt.template_name IN ('KP Form 8', 'KP Form 9', 'KP Form 12')
-                ")->execute([$supersededNote, $caseId]);
-            }
+            (new SummonDeliveryService($this->conn))->replaceHearingNotices(
+                array_replace($existing, ['hearing_date' => $startTime, 'venue' => $newVenue]),
+                $userId,
+                $supersededNote
+            );
 
             // Record detailed case_history entry with old and new date, time, order, venue, presiding officer, and reason
             $historyRemarks = sprintf(
@@ -1958,7 +1894,8 @@ class DocketScheduleService
                 $reason
             );
             $this->notifications->notifyCaseMembers($caseId, $notifTitle, $notifMessage, $userId, 'warning');
-            $this->notifications->notifyRoles(['Administrator', 'Lupon Clerk'], $notifTitle, $notifMessage, $userId, 'info', "../cases/case-details.php?id={$caseId}", $caseId);
+            $this->notifications->notifyRoles(['Administrator', 'Lupon Clerk', 'Summons Server'], $notifTitle, $notifMessage, $userId, 'info',
+                "../gps/proof-service.php?case_id={$caseId}&hearing_id={$hearingId}", $caseId);
             if ($newPresidingOfficerId && $newPresidingOfficerId !== $userId) {
                 $this->notifications->notifyUser($newPresidingOfficerId, $notifTitle, $notifMessage, $userId, 'info', "../cases/case-details.php?id={$caseId}", $caseId);
             }
@@ -2025,6 +1962,7 @@ class DocketScheduleService
         array $data,
         int $userId
     ): array {
+        $newPdfPath = null;
         try {
             $this->conn->beginTransaction();
 
@@ -2066,7 +2004,8 @@ class DocketScheduleService
                 $psStmt = $this->conn->prepare("SELECT * FROM paanyaya_sessions WHERE session_id = ? FOR UPDATE");
                 $psStmt->execute([$sessionId]);
                 $linkedSession = $psStmt->fetch(PDO::FETCH_ASSOC);
-                if (!$linkedSession || (int) ($linkedSession['complaint_id'] ?? 0) !== $complaintId) {
+                if (!$linkedSession || (int) ($linkedSession['complaint_id'] ?? 0) !== $complaintId
+                    || (int) $linkedSession['attempt_number'] !== $attemptNumber) {
                     $this->conn->rollBack();
                     return [
                         'success' => false,
@@ -2078,11 +2017,11 @@ class DocketScheduleService
             } elseif ($complaintId > 0) {
                 $psStmt = $this->conn->prepare("
                     SELECT * FROM paanyaya_sessions
-                    WHERE complaint_id = ? AND (attempt_number = ? OR scheduled_date = ?)
+                    WHERE complaint_id = ? AND attempt_number = ?
                     ORDER BY session_id DESC LIMIT 1
                     FOR UPDATE
                 ");
-                $psStmt->execute([$complaintId, $attemptNumber, $pRow['scheduled_date']]);
+                $psStmt->execute([$complaintId, $attemptNumber]);
                 $linkedSession = $psStmt->fetch(PDO::FETCH_ASSOC) ?: null;
                 if ($linkedSession) {
                     $sessionId = (int) $linkedSession['session_id'];
@@ -2283,54 +2222,39 @@ class DocketScheduleService
                 $newPresidingOfficerName = (string) ($uStmt->fetchColumn() ?: $newPresidingOfficerName);
             }
 
-            // Regenerate official Paanyaya PDF file and remove/supersede old file on disk
-            $storageDir = __DIR__ . '/../../storage/paanyaya';
-            if (!is_dir($storageDir)) {
-                @mkdir($storageDir, 0777, true);
-            }
-            $pdfFileName = sprintf('paanyaya_%d_%s.pdf', $paanyayaId, date('Ymd_His'));
-            $pdfFullPath = $storageDir . '/' . $pdfFileName;
-            $pdfRelativePath = 'storage/paanyaya/' . $pdfFileName;
-            $newPdfBinary = null;
-
-            try {
-                $pdfService = new PDFService($this->conn);
-                $verifiedParties = !empty($prepRow['verified_parties']) ? json_decode((string) $prepRow['verified_parties'], true) : [];
-                $pdfOverrides = [
-                    'paanyaya_id' => $paanyayaId,
-                    'attempt_number' => $attemptNumber,
-                    'issued_date' => date('Y-m-d'),
-                    'invitation_date' => $targetDate,
-                    'invitation_time' => substr($normalizedTime, 0, 5),
-                    'venue' => $newVenue,
-                    'invitee_name' => $pRow['invitee_name'] ?? 'Inanyayahang Residente',
-                    'complainant_name' => $pRow['complainant_name'] ?? '',
-                    'salaysay' => $pRow['salaysay'] ?? '',
-                    'has_e_signature' => false,
-                ];
-                if (!empty($verifiedParties['complainants']) && is_array($verifiedParties['complainants'])) {
-                    $pdfOverrides['complainants'] = $verifiedParties['complainants'];
-                }
-                if (!empty($verifiedParties['respondents']) && is_array($verifiedParties['respondents'])) {
-                    $pdfOverrides['respondents'] = $verifiedParties['respondents'];
-                }
-                $pdfData = $pdfService->loadPaanyayaData($complaintId > 0 ? $complaintId : 0, $pdfOverrides);
-                $newPdfBinary = $pdfService->generatePaanyaya($complaintId > 0 ? $complaintId : 0, [
-                    'data' => $pdfData
-                ]);
-                if (is_string($newPdfBinary) && $newPdfBinary !== '') {
-                    @file_put_contents($pdfFullPath, $newPdfBinary, LOCK_EX);
-                }
-
-                // Remove old disk PDF if it exists so no stored file retains a conflicting appointment
-                if (!empty($pRow['pdf_path']) && $pRow['pdf_path'] !== $pdfRelativePath) {
-                    $oldFullPath = __DIR__ . '/../../' . ltrim((string) $pRow['pdf_path'], '/\\');
-                    if (is_file($oldFullPath)) {
-                        @unlink($oldFullPath);
-                    }
-                }
-            } catch (Throwable $pdfErr) {
-                error_log('DocketScheduleService::reschedulePaanyaya PDF generation warning: ' . $pdfErr->getMessage());
+            $prepLock = $this->conn->prepare("SELECT verified_parties FROM paanyaya_preparations
+                WHERE complaint_id = ? AND invitation_number = ? FOR UPDATE");
+            $prepLock->execute([$complaintId, $attemptNumber]);
+            $verifiedParties = $prepLock->fetchColumn();
+            $managed = $verifiedParties !== false;
+            $pdfService = new PDFService($this->conn);
+            $pdfData = $pdfService->loadPaanyayaData($complaintId, [
+                'paanyaya_id' => $paanyayaId,
+                'attempt_number' => $attemptNumber,
+                'issued_date' => date('Y-m-d'),
+                'invitation_date' => $targetDate,
+                'invitation_time' => substr($normalizedTime, 0, 5),
+                'venue' => $newVenue,
+                'invitee_name' => $pRow['invitee_name'] ?? 'Inanyayahang Residente',
+                'complainant_name' => $pRow['complainant_name'] ?? '',
+                'salaysay' => $pRow['salaysay'] ?? '',
+                'has_e_signature' => false,
+            ]);
+            $pdfRelativePath = null;
+            if ($managed) {
+                $parties = json_decode($verifiedParties, true, 512, JSON_THROW_ON_ERROR);
+                $pdfData['complainants'] = array_values(array_filter($parties, fn ($party) => $party['party_type'] === 'Complainant'));
+                $pdfData['respondents'] = array_values(array_filter($parties, fn ($party) => $party['party_type'] === 'Respondent'));
+                $pdfData['invitee_name'] = implode(' / ', array_column($pdfData['respondents'], 'full_name'));
+                $pdfData['intake_reference'] = $pdfData['complaint']['intake_reference'] ?? '';
+                $pdf = $pdfService->generatePaanyaya($complaintId, ['data' => $pdfData]);
+                (new PaanyayaPreparationService($this->conn))->reschedule(
+                    $complaintId, $attemptNumber, $userId, $targetDateTimeStr, $newVenue, $pdf
+                );
+            } else {
+                $pdfRelativePath = 'storage/paanyaya/paanyaya_' . $paanyayaId . '_' . bin2hex(random_bytes(8)) . '.pdf';
+                $newPdfPath = __DIR__ . '/../../' . $pdfRelativePath;
+                $pdfService->generatePaanyaya($complaintId, ['data' => $pdfData, 'save_path' => $newPdfPath]);
             }
 
             // 1. Update paanyayas
@@ -2340,7 +2264,7 @@ class DocketScheduleService
                     scheduled_time = ?,
                     venue = ?,
                     queue_order = ?,
-                    pdf_path = COALESCE(?, pdf_path),
+                    pdf_path = ?,
                     updated_at = NOW()
                 WHERE paanyaya_id = ?
             ")->execute([
@@ -2348,7 +2272,7 @@ class DocketScheduleService
                 $normalizedTime,
                 $newVenue,
                 $newOrder,
-                $newPdfBinary ? $pdfRelativePath : null,
+                $pdfRelativePath,
                 $paanyayaId
             ]);
 
@@ -2365,7 +2289,7 @@ class DocketScheduleService
                         scheduled_time = ?,
                         venue = ?,
                         queue_order = ?,
-                        pdf_path = COALESCE(?, pdf_path),
+                        pdf_path = ?,
                         presiding_officer_ids = ?,
                         session_remarks = TRIM(CONCAT(COALESCE(session_remarks, ''), ' ', ?)),
                         updated_at = NOW()
@@ -2375,7 +2299,7 @@ class DocketScheduleService
                     $normalizedTime,
                     $newVenue,
                     $newOrder,
-                    $newPdfBinary ? $pdfRelativePath : null,
+                    $pdfRelativePath,
                     $presOfficerJson,
                     $reschedRemark,
                     $sessionId
@@ -2384,8 +2308,8 @@ class DocketScheduleService
                 $insSession = $this->conn->prepare("
                     INSERT INTO paanyaya_sessions (
                         complaint_id, invitee_name, attempt_number, scheduled_date, scheduled_time,
-                        venue, salaysay, pdf_path, presiding_officer_ids, queue_order, session_remarks, scheduled_by
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        venue, pdf_path, presiding_officer_ids, queue_order, session_remarks, scheduled_by
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $insSession->execute([
                     $complaintId,
@@ -2394,8 +2318,7 @@ class DocketScheduleService
                     $targetDate,
                     $normalizedTime,
                     $newVenue,
-                    $pRow['salaysay'] ?? null,
-                    $newPdfBinary ? $pdfRelativePath : ($pRow['pdf_path'] ?? null),
+                    $pdfRelativePath,
                     $presOfficerJson,
                     $newOrder,
                     $reschedRemark,
@@ -2415,8 +2338,8 @@ class DocketScheduleService
                     $stageSet = ['invitation_date = ?', 'invitation_time = ?', 'venue = ?'];
                     $stageParams = [$targetDate, $normalizedTime, $newVenue];
                     if (array_key_exists('pdf_path', $stageRow)) {
-                        $stageSet[] = 'pdf_path = COALESCE(?, pdf_path)';
-                        $stageParams[] = $newPdfBinary ? $pdfRelativePath : null;
+                        $stageSet[] = 'pdf_path = ?';
+                        $stageParams[] = $pdfRelativePath;
                     }
                     if (array_key_exists('updated_at', $stageRow)) {
                         $stageSet[] = 'updated_at = NOW()';
@@ -2430,86 +2353,11 @@ class DocketScheduleService
                     ")->execute($stageParams);
                 }
 
-                // Reconcile paanyaya_preparations
-                $prepLock = $this->conn->prepare("
-                    SELECT * FROM paanyaya_preparations
-                    WHERE complaint_id = ? AND invitation_number = ?
-                    FOR UPDATE
-                ");
-                $prepLock->execute([$complaintId, $attemptNumber]);
-                $prepRow = $prepLock->fetch(PDO::FETCH_ASSOC);
-
-                $newDocVersion = null;
-                if ($prepRow) {
-                    if (!$newPdfBinary) {
-                        $pdfService = new PDFService($this->conn);
-                        $parties = json_decode((string) ($prepRow['verified_parties'] ?? '[]'), true) ?: [];
-                        $complainants = array_values(array_filter($parties, fn($pt) => ($pt['party_type'] ?? '') === 'Complainant'));
-                        $respondents = array_values(array_filter($parties, fn($pt) => ($pt['party_type'] ?? '') === 'Respondent'));
-                        $pData = $pdfService->loadPaanyayaData($complaintId, [
-                            'attempt_number' => $attemptNumber,
-                            'issued_date' => date('Y-m-d'),
-                            'invitation_date' => $targetDate,
-                            'invitation_time' => substr($normalizedTime, 0, 5),
-                            'venue' => $newVenue,
-                            'invitee_name' => implode(' / ', array_column($respondents, 'full_name')) ?: ($pRow['invitee_name'] ?? 'Inanyayahang Residente'),
-                            'has_e_signature' => false,
-                        ]);
-                        if ($complainants) $pData['complainants'] = $complainants;
-                        if ($respondents) $pData['respondents'] = $respondents;
-                        $pData['intake_reference'] = $pData['complaint']['intake_reference'] ?? '';
-                        $newPdfBinary = $pdfService->generatePaanyaya($complaintId, ['data' => $pData]);
-                    }
-                    $newDocVersion = hash('sha256', (string) $newPdfBinary);
-
-                    $updPrep = $this->conn->prepare("
-                        UPDATE paanyaya_preparations
-                        SET appointment_at = ?,
-                            venue = ?,
-                            document_pdf = ?,
-                            prepared_by = ?,
-                            prepared_at = CURRENT_TIMESTAMP
-                        WHERE complaint_id = ? AND invitation_number = ?
-                    ");
-                    $updPrep->bindValue(1, $targetDateTimeStr);
-                    $updPrep->bindValue(2, $newVenue);
-                    $updPrep->bindValue(3, $newPdfBinary, PDO::PARAM_LOB);
-                    $updPrep->bindValue(4, $userId, PDO::PARAM_INT);
-                    $updPrep->bindValue(5, $complaintId, PDO::PARAM_INT);
-                    $updPrep->bindValue(6, $attemptNumber, PDO::PARAM_INT);
-                    $updPrep->execute();
-                }
-
-                // Reconcile paanyaya_service_attempts so served invitations and ResidentComplaintTimeline stay 100% consistent
-                $attLock = $this->conn->prepare("
-                    SELECT * FROM paanyaya_service_attempts
-                    WHERE complaint_id = ? AND invitation_number = ?
-                    ORDER BY attempt_id ASC
-                    FOR UPDATE
-                ");
-                $attLock->execute([$complaintId, $attemptNumber]);
-                $serviceAttempts = $attLock->fetchAll(PDO::FETCH_ASSOC);
-
-                if (!empty($serviceAttempts)) {
-                    $updAtt = $this->conn->prepare("
-                        UPDATE paanyaya_service_attempts
-                        SET appointment_at = ?,
-                            document_version = COALESCE(?, document_version),
-                            notes = TRIM(CONCAT(COALESCE(notes, ''), ' ', ?))
-                        WHERE attempt_id = ?
-                    ");
-                    $supAttemptNote = sprintf('[Superseded appointment %s -> %s (%s): %s]', $oldFmt, $newFmt, $newVenue, $reason);
-                    foreach ($serviceAttempts as $sa) {
-                        $updAtt->execute([
-                            $targetDateTimeStr,
-                            $newDocVersion,
-                            $supAttemptNote,
-                            (int) $sa['attempt_id']
-                        ]);
-                        if (!empty($sa['assigned_to'])) {
-                            $assignedServerIds[(int) $sa['assigned_to']] = true;
-                        }
-                    }
+                if ($managed) {
+                    $servers = $this->conn->prepare('SELECT DISTINCT assigned_to FROM paanyaya_service_attempts
+                        WHERE complaint_id = ? AND invitation_number = ?');
+                    $servers->execute([$complaintId, $attemptNumber]);
+                    $assignedServerIds = $servers->fetchAll(PDO::FETCH_COLUMN);
                 }
 
                 // Reconcile legacy complaint_paanyaya if present
@@ -2518,14 +2366,16 @@ class DocketScheduleService
                     SET invitation_date = ?,
                         invitation_time = ?,
                         venue = ?,
-                        pdf_path = COALESCE(?, pdf_path)
-                    WHERE complaint_id = ? AND status = 'Scheduled'
+                        pdf_path = ?
+                    WHERE complaint_id = ? AND status = 'Scheduled' AND invitation_date = ? AND invitation_time = ?
                 ")->execute([
                     $targetDate,
                     $normalizedTime,
                     $newVenue,
-                    $newPdfBinary ? $pdfRelativePath : null,
-                    $complaintId
+                    $pdfRelativePath,
+                    $complaintId,
+                    $oldDate,
+                    date('H:i:s', strtotime($oldDateTime))
                 ]);
             }
 
@@ -2573,9 +2423,12 @@ class DocketScheduleService
                 $newPresidingOfficerName,
                 $reason
             );
+            if ($managed) {
+                $notifMessage .= ' The revised appointment is awaiting confirmed delivery.';
+            }
             $actionUrl = $complaintId > 0 ? "../complaints/complaint-details.php?id={$complaintId}&tab=paanyaya" : "../complaints/paanyaya-list.php";
             $this->notifications->notifyRoles(['Administrator', 'Lupon Clerk'], $notifTitle, $notifMessage, $userId, 'info', $actionUrl);
-            foreach (array_keys($assignedServerIds) as $sId) {
+            foreach ($assignedServerIds as $sId) {
                 $this->notifications->notifyUser((int) $sId, $notifTitle, $notifMessage, $userId, 'info', $actionUrl);
             }
             if ($newPresidingOfficerId && $newPresidingOfficerId !== $userId) {
@@ -2592,7 +2445,7 @@ class DocketScheduleService
                 'paanyaya_id' => $paanyayaId,
                 'session_id' => $sessionId ?: null,
                 'complaint_id' => $complaintId ?: null,
-                'pdf_path' => $newPdfBinary ? $pdfRelativePath : ($pRow['pdf_path'] ?? null),
+                'pdf_path' => $pdfRelativePath,
                 'old_schedule' => [
                     'date' => $oldDate,
                     'time' => $oldTime,
@@ -2614,11 +2467,15 @@ class DocketScheduleService
                     'presiding_officer_name' => $newPresidingOfficerName
                 ],
                 'reason' => $reason,
-                'message' => "Paanyaya appointment successfully rescheduled from {$oldFmt} to {$newFmt}."
+                'message' => "Paanyaya appointment rescheduled from {$oldFmt} to {$newFmt}."
+                    . ($managed ? ' Review and release the revised invitation for delivery.' : '')
             ];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
+                if ($newPdfPath !== null && is_file($newPdfPath)) {
+                    unlink($newPdfPath);
+                }
             }
             error_log('DocketScheduleService::reschedulePaanyaya error: ' . $e->getMessage());
             return [

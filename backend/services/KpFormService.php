@@ -2025,6 +2025,13 @@ class KpFormService
 
         $caseNumber = $case['case_number'];
 
+        if ($code === 'KP Form 12') {
+            require_once __DIR__ . '/SummonDeliveryService.php';
+            $noticeHearingId = $hearingId ?: (int) ($caseData['conc_hearing']['hearing_id'] ?? 0);
+            if ($noticeHearingId && (new SummonDeliveryService($this->conn))->hasReplacementNotices($noticeHearingId)) {
+                return ['success' => false, 'message' => 'Open Proof of Service for the recipient-specific replacement notices.'];
+            }
+        }
 
 
         // 1. Ensure template exists in document_templates
@@ -2365,7 +2372,8 @@ class KpFormService
 
             $chkDeliv = $this->conn->prepare("
                 SELECT delivery_id FROM summon_deliveries
-                WHERE hearing_id = ? AND party_type = ? AND (form_type = 'KP Form 12' OR form_type LIKE '%Notice%')
+                WHERE hearing_id = ? AND party_type = ? AND delivery_status <> 'Superseded'
+                    AND (form_type = 'KP Form 12' OR form_type LIKE '%Notice%')
                 LIMIT 1
             ");
             $updDeliv = $this->conn->prepare("
@@ -2373,7 +2381,8 @@ class KpFormService
                 SET document_id = ?,
                     form_type = 'KP Form 12',
                     remarks = COALESCE(?, remarks)
-                WHERE delivery_id = ?
+                WHERE delivery_id = ? AND delivery_status <> 'Superseded'
+                    AND NOT EXISTS (SELECT 1 FROM hearing_reschedule_notices n WHERE n.document_id = summon_deliveries.document_id)
             ");
 
             foreach ($parties as $p) {

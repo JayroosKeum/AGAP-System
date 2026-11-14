@@ -21,8 +21,91 @@ class SummonDeliveryService
     public function __construct(?PDO $conn = null)
     {
         $this->conn = $conn ?? (new Database())->connect();
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->conn);
         $this->deadlineService = new MediationDeadlineService($this->conn);
+    }
+
+    public function replaceHearingNotices(array $hearing, int $actor, string $reason): void
+    {
+        require_once __DIR__ . '/KpFormService.php';
+        $hearingId = (int) $hearing['hearing_id'];
+        $caseId = (int) $hearing['case_id'];
+        $parties = $this->conn->prepare("SELECT DISTINCT cp.resident_id, cp.party_type,
+                TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name
+            FROM complaint_parties cp JOIN residents r USING (resident_id)
+            WHERE cp.complaint_id = ? AND cp.party_type IN ('Complainant', 'Respondent', 'Witness')
+            ORDER BY cp.party_type, cp.resident_id");
+        $parties->execute([$hearing['complaint_id']]);
+        $recipients = $parties->fetchAll(PDO::FETCH_ASSOC);
+        $this->conn->prepare("UPDATE summon_deliveries
+            SET remarks = CONCAT_WS(' ', NULLIF(remarks, ''), CONCAT('[Previous result: ', delivery_status, ']'), ?),
+                delivery_status = 'Superseded'
+            WHERE hearing_id = ? AND delivery_status <> 'Superseded'")
+            ->execute([$reason, $hearingId]);
+
+        $forms = new KpFormService($this->conn);
+        $template = $this->conn->prepare("INSERT INTO document_templates (template_name, description)
+            VALUES (?, 'Replacement hearing notice') ON DUPLICATE KEY UPDATE template_id = LAST_INSERT_ID(template_id)");
+        $document = $this->conn->prepare("INSERT INTO generated_documents
+            (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+            VALUES (?, ?, ?, '', 'For Service', ?)");
+        $notice = $this->conn->prepare('INSERT INTO hearing_reschedule_notices (document_id, form_data) VALUES (?, ?)');
+        $delivery = $this->conn->prepare("INSERT INTO summon_deliveries
+            (hearing_id, case_id, party_type, resident_id, form_type, attempt_number,
+             delivery_status, recipient_name, document_id, created_by, remarks)
+            SELECT ?, ?, ?, ?, ?, COALESCE(MAX(attempt_number), 0) + 1, 'Pending', ?, ?, ?, ?
+            FROM summon_deliveries WHERE hearing_id = ? AND party_type = ? AND resident_id = ? AND form_type = ?");
+        $formData = [];
+        foreach ($recipients as $recipient) {
+            $partyType = $recipient['party_type'];
+            $hearingType = $hearing['hearing_type'];
+            $form = match (true) {
+                $partyType === 'Witness' => 'KP Form 13',
+                $hearingType === 'Conciliation' => 'KP Form 12',
+                $hearingType === "Show Cause ({$partyType})" => $partyType === 'Complainant' ? 'KP Form 18' : 'KP Form 19',
+                default => $partyType === 'Complainant' ? 'KP Form 8' : 'KP Form 9',
+            };
+            $formData[$form] ??= $forms->getFormData($form, $caseId, $hearingId);
+            $snapshot = array_replace($formData[$form], [
+                'hearing_date' => $hearing['hearing_date'],
+                'venue' => $hearing['venue'],
+                'notice_recipient' => $recipient['full_name'],
+                'is_replacement_notice' => true,
+            ]);
+            if ($partyType === 'Witness') {
+                $snapshot['witness_names'] = $recipient['full_name'];
+            }
+            $template->execute([$form]);
+            $document->execute([$caseId, (int) $this->conn->lastInsertId(), $actor, $reason]);
+            $documentId = (int) $this->conn->lastInsertId();
+            $notice->execute([$documentId, json_encode($snapshot, JSON_THROW_ON_ERROR)]);
+            $delivery->execute([
+                $hearingId, $caseId, $partyType, $recipient['resident_id'], $form, $recipient['full_name'],
+                $documentId, $actor, $reason, $hearingId, $partyType, $recipient['resident_id'], $form,
+            ]);
+        }
+    }
+
+    public function replacementNotices(int $hearingId): array
+    {
+        $statement = $this->conn->prepare("SELECT sd.delivery_id, sd.document_id, sd.resident_id, sd.party_type,
+                sd.form_type, sd.delivery_status, sd.attempt_number, sd.recipient_name, sd.relationship,
+                sd.remarks, sd.unserved_reason, sd.failure_notes, sd.proof_file_path, sd.served_at,
+                COALESCE(sd.served_by_user_id, sd.served_by) AS served_by,
+                JSON_UNQUOTE(JSON_EXTRACT(n.form_data, '$.notice_recipient')) AS notice_recipient,
+                JSON_UNQUOTE(JSON_EXTRACT(n.form_data, '$.hearing_date')) AS appointment_at
+            FROM summon_deliveries sd JOIN hearing_reschedule_notices n USING (document_id)
+            WHERE sd.hearing_id = ? ORDER BY sd.delivery_id DESC");
+        $statement->execute([$hearingId]);
+        return $statement->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function hasReplacementNotices(int $hearingId): bool
+    {
+        $stmt = $this->conn->prepare('SELECT 1 FROM summon_deliveries sd
+            JOIN hearing_reschedule_notices n USING (document_id) WHERE sd.hearing_id = ? LIMIT 1');
+        $stmt->execute([$hearingId]);
+        return (bool) $stmt->fetchColumn();
     }
 
     /**
@@ -54,6 +137,9 @@ class SummonDeliveryService
 
         $caseId = (int) $hearing['case_id'];
         $complaintId = (int) $hearing['complaint_id'];
+        if ($this->hasReplacementNotices($hearingId)) {
+            return ['success' => true, 'initialized' => []];
+        }
         $isRescheduled = !empty($hearing['rescheduled_from_id']);
         $hType = $hearing['hearing_type'] ?? 'Mediation';
 
@@ -403,7 +489,7 @@ class SummonDeliveryService
         $hearingType = (string) ($hRow['hearing_type'] ?? 'Hearing');
         $caseId = (int) ($hRow['case_id'] ?? 0);
 
-        if (strcasecmp($hearingType, 'Mediation') === 0 && $caseId > 0) {
+        if (strcasecmp($hearingType, 'Mediation') === 0 && $caseId > 0 && !$this->hasReplacementNotices($hearingId)) {
             $seqStmt = $this->conn->prepare("
                 SELECT COUNT(*) FROM hearings
                 WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation') AND hearing_id <= ?
@@ -423,7 +509,7 @@ class SummonDeliveryService
         $stmt = $this->conn->prepare("
             SELECT party_type, resident_id, recipient_name, delivery_status, unserved_reason, failure_notes, attempt_number, form_type
             FROM summon_deliveries
-            WHERE hearing_id = ?
+            WHERE hearing_id = ? AND delivery_status <> 'Superseded'
             ORDER BY attempt_number DESC, delivery_id DESC
         ");
         $stmt->execute([$hearingId]);
@@ -771,6 +857,10 @@ class SummonDeliveryService
                 if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
                 return ['success' => false, 'message' => 'KP Form No. 8 automatic service rule only applies to First Mediation hearings.'];
             }
+            if ($this->hasReplacementNotices((int) $hearingId)) {
+                if ($startedTrans) $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Open the replacement notice PDF and record service from its Officer’s Return.'];
+            }
 
             // 3. Verify document exists and is KP Form 8, or auto-resolve for this case
             $doc = null;
@@ -780,6 +870,7 @@ class SummonDeliveryService
                     FROM generated_documents gd
                     INNER JOIN document_templates dt ON dt.template_id = gd.template_id
                     WHERE gd.document_id = ? AND gd.case_id = ?
+                    AND NOT EXISTS (SELECT 1 FROM hearing_reschedule_notices n WHERE n.document_id = gd.document_id)
                 ");
                 $docStmt->execute([$documentId, $caseId]);
                 $doc = $docStmt->fetch(PDO::FETCH_ASSOC);
@@ -791,6 +882,7 @@ class SummonDeliveryService
                     FROM generated_documents gd
                     INNER JOIN document_templates dt ON dt.template_id = gd.template_id
                     WHERE gd.case_id = ? AND dt.template_name = 'KP Form 8'
+                    AND NOT EXISTS (SELECT 1 FROM hearing_reschedule_notices n WHERE n.document_id = gd.document_id)
                     ORDER BY gd.document_id DESC
                     LIMIT 1
                 ");
@@ -970,7 +1062,7 @@ class SummonDeliveryService
             FROM summon_deliveries sd
             LEFT JOIN users u ON u.user_id = COALESCE(sd.served_by_user_id, sd.served_by, sd.created_by)
             LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
-            WHERE sd.case_id = ? AND sd.party_type = ? $hSql $stageFilter
+            WHERE sd.case_id = ? AND sd.party_type = ? AND sd.delivery_status <> 'Superseded' $hSql $stageFilter
             ORDER BY sd.attempt_number ASC, sd.delivery_id ASC
         ");
         $stmt->execute($params);
@@ -1074,6 +1166,10 @@ class SummonDeliveryService
             if (!$hearing) {
                 if ($startedTrans && $this->conn->inTransaction()) $this->conn->rollBack();
                 return ['success' => false, 'message' => 'No active hearing found for this case to associate summons attempt with.'];
+            }
+            if ($this->hasReplacementNotices((int) $hearingId)) {
+                if ($startedTrans) $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Open the exact replacement notice to record service.'];
             }
 
             // 3. Fetch the case-wide mediation sequence. A respondent may be
@@ -1418,6 +1514,30 @@ class SummonDeliveryService
      */
     public function recordDelivery(int $hearingId, array $data, int $actorUserId): array
     {
+        $ownsTransaction = !$this->conn->inTransaction();
+        if ($ownsTransaction) {
+            $this->conn->beginTransaction();
+        }
+        try {
+            $result = $this->saveDelivery($hearingId, $data, $actorUserId);
+            if ($ownsTransaction) {
+                if ($result['success']) {
+                    $this->conn->commit();
+                } else {
+                    $this->conn->rollBack();
+                }
+            }
+            return $result;
+        } catch (Throwable $exception) {
+            if ($ownsTransaction && $this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            throw $exception;
+        }
+    }
+
+    private function saveDelivery(int $hearingId, array $data, int $actorUserId): array
+    {
         $partyType = trim($data['party_type'] ?? '');
         if (!in_array($partyType, ['Complainant', 'Respondent', 'Witness'], true)) {
             return ['success' => false, 'message' => 'Invalid party type. Must be Complainant, Respondent, or Witness.'];
@@ -1431,11 +1551,12 @@ class SummonDeliveryService
 
         // Retrieve hearing and case details
         $stmt = $this->conn->prepare("
-            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.rescheduled_from_id,
+            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.rescheduled_from_id,
                    c.complaint_id, c.case_number, c.case_status, c.is_paused, c.pause_reason
             FROM hearings h
             INNER JOIN cases c ON c.case_id = h.case_id
             WHERE h.hearing_id = ?
+            FOR UPDATE
         ");
         $stmt->execute([$hearingId]);
         $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1447,16 +1568,51 @@ class SummonDeliveryService
         $caseId = (int) $hearing['case_id'];
         $recipientName = trim($data['recipient_name'] ?? '');
         $relationship = trim($data['relationship'] ?? '');
-        $servedAt = !empty($data['served_at']) ? date('Y-m-d H:i:s', strtotime($data['served_at'])) : date('Y-m-d H:i:s');
+        $servedTimestamp = !empty($data['served_at']) ? strtotime($data['served_at']) : time();
+        if ($deliveryStatus !== 'Unserved' && $servedTimestamp === false) {
+            return ['success' => false, 'message' => 'Enter a valid service date and time.'];
+        }
+        $servedAt = $servedTimestamp === false ? null : date('Y-m-d H:i:s', $servedTimestamp);
         $servedBy = !empty($data['served_by']) ? (int) $data['served_by'] : $actorUserId;
         $unservedReason = trim($data['unserved_reason'] ?? '');
         $failureNotes = trim($data['failure_notes'] ?? '');
         $remarks = trim($data['remarks'] ?? '');
         $attemptNumber = !empty($data['attempt_number']) ? max(1, (int) $data['attempt_number']) : 1;
         $deliveryId = !empty($data['delivery_id']) ? (int) $data['delivery_id'] : null;
+        if (!empty($data['case_id']) && (int) $data['case_id'] !== $caseId) {
+            return ['success' => false, 'message' => 'The hearing does not belong to this case.'];
+        }
+        $isReplacement = false;
+        $target = null;
+        if ($deliveryId) {
+            $lookup = $this->conn->prepare("SELECT sd.*, n.document_id AS replacement_document_id,
+                    JSON_UNQUOTE(JSON_EXTRACT(n.form_data, '$.hearing_date')) AS replacement_schedule,
+                    JSON_UNQUOTE(JSON_EXTRACT(n.form_data, '$.venue')) AS replacement_venue
+                FROM summon_deliveries sd LEFT JOIN hearing_reschedule_notices n USING (document_id)
+                WHERE sd.delivery_id = ? AND sd.hearing_id = ? AND sd.case_id = ? FOR UPDATE");
+            $lookup->execute([$deliveryId, $hearingId, $caseId]);
+            $target = $lookup->fetch(PDO::FETCH_ASSOC);
+            if (!$target || $target['party_type'] !== $partyType
+                || (!empty($data['resident_id']) && (int) $data['resident_id'] !== (int) $target['resident_id'])
+                || (!empty($data['document_id']) && (int) $data['document_id'] !== (int) $target['document_id'])) {
+                return ['success' => false, 'message' => 'This return does not match the hearing, notice, and recipient.'];
+            }
+            if ($target['delivery_status'] === 'Superseded'
+                || ($target['replacement_schedule'] !== null && ($target['replacement_schedule'] !== $hearing['hearing_date']
+                    || $target['replacement_venue'] !== $hearing['venue']))) {
+                return ['success' => false, 'message' => 'A superseded return is read-only. Open the current notice.'];
+            }
+            $isReplacement = $target['replacement_document_id'] !== null;
+            $attemptNumber = (int) $target['attempt_number'];
+        } elseif ($this->hasReplacementNotices($hearingId)) {
+            return ['success' => false, 'message' => 'Select the exact replacement notice before recording service.'];
+        }
+        if ($isReplacement && $deliveryStatus !== 'Unserved' && $servedAt > date('Y-m-d H:i:s')) {
+            return ['success' => false, 'message' => 'Service date and time cannot be in the future.'];
+        }
 
         // Official summons delivery window validation (bypassed if development/testing)
-        if ($deliveryStatus !== 'Unserved' && $servedAt !== null && $partyType === 'Respondent') {
+        if (!$isReplacement && $deliveryStatus !== 'Unserved' && $servedAt !== null && $partyType === 'Respondent') {
             require_once __DIR__ . '/OfficeLogisticsService.php';
             $logistics = new OfficeLogisticsService($this->conn);
             $prevStmt = $this->conn->prepare("
@@ -1511,8 +1667,8 @@ class SummonDeliveryService
         }
 
         // Determine resident_id
-        $residentId = !empty($data['resident_id']) ? (int) $data['resident_id'] : null;
-        if (!$residentId) {
+        $residentId = $target ? $target['resident_id'] : (!empty($data['resident_id']) ? (int) $data['resident_id'] : null);
+        if (!$target && !$residentId) {
             $rStmt = $this->conn->prepare("
                 SELECT cp.resident_id
                 FROM complaint_parties cp
@@ -1524,7 +1680,9 @@ class SummonDeliveryService
         }
 
         // Determine dynamic form type based on party type and hearing stage/sequence
-        if (!empty($data['form_type'])) {
+        if ($target) {
+            $formType = $target['form_type'];
+        } elseif (!empty($data['form_type'])) {
             $formType = trim($data['form_type']);
         } elseif ($partyType === 'Witness') {
             $formType = 'Subpoena';
@@ -1556,18 +1714,10 @@ class SummonDeliveryService
 
         // Locate or update the target attempt row in summon_deliveries
         if ($deliveryId) {
-            $chk = $this->conn->prepare("
-                SELECT delivery_id, attempt_number, party_type, delivery_status
-                FROM summon_deliveries
-                WHERE delivery_id = ?
-            ");
-            $chk->execute([$deliveryId]);
-            $existing = $chk->fetch(PDO::FETCH_ASSOC);
-
-            if ($existing && !empty($existing['delivery_status']) && $existing['delivery_status'] !== 'Pending') {
+            if ($target['delivery_status'] !== 'Pending') {
                 $this->audit->log(
                     $actorUserId,
-                    "Edited Officer's Return for Attempt #{$existing['attempt_number']} ({$existing['party_type']}) from '{$existing['delivery_status']}' to '{$deliveryStatus}'",
+                    "Edited Officer's Return for Attempt #{$target['attempt_number']} ({$target['party_type']}) from '{$target['delivery_status']}' to '{$deliveryStatus}'",
                     'Summons',
                     $caseId
                 );
@@ -1622,6 +1772,9 @@ class SummonDeliveryService
                 $find->execute([$hearingId, $partyType, $attemptNumber]);
             }
             $existing = $find->fetch(PDO::FETCH_ASSOC);
+            if ($existing && $existing['delivery_status'] === 'Superseded') {
+                return ['success' => false, 'message' => 'A superseded return is read-only. Open the current notice.'];
+            }
 
             if ($existing) {
                 if (!empty($existing['delivery_status']) && $existing['delivery_status'] !== 'Pending') {
@@ -1690,8 +1843,8 @@ class SummonDeliveryService
         }
 
         // Associate with corresponding generated document
-        $docId = !empty($data['document_id']) ? (int) $data['document_id'] : null;
-        if (!$docId) {
+        $docId = $target ? $target['document_id'] : (!empty($data['document_id']) ? (int) $data['document_id'] : null);
+        if (!$docId && !$isReplacement) {
             $targetTpl = ($partyType === 'Respondent') 
                 ? (($hearing['hearing_type'] === 'Show Cause (Respondent)') ? 'KP Form 19' : 'KP Form 9')
                 : (($partyType === 'Witness') ? 'KP Form 13' : (($hearing['hearing_type'] === 'Show Cause (Complainant)') ? 'KP Form 18' : 'KP Form 8'));
@@ -1703,6 +1856,7 @@ class SummonDeliveryService
                 FROM generated_documents gd
                 INNER JOIN document_templates dt ON dt.template_id = gd.template_id
                 WHERE gd.case_id = ? AND (dt.template_name = ? OR dt.template_name LIKE ?)
+                  AND NOT EXISTS (SELECT 1 FROM hearing_reschedule_notices n WHERE n.document_id = gd.document_id)
                 ORDER BY gd.document_id DESC
                 LIMIT 1
             ");
@@ -1722,7 +1876,7 @@ class SummonDeliveryService
         if ($deliveryStatus === 'Unserved') {
             // SCENARIO B: Delivery Failed (Unserved)
             $maxSummonAttempts = $this->getMaxSummonAttempts();
-            $isMaxFailed = ($partyType === 'Respondent' && $attemptNumber >= $maxSummonAttempts);
+            $isMaxFailed = (!$isReplacement && $partyType === 'Respondent' && $attemptNumber >= $maxSummonAttempts);
             if ($isMaxFailed) {
                 $pauseReason = "{$maxSummonAttempts} Attempts Failed - Max Reached (Unserved). Halting hearing schedule: Please verify respondent's address with the complainant or refer the case for lack of jurisdiction / non-residence.";
                 $this->conn->prepare("UPDATE hearings SET status = 'Cancelled', remarks = CONCAT(COALESCE(remarks, ''), ' [HALTED: {$maxSummonAttempts} Attempts Failed - Max Reached (Unserved)]') WHERE hearing_id = ?")->execute([$hearingId]);
@@ -1739,6 +1893,7 @@ class SummonDeliveryService
                 VALUES (?, ?, 'Service Failed', ?, NOW(), ?)
             ");
             $posStmt->execute([$caseId, $docId, $servedBy, $posRemarks]);
+            $proofId = (int) $this->conn->lastInsertId();
 
             if ($docId) {
                 $updDoc = $this->conn->prepare("UPDATE generated_documents SET service_status = 'Service Failed' WHERE document_id = ?");
@@ -1759,6 +1914,7 @@ class SummonDeliveryService
                 VALUES (?, ?, 'Served', ?, ?, ?)
             ");
             $posStmt->execute([$caseId, $docId, $servedBy, $servedAt, $posRemarks]);
+            $proofId = (int) $this->conn->lastInsertId();
 
             if ($docId) {
                 $updDoc = $this->conn->prepare("UPDATE generated_documents SET service_status = 'Served' WHERE document_id = ?");
@@ -1782,7 +1938,7 @@ class SummonDeliveryService
 
             try {
                 require_once __DIR__ . '/NotificationService.php';
-                $notif = new NotificationService();
+                $notif = new NotificationService($this->conn);
                 $serverNameStmt = $this->conn->prepare("SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE user_id = ?");
                 $serverNameStmt->execute([$servedBy]);
                 $srvName = $serverNameStmt->fetchColumn() ?: ('Officer #' . $servedBy);
@@ -1798,6 +1954,7 @@ class SummonDeliveryService
             'success' => true,
             'message' => "Summon {$attemptOrd} Attempt for {$partyType} updated to {$deliveryStatus}.",
             'delivery_id' => $deliveryId,
+            'proof_id' => $proofId,
             'attempt_number' => $attemptNumber,
             'cfa_eligibility' => $cfaElig,
             'service_status' => $this->checkServiceStatus($hearingId),

@@ -28,17 +28,13 @@ if ($method === 'GET') {
             http_response_code(404);
             exit('Service assignment not found.');
         }
-        if (($input['view'] ?? '') === 'invitation' && $roleId === 4 && $attempt['outcome'] === null) {
-            $preparation = new PaanyayaPreparationService($db);
-            $number = (int) $attempt['invitation_number'];
-            if ($preparation->intake((int) $attempt['complaint_id'], $number)['eligible'] ?? false) {
-                $pdf = $preparation->document((int) $attempt['complaint_id'], $attempt['document_version'], $number);
-                if ($pdf !== null) {
-                    header('Content-Type: application/pdf');
-                    header('Content-Disposition: inline; filename="Paanyaya.pdf"');
-                    echo $pdf;
-                    exit;
-                }
+        if (($input['view'] ?? '') === 'invitation') {
+            $pdf = $service->invitationPdf($attemptId);
+            if ($pdf !== null) {
+                header('Content-Type: application/pdf');
+                header('Content-Disposition: inline; filename="Paanyaya.pdf"');
+                echo $pdf;
+                exit;
             }
         }
         if (($input['view'] ?? '') === 'proof' && $attempt['proof_mime']) {

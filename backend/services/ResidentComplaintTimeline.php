@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/ComplaintInformationService.php';
+require_once __DIR__ . '/PaanyayaPreparationService.php';
 
 final class ResidentComplaintTimeline
 {
@@ -78,10 +79,11 @@ final class ResidentComplaintTimeline
             $add($complaint['liso_reviewed_at'], self::SCREENING_LABELS[$screeningStatus]);
         }
 
-        $appointments = $this->db->prepare("SELECT a.invitation_number, COALESCE(p.appointment_at, a.appointment_at) AS appointment_at, p.venue, a.recorded_at
+        $appointments = $this->db->prepare("SELECT a.invitation_number, a.appointment_at, p.venue, a.recorded_at
             FROM paanyaya_service_attempts a JOIN paanyaya_preparations p
                 ON p.complaint_id = a.complaint_id AND p.invitation_number = a.invitation_number
-            WHERE a.complaint_id = ? AND a.outcome = 'Delivered' ORDER BY a.attempt_id");
+            WHERE a.complaint_id = ? AND a.outcome = 'Delivered'
+                AND a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . " ORDER BY a.attempt_id");
         $appointments->execute([$id]);
         foreach ($appointments->fetchAll() as $appointment) {
             $label = (int) $appointment['invitation_number'] === 2 ? 'Second Paanyaya appointment confirmed' : 'Paanyaya appointment confirmed';

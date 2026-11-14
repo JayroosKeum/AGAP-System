@@ -6,9 +6,9 @@ class NotificationService
 {
     private Notification $notification;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null)
     {
-        $this->notification = new Notification();
+        $this->notification = new Notification($conn);
     }
 
     public function notifyUser(int $userId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null, ?int $caseId = null): void

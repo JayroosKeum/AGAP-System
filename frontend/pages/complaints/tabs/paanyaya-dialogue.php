@@ -36,6 +36,7 @@ $dialogueStatus = $preparation['complaint_status'];
             <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
             <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
             <input type="hidden" name="action" value="minutes">
+            <input type="hidden" name="document_version" value="<?= $escapePrep($preparation['document_version']) ?>">
             <div class="paanyaya-prep-fields">
                 <label>Actual date and time
                     <input type="datetime-local" name="dialogue_date" required max="<?= date('Y-m-d\TH:i') ?>"

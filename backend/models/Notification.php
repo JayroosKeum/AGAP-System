@@ -6,9 +6,9 @@ class Notification
 {
     private PDO $conn;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null)
     {
-        $this->conn = (new Database())->connect();
+        $this->conn = $conn ?? (new Database())->connect();
     }
 
     public function create(

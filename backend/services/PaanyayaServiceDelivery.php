@@ -19,9 +19,15 @@ final class PaanyayaServiceDelivery
     public function history(int $complaintId, int $invitation = 1): array
     {
         $statement = $this->db->prepare("SELECT a.attempt_id, a.released_at, a.outcome, a.notes, a.recorded_at, a.proof_mime,
+                a.appointment_at, COALESCE(v.venue, IF(a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . ", p.venue, NULL)) AS venue,
+                (a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . ") AS is_current,
+                (v.document_version IS NOT NULL OR a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . ") AS has_pdf,
                 TRIM(CONCAT_WS(' ', server.first_name, server.last_name)) AS server_name,
                 TRIM(CONCAT_WS(' ', clerk.first_name, clerk.last_name)) AS released_by_name
             FROM paanyaya_service_attempts a JOIN users server ON server.user_id = a.assigned_to
+            JOIN paanyaya_preparations p USING (complaint_id, invitation_number)
+            LEFT JOIN paanyaya_invitation_versions v ON v.complaint_id = a.complaint_id
+                AND v.invitation_number = a.invitation_number AND v.document_version = a.document_version
             LEFT JOIN users clerk ON clerk.user_id = a.released_by
             WHERE a.complaint_id = ? AND a.invitation_number = ? ORDER BY a.attempt_id DESC");
         $statement->execute([$complaintId, $invitation]);
@@ -31,13 +37,18 @@ final class PaanyayaServiceDelivery
     public function assignments(int $serverId): array
     {
         $statement = $this->db->prepare("SELECT a.attempt_id, a.complaint_id, a.invitation_number, a.outcome, a.notes, a.proof_mime,
-                a.appointment_at, c.intake_reference, c.complaint_title, p.verified_parties, p.venue
+                a.appointment_at, c.intake_reference, c.complaint_title, p.verified_parties,
+                COALESCE(v.venue, IF(a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . ", p.venue, NULL)) AS venue,
+                (a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . ") AS is_current,
+                (v.document_version IS NOT NULL OR a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . ") AS has_pdf
             FROM paanyaya_service_attempts a JOIN complaints c ON c.complaint_id = a.complaint_id
             JOIN paanyaya_preparations p ON p.complaint_id = a.complaint_id AND p.invitation_number = a.invitation_number
+            LEFT JOIN paanyaya_invitation_versions v ON v.complaint_id = a.complaint_id
+                AND v.invitation_number = a.invitation_number AND v.document_version = a.document_version
             WHERE a.assigned_to = ?
-              AND (a.outcome IS NOT NULL OR (c.screening_decision = 'Eligible'
-                   AND c.status = IF(a.invitation_number = 1, 'Accepted', 'Pre-Docketed (Paanyaya)')))
-            ORDER BY a.outcome IS NOT NULL, a.appointment_at, a.attempt_id DESC");
+              AND (a.outcome IS NOT NULL OR a.document_version <> " . PaanyayaPreparationService::CURRENT_VERSION . "
+                   OR (c.screening_decision = 'Eligible' AND c.status IN ('Accepted', 'Pre-Docketed (Paanyaya)')))
+            ORDER BY a.outcome IS NULL AND is_current DESC, a.appointment_at, a.attempt_id DESC");
         $statement->execute([$serverId]);
         return $statement->fetchAll();
     }
@@ -101,13 +112,13 @@ final class PaanyayaServiceDelivery
             $invitation = (int) $attempt['invitation_number'];
             $preparation = $this->lockIntake($complaintId, $invitation);
             $latest = self::latestAttempt($this->db, $complaintId, $invitation);
+            if (!hash_equals($preparation['document_version'], $attempt['document_version'])) {
+                throw new DomainException('This assignment was superseded. Open the assignment for the current invitation.');
+            }
             if (!$latest || (int) $latest['attempt_id'] !== $attemptId || $latest['outcome'] !== null) {
                 throw new DomainException('A result has already been recorded for this assignment.');
             }
             if ($outcome === 'Delivered') {
-                if (!hash_equals($preparation['document_version'], $attempt['document_version'])) {
-                    throw new DomainException('The assigned invitation no longer matches the prepared document.');
-                }
                 $this->verifyInvitation($complaintId, $preparation);
                 $this->activateDialogue($complaintId, $preparation, $attempt);
             }
@@ -130,10 +141,21 @@ final class PaanyayaServiceDelivery
 
     public static function latestAttempt(PDO $db, int $complaintId, int $invitation = 1): ?array
     {
-        $statement = $db->prepare('SELECT attempt_id, outcome FROM paanyaya_service_attempts
-            WHERE complaint_id = ? AND invitation_number = ? ORDER BY attempt_id DESC LIMIT 1');
+        $statement = $db->prepare('SELECT a.attempt_id, a.outcome, a.recorded_at, a.document_version
+            FROM paanyaya_service_attempts a JOIN paanyaya_preparations p USING (complaint_id, invitation_number)
+            WHERE a.complaint_id = ? AND a.invitation_number = ? AND a.document_version = ' . PaanyayaPreparationService::CURRENT_VERSION . '
+            ORDER BY a.attempt_id DESC LIMIT 1');
         $statement->execute([$complaintId, $invitation]);
         return $statement->fetch() ?: null;
+    }
+
+    public static function canOpenDialogue(PDO $db, array $session): bool
+    {
+        $complaint = (int) $session['complaint_id'];
+        $invitation = (int) $session['attempt_number'];
+        $preparation = (new PaanyayaPreparationService($db))->intake($complaint, $invitation);
+        return empty($preparation['prepared_at'])
+            || (self::latestAttempt($db, $complaint, $invitation)['outcome'] ?? null) === 'Delivered';
     }
 
     public function findAttempt(int $attemptId, ?int $serverId): ?array
@@ -156,6 +178,19 @@ final class PaanyayaServiceDelivery
         $statement->execute([$attemptId]);
         $image = $statement->fetchColumn();
         return is_string($image) ? $image : null;
+    }
+
+    public function invitationPdf(int $attemptId): ?string
+    {
+        $statement = $this->db->prepare('SELECT COALESCE(v.document_pdf,
+                IF(a.document_version = ' . PaanyayaPreparationService::CURRENT_VERSION . ', p.document_pdf, NULL))
+            FROM paanyaya_service_attempts a JOIN paanyaya_preparations p USING (complaint_id, invitation_number)
+            LEFT JOIN paanyaya_invitation_versions v ON v.complaint_id = a.complaint_id
+                AND v.invitation_number = a.invitation_number AND v.document_version = a.document_version
+            WHERE a.attempt_id = ?');
+        $statement->execute([$attemptId]);
+        $pdf = $statement->fetchColumn();
+        return is_string($pdf) ? $pdf : null;
     }
 
     private function lockIntake(int $complaintId, int $invitation): array
@@ -198,6 +233,14 @@ final class PaanyayaServiceDelivery
                 invitee_name = VALUES(invitee_name), invitation_date = VALUES(invitation_date),
                 invitation_time = VALUES(invitation_time), venue = VALUES(venue), has_e_signature = 0")
             ->execute([$complaintId, 'Paanyaya ' . $number, $attempt['released_at'], $attempt['released_by'], $invitees, $date, $time, $preparation['venue']]);
+        if ($preparation['rescheduled']) {
+            $this->db->prepare('UPDATE paanyayas SET complainant_name = ?, invitee_name = ?
+                WHERE complaint_id = ? AND attempt_number = ?')
+                ->execute([$complainants, $invitees, $complaintId, $number]);
+            $this->db->prepare('UPDATE paanyaya_sessions SET invitee_name = ? WHERE complaint_id = ? AND attempt_number = ?')
+                ->execute([$invitees, $complaintId, $number]);
+            return;
+        }
         $this->db->prepare('INSERT INTO paanyayas (complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time, venue, scheduled_by, attempt_number)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)')->execute([
                 $complaintId, $complainants, $invitees, $date, $time, $preparation['venue'], $attempt['released_by'], $number,

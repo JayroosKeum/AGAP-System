@@ -104,6 +104,13 @@ final class SummonServiceGate
             return $this->result(false, 'HEARING_NOT_FOUND', 'The selected hearing was not found.');
         }
 
+        require_once __DIR__ . '/SummonDeliveryService.php';
+        $deliveryService = new SummonDeliveryService($this->db);
+        if ($deliveryService->hasReplacementNotices($hearingId)) {
+            $service = $deliveryService->checkServiceStatus($hearingId);
+            return $this->result($service['allowed'], $service['status'], $service['message'], $hearing);
+        }
+
         if (strcasecmp((string) $hearing['hearing_type'], 'Mediation') !== 0) {
             return $this->result(
                 true,
@@ -134,8 +141,7 @@ final class SummonServiceGate
             }
         }
 
-        require_once __DIR__ . '/SummonDeliveryService.php';
-        $serviceCheck = (new SummonDeliveryService($this->db))->checkServiceStatus($hearingId);
+        $serviceCheck = $deliveryService->checkServiceStatus($hearingId);
         if (!$serviceCheck['allowed']) {
             return $this->result(
                 false,

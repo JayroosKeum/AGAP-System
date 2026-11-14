@@ -292,6 +292,7 @@ window.AGAP_SETTINGS = <?php echo json_encode([
 
     <form id="officerReturnForm" class="proof-drawer-form" onsubmit="submitOfficerReturn(event)" enctype="multipart/form-data">
         <input type="hidden" id="returnCaseId" name="case_id" value="">
+        <input type="hidden" id="returnDocumentId" name="document_id" value="">
         <input type="hidden" id="returnHearingId" name="hearing_id" value="">
         <input type="hidden" id="returnPartyType" name="party_type" value="">
         <input type="hidden" id="returnResidentId" name="resident_id" value="">

@@ -27,9 +27,18 @@ class ProofOfService
         if (!in_array($serviceResult, $allowedResults, true)) {
             $serviceResult = 'Served';
         }
-        $document = $this->conn->prepare('SELECT document_id, template_id FROM generated_documents WHERE document_id = ? AND case_id = ?');
+        $document = $this->conn->prepare("SELECT gd.document_id, n.document_id AS replacement_document_id,
+                EXISTS(SELECT 1 FROM summon_deliveries sd WHERE sd.document_id = gd.document_id AND sd.delivery_status = 'Superseded')
+                    AND NOT EXISTS(SELECT 1 FROM summon_deliveries sd WHERE sd.document_id = gd.document_id AND sd.delivery_status <> 'Superseded')
+                    AS superseded
+            FROM generated_documents gd LEFT JOIN hearing_reschedule_notices n USING (document_id)
+            WHERE gd.document_id = ? AND gd.case_id = ?");
         $document->execute([$documentId, $caseId]);
-        if (!$document->fetch()) return ['success' => false, 'message' => 'Select a generated document for this case.'];
+        $record = $document->fetch(PDO::FETCH_ASSOC);
+        if (!$record) return ['success' => false, 'message' => 'Select a generated document for this case.'];
+        if ($record['superseded'] || $record['replacement_document_id'] !== null) {
+            return ['success' => false, 'message' => 'Open the active replacement notice and record its Officer’s Return.'];
+        }
         $duplicate = $this->conn->prepare('SELECT proof_id FROM proof_of_service WHERE document_id = ? AND served_by = ? AND served_date = ? LIMIT 1');
         $duplicate->execute([$documentId, $servedBy, $servedDate]);
         if ($duplicate->fetchColumn()) {

@@ -25,7 +25,7 @@ class ServerDashboardController
         $purokFilter = trim((string) ($params['purok'] ?? 'all'));
         $statusFilter = trim((string) ($params['status'] ?? 'pending'));
 
-        $baseActiveWhere = "(h.hearing_id IS NULL OR h.status NOT IN ('Cancelled', 'Office Cancelled'))";
+        $baseActiveWhere = "sd.delivery_status <> 'Superseded' AND (h.hearing_id IS NULL OR h.status NOT IN ('Cancelled', 'Office Cancelled'))";
 
         // 1. Dispatch Summary KPIs
         // a. Pending Delivery (All active pending deliveries)
@@ -103,6 +103,7 @@ class ServerDashboardController
 
         $sql = "
             SELECT sd.delivery_id, sd.case_id, sd.hearing_id, sd.party_type, sd.delivery_status,
+                   n.document_id AS replacement_document_id,
                    sd.attempt_number, sd.service_method, sd.served_at, sd.unserved_reason,
                    sd.failure_notes, sd.remarks, sd.proof_file_path, sd.form_type,
                    c.case_number, c.case_status,
@@ -131,6 +132,7 @@ class ServerDashboardController
             JOIN cases c ON c.case_id = sd.case_id
             LEFT JOIN residents r ON r.resident_id = sd.resident_id
             LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+            LEFT JOIN hearing_reschedule_notices n ON n.document_id = sd.document_id
             WHERE $whereClause
             ORDER BY 
                 CASE WHEN sd.delivery_status = 'Pending' THEN 0 ELSE 1 END,
@@ -172,11 +174,12 @@ class ServerDashboardController
         }
 
         $stmt = $this->conn->prepare("
-            SELECT sd.*, c.case_number, h.hearing_date, r.first_name, r.last_name
+            SELECT sd.*, c.case_number, h.hearing_date, r.first_name, r.last_name, n.document_id AS replacement_document_id
             FROM summon_deliveries sd
             JOIN cases c ON c.case_id = sd.case_id
             LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
             LEFT JOIN residents r ON r.resident_id = sd.resident_id
+            LEFT JOIN hearing_reschedule_notices n ON n.document_id = sd.document_id
             WHERE sd.delivery_id = ?
         ");
         $stmt->execute([$deliveryId]);
@@ -184,6 +187,12 @@ class ServerDashboardController
 
         if (!$delivery) {
             return ['success' => false, 'message' => 'Delivery task record not found.'];
+        }
+        if ($delivery['delivery_status'] === 'Superseded') {
+            return ['success' => false, 'message' => 'A superseded return is read-only.'];
+        }
+        if ($delivery['replacement_document_id'] !== null) {
+            return ['success' => false, 'message' => 'Open Proof of Service to record the return for the replacement notice.'];
         }
 
         $action = strtolower(trim((string) ($data['action'] ?? '')));
@@ -219,7 +228,7 @@ class ServerDashboardController
                     proof_file_path = COALESCE(?, proof_file_path),
                     unserved_reason = NULL,
                     updated_at = NOW()
-                WHERE delivery_id = ?
+                WHERE delivery_id = ? AND delivery_status <> 'Superseded'
             ");
             $upd->execute([
                 $serviceMethod,
@@ -232,6 +241,9 @@ class ServerDashboardController
                 $deliveryId
             ]);
 
+            if (!$upd->rowCount()) {
+                return ['success' => false, 'message' => 'This delivery changed. Refresh the task and try again.'];
+            }
             $this->audit->log(
                 $userId,
                 'SUMMON_SERVED',
@@ -261,7 +273,7 @@ class ServerDashboardController
                     remarks = ?,
                     proof_file_path = COALESCE(?, proof_file_path),
                     updated_at = NOW()
-                WHERE delivery_id = ?
+                WHERE delivery_id = ? AND delivery_status <> 'Superseded'
             ");
             $upd->execute([
                 $now,
@@ -274,6 +286,9 @@ class ServerDashboardController
                 $deliveryId
             ]);
 
+            if (!$upd->rowCount()) {
+                return ['success' => false, 'message' => 'This delivery changed. Refresh the task and try again.'];
+            }
             $this->audit->log(
                 $userId,
                 'SUMMON_REFUSED',
@@ -301,7 +316,7 @@ class ServerDashboardController
                     served_by_user_id = ?,
                     proof_file_path = COALESCE(?, proof_file_path),
                     updated_at = NOW()
-                WHERE delivery_id = ?
+                WHERE delivery_id = ? AND delivery_status <> 'Superseded'
             ");
             $upd->execute([
                 $reason,
@@ -313,6 +328,9 @@ class ServerDashboardController
                 $deliveryId
             ]);
 
+            if (!$upd->rowCount()) {
+                return ['success' => false, 'message' => 'This delivery changed. Refresh the task and try again.'];
+            }
             $this->audit->log(
                 $userId,
                 'SUMMON_UNSERVED',

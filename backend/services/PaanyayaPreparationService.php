@@ -33,6 +33,14 @@ final class PaanyayaPreparationService
                         AND s.stage_type = 'Paanyaya 2' AND s.status <> 'Not Started')
         AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)";
 
+    private const RESCHEDULED_ELIGIBLE = "
+        p.document_version IS NOT NULL AND c.status = 'Pre-Docketed (Paanyaya)' AND c.is_draft = 0
+        AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
+        AND NOT EXISTS (SELECT 1 FROM paanyaya_minutes m WHERE m.complaint_id = c.complaint_id
+                        AND m.stage_type = CONCAT('Paanyaya ', p.invitation_number))";
+
+    public const CURRENT_VERSION = 'COALESCE(p.document_version, SHA2(p.document_pdf, 256))';
+
     public function __construct(private PDO $db)
     {
     }
@@ -63,6 +71,7 @@ final class PaanyayaPreparationService
         $rows = $this->db->query(
             "SELECT c.complaint_id, c.intake_reference, c.complaint_title,
                     p.prepared_at, p.ready_at, p.appointment_at, invitation.number AS invitation_number,
+                    p.document_version IS NOT NULL AS rescheduled,
                     a.attempt_id AS service_attempt_id, a.outcome AS service_outcome, m.complainant_choice,
                     p.appointment_at <= NOW() AS appointment_passed
              FROM complaints c
@@ -71,6 +80,7 @@ final class PaanyayaPreparationService
              LEFT JOIN paanyaya_service_attempts a ON a.attempt_id = (
                  SELECT MAX(latest.attempt_id) FROM paanyaya_service_attempts latest
                  WHERE latest.complaint_id = c.complaint_id AND latest.invitation_number = invitation.number
+                   AND latest.document_version = " . self::CURRENT_VERSION . "
              )
              LEFT JOIN paanyaya_minutes m ON m.minutes_id = (
                  SELECT MAX(latest_minutes.minutes_id) FROM paanyaya_minutes latest_minutes
@@ -79,6 +89,7 @@ final class PaanyayaPreparationService
              )
              WHERE (invitation.number = 1 AND (" . self::ELIGIBLE . "))
                 OR (invitation.number = 2 AND (" . self::SECOND_ELIGIBLE . "))
+                OR (" . self::RESCHEDULED_ELIGIBLE . ")
                 OR (c.status = 'Pre-Docketed (Paanyaya)' AND c.is_draft = 0 AND p.ready_at IS NOT NULL
                     AND a.outcome = 'Delivered' AND (m.minutes_id IS NULL OR m.complainant_choice = 'Escalate_Mediation')
                     AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
@@ -90,6 +101,7 @@ final class PaanyayaPreparationService
 
         foreach ($rows as &$row) {
             $number = (int) $row['invitation_number'];
+            $row['awaiting_server'] = $row['service_attempt_id'] !== null && $row['service_outcome'] === null;
             [$row['next_action'], $row['target_section']] = match (true) {
                 $row['service_outcome'] === 'Delivered' => [
                     $row['complainant_choice'] === 'Escalate_Mediation' ? 'Create formal docket' : 'Record dialogue minutes',
@@ -101,13 +113,12 @@ final class PaanyayaPreparationService
                 ],
                 !$row['ready_at'] => ['Review invitation for release', 'paanyaya-invitation-' . $number],
                 $row['service_outcome'] === 'Not Delivered' || $row['service_attempt_id'] === null => [
-                    $row['appointment_passed'] ? 'Revise expired invitation'
+                    $row['appointment_passed'] ? ($row['rescheduled'] ? 'Reschedule expired appointment' : 'Revise expired invitation')
                         : ($row['service_outcome'] === 'Not Delivered' ? 'Retry delivery' : 'Assign for delivery'),
                     'paanyaya-service-' . $number,
                 ],
                 default => ['Awaiting delivery result', 'paanyaya-invitation-' . $number],
             };
-            $row['awaiting_server'] = $row['service_attempt_id'] !== null && $row['service_outcome'] === null;
         }
         unset($row);
         usort($rows, static fn (array $left, array $right): int => $left['awaiting_server'] <=> $right['awaiting_server']);
@@ -116,11 +127,11 @@ final class PaanyayaPreparationService
 
     public function intake(int $id, int $invitation = 1): ?array
     {
-        $eligibility = $invitation === 2 ? self::SECOND_ELIGIBLE : self::ELIGIBLE;
+        $eligibility = ($invitation === 2 ? self::SECOND_ELIGIBLE : self::ELIGIBLE) . ' OR (' . self::RESCHEDULED_ELIGIBLE . ')';
         $statement = $this->db->prepare(
             'SELECT c.complaint_id, c.review_notes, c.status AS complaint_status, cs.case_id, (' . $eligibility . ') AS eligible,
                     p.appointment_at, p.venue, p.prepared_at, p.ready_at, p.verified_parties,
-                    SHA2(p.document_pdf, 256) AS document_version,
+                    ' . self::CURRENT_VERSION . ' AS document_version, p.document_version IS NOT NULL AS rescheduled,
                     TRIM(CONCAT_WS(\' \', preparer.first_name, preparer.last_name)) AS prepared_by_name,
                     TRIM(CONCAT_WS(\' \', approver.first_name, approver.last_name)) AS ready_by_name
              FROM complaints c
@@ -157,8 +168,8 @@ final class PaanyayaPreparationService
     public function document(int $id, ?string $version = null, int $invitation = 1): ?string
     {
         $statement = $this->db->prepare(
-            'SELECT document_pdf, SHA2(document_pdf, 256) AS document_version
-             FROM paanyaya_preparations WHERE complaint_id = ? AND invitation_number = ?'
+            'SELECT p.document_pdf, ' . self::CURRENT_VERSION . ' AS document_version
+             FROM paanyaya_preparations p WHERE p.complaint_id = ? AND p.invitation_number = ?'
         );
         $statement->execute([$id, $invitation]);
         $document = $statement->fetch(PDO::FETCH_ASSOC);
@@ -169,6 +180,33 @@ final class PaanyayaPreparationService
             throw new DomainException('The invitation was regenerated. Reload the complaint to open the current PDF.');
         }
         return $document['document_pdf'];
+    }
+
+    private function archiveCurrentDocument(int $id, int $invitation): void
+    {
+        $this->db->prepare('INSERT INTO paanyaya_invitation_versions
+                (complaint_id, invitation_number, document_version, appointment_at, venue, document_pdf)
+            SELECT p.complaint_id, p.invitation_number, ' . self::CURRENT_VERSION . ', p.appointment_at, p.venue, p.document_pdf
+            FROM paanyaya_preparations p WHERE p.complaint_id = ? AND p.invitation_number = ?
+            ON DUPLICATE KEY UPDATE document_version = paanyaya_invitation_versions.document_version')
+            ->execute([$id, $invitation]);
+    }
+
+    public function reschedule(int $id, int $invitation, int $userId, string $appointment, string $venue, string $pdf): void
+    {
+        $this->archiveCurrentDocument($id, $invitation);
+        $statement = $this->db->prepare('UPDATE paanyaya_preparations
+            SET appointment_at = ?, venue = ?, document_pdf = ?, document_version = ?,
+                prepared_by = ?, prepared_at = NOW(), ready_by = NULL, ready_at = NULL
+            WHERE complaint_id = ? AND invitation_number = ?');
+        $statement->bindValue(1, $appointment);
+        $statement->bindValue(2, $venue);
+        $statement->bindValue(3, $pdf, PDO::PARAM_LOB);
+        $statement->bindValue(4, bin2hex(random_bytes(32)));
+        $statement->bindValue(5, $userId, PDO::PARAM_INT);
+        $statement->bindValue(6, $id, PDO::PARAM_INT);
+        $statement->bindValue(7, $invitation, PDO::PARAM_INT);
+        $statement->execute();
     }
 
     public function save(int $id, int $userId, string $action, array $input, int $invitation = 1): string
@@ -203,7 +241,12 @@ final class PaanyayaPreparationService
                 return 'This invitation is already Ready for Release.';
             } elseif ($action === 'generate') {
                 $parties = $this->parties($id, true);
-                $this->generate($id, $userId, $input, $parties, $invitation);
+                if ($record['rescheduled']
+                    && (substr($record['appointment_at'], 0, 16) !== ($input['appointment_date'] ?? '') . ' ' . ($input['appointment_time'] ?? '')
+                        || $record['venue'] !== trim((string) ($input['venue'] ?? '')))) {
+                    throw new DomainException('Change the appointment through the docket rescheduling action.');
+                }
+                $this->generate($id, $userId, $input, $parties, $invitation, (bool) $record['rescheduled']);
                 $message = 'Invitation generated. Review or print the PDF before marking it Ready for Release.';
                 $auditAction = 'Generated Paanyaya invitation';
             } else {
@@ -226,7 +269,7 @@ final class PaanyayaPreparationService
         }
     }
 
-    private function generate(int $id, int $userId, array $input, array $parties, int $invitation): void
+    private function generate(int $id, int $userId, array $input, array $parties, int $invitation, bool $rescheduled): void
     {
         $date = (string) ($input['appointment_date'] ?? '');
         $time = (string) ($input['appointment_time'] ?? '');
@@ -276,12 +319,14 @@ final class PaanyayaPreparationService
         $data['intake_reference'] = $data['complaint']['intake_reference'] ?? '';
         $pdf = $renderer->generatePaanyaya($id, ['data' => $data]);
 
+        $this->archiveCurrentDocument($id, $invitation);
         $statement = $this->db->prepare(
             'INSERT INTO paanyaya_preparations
-                (complaint_id, appointment_at, venue, verified_parties, document_pdf, prepared_by, invitation_number)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+                (complaint_id, appointment_at, venue, verified_parties, document_pdf, prepared_by, invitation_number, document_version)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
              ON DUPLICATE KEY UPDATE appointment_at = VALUES(appointment_at), venue = VALUES(venue),
                  verified_parties = VALUES(verified_parties), document_pdf = VALUES(document_pdf),
+                 document_version = VALUES(document_version),
                  prepared_by = VALUES(prepared_by), prepared_at = CURRENT_TIMESTAMP'
         );
         $statement->bindValue(1, $id, PDO::PARAM_INT);
@@ -291,6 +336,8 @@ final class PaanyayaPreparationService
         $statement->bindValue(5, $pdf, PDO::PARAM_LOB);
         $statement->bindValue(6, $userId, PDO::PARAM_INT);
         $statement->bindValue(7, $invitation, PDO::PARAM_INT);
+        $version = $rescheduled ? bin2hex(random_bytes(32)) : null;
+        $statement->bindValue(8, $version, $version === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
         $statement->execute();
     }
 

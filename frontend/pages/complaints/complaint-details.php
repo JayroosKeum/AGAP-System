@@ -486,6 +486,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         $preparationFlash = (int) ($intakeFlash['invitation_number'] ?? 1) === $invitationNumber ? $intakeFlash : null;
                         $preparationParties = [];
                         $paanyayaServiceHistory = [];
+                        $latestService = null;
                         $paanyayaServers = [];
                         $paanyayaServiceUnavailable = false;
                         $paanyayaMinutes = null;
@@ -496,8 +497,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                     : $preparationService->parties($complaintId);
                                 if ($preparation['prepared_at']) {
                                     $paanyayaServiceHistory = $delivery->history($complaintId, $invitationNumber);
-                                    $latestOutcome = $paanyayaServiceHistory[0]['outcome'] ?? null;
-                                    if ($preparation['eligible'] && $preparation['ready_at'] && (!$paanyayaServiceHistory || $latestOutcome === 'Not Delivered')) {
+                                    $latestService = PaanyayaServiceDelivery::latestAttempt($preparationDb, $complaintId, $invitationNumber);
+                                    $latestOutcome = $latestService['outcome'] ?? null;
+                                    if ($preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $latestOutcome === 'Not Delivered')) {
                                         $paanyayaServers = $delivery->servers();
                                     }
                                     if ($latestOutcome === 'Delivered') {

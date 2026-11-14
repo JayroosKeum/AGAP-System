@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../models/Hearing.php';
+require_once __DIR__ . '/../models/Paanyaya.php';
 require_once __DIR__ . '/../models/Report.php';
 require_once __DIR__ . '/../models/Setting.php';
 require_once __DIR__ . '/../models/Summons.php';
@@ -46,7 +47,7 @@ function nextWorkingWeekday(OfficeLogisticsService $logistics, string $afterDate
     return date('Y-m-d', $ts);
 }
 
-function httpJsonRequest(string $base, ?array $session, string $route, ?array $jsonBody = null): array {
+function httpJsonRequest(string $base, ?array $session, string $route, ?array $requestBody = null, bool $form = false): array {
     $headers = [
         'Accept: application/json',
         'X-Requested-With: XMLHttpRequest',
@@ -63,10 +64,10 @@ function httpJsonRequest(string $base, ?array $session, string $route, ?array $j
         'follow_location' => 0,
         'timeout' => 20,
     ];
-    if ($jsonBody !== null) {
+    if ($requestBody !== null) {
         $options['method'] = 'POST';
-        $options['header'][] = 'Content-Type: application/json';
-        $options['content'] = json_encode($jsonBody, JSON_THROW_ON_ERROR);
+        $options['header'][] = $form ? 'Content-Type: application/x-www-form-urlencoded' : 'Content-Type: application/json';
+        $options['content'] = $form ? http_build_query($requestBody) : json_encode($requestBody, JSON_THROW_ON_ERROR);
     }
 
     $path = str_starts_with($route, '/') ? $route : '/backend/api/' . $route;
@@ -160,7 +161,7 @@ if (!$luponRow) {
     $luponRow = ['user_id' => $newLuponId, 'role_id' => $luponRoleId, 'role_name' => 'Lupon Member'];
 }
 
-$residents = $db->query("SELECT resident_id FROM residents WHERE barangay = 'Tumana' ORDER BY resident_id LIMIT 2")->fetchAll(PDO::FETCH_COLUMN);
+$residents = $db->query("SELECT resident_id FROM residents WHERE barangay = 'Tumana' ORDER BY resident_id LIMIT 3")->fetchAll(PDO::FETCH_COLUMN);
 $residentRoleId = (int) ($db->query("SELECT role_id FROM roles WHERE role_name = 'Resident'")->fetchColumn() ?: 4);
 $db->prepare("INSERT INTO users (first_name, last_name, username, email, password_hash, role_id, status) VALUES ('Test', 'Resident', ?, ?, ?, ?, 'Active')")
     ->execute(["resident_{$token}", "resident_{$token}@agap.test", password_hash($token, PASSWORD_DEFAULT), $residentRoleId]);
@@ -396,6 +397,9 @@ $resHA = $hearingCtrl->create([
 ], $adminId);
 runAssertion($resHA['success'] === true, 'Created Docket Hearing A at 09:00 AM');
 $hearingAId = (int) $resHA['hearing_id'];
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type)
+    VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent'), (?, ?, 'Respondent')")
+    ->execute([$compAId, (int) $residents[0], $compAId, (int) $residents[1], $compAId, (int) $residents[2]]);
 
 // Attach a generated document and summon_delivery to Hearing A so we can verify queue reorder does not touch it
 $kp9TemplateId = (int) ($db->query("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 9' LIMIT 1")->fetchColumn() ?: 3);
@@ -492,7 +496,8 @@ $origHB = $db->query("SELECT hearing_date, end_time, queue_order FROM hearings W
 $origPP = $db->query("SELECT scheduled_date, scheduled_time, queue_order FROM paanyayas WHERE paanyaya_id = {$paanyayaPId}")->fetch(PDO::FETCH_ASSOC);
 $origPS = $db->query("SELECT scheduled_date, scheduled_time, queue_order FROM paanyaya_sessions WHERE session_id = {$sessionPId}")->fetch(PDO::FETCH_ASSOC);
 $origPrep = $db->query("SELECT appointment_at, SHA2(document_pdf, 256) AS doc_ver FROM paanyaya_preparations WHERE complaint_id = {$compPId} AND invitation_number = 1")->fetch(PDO::FETCH_ASSOC);
-$origAtt = $db->query("SELECT appointment_at, document_version FROM paanyaya_service_attempts WHERE attempt_id = {$attemptPId}")->fetch(PDO::FETCH_ASSOC);
+$origAtt = $db->query("SELECT * FROM paanyaya_service_attempts WHERE attempt_id = {$attemptPId}")->fetch(PDO::FETCH_ASSOC);
+$origPdf = $prepService->document($compPId);
 
 // Reorder via Administrator: [Paanyaya P, Hearing B, Hearing A]
 $adminReorderRes = httpJsonRequest($baseUrl, $actors['admin'], 'hearings/queue.php', [
@@ -951,10 +956,39 @@ runAssertion(
 // Verify old summon_deliveries superseded and new Pending delivery created
 $oldDelivStatus = $db->query("SELECT delivery_status FROM summon_deliveries WHERE delivery_id = {$deliveryAId}")->fetchColumn();
 $newDeliveries = $db->query("SELECT * FROM summon_deliveries WHERE hearing_id = {$hearingAId} AND delivery_id <> {$deliveryAId}")->fetchAll(PDO::FETCH_ASSOC);
-runAssertion(
-    $oldDelivStatus === 'Superseded' && count($newDeliveries) === 1 && $newDeliveries[0]['delivery_status'] === 'Pending',
-    'Previous summon_deliveries row marked Superseded and a fresh Pending delivery notice was created'
-);
+runAssertion($oldDelivStatus === 'Superseded' && count($newDeliveries) === 3
+    && count(array_unique(array_column($newDeliveries, 'document_id'))) === 3
+    && array_unique(array_column($newDeliveries, 'delivery_status')) === ['Pending'],
+    'Each recipient has a distinct pending notice on the rescheduled hearing');
+$respondentNotice = array_values(array_filter($newDeliveries, fn ($row) => $row['party_type'] === 'Respondent'))[0];
+$secondRespondentNotice = array_values(array_filter($newDeliveries, fn ($row) => (int) $row['resident_id'] === (int) $residents[2]))[0];
+$noticeUrl = 'documents/kp-form.php?document_id=' . $respondentNotice['document_id'];
+$preview = httpJsonRequest($baseUrl, $actors['clerk'], $noticeUrl . '&hearing_id=' . $hearingBId);
+runAssertion($preview['status'] === 200 && str_contains($preview['body'], $respondentNotice['recipient_name'])
+    && str_contains($preview['body'], 'Session Hall B') && str_contains($preview['body'], '10:00 AM')
+    && str_contains($preview['body'], 'Open printable PDF'), 'Notice preview uses the issued schedule and exact recipient');
+$pdf = httpJsonRequest($baseUrl, $actors['clerk'], $noticeUrl . '&pdf=1');
+runAssertion($pdf['status'] === 200 && str_starts_with($pdf['body'], '%PDF-'), 'Printable replacement PDF opens through the document endpoint');
+$return = [
+    'action' => 'officer_return', 'hearing_id' => $hearingAId, 'case_id' => $caseAId,
+    'party_type' => 'Respondent', 'delivery_status' => 'Served Personal',
+    'recipient_name' => $respondentNotice['recipient_name'],
+];
+$oldReturn = httpJsonRequest($baseUrl, $actors['clerk'], 'gps/proof-service.php', $return + ['delivery_id' => $deliveryAId], true);
+runAssertion($oldReturn['status'] === 422 && str_contains($oldReturn['body'], 'read-only'), 'Superseded return cannot be edited');
+$wrongReturn = httpJsonRequest($baseUrl, $actors['clerk'], 'gps/proof-service.php', $return + [
+    'delivery_id' => $respondentNotice['delivery_id'], 'resident_id' => $secondRespondentNotice['resident_id'],
+], true);
+runAssertion($wrongReturn['status'] === 422, 'Replacement return rejects a different recipient');
+$savedReturn = httpJsonRequest($baseUrl, $actors['clerk'], 'gps/proof-service.php', $return + [
+    'delivery_id' => $respondentNotice['delivery_id'], 'resident_id' => $respondentNotice['resident_id'],
+], true);
+$proofNotice = $db->prepare('SELECT document_id FROM proof_of_service WHERE proof_id = ?');
+$proofNotice->execute([$savedReturn['json']['proof_id'] ?? 0]);
+runAssertion($savedReturn['status'] === 200 && (int) $proofNotice->fetchColumn() === (int) $respondentNotice['document_id'],
+    'Officer return records proof against the exact replacement document');
+runAssertion($db->query('SELECT delivery_status FROM summon_deliveries WHERE delivery_id = ' . (int) $secondRespondentNotice['delivery_id'])->fetchColumn() === 'Pending',
+    'Serving one respondent leaves the co-respondent’s replacement pending');
 
 // Verify case_history and audit_trails contain old and new values
 $caseHistRow = $db->query("SELECT remarks FROM case_history WHERE case_id = {$caseAId} ORDER BY history_id DESC LIMIT 1")->fetchColumn();
@@ -965,7 +999,8 @@ runAssertion(
     'case_history records old and new schedule details and reason'
 );
 
-$hearingAuditRow = $db->query("SELECT action FROM audit_trails WHERE module_name = 'Hearings' AND affected_record = {$hearingAId} ORDER BY audit_id DESC LIMIT 1")->fetchColumn();
+$hearingAuditRow = $db->query("SELECT action FROM audit_trails WHERE module_name = 'Hearings'
+    AND affected_record = {$hearingAId} AND action LIKE 'Rescheduled Hearing%' ORDER BY audit_id DESC LIMIT 1")->fetchColumn();
 runAssertion(
     is_string($hearingAuditRow)
     && str_contains($hearingAuditRow, $docketTue)
@@ -1019,8 +1054,8 @@ runAssertion(
 $updatedP = $db->query("SELECT * FROM paanyayas WHERE paanyaya_id = {$paanyayaPId}")->fetch(PDO::FETCH_ASSOC);
 $updatedPS = $db->query("SELECT * FROM paanyaya_sessions WHERE session_id = {$sessionPId}")->fetch(PDO::FETCH_ASSOC);
 $updatedStage = $db->query("SELECT * FROM paanyaya_stages WHERE complaint_id = {$compPId} AND stage_type = 'Paanyaya 1'")->fetch(PDO::FETCH_ASSOC);
-$updatedPrep = $db->query("SELECT appointment_at, venue, document_pdf, SHA2(document_pdf, 256) AS doc_ver FROM paanyaya_preparations WHERE complaint_id = {$compPId} AND invitation_number = 1")->fetch(PDO::FETCH_ASSOC);
-$updatedAtt = $db->query("SELECT appointment_at, document_version, notes FROM paanyaya_service_attempts WHERE attempt_id = {$attemptPId}")->fetch(PDO::FETCH_ASSOC);
+$updatedPrep = $db->query("SELECT appointment_at, venue, document_pdf, document_version, ready_at FROM paanyaya_preparations WHERE complaint_id = {$compPId} AND invitation_number = 1")->fetch(PDO::FETCH_ASSOC);
+$updatedAtt = $db->query("SELECT * FROM paanyaya_service_attempts WHERE attempt_id = {$attemptPId}")->fetch(PDO::FETCH_ASSOC);
 $updatedLegacy = $db->query("SELECT invitation_date, invitation_time, venue FROM complaint_paanyaya WHERE complaint_id = {$compPId}")->fetch(PDO::FETCH_ASSOC);
 
 runAssertion(
@@ -1048,14 +1083,12 @@ runAssertion(
     $updatedPrep['appointment_at'] === "{$nextDocketTue} 14:30:00"
     && $updatedPrep['venue'] === 'Barangay Conference Room'
     && str_starts_with((string) $updatedPrep['document_pdf'], '%PDF-')
-    && $updatedPrep['doc_ver'] !== $origDocVersionP,
+    && $updatedPrep['document_version'] !== $origDocVersionP && $updatedPrep['ready_at'] === null,
     '4/6: paanyaya_preparations appointment_at, venue, and regenerated PDF binary updated'
 );
 runAssertion(
-    $updatedAtt['appointment_at'] === "{$nextDocketTue} 14:30:00"
-    && $updatedAtt['document_version'] === $updatedPrep['doc_ver']
-    && str_contains((string) $updatedAtt['notes'], 'Superseded appointment'),
-    '5/6: paanyaya_service_attempts appointment_at, document_version, and superseded note reconciled'
+    $updatedAtt === $origAtt && $deliveryService->invitationPdf($attemptPId) === $origPdf,
+    '5/6: prior delivery result, evidence, and original PDF are preserved'
 );
 runAssertion(
     $updatedLegacy['invitation_date'] === $nextDocketTue
@@ -1064,9 +1097,43 @@ runAssertion(
     '6/6: complaint_paanyaya table reconciled with new schedule'
 );
 
-// Verify ResidentComplaintTimeline now reflects the rescheduled Paanyaya appointment and not the old one
+// The new appointment stays unconfirmed until the revised invitation is delivered.
 $timelinePAfter = $timelineService->find($compPId, $residentUserId);
 $paanyayaEventsAfter = array_values(array_filter($timelinePAfter['events'] ?? [], static fn(array $e): bool => $e['title'] === 'Paanyaya appointment confirmed'));
+runAssertion($paanyayaEventsAfter === [] && PaanyayaServiceDelivery::latestAttempt($db, $compPId) === null,
+    'Old delivery cannot confirm a revised appointment');
+$checkIn = $hearingCtrl->checkInParty(['session_source' => 'paanyaya', 'hearing_id' => $sessionPId, 'party_type' => 'Complainant'], $clerkId);
+runAssertion(!$checkIn['success'] && str_contains($checkIn['message'], 'current invitation'), 'Dialogue check-in waits for re-service');
+$minutesInput = [
+    'dialogue_date' => date('Y-m-d\TH:i'), 'document_version' => $origDocVersionP,
+    'complainant_attended' => 'Present', 'respondent_attended' => 'Present',
+    'outcome' => 'Escalate_Mediation', 'discussion_summary' => 'Synthetic dialogue notes',
+];
+$paanyayaModel = new Paanyaya($db);
+$blockedDialogue = $paanyayaModel->recordMinutes($compPId, 'Paanyaya 1', $minutesInput, $clerkId);
+runAssertion(!$blockedDialogue['success'] && str_contains($blockedDialogue['message'], 'Confirm delivery'),
+    'Dialogue minutes cannot be saved before the revised invitation is served');
+$version = $updatedPrep['document_version'];
+$prepService->save($compPId, $clerkId, 'ready', ['document_version' => $version], 1);
+try {
+    $deliveryService->record($attemptPId, $assignedServerId, ['outcome' => 'Not Delivered', 'notes' => 'Stale result'], []);
+    throw new RuntimeException('Superseded attempt accepted a new result');
+} catch (DomainException $exception) {
+    runAssertion(str_contains($exception->getMessage(), 'superseded'), 'Superseded Paanyaya attempt is read-only');
+}
+$deliveryService->release($compPId, $clerkId, $assignedServerId, $version);
+$revisedAttempt = PaanyayaServiceDelivery::latestAttempt($db, $compPId);
+$deliveryService->record((int) $revisedAttempt['attempt_id'], $assignedServerId, ['outcome' => 'Not Delivered', 'notes' => 'Recipient unavailable'], []);
+$deliveryService->release($compPId, $clerkId, $assignedServerId, $version);
+$retry = PaanyayaServiceDelivery::latestAttempt($db, $compPId);
+$deliveryService->record((int) $retry['attempt_id'], $assignedServerId, ['outcome' => 'Delivered'], []);
+$staleMinutes = $paanyayaModel->recordMinutes($compPId, 'Paanyaya 1', $minutesInput, $clerkId);
+runAssertion(!$staleMinutes['success'] && str_contains($staleMinutes['message'], 'invitation changed'),
+    'An old dialogue form remains stale after successful re-service');
+$timelinePAfter = $timelineService->find($compPId, $residentUserId);
+$paanyayaEventsAfter = array_values(array_filter($timelinePAfter['events'] ?? [], static fn(array $e): bool => $e['title'] === 'Paanyaya appointment confirmed'));
+runAssertion((int) $db->query("SELECT COUNT(*) FROM paanyaya_sessions WHERE complaint_id = {$compPId}")->fetchColumn() === 1,
+    'Re-service reopens the same Paanyaya session');
 $expectedAfterDetail = date('M j, Y, g:i A', strtotime("{$nextDocketTue} 14:30:00")) . ' · Barangay Conference Room';
 runAssertion(
     count($paanyayaEventsAfter) === 1 && $paanyayaEventsAfter[0]['detail'] === $expectedAfterDetail,
@@ -1074,7 +1141,8 @@ runAssertion(
 );
 
 // Verify Paanyaya audit trail and notifications
-$paanyayaAuditRow = $db->query("SELECT action FROM audit_trails WHERE module_name = 'Paanyaya' AND affected_record = {$compPId} ORDER BY audit_id DESC LIMIT 1")->fetchColumn();
+$paanyayaAuditRow = $db->query("SELECT action FROM audit_trails WHERE module_name = 'Paanyaya'
+    AND affected_record = {$compPId} AND action LIKE 'Rescheduled Paanyaya%' ORDER BY audit_id DESC LIMIT 1")->fetchColumn();
 runAssertion(
     is_string($paanyayaAuditRow)
     && str_contains($paanyayaAuditRow, $docketTue)

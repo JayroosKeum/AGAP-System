@@ -112,6 +112,7 @@ class GPSController
                     'venue' => $h['venue'],
                     'status' => $h['status'],
                     'max_attempts' => $maxSummons,
+                    'replacement_notices' => $deliveryService->replacementNotices($hearingId),
                     'deliveries' => $delivResult['deliveries'],
                     'complainant_delivery' => $delivResult['complainant_delivery'] ?? null,
                     'complainant_attempts' => $delivResult['complainant_attempts'] ?? [],
@@ -186,24 +187,29 @@ class GPSController
             $imagePath = $upload['path'];
         }
 
-        require_once __DIR__ . '/../models/Setting.php';
-        $maxSummons = (int) Setting::getSetting('summons_max_attempts', 6, $db);
         $deliveryService = new SummonDeliveryService($db);
-        $result = $deliveryService->recordDelivery($hearingId, $input, $userId);
-
-        if ($result['success'] && $imagePath) {
-            $targetDeliveryId = !empty($result['delivery_id']) ? (int) $result['delivery_id'] : $deliveryId;
-            if ($targetDeliveryId) {
-                $updDeliv = $db->prepare("UPDATE summon_deliveries SET proof_file_path = ? WHERE delivery_id = ?");
-                $updDeliv->execute([$imagePath, $targetDeliveryId]);
+        try {
+            $db->beginTransaction();
+            $result = $deliveryService->recordDelivery($hearingId, $input, $userId);
+            if ($result['success']) {
+                if ($imagePath) {
+                    $db->prepare("UPDATE summon_deliveries SET proof_file_path = ? WHERE delivery_id = ?")
+                        ->execute([$imagePath, $result['delivery_id']]);
+                    $db->prepare("UPDATE proof_of_service SET image_path = ? WHERE proof_id = ?")
+                        ->execute([$imagePath, $result['proof_id']]);
+                }
+                $db->commit();
+                return $result;
             }
-            if ($caseId) {
-                $upd = $db->prepare("UPDATE proof_of_service SET image_path = ? WHERE case_id = ? ORDER BY proof_id DESC LIMIT 1");
-                $upd->execute([$imagePath, $caseId]);
+            return $result;
+        } finally {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+                if ($imagePath) {
+                    @unlink(dirname(__DIR__, 2) . '/' . $imagePath);
+                }
             }
         }
-
-        return $result;
     }
 
     public function initiateNextAttempt(int $caseId, int $userId, ?int $hearingId = null, string $partyType = 'Respondent'): array
@@ -406,6 +412,9 @@ class GPSController
                 } elseif ($rawStatus === 'Unserved') {
                     $statusPill = 'unserved';
                     $statusLabel = 'Unserved';
+                } elseif ($rawStatus === 'Superseded') {
+                    $statusPill = 'pending';
+                    $statusLabel = 'Superseded';
                 }
 
                 $attemptNum = (int) ($deliv['attempt_number'] ?: 1);
