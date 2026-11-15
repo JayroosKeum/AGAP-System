@@ -15,6 +15,7 @@ header('Pragma: no-cache');
 
 require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../models/Paanyaya.php';
+require_once __DIR__ . '/../../models/Setting.php';
 require_once __DIR__ . '/../../models/HearingAttendance.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
@@ -531,7 +532,7 @@ try {
                         'complaint_id' => $complaintId,
                         'invitation_date' => date('Y-m-d'),
                         'invitation_time' => '14:00',
-                        'venue' => 'Barangay Tumana',
+                        'venue' => Setting::getBarangayProfile($db)['default_venue'],
                     ], $userId);
                     if (empty($newPaa['success'])) {
                         http_response_code(422);

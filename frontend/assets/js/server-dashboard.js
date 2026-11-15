@@ -149,7 +149,7 @@
             card.innerHTML = `
                 <div class="dispatch-card-top">
                     <div>
-                        <span class="dispatch-purok-tag">${escapeHtml(task.purok || 'Tumana')}</span>
+                        <span class="dispatch-purok-tag">${escapeHtml(task.purok || 'Unspecified Purok')}</span>
                         <div class="dispatch-party-name">${escapeHtml(task.full_name)}</div>
                         <span class="dispatch-party-type ${isComp ? 'complainant' : 'respondent'}">${escapeHtml(task.party_type || 'Panig')}</span>
                     </div>
@@ -164,7 +164,7 @@
                 </div>
 
                 <div class="dispatch-card-address">
-                    <div><strong>Tirahan:</strong> ${escapeHtml(task.house_street || task.address || task.purok || 'Tumana, Marikina')}</div>
+                    <div><strong>Tirahan:</strong> ${escapeHtml(task.house_street || task.address || task.purok || 'Address not provided')}</div>
                     ${task.contact_no ? `<div><strong>Telepono:</strong> <a href="tel:${escapeHtml(task.contact_no)}">${escapeHtml(task.contact_no)}</a></div>` : ''}
                 </div>
 

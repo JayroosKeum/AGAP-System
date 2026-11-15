@@ -114,6 +114,24 @@ Follow the order below when planning the work. Changes to session limits, summon
 
 ## Implementation and verification
 
+### Local integration test baseline
+
+Use a disposable MySQL database for `npm test`. The canonical `database/schema.sql` creates and selects `agap_db`. To provision `agap_test`, use the local `output/agap_test.sql` export if available, or copy the canonical schema and change both `CREATE DATABASE` and `USE` to `agap_test` before importing. The fresh import includes all seven staff users. `DB_NAME` selects an existing database. For an older test database, follow the [database guide](database/README.md) and confirm it includes migration `20261115_003`.
+
+The verified Laragon setup uses PHP 8.3.36 and MySQL on `127.0.0.1:3306`. Use a dedicated PowerShell session so the app keeps using its usual database settings. Adjust the PHP path and port for your installation, and ensure the runner and its PHP HTTP subprocesses use the same database credentials.
+
+```powershell
+$env:DB_NAME = 'agap_test'
+$env:DB_HOST = '127.0.0.1'
+$env:DB_PORT = '3306'
+$env:PHP_BINARY = 'C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe'
+npm test
+```
+
+On the freshly imported `agap_test`, all seven suites passed, including 143 regression assertions. After cleanup, the database held seven staff users and zero complaints, cases, or active LISO duty sessions. Staff acceptance testing remains the next step before Order 4.
+
+### Implementation checks
+
 - Use prepared PDO statements and enforce session, role, record ownership, and CSRF checks on the server.
 - Keep multi-record state changes and their audit entries consistent. Lock or recheck the current record before a transition so stale submissions and retries cannot overwrite outcomes.
 - Follow the endpoint's response convention. AJAX APIs use JSON with appropriate status codes. Complaint form actions use a redirect and feedback on the original record.

@@ -1151,12 +1151,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         setElText('bentoAdminGaugePct', `${clampedRate}%`);
         setElText('bentoAdminGaugeSub', `${totalResolvedAll} resolved (${settledFormal} formal · ${paanyayaResolved} Paanyaya)`);
-        const gap = Math.max(0, 80 - clampedRate);
+        const ltiaTarget = Number(cap.ltia_target_pct || 80);
+        const gap = Math.max(0, ltiaTarget - clampedRate);
         setElText(
             'captainGaugeTargetNote',
-            clampedRate >= 80
-                ? 'Exceeding 80% LTIA benchmark'
-                : `${gap}% to 80% LTIA target · ₱${Number(cap.ltia_estimated_savings || 0).toLocaleString()} saved`
+            clampedRate >= ltiaTarget
+                ? `Exceeding ${ltiaTarget}% LTIA benchmark`
+                : `${gap}% to ${ltiaTarget}% LTIA target · ₱${Number(cap.ltia_estimated_savings || 0).toLocaleString()} saved`
         );
 
         const group = document.getElementById('captainGaugeTicks');
@@ -1201,7 +1202,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const medOverdue = Number(cap.pb_mediation_overdue || 0);
         const actionTotal = Number(cap.action_required_total || 0);
         const resolvedTotal = Number(cap.total_resolved_all ?? data.settled_cases ?? 0);
-        const ltiaSavings = Number(cap.ltia_estimated_savings ?? (resolvedTotal * 9500));
+        const savingsPerCase = Number(cap.ltia_savings_per_case ?? 9500);
+        const ltiaSavings = Number(cap.ltia_estimated_savings ?? (resolvedTotal * savingsPerCase));
 
         setNumericText('kpiTotalDisputes', totalDisputes);
         setElText('kpiTotalDisputesSub', `${totalCases} formal docketed · ${totalPaanyaya} Paanyaya records`);
@@ -1238,7 +1240,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 medPill.textContent = `${medDueSoon} due in 7d`;
             } else {
                 medPill.classList.add('is-positive');
-                medPill.textContent = 'All within 15d';
+                medPill.textContent = 'All on track';
             }
         }
         setElText('kpiPbMediationSub', `${Number(data.hearings_today || 0)} hearings today · ${Number(data.hearings_this_week || 0)} next 7d`);
@@ -1275,7 +1277,10 @@ document.addEventListener('DOMContentLoaded', () => {
         setElText('overviewLtiaHeadline', `₱${ltiaSavings.toLocaleString()}`);
         setNumericText('overviewHearingsToday', data.hearings_today);
         setNumericText('overviewHearingsWeek', data.hearings_this_week);
-        setElText('overviewSummonsSla', `${Number(cap.summons_sla_pct ?? 100)}%`);
+        const summonsSlaText = (cap.summons_sla_pct === null || cap.summons_sla_pct === undefined)
+            ? 'N/A'
+            : `${Number(cap.summons_sla_pct)}%`;
+        setElText('overviewSummonsSla', summonsSlaText);
 
         const stagePaanyaya = Number(data.active_paanyaya || 0);
         const stageMed = Number(data.mediation_cases ?? data.active_mediations ?? 0);
@@ -1565,11 +1570,14 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
         if (kind === 'council') {
+            const councilSlaText = (cap.summons_sla_pct === null || cap.summons_sla_pct === undefined)
+                ? 'N/A'
+                : `${Number(cap.summons_sla_pct)}%`;
             return `
                 <strong>Sangguniang Barangay Talking Points (${escapeHtml(state.currentPeriodLabel)}):</strong><br>
                 • Handled <strong>${Number(cap.total_disputes || 0)}</strong> community disputes (${Number(d.total_cases || 0)} formal cases, ${Number(d.paanyaya_complaints || 0)} Stage 0 Paanyaya).<br>
                 • Resolved <strong>${Number(cap.total_resolved_all || 0)}</strong> disputes amicably (${Number(cap.overall_resolution_rate_pct || 0)}% overall rate), generating <strong>₱${Number(cap.ltia_estimated_savings || 0).toLocaleString()}</strong> in estimated LTIA court-fee savings.<br>
-                • Summons Next-Working-Day SLA stands at <strong>${Number(cap.summons_sla_pct ?? 100)}%</strong>.
+                • Summons Next-Working-Day SLA stands at <strong>${councilSlaText}</strong>.
             `;
         }
         // Default: Today's Executive Brief
@@ -1579,7 +1587,7 @@ document.addEventListener('DOMContentLoaded', () => {
             • <strong>${Number(d.hearings_today || 0)}</strong> hearing(s) today (${Number(d.hearings_this_week || 0)} in next 7 days) &amp; <strong>${Number(cap.pb_mediation_active || 0)}</strong> active PB Mediation cases.<br>
             • <strong>${Number(cap.action_required_total || 0)}</strong> items need attention (${Number(cap.pending_screening || 0)} complaint reviews, ${Number(cap.pending_resident_verifications || 0)} resident verifications, ${Number(cap.pending_pb_attestations || 0)} PB attestations).<br>
             • <strong>Top Priority:</strong> ${topAction}<br>
-            • <strong>Lead Issue:</strong> ${escapeHtml(topCat?.display_name || topCat?.category_name || 'N/A')} in ${escapeHtml(topPurok?.purok_name || 'Barangay Tumana')}.
+            • <strong>Lead Issue:</strong> ${escapeHtml(topCat?.display_name || topCat?.category_name || 'N/A')} in ${escapeHtml(topPurok?.purok_name || cap.barangay_name || 'the barangay')}.
         `;
     };
 
@@ -2251,15 +2259,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(json.message || 'Failed to fetch parties');
             }
         } catch (err) {
-            const fallbackParties = [];
-            let fakeId = 1;
-            (hearing.complainant_names || 'Complainant').split(',').map((s) => s.trim()).filter(Boolean).forEach((name) => {
-                fallbackParties.push({ resident_id: fakeId++, party_type: 'Complainant', resident_name: name, attendance_status: compVal });
-            });
-            (hearing.respondent_names || 'Respondent').split(',').map((s) => s.trim()).filter(Boolean).forEach((name) => {
-                fallbackParties.push({ resident_id: fakeId++, party_type: 'Respondent', resident_name: name, attendance_status: respVal });
-            });
-            renderQuickAttendanceParties(fallbackParties, compVal, respVal);
+            state.activeQuickAttData = null;
+            if (container) {
+                container.innerHTML = `<div style="padding: 14px; border-radius: 8px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 0.85rem;">Unable to load verified party records (${escapeHtml(err.message || 'network error')}). Close and retry before recording attendance.</div>`;
+            }
         }
     };
 

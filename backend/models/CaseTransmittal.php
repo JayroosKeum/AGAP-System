@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/Setting.php';
 require_once __DIR__ . '/../services/MediationDeadlineService.php';
 require_once __DIR__ . '/../services/AuditService.php';
 
@@ -166,8 +167,8 @@ class CaseTransmittal
                 'transmittal_notified' => 0,
                 'created_at' => date('Y-m-d H:i:s'),
                 'updated_at' => date('Y-m-d H:i:s'),
-                'transmitting_officer_name' => 'MARILOU P. CRUZ',
-                'attesting_officer_name' => 'HON. AKIKO LYNNE CENTENO'
+                'transmitting_officer_name' => Setting::getBarangayProfile($this->conn)['lupon_secretary_name'],
+                'attesting_officer_name' => Setting::getBarangayProfile($this->conn)['captain_name']
             ];
             return $this->enrichTransmittalData($row);
         }
@@ -548,7 +549,7 @@ class CaseTransmittal
         $complainantsWithAddress = [];
         $respondentsWithAddress = [];
         foreach ($allParties as $p) {
-            $addr = !empty($p['address']) ? $p['address'] : 'Tumana, Marikina City';
+            $addr = !empty($p['address']) ? $p['address'] : 'Address not provided';
             if ($p['party_type'] === 'Complainant') {
                 $complainants[] = $p['full_name'];
                 $complainantsWithAddress[] = $p['full_name'] . ' resident of ' . $addr;
@@ -618,7 +619,7 @@ class CaseTransmittal
                 FROM users WHERE role_id = 1 LIMIT 1
             ");
             $pbStmt->execute();
-            $pbName = $pbStmt->fetchColumn() ?: 'Hon. Akiko Lynne Centeno';
+            $pbName = $pbStmt->fetchColumn() ?: Setting::getBarangayProfile($this->conn)['captain_name'];
         }
 
         return [

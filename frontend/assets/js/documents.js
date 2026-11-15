@@ -886,17 +886,17 @@ function updatePaperBadgeText(paperSize) {
 
 function syncSignatoryProfileToLiveFields(profile) {
     const officers = currentBranding?.officers || {};
-    let name = officers.punong_barangay?.name || 'HON. AKIKO LYNNE CENTENO';
+    let name = officers.punong_barangay?.name || 'Punong Barangay';
     let title = officers.punong_barangay?.title || 'Punong Barangay / Lupon Chairman';
 
     if (profile === 'lupon_secretary') {
-        name = officers.lupon_secretary?.name || officers.barangay_secretary?.name || 'MARIA CRISTINA SANTOS';
+        name = officers.lupon_secretary?.name || officers.barangay_secretary?.name || 'Lupon Secretary';
         title = officers.lupon_secretary?.title || 'Kalihim ng Lupon';
     } else if (profile === 'pangkat_chairman') {
-        name = officers.pangkat_chairman?.name || 'JUAN C. DELA CRUZ';
+        name = officers.pangkat_chairman?.name || 'Pangkat Chairman';
         title = officers.pangkat_chairman?.title || 'Tagapangulo ng Pangkat';
     } else if (profile === 'pangkat_secretary') {
-        name = officers.pangkat_secretary?.name || 'ANTONIO V. REYES';
+        name = officers.pangkat_secretary?.name || 'Pangkat Secretary';
         title = officers.pangkat_secretary?.title || 'Kalihim ng Pangkat';
     }
 

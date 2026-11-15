@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+error_reporting(E_ALL & ~E_DEPRECATED);
+
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
 require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
@@ -32,11 +34,18 @@ function request(string $base, array $session, string $route, ?array $data = nul
     }
 
     $path = str_starts_with($route, '/') ? $route : '/backend/api/' . $route;
-    $body = file_get_contents($base . $path, false, stream_context_create(['http' => $options]));
-    if ($body === false || !isset($http_response_header[0])) {
+    $stream = @fopen($base . $path, 'rb', false, stream_context_create(['http' => $options]));
+    if ($stream === false) {
         throw new RuntimeException("No HTTP response for $route");
     }
-    $status = (int) explode(' ', $http_response_header[0])[1];
+    $meta = stream_get_meta_data($stream);
+    $body = stream_get_contents($stream);
+    fclose($stream);
+    $wrapperData = $meta['wrapper_data'] ?? [];
+    if ($body === false || empty($wrapperData[0])) {
+        throw new RuntimeException("No HTTP response for $route");
+    }
+    $status = (int) explode(' ', (string) $wrapperData[0])[1];
     return ['status' => $status, 'body' => $body, 'json' => json_decode($body, true)];
 }
 
@@ -195,7 +204,7 @@ register_shutdown_function(static function () use ($root, $scanPath): void {
     }
 });
 $process = proc_open(
-    [PHP_BINARY, '-d', "session.save_path=$sessionDir", '-S', $address, '-t', $root],
+    [PHP_BINARY, '-d', 'error_reporting=E_ALL&~E_DEPRECATED', '-d', "session.save_path=$sessionDir", '-S', $address, '-t', $root],
     [1 => ['file', $logPath, 'a'], 2 => ['file', $logPath, 'a']],
     $pipes,
     $root

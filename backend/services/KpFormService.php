@@ -6,6 +6,8 @@
 
 require_once __DIR__ . '/../config/database.php';
 
+require_once __DIR__ . '/../models/Setting.php';
+
 require_once __DIR__ . '/PDFService.php';
 
 
@@ -176,13 +178,15 @@ class KpFormService
 
         $captainStmt->execute();
 
+        $barangayProfile = Setting::getBarangayProfile($this->conn);
+
         $capVal = trim((string) $captainStmt->fetchColumn());
 
         $captainName = (!empty($capVal) && strcasecmp($capVal, 'Admin User') !== 0 && strcasecmp($capVal, 'Punong Barangay / Lupon Chairman') !== 0)
 
             ? $capVal
 
-            : 'HON. AKIKO LYNNE CENTENO';
+            : $barangayProfile['captain_name'];
 
 
 
@@ -196,7 +200,7 @@ class KpFormService
 
             ? $secVal
 
-            : 'MARILOU P. CRUZ';
+            : $barangayProfile['lupon_secretary_name'];
 
 
 
@@ -597,7 +601,7 @@ class KpFormService
 
         $hearingDate = !empty($hearing['hearing_date']) ? $hearing['hearing_date'] : date('Y-m-d H:i:s', strtotime('+2 days 09:00'));
 
-        $venue = !empty($hearing['venue']) ? $hearing['venue'] : 'Lupon Court Room, Barangay Tumana';
+        $venue = !empty($hearing['venue']) ? $hearing['venue'] : ($barangayProfile['default_venue'] ?? Setting::getBarangayProfile($this->conn)['default_venue']);
 
 
 
@@ -681,7 +685,7 @@ class KpFormService
 
             $formData['hearing_date'] = !empty($concHearing['hearing_date']) ? $concHearing['hearing_date'] : $hearingDate;
 
-            $formData['venue'] = !empty($concHearing['venue']) ? $concHearing['venue'] : 'Lupon Court Room, Barangay Tumana';
+            $formData['venue'] = !empty($concHearing['venue']) ? $concHearing['venue'] : ($barangayProfile['default_venue'] ?? Setting::getBarangayProfile($this->conn)['default_venue']);
 
             $formData['pangkat_chairman'] = $pangkatChairName ?: 'Pangkat Chairman';
 
@@ -767,7 +771,7 @@ class KpFormService
 
             $formData['grounds'] = $formData['repudiation_reason'];
 
-            $formData['official_name'] = !empty($captainName) ? $captainName : 'HON. AKIKO LYNNE CENTENO';
+            $formData['official_name'] = !empty($captainName) ? $captainName : ($barangayProfile['captain_name'] ?? Setting::getBarangayProfile($this->conn)['captain_name']);
 
             $formData['captain_name'] = $formData['official_name'];
 

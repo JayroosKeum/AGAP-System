@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/Paanyaya.php';
+require_once __DIR__ . '/Setting.php';
 
 class PaanyayaModel
 {
@@ -121,13 +122,16 @@ class PaanyayaModel
         $araw = $this->filipinoDayOfWeek((int)date('w', $ts));
         $oras = date('h:i A', strtotime($invitationTime));
 
+        $profile = Setting::getBarangayProfile($this->conn);
+        $savedVenue = trim((string) (($latestSession['venue'] ?? '') ?: ($currentStage['venue'] ?? '')));
+
         return [
             'complaint' => $complaint,
             'complainants' => $complainants,
             'respondents' => $respondents,
             'complainant_name' => $complainantNameStr,
             'respondent_name' => $respondentNameStr,
-            'tanggapan' => 'Barangay Tumana',
+            'tanggapan' => $profile['barangay_name'],
             'current_stage' => $currentStage,
             'stage1' => $stage1,
             'stage2' => $stage2,
@@ -142,8 +146,8 @@ class PaanyayaModel
             'oras' => $oras,
             'salaysay' => $salaysay,
             'has_e_signature' => $hasESignature,
-            'venue' => 'Tanggapan ng Punong Barangay, Barangay Tumana',
-            'captain_name' => 'HON. AKIKO LYNNE CENTENO',
+            'venue' => $savedVenue !== '' ? $savedVenue : $profile['default_venue'],
+            'captain_name' => $profile['captain_name'],
             'is_dismissed' => str_contains(strtolower($complaint['status']), 'dismissed'),
             'is_settled' => str_contains(strtolower($complaint['status']), 'settled'),
             'is_escalated' => !empty($complaint['case_id']) || str_contains(strtolower($complaint['status']), 'mediation')
@@ -191,7 +195,7 @@ class PaanyayaModel
 
         $salaysay = trim($data['salaysay'] ?? '');
         $hasESignature = !empty($data['has_e_signature']) ? 1 : 0;
-        $venue = 'Tanggapan ng Punong Barangay, Barangay Tumana';
+        $venue = trim((string) ($data['venue'] ?? '')) ?: Setting::getBarangayProfile($this->conn)['default_venue'];
         $attemptNumber = ($stageType === 'Paanyaya 2') ? 2 : 1;
 
         $this->conn->beginTransaction();
@@ -737,7 +741,7 @@ class PaanyayaModel
         // Suggested invitation date: 3 weekdays in the future
         $invitationDate = date('Y-m-d', strtotime('+3 weekdays'));
         $invitationTime = '09:00:00';
-        $venue = 'Tanggapan ng Punong Barangay, Barangay Tumana';
+        $venue = Setting::getBarangayProfile($this->conn)['default_venue'];
         $actorId = $userId ?: (int)($_SESSION['user_id'] ?? 1);
 
         $this->conn->beginTransaction();

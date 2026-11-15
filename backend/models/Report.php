@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/Paanyaya.php';
+require_once __DIR__ . '/Setting.php';
 require_once __DIR__ . '/../services/DocketScheduleService.php';
 require_once __DIR__ . '/../services/SummonDeliveryService.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
@@ -525,12 +526,15 @@ class Report
             );
             $auditFeed = $auditStmt ? $auditStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
+            $totalCasesAll = (int) $this->conn->query('SELECT COUNT(*) FROM cases')->fetchColumn();
+            $pendingReviewCount = (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status IN ('Under Review', 'Needs Information')")->fetchColumn();
+
             return [
-                'total_cases' => (int) $this->conn->query('SELECT COUNT(*) FROM cases')->fetchColumn(),
+                'total_cases' => $totalCasesAll,
                 'settled_cases' => $settledCasesTotal,
                 'cfa_cases' => $cfaCasesTotal,
                 'archived_cases' => $archivedCasesTotal,
-                'pending_review' => (int) $this->conn->query("SELECT COUNT(*) FROM complaints WHERE status IN ('Under Review', 'Needs Information')")->fetchColumn(),
+                'pending_review' => $pendingReviewCount,
                 'paanyaya_complaints' => $totalPaanyaya,
                 'draft_complaints' => 0,
                 'hearings_today' => (int) $hearingCountToday->fetchColumn(),
@@ -551,6 +555,7 @@ class Report
                 'status_totals' => $statusRows,
                 'cases' => $casesList,
                 'analytics' => $this->getAnalyticsSummary(),
+                'captain_summary' => $this->buildCaptainSummary(null, null, $totalCasesAll, $settledCasesTotal, $mediationOnlyCases, $pendingReviewCount),
             ];
         }
 
@@ -821,12 +826,16 @@ class Report
         );
         $auditFeed = $auditStmt ? $auditStmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
+        $totalCasesPeriod = (int) $totalCasesStmt->fetchColumn();
+        $settledPeriod = (int) $settledStmt->fetchColumn();
+        $pendingReviewPeriod = (int) $pendingReviewStmt->fetchColumn();
+
         return [
-            'total_cases' => (int) $totalCasesStmt->fetchColumn(),
-            'settled_cases' => (int) $settledStmt->fetchColumn(),
+            'total_cases' => $totalCasesPeriod,
+            'settled_cases' => $settledPeriod,
             'cfa_cases' => (int) $cfaStmt->fetchColumn(),
             'archived_cases' => (int) $archivedStmt->fetchColumn(),
-            'pending_review' => (int) $pendingReviewStmt->fetchColumn(),
+            'pending_review' => $pendingReviewPeriod,
             'paanyaya_complaints' => $totalPeriodPaanyaya,
             'draft_complaints' => 0,
             'hearings_today' => $periodHearingCount,
@@ -847,13 +856,81 @@ class Report
             'status_totals' => $statusRows,
             'cases' => $casesList,
             'analytics' => $this->getAnalyticsSummary($startDate, $endDate),
+            'captain_summary' => $this->buildCaptainSummary($startDate, $endDate, $totalCasesPeriod, $settledPeriod, (int) $pangkatConciliations, $pendingReviewPeriod),
         ];
     }
 
     /** Calendar uses one event shape for active formal hearings and Paanyaya sessions. */
+    private function buildCaptainSummary(
+        ?string $startDate,
+        ?string $endDate,
+        int $totalCases,
+        int $settledCases,
+        int $pbMediationActive,
+        int $pendingScreening
+    ): array {
+        $profile = Setting::getBarangayProfile($this->conn);
+        $hasPeriod = ($startDate !== null && $endDate !== null);
+        $periodParams = $hasPeriod ? [$startDate, $endDate] : [];
+
+        $paanyayaSql = "SELECT COUNT(*) FROM paanyayas WHERE status IN ('Resolved', 'Settled')"
+            . ($hasPeriod ? " AND DATE(created_at) BETWEEN ? AND ?" : "");
+        $paanyayaStmt = $this->conn->prepare($paanyayaSql);
+        $paanyayaStmt->execute($periodParams);
+        $paanyayaResolved = (int) $paanyayaStmt->fetchColumn();
+
+        $complaintsSql = "SELECT COUNT(*) FROM complaints"
+            . ($hasPeriod ? " WHERE DATE(created_at) BETWEEN ? AND ?" : "");
+        $complaintsStmt = $this->conn->prepare($complaintsSql);
+        $complaintsStmt->execute($periodParams);
+        $totalComplaints = (int) $complaintsStmt->fetchColumn();
+
+        $totalDisputes = max($totalComplaints, $totalCases + $paanyayaResolved);
+        $totalResolvedAll = $settledCases + $paanyayaResolved;
+        $overallResolutionRate = $totalDisputes > 0 ? round(($totalResolvedAll / $totalDisputes) * 100, 1) : 0.0;
+        $ltiaSavings = round($totalResolvedAll * (float) $profile['ltia_savings_per_case'], 2);
+
+        $slaDays = max(1, (int) Setting::getSetting('summons_sla_working_days', 1, $this->conn));
+        $slaSql = "SELECT COUNT(*) AS total_served,
+                          COALESCE(SUM(CASE WHEN DATEDIFF(DATE(served_at), DATE(created_at)) <= ? THEN 1 ELSE 0 END), 0) AS on_time
+                   FROM summon_deliveries
+                   WHERE delivery_status = 'Served'
+                     AND served_at IS NOT NULL
+                     AND created_at IS NOT NULL"
+            . ($hasPeriod ? " AND DATE(created_at) BETWEEN ? AND ?" : "");
+        $slaStmt = $this->conn->prepare($slaSql);
+        $slaStmt->execute(array_merge([$slaDays], $periodParams));
+        $slaRow = $slaStmt->fetch(PDO::FETCH_ASSOC) ?: ['total_served' => 0, 'on_time' => 0];
+        $totalServed = (int) ($slaRow['total_served'] ?? 0);
+        $summonsSlaPct = $totalServed > 0 ? round(((int) ($slaRow['on_time'] ?? 0) / $totalServed) * 100, 1) : null;
+
+        $pendingResidentVerifications = (int) $this->conn->query(
+            "SELECT COUNT(*) FROM residents WHERE COALESCE(residency_verified, 0) = 0"
+        )->fetchColumn();
+
+        return [
+            'barangay_name' => $profile['barangay_name'],
+            'ltia_target_pct' => $profile['ltia_target_pct'],
+            'ltia_savings_per_case' => $profile['ltia_savings_per_case'],
+            'paanyaya_resolved' => $paanyayaResolved,
+            'total_disputes' => $totalDisputes,
+            'total_resolved_all' => $totalResolvedAll,
+            'overall_resolution_rate_pct' => $overallResolutionRate,
+            'ltia_estimated_savings' => $ltiaSavings,
+            'summons_sla_pct' => $summonsSlaPct,
+            'pb_mediation_active' => $pbMediationActive,
+            'pending_screening' => $pendingScreening,
+            'pending_resident_verifications' => $pendingResidentVerifications,
+            'pending_pb_attestations' => 0,
+            'pending_transmittals' => 0,
+            'action_required_total' => $pendingScreening + $pendingResidentVerifications,
+        ];
+    }
+
     private function getCalendarPaanyayaItems(): array
     {
-        $stmt = $this->conn->query("
+        $defaultVenue = Setting::getBarangayProfile($this->conn)['default_venue'];
+        $stmt = $this->conn->prepare("
             SELECT CONCAT('paanyaya-', p.paanyaya_id) AS hearing_id,
                    p.paanyaya_id,
                    COALESCE(ps.session_id, 0) AS session_id,
@@ -861,7 +938,7 @@ class Report
                    c.case_id, 'Paanyaya' AS hearing_type,
                    CONCAT(p.scheduled_date, ' ', COALESCE(p.scheduled_time, ps.scheduled_time, '09:00:00')) AS hearing_date,
                    p.scheduled_date, COALESCE(p.scheduled_time, ps.scheduled_time, '09:00:00') AS scheduled_time,
-                   COALESCE(p.venue, ps.venue, 'Tanggapan ng Barangay Tumana') AS venue,
+                   COALESCE(NULLIF(TRIM(p.venue), ''), NULLIF(TRIM(ps.venue), ''), ?) AS venue,
                    COALESCE(p.status, 'Scheduled') AS status,
                    COALESCE(ps.queue_status, 'Waiting') AS queue_status,
                    ps.queue_status AS session_queue_status,
@@ -899,7 +976,7 @@ class Report
               AND (ps.session_id IS NULL OR (ps.session_outcome IS NULL AND COALESCE(ps.queue_status, 'Waiting') <> 'Concluded'))
             ORDER BY p.scheduled_date ASC, p.scheduled_time ASC
         ");
-        $invitationItems = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $invitationItems = ($stmt && $stmt->execute([$defaultVenue])) ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
 
         // Also include any paanyaya_sessions row that does not have a matching row in paanyayas
         $orphanSessStmt = $this->conn->query("
@@ -991,7 +1068,7 @@ class Report
 
         // 2. Purok Dispute Hotspots
         $purokSql = "
-            SELECT COALESCE(NULLIF(TRIM(co.incident_purok), ''), 'Tumana (General)') AS purok_name,
+            SELECT COALESCE(NULLIF(TRIM(co.incident_purok), ''), 'Unspecified Purok') AS purok_name,
                    COUNT(co.complaint_id) AS total
             FROM complaints co " .
             ($hasPeriod ? " WHERE DATE(co.created_at) BETWEEN ? AND ?" : "") . "

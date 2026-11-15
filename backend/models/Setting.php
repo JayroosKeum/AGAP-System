@@ -23,6 +23,47 @@ class Setting
     }
 
     /**
+     * Resolves display and signatory defaults from system_settings without
+     * hardcoding specific individuals or barangay names when unconfigured.
+     */
+    public static function getBarangayProfile(?PDO $conn = null): array
+    {
+        $all = self::all($conn);
+        $pick = static function (string $key, string $fallback = '') use ($all): string {
+            $val = trim((string) ($all[$key] ?? ''));
+            return $val !== '' ? $val : $fallback;
+        };
+
+        $barangayName = $pick('barangay_name', 'Barangay');
+        $hallAddress = $pick('barangay_hall_address', '');
+        $defaultVenue = $pick('default_hearing_venue', $hallAddress !== '' ? $hallAddress : ('Tanggapan ng ' . $barangayName));
+        $luponSec = $pick('lupon_secretary_name', $pick('barangay_secretary_name', 'Lupon Secretary'));
+        $brgySec = $pick('barangay_secretary_name', $pick('lupon_secretary_name', 'Barangay Secretary'));
+
+        $ltiaTarget = (int) ($all['ltia_target_pct'] ?? 80);
+        if ($ltiaTarget < 1 || $ltiaTarget > 100) {
+            $ltiaTarget = 80;
+        }
+        $savingsPerCase = (float) ($all['ltia_savings_per_case'] ?? 9500);
+        if ($savingsPerCase < 0) {
+            $savingsPerCase = 9500.0;
+        }
+
+        return [
+            'barangay_name' => $barangayName,
+            'city_name' => $pick('city_name', ''),
+            'province_name' => $pick('province_name', ''),
+            'barangay_hall_address' => $hallAddress,
+            'default_venue' => $defaultVenue,
+            'captain_name' => $pick('captain_name', 'Punong Barangay'),
+            'lupon_secretary_name' => $luponSec,
+            'barangay_secretary_name' => $brgySec,
+            'ltia_target_pct' => $ltiaTarget,
+            'ltia_savings_per_case' => $savingsPerCase,
+        ];
+    }
+
+    /**
      * Retrieves all system settings as an associative key => value array.
      */
     public function getAllSettings(): array

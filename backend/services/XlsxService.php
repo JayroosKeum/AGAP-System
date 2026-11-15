@@ -301,7 +301,7 @@ class XlsxService
             $s['certified'] ?? 0,
             $s['referred'] ?? 0,
             $s['total_unsettled'] ?? 0,
-            $s['savings'] ?? number_format((float)(($s['total_settled'] ?? 0) * 9500), 2)
+            $s['savings'] ?? number_format((float)(($s['total_settled'] ?? 0) * ($meta['savings_per_case'] ?? 9500)), 2)
         ];
 
         $sheetXml .= '<row r="12" customHeight="1" ht="24">';

@@ -69,12 +69,12 @@ $categories  = $data['categories']   ?? [];
 $cases       = $data['cases']        ?? [];
 
 // ── Barangay metadata ─────────────────────────────────────────────────────────
-$sysSettings = (new Setting())->getAllSettings();
-$barangay   = !empty($sysSettings['barangay_name']) ? $sysSettings['barangay_name'] : 'Barangay Tumana';
-$city       = !empty($sysSettings['city_name']) ? $sysSettings['city_name'] : 'Marikina City';
-$province   = !empty($sysSettings['province_name']) ? $sysSettings['province_name'] : 'Metro Manila';
-$pbName     = !empty($sysSettings['captain_name']) ? $sysSettings['captain_name'] : 'HON. AKIKO LYNNE CENTENO';
-$secretName = !empty($sysSettings['lupon_secretary_name']) ? $sysSettings['lupon_secretary_name'] : 'PAMELA CONSULTA';
+$profile    = Setting::getBarangayProfile();
+$barangay   = $profile['barangay_name'];
+$city       = $profile['city_name'];
+$province   = $profile['province_name'];
+$pbName     = $profile['captain_name'];
+$secretName = $profile['lupon_secretary_name'];
 
 // ── Build settlement / CFA / hearing summary ──────────────────────────────────
 $settledCount    = $totals['settled_cases']       ?? 0;

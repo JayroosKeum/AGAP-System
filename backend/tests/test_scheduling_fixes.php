@@ -91,23 +91,19 @@ function httpJsonRequest(string $base, ?array $session, string $route, ?array $r
     ];
 }
 
-$db = (new Database())->connect();
-$cleanup = new TestDataCleanup($db);
-$logistics = new OfficeLogisticsService($db);
-$docketService = new DocketScheduleService($db);
-
 $token = bin2hex(random_bytes(6));
 $sessionDir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'agap-sched-test-' . $token;
 mkdir($sessionDir);
 ini_set('session.save_path', $sessionDir);
 ini_set('session.use_cookies', '0');
 
+$db = null;
 $process = null;
 $logPath = $sessionDir . DIRECTORY_SEPARATOR . 'server.log';
 $createdUserIds = [];
 $createdHolidayDates = [];
 
-register_shutdown_function(static function () use ($db, &$createdUserIds, &$createdHolidayDates, &$process, $sessionDir): void {
+register_shutdown_function(static function () use (&$db, &$createdUserIds, &$createdHolidayDates, &$process, $sessionDir): void {
     if (is_resource($process)) {
         proc_terminate($process);
         proc_close($process);
@@ -116,6 +112,9 @@ register_shutdown_function(static function () use ($db, &$createdUserIds, &$crea
         @unlink($file);
     }
     @rmdir($sessionDir);
+    if (!$db instanceof PDO) {
+        return;
+    }
     foreach ($createdHolidayDates as $hDate) {
         try {
             $db->prepare('DELETE FROM scheduling_holidays WHERE holiday_date = ?')->execute([$hDate]);
@@ -129,6 +128,41 @@ register_shutdown_function(static function () use ($db, &$createdUserIds, &$crea
         } catch (Throwable) {}
     }
 });
+
+// Start local built-in PHP HTTP server before calling Database::connect() in the parent
+$socket = stream_socket_server('tcp://127.0.0.1:0');
+if ($socket === false) {
+    throw new RuntimeException('Could not reserve a localhost port for the PHP test server.');
+}
+$address = stream_socket_get_name($socket, false);
+fclose($socket);
+$root = dirname(__DIR__, 2);
+$process = proc_open(
+    [PHP_BINARY, '-d', 'error_reporting=E_ALL&~E_DEPRECATED', '-d', "session.save_path={$sessionDir}", '-S', $address, '-t', $root],
+    [1 => ['file', $logPath, 'a'], 2 => ['file', $logPath, 'a']],
+    $pipes,
+    $root
+);
+if (!is_resource($process)) {
+    throw new RuntimeException('Could not start the PHP test server.');
+}
+for ($attempt = 0; $attempt < 30; $attempt++) {
+    $connection = @stream_socket_client("tcp://{$address}", $errorCode, $error, 0.1);
+    if ($connection) {
+        fclose($connection);
+        break;
+    }
+    if (!proc_get_status($process)['running'] || $attempt === 29) {
+        throw new RuntimeException('PHP test server failed to start: ' . @file_get_contents($logPath));
+    }
+    usleep(100000);
+}
+$baseUrl = "http://{$address}";
+
+$db = (new Database())->connect();
+$cleanup = new TestDataCleanup($db);
+$logistics = new OfficeLogisticsService($db);
+$docketService = new DocketScheduleService($db);
 
 // Resolve Admin, Clerk, Lupon Member, Summons Server, and Resident test actors
 $adminRow = $db->query("SELECT u.user_id, u.role_id, r.role_name FROM users u JOIN roles r ON r.role_id = u.role_id WHERE r.role_name = 'Administrator' AND u.status = 'Active' ORDER BY u.user_id ASC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
@@ -207,36 +241,6 @@ $luponId = (int) $actors['lupon']['user_id'];
 $_SESSION['user_id'] = $adminId;
 $_SESSION['role_id'] = (int) $actors['admin']['role_id'];
 $_SESSION['role_name'] = 'Administrator';
-
-// Start local built-in PHP HTTP server for API integration tests
-$socket = stream_socket_server('tcp://127.0.0.1:0');
-if ($socket === false) {
-    throw new RuntimeException('Could not reserve a localhost port for the PHP test server.');
-}
-$address = stream_socket_get_name($socket, false);
-fclose($socket);
-$root = dirname(__DIR__, 2);
-$process = proc_open(
-    [PHP_BINARY, '-d', "session.save_path={$sessionDir}", '-S', $address, '-t', $root],
-    [1 => ['file', $logPath, 'a'], 2 => ['file', $logPath, 'a']],
-    $pipes,
-    $root
-);
-if (!is_resource($process)) {
-    throw new RuntimeException('Could not start the PHP test server.');
-}
-for ($attempt = 0; $attempt < 30; $attempt++) {
-    $connection = @stream_socket_client("tcp://{$address}", $errorCode, $error, 0.1);
-    if ($connection) {
-        fclose($connection);
-        break;
-    }
-    if (!proc_get_status($process)['running'] || $attempt === 29) {
-        throw new RuntimeException('PHP test server failed to start: ' . @file_get_contents($logPath));
-    }
-    usleep(100000);
-}
-$baseUrl = "http://{$address}";
 
 echo "====================================================================\n";
 echo "   SCHEDULING, DOCKET QUEUE & CROSS-DATE RESCHEDULE TEST SUITE\n";

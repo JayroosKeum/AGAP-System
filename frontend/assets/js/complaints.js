@@ -5113,13 +5113,9 @@ async function openEmbeddedAttendanceModal(hearingId) {
                 </div>
             `;
         } else {
-            const fallbackParties = [
-                { resident_id: 1, party_type: 'Complainant', resident_name: hearing.complainant_names || 'Complainant', attendance_status: compAtt },
-                { resident_id: 2, party_type: 'Respondent', resident_name: hearing.respondent_names || 'Respondent', attendance_status: respAtt }
-            ];
             partiesHtml = `
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;">
-                    ${fallbackParties.map(renderPartyCard).join('')}
+                <div style="padding: 14px; border-radius: 8px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 0.85rem;">
+                    No verified party records were returned for this hearing. Reload the workspace before recording attendance.
                 </div>
             `;
         }
@@ -7227,7 +7223,7 @@ async function openHearingSessionDetails(hearingId) {
         processRules = [
             '<strong>Panel Composition:</strong> 3 members chosen from the Lupon Tagapamayapa roster (Chairman, Secretary, Member).',
             '<strong>Statutory Window:</strong> The Pangkat convenes within 3 days from constitution and has a statutory 15-day period (extendable by another 15 days for meritorious grounds) to reach an amicable settlement.',
-            '<strong>Settlement Effect:</strong> Amicable Settlement (KP Form 16) or Arbitration Award (KP Form 17) carries the force and effect of a final court judgment after 10 days if not repudiated under oath.',
+            '<strong>Settlement Effect:</strong> Amicable Settlement (KP Form 16) or Arbitration Award (KP Form 15) carries the force and effect of a final court judgment after 10 days if not repudiated under oath.',
             '<strong>Failure to Conciliate:</strong> If no settlement is reached, the Pangkat Secretary attests and Chairman issues KP Form 20 (Certificate to File Action / CFA), endorsed by the Punong Barangay, authorizing the parties to file in court or proper government agency.'
         ];
     } else if (isShowCause) {
@@ -7255,14 +7251,15 @@ async function openHearingSessionDetails(hearingId) {
         processOverview = 'Voluntary arbitration proceedings where both parties executed an Agreement for Arbitration (KP Form 14), agreeing to submit their dispute and be bound by the arbitration award of the Lupon.';
         processRules = [
             '<strong>Agreement to Arbitrate:</strong> Irrevocable after 5 days, unless repudiated on grounds of vitiated consent (fraud, violence, intimidation).',
-            '<strong>Arbitration Award:</strong> Rendered after formal hearing within 15 days (KP Form 17), with the force of a final court judgment after 10 days.'
+            '<strong>Arbitration Award:</strong> Rendered after formal hearing within 15 days (KP Form 15), with the force of a final court judgment after 10 days.'
         ];
     } else {
         // Default Mediation
+        const maxMediationSessions = Math.min(2, Math.max(1, Number(window.AGAP_SETTINGS?.mediation_max_sessions || 2)));
         processOverview = 'Stage 1 of the Katarungang Pambarangay system. Conducted personally by the Punong Barangay / Barangay Captain (or designated substitute presider) to mediate disputes directly and amicably between neighborhood residents.';
         processRules = [
             '<strong>Presiding Official:</strong> Conducted personally by the Punong Barangay / Barangay Captain (or authorized Substitute Presider if the Barangay Captain is disqualified or absent under Sec. 411).',
-            '<strong>Statutory Window:</strong> 15-day statutory conciliation window starting from the first mediation meeting. Up to 3 mediation sessions may be conducted.',
+            `<strong>Statutory Window:</strong> 15-day statutory conciliation window starting from the first mediation meeting. Up to ${maxMediationSessions} mediation session${maxMediationSessions === 1 ? '' : 's'} may be conducted.`,
             '<strong>No Attorneys Allowed:</strong> Parties must appear in person without legal representation or lawyers (Sec. 415).',
             '<strong>Amicable Settlement:</strong> When settlement is reached, KP Form 16 (Amicable Settlement) is drafted and signed, carrying the force of a final court judgment after 10 days.',
             '<strong>Referral to Pangkat:</strong> If mediation fails or 15 days expire without settlement, the case must be formally elevated to the 3-member Pangkat ng Tagapagkasundo (Stage 2) via KP Form 10/11.'
@@ -11390,7 +11387,8 @@ function openIssueArbitrationAwardModal(caseId, agreementDate, isEdit = false) {
     }
 
     if (arbitratorInput && !arbitratorInput.value) {
-        arbitratorInput.value = 'HON. AKIKO LYNNE CENTENO (Punong Barangay)';
+        const capName = (window.AGAP_SETTINGS?.captain_name || '').trim();
+        arbitratorInput.value = capName ? `${capName} (Punong Barangay)` : '';
     }
 
     modal.style.display = 'flex';

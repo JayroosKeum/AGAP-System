@@ -51,7 +51,7 @@ class PDFService
             // ignore and fallback
         }
 
-        return 'HON. AKIKO LYNNE CENTENO';
+        return 'Punong Barangay';
     }
 
     public function generateKp11(
@@ -4055,7 +4055,7 @@ class PDFService
         $complainantsWithAddress = $this->escape((string) ($data['complainants_with_address'] ?? '_________________________'));
         $respondentsWithAddress = $this->escape((string) ($data['respondents_with_address'] ?? '_________________________'));
 
-        $pbName = 'AKIKO LYNNE CENTENO';
+        $pbName = $this->escape((string) ($data['punong_barangay_name'] ?? $this->getCaptainName()));
 
         return '<!DOCTYPE html>
 <html lang="fil">
@@ -4508,7 +4508,7 @@ class PDFService
                     </td>
                     <td>
                         <div style="height: 35px;"></div>
-                        <div class="sig-line">HON. AKIKO LYNNE CENTENO</div>
+                        <div class="sig-line">' . htmlspecialchars($this->getCaptainName()) . '</div>
                         <div class="sig-role">Punong Barangay</div>
                     </td>
                 </tr>
@@ -4678,7 +4678,7 @@ class PDFService
 
         $pbStmt = $this->conn->prepare("SELECT setting_value FROM system_settings WHERE setting_key = 'captain_name' LIMIT 1");
         $pbStmt->execute();
-        $captainName = $pbStmt->fetchColumn() ?: 'HON. AKIKO LYNNE CENTENO';
+        $captainName = $pbStmt->fetchColumn() ?: 'Punong Barangay';
 
         $attemptNumber = (int) ($options['attempt_number'] ?? ($paaRecord['attempt_number'] ?? ($paanyaya['attempt_number'] ?? ($complaint['paanyaya_attempt_count'] ?? 1))));
 

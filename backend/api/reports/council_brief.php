@@ -42,13 +42,14 @@ $settingModel = new Setting();
 $sysSettings  = $settingModel->getAllSettings();
 $branding     = DocxTemplateService::getSharedBrandingDefaults();
 
-$barangay    = !empty($sysSettings['barangay_name']) ? $sysSettings['barangay_name'] : 'Barangay Tumana';
-$city        = !empty($sysSettings['city_name']) ? $sysSettings['city_name'] : 'City of Marikina';
-$province    = !empty($sysSettings['province_name']) ? $sysSettings['province_name'] : 'Metro Manila · National Capital Region';
-$address     = !empty($sysSettings['barangay_hall_address']) ? $sysSettings['barangay_hall_address'] : ($branding['address'] ?? 'Barangay Hall, Tumana, Marikina City, Metro Manila');
-$pbName      = !empty($sysSettings['captain_name']) ? $sysSettings['captain_name'] : 'HON. AKIKO LYNNE CENTENO';
-$luponSec    = !empty($sysSettings['lupon_secretary_name']) ? $sysSettings['lupon_secretary_name'] : 'PAMELA CONSULTA';
-$brgySec     = !empty($sysSettings['barangay_secretary_name']) ? $sysSettings['barangay_secretary_name'] : 'PAMELA CONSULTA';
+$profile     = Setting::getBarangayProfile();
+$barangay    = $profile['barangay_name'];
+$city        = $profile['city_name'] !== '' ? $profile['city_name'] : ($branding['city'] ?? 'City / Municipality');
+$province    = $profile['province_name'] !== '' ? $profile['province_name'] : ($branding['province'] ?? '');
+$address     = $profile['barangay_hall_address'] !== '' ? $profile['barangay_hall_address'] : ($branding['address'] ?? $profile['default_venue']);
+$pbName      = $profile['captain_name'];
+$luponSec    = $profile['lupon_secretary_name'];
+$brgySec     = $profile['barangay_secretary_name'];
 
 // Resolve Official Logos (Base64 Data URIs with relative URL fallback)
 $tumanaLogoUri   = DocxTemplateService::getLogoDataUri('tumana_logo.jpg', 'tumana_logo.jpg') ?: '../../../frontend/assets/images/tumana_logo.jpg';
@@ -167,19 +168,19 @@ $totalResolvedAll   = $totalSettledFormal + $paanyayaSettled;
 $settlementRateFormal = $totalDocketed > 0 ? round(($totalSettledFormal / $totalDocketed) * 100, 1) : 0;
 $overallResolutionRate = $totalIntakeAll > 0 ? round(($totalResolvedAll / $totalIntakeAll) * 100, 1) : $settlementRateFormal;
 
-$savingsPerCase = 9500.00;
+$savingsPerCase = (float) $profile['ltia_savings_per_case'];
 $totalSavingsWithPaanyaya = $totalResolvedAll * $savingsPerCase;
 
 $totalServedSummons = $slaOnTime + $slaDelayed;
-$slaComplianceRate = $totalServedSummons > 0 ? round(($slaOnTime / $totalServedSummons) * 100, 1) : 100;
+$slaComplianceRate = $totalServedSummons > 0 ? round(($slaOnTime / $totalServedSummons) * 100, 1) : null;
 
 $topCategories = array_slice($analytics['top_categories'] ?? [], 0, 5);
 $purokHotspots = array_slice($analytics['purok_hotspots'] ?? [], 0, 5);
 $genderData    = $analytics['gender_breakdown'] ?? ['Male' => 0, 'Female' => 0, 'Other' => 0];
 $ageData       = $analytics['age_distribution'] ?? ['minors' => 0, 'youth' => 0, 'adults' => 0, 'seniors' => 0, 'total' => 0];
 
-$topCategoryName = !empty($topCategories[0]['display_name']) ? $topCategories[0]['display_name'] : (!empty($topCategories[0]['category_name']) ? $topCategories[0]['category_name'] : 'Civil / Neighborhood Disputes');
-$topPurokName = !empty($purokHotspots[0]['purok_name']) ? $purokHotspots[0]['purok_name'] : 'Barangay Tumana';
+$topCategoryName = !empty($topCategories[0]['display_name']) ? $topCategories[0]['display_name'] : (!empty($topCategories[0]['category_name']) ? $topCategories[0]['category_name'] : 'No recorded disputes yet');
+$topPurokName = !empty($purokHotspots[0]['purok_name']) ? $purokHotspots[0]['purok_name'] : $barangay;
 
 $priorityCases = array_slice(array_reverse($cases), 0, 5);
 
@@ -830,7 +831,7 @@ $controlNumber = sprintf('SB-KP-%04d-%02d-Q%d', $year, $month, $quarterNum);
 
                 <div class="panel-subtitle" style="margin-top:6px;">
                     <span>Process Server Summons SLA (1-Day Target)</span>
-                    <small>SLA Rate: <?php echo $slaComplianceRate; ?>%</small>
+                    <small>SLA Rate: <?php echo $slaComplianceRate !== null ? ($slaComplianceRate . '%') : 'N/A'; ?></small>
                 </div>
                 <div class="mini-stat-row">
                     <div class="mini-stat-pill">

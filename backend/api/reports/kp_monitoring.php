@@ -2,6 +2,7 @@
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../../controllers/ReportController.php';
+require_once __DIR__ . '/../../models/Setting.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
@@ -87,19 +88,24 @@ foreach ($cases as $c) {
 $totalFiled = count($cases);
 $totalSettled = $mediation + $conciliation + $arbitration;
 $totalUnsettled = $repudiated + $dropped + $pending + $dismissed + $certified + $referred;
-$savingsPerCase = 9500.00;
+$profile = Setting::getBarangayProfile();
+$savingsPerCase = (float) $profile['ltia_savings_per_case'];
 $estimatedSavings = $totalSettled * $savingsPerCase;
 
 $monthTimestamp = strtotime($startDate);
 $monthName = strtoupper(date('F Y', $monthTimestamp));
 $quarterNum = (int) ceil(date('n', $monthTimestamp) / 3);
 
+$regionLabel = strtoupper(trim((string) Setting::getSetting('region_name', 'NCR')));
+$cityLabel = strtoupper($profile['city_name'] !== '' ? $profile['city_name'] : 'Not configured');
+$barangayLabel = strtoupper(preg_replace('/^Barangay\s+/i', '', $profile['barangay_name']));
+
 $response = [
     'success' => true,
     'meta' => [
-        'region' => 'NCR',
-        'city' => 'MARIKINA',
-        'barangay' => 'TUMANA',
+        'region' => $regionLabel,
+        'city' => $cityLabel,
+        'barangay' => $barangayLabel,
         'month_label' => $monthName,
         'quarter_label' => 'Quarter ' . $quarterNum,
         'cy' => date('Y', $monthTimestamp),
@@ -107,8 +113,8 @@ $response = [
         'start_date' => $startDate,
         'end_date' => $endDate,
         'prepared_by' => '',
-        'noted_by' => 'HON. AKIKO LYNNE CENTENO',
-        'attested_by' => 'PAMELA CONSULTA',
+        'noted_by' => $profile['captain_name'],
+        'attested_by' => $profile['lupon_secretary_name'],
     ],
     'summary' => [
         'civil' => $civil,

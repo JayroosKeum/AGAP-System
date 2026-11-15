@@ -128,7 +128,9 @@ class Database {
                     // Azure database credentials.
                     $serverValue = $_SERVER[$k] ?? ($_ENV[$k] ?? getenv($k));
                     if (!is_string($serverValue) || $serverValue === '') {
-                        putenv("$k=$v");
+                        if ($v !== '') {
+                            putenv("$k=$v");
+                        }
                         $_ENV[$k] = $v;
                         $_SERVER[$k] = $v;
                     }

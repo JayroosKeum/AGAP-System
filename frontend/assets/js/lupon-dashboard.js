@@ -357,7 +357,7 @@
                 <strong>Hinihinging Solusyon (Requested Relief):</strong> ${escapeHtml(c.requested_resolution)}
             </div>` : ''}
             <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 0.88rem; color: #64748b;">
-                <span>Lokasyon: ${escapeHtml(c.incident_location || c.incident_purok || 'Tumana')}</span>
+                <span>Lokasyon: ${escapeHtml(c.incident_location || c.incident_purok || 'Unspecified location')}</span>
                 <span>Petsa ng Insidente: ${escapeHtml(formatDateClean(c.incident_date) || 'N/A')}</span>
                 <span>Kategorya: ${escapeHtml(c.category_name || 'Grievance')}</span>
             </div>
@@ -381,7 +381,7 @@
                 <div class="dossier-party-name">${escapeHtml(p.full_name)}</div>
                 <div class="dossier-party-contact">
                     <div><strong>Telepono:</strong> ${p.contact_no ? `<a href="tel:${escapeHtml(p.contact_no)}">${escapeHtml(p.contact_no)}</a>` : '<span style="color:#94a3b8;">Walang nakatalang numero</span>'}</div>
-                    <div><strong>Address:</strong> ${escapeHtml(p.house_street || p.purok || p.address || 'Barangay Tumana')}</div>
+                    <div><strong>Address:</strong> ${escapeHtml(p.house_street || p.purok || p.address || 'Address not provided')}</div>
                     ${p.civil_status ? `<div><strong>Katayuan:</strong> ${escapeHtml(p.civil_status)}</div>` : ''}
                 </div>
             `;
