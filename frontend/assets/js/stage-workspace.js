@@ -407,12 +407,16 @@ function isWorkspaceReadOnly(stage = null) {
     }
 
     if (currentMode === 'Mediation') {
-        if (['Referred to Pangkat', 'Conciliation', 'Unsuccessful'].includes(stageStatus) ||
-            ['Elevate to Pangkat', 'Referred to Pangkat', 'Unsuccessful'].includes(stageOutcome)) {
-            return true;
-        }
+        const canReferToPangkat = Boolean(stage?.documents_and_actions?.can_proceed_to_pangkat)
+            || stageStatus === 'Ready for Referral';
         const caseStage = String(caseData.current_stage || '').trim();
         if (['Conciliation', 'Pangkat', 'Arbitration'].includes(caseStage)) {
+            return true;
+        }
+        if (['Referred to Pangkat', 'Conciliation'].includes(stageStatus)) {
+            return true;
+        }
+        if (!canReferToPangkat && (stageStatus === 'Unsuccessful' || ['Elevate to Pangkat', 'Referred to Pangkat', 'Unsuccessful'].includes(stageOutcome))) {
             return true;
         }
     }
@@ -1866,6 +1870,9 @@ function renderHeaderAndBreadcrumbs(data, stage) {
                 badgeLabel = 'Scheduled · Ready for Check-In';
                 bg = '#dbeafe'; color = '#1d4ed8';
             }
+        } else if (stageWorkspaceState.mode === 'Conciliation' && !stage.is_locked && (stage.is_booking_pending || st === 'Not Started')) {
+            badgeLabel = stage.booking_status || 'Pending Scheduling';
+            bg = '#fef3c7'; color = '#b45309';
         } else if (st === 'In Progress') {
             bg = '#dbeafe'; color = '#1d4ed8';
         } else if (st === 'Awaiting Outcome' || st === 'Ready for Referral') {
@@ -1879,6 +1886,9 @@ function renderHeaderAndBreadcrumbs(data, stage) {
                 draftInd.className = 'agap-draft-indicator state-synced';
             } else if (activeSession?.attendance_recorded_at) {
                 draftInd.textContent = '✓ Attendance Recorded';
+                draftInd.className = 'agap-draft-indicator state-idle';
+            } else if (stageWorkspaceState.mode === 'Conciliation' && !stage.is_locked && (stage.is_booking_pending || !activeSession)) {
+                draftInd.textContent = '⏳ Pending 1st Conciliation Booking';
                 draftInd.className = 'agap-draft-indicator state-idle';
             } else {
                 draftInd.textContent = '⏳ Pending Session Entry';
@@ -5219,6 +5229,7 @@ function renderOutcomeAndReferralSection(data, stage) {
     } else if (mode === 'Conciliation') {
 
         const canCfa = stage.documents_and_actions?.can_issue_cfa;
+        const isBookingPending = Boolean(stage.is_booking_pending || (!stage.sessions_count && stage.booking_status === 'Pending Scheduling'));
 
         outcomeBox.innerHTML = `
 
@@ -5236,13 +5247,15 @@ function renderOutcomeAndReferralSection(data, stage) {
 
                         <p style="margin: 0; font-size: 0.82rem; color: #64748b;">
 
-                            Current Outcome: <strong>${escapeHtml(outcome)}</strong>. Record conciliation result or initiate Certificate to File Action (CFA).
+                            Current Outcome: <strong>${escapeHtml(outcome)}</strong>${isBookingPending ? ' &middot; <span style="color:#b45309; font-weight:600;">1st Conciliation Booking Pending</span>' : ''}. ${isBookingPending ? 'Save the 1st Conciliation hearing schedule to begin sessions.' : 'Record conciliation result or initiate Certificate to File Action (CFA).'}
 
                         </p>
 
                     </div>
 
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+
+                        ${isBookingPending ? `<button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 6px 12px;">Schedule 1st Conciliation &rarr;</button>` : ''}
 
                         <button type="button" class="btn-secondary" onclick="openRecordOutcomeModal()" style="font-size: 0.82rem; padding: 6px 12px;">
 
@@ -9639,6 +9652,33 @@ let referCalendarWindowMeta = null;
 
 
 
+function renderReferSlotButtons(settings) {
+    const group = document.getElementById('referSlotBtnGroup');
+    const timeInput = document.getElementById('referConciliationTime');
+    if (!group || !settings) return;
+
+    const slots = Array.isArray(settings.conciliation_slots) ? settings.conciliation_slots : [];
+    if (!slots.length) {
+        group.innerHTML = '<div style="grid-column: 1 / -1; color: #dc2626; font-size: 0.78rem; font-weight: 600;">No Conciliation slots fit the configured operating hours and duration.</div>';
+        if (timeInput) timeInput.value = '';
+        return;
+    }
+
+    let currentTime = timeInput ? timeInput.value : '';
+    if (!slots.some(s => s.time === currentTime)) {
+        currentTime = slots[0].time;
+        if (timeInput) timeInput.value = currentTime;
+    }
+
+    group.innerHTML = slots.map(slot => {
+        const isActive = slot.time === currentTime;
+        const border = isActive ? '1.5px solid #0284c7' : '1px solid #cbd5e1';
+        const bg = isActive ? '#e0f2fe' : '#ffffff';
+        const color = isActive ? '#0369a1' : '#334155';
+        return `<button type="button" class="refer-slot-btn ${isActive ? 'active' : ''}" data-time="${escapeHtml(slot.time)}" onclick="selectReferConciliationSlot('${escapeHtml(slot.time)}')" style="padding: 8px 6px; border: ${border}; background: ${bg}; color: ${color}; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; text-align: center;">${escapeHtml(slot.label)}</button>`;
+    }).join('');
+}
+
 function initReferCalendar() {
 
     const dateInput = document.getElementById('referConciliationDate');
@@ -10077,6 +10117,13 @@ async function checkReferScheduleConflict() {
 
             referCalendarWindowMeta = result.window;
 
+            if (result.window.settings) {
+                if (venueInput && result.window.settings.default_venue && venueInput.dataset.userEdited !== '1') {
+                    venueInput.value = result.window.settings.default_venue;
+                }
+                renderReferSlotButtons(result.window.settings);
+            }
+
             renderReferVisualDays(result.window, dateVal);
 
         }
@@ -10107,9 +10154,12 @@ async function checkReferScheduleConflict() {
 
         }
 
-
-
-        if (conflictAlert) {
+        if (result.has_conflict && result.conflict?.message) {
+            if (conflictAlert) {
+                conflictAlert.textContent = result.conflict.message;
+                conflictAlert.style.display = 'block';
+            }
+        } else if (conflictAlert) {
 
             conflictAlert.style.display = 'none';
 
@@ -10141,110 +10191,88 @@ async function checkReferScheduleConflict() {
 
 
 
-function openReferPangkatModal() {
-
-    const modal = document.getElementById('wsReferPangkatModal');
-
-    if (!modal) return;
-
-    const dateInput = document.getElementById('referDate');
-
-    if (dateInput && !dateInput.value) {
-
-        dateInput.value = new Date().toISOString().split('T')[0];
-
+function toggleReferBookingMode() {
+    const deferred = Boolean(document.getElementById('referDeferBooking')?.checked);
+    const dateEl = document.getElementById('referConciliationDate');
+    const timeEl = document.getElementById('referConciliationTime');
+    const venueEl = document.getElementById('referConciliationVenue');
+    if (dateEl) {
+        dateEl.required = !deferred;
+        dateEl.disabled = deferred;
     }
-
-    populateLuponDropdowns();
-
-    initReferCalendar();
-
-    goReferralStep(1);
-
-    modal.style.display = 'flex';
-
+    if (timeEl) timeEl.required = !deferred;
+    if (venueEl) {
+        venueEl.required = !deferred;
+        venueEl.disabled = deferred;
+    }
 }
+window.toggleReferBookingMode = toggleReferBookingMode;
 
-
+function openReferPangkatModal() {
+    const modal = document.getElementById('wsReferPangkatModal');
+    if (!modal) return;
+    const dateInput = document.getElementById('referDate');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    const deferEl = document.getElementById('referDeferBooking');
+    if (deferEl) deferEl.checked = false;
+    const venueEl = document.getElementById('referConciliationVenue');
+    if (venueEl) venueEl.dataset.userEdited = '0';
+    toggleReferBookingMode();
+    populateLuponDropdowns();
+    initReferCalendar();
+    goReferralStep(1);
+    modal.style.display = 'flex';
+}
 
 function closeReferPangkatModal() {
-
     const modal = document.getElementById('wsReferPangkatModal');
-
     if (modal) modal.style.display = 'none';
-
 }
 
-
-
 function goReferralStep(step) {
-
+    const deferred = Boolean(document.getElementById('referDeferBooking')?.checked);
     if (step === 2) {
-
         const reason = document.getElementById('referReason')?.value.trim();
-
         const date = document.getElementById('referDate')?.value;
-
         const concDate = document.getElementById('referConciliationDate')?.value;
-
         const concTime = document.getElementById('referConciliationTime')?.value;
-
         const venue = document.getElementById('referConciliationVenue')?.value.trim();
 
-
-
         if (!date || !reason) {
-
             alert('Enter the referral date and authorized referral justification before continuing.');
-
             return;
-
         }
-
-        if (!concDate) {
-
-            alert('Please select a 1st Conciliation Hearing date.');
-
-            return;
-
+        if (!deferred) {
+            if (!concDate) {
+                alert('Please select a 1st Conciliation Hearing date.');
+                return;
+            }
+            const dObj = new Date(concDate + 'T00:00:00');
+            const dow = dObj.getDay();
+            if (dow === 0 || dow === 6) {
+                alert('Conciliation hearings cannot be scheduled on weekends.');
+                return;
+            }
+            if (dow === 2) {
+                alert('Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).');
+                return;
+            }
+            if (!concTime) {
+                alert('Please select a Conciliation time slot.');
+                return;
+            }
+            const configuredSlots = referCalendarWindowMeta?.settings?.conciliation_slots;
+            if (Array.isArray(configuredSlots) && configuredSlots.length && !configuredSlots.some(s => s.time === concTime)) {
+                alert('Selected time slot does not match configured Conciliation hours and duration. Please pick an active slot.');
+                return;
+            }
+            if (!venue) {
+                alert('Please provide a hearing venue.');
+                return;
+            }
         }
-
-        const dObj = new Date(concDate + 'T00:00:00');
-
-        const dow = dObj.getDay();
-
-        if (dow === 0 || dow === 6) {
-
-            alert('Conciliation hearings cannot be scheduled on weekends.');
-
-            return;
-
-        }
-
-        if (dow === 2) {
-
-            alert('Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).');
-
-            return;
-
-        }
-
-        if (!concTime) {
-
-            alert('Please select a Conciliation time slot.');
-
-            return;
-
-        }
-
-        if (!venue) {
-
-            alert('Please provide a hearing venue.');
-
-            return;
-
-        }
-
     }
 
 
@@ -10324,61 +10352,40 @@ function goReferralStep(step) {
 
 
         if (summary) {
+            const bookingSummaryHtml = deferred
+                ? `<div style="font-weight: 700; color: #b45309;">⏳ Pending Scheduling (Book separately after referral)</div>
+                   <div style="font-size: 0.8rem; color: #475569;">KP Form 10 &amp; KP Form 11 will be generated; KP Form 12 waits for 1st Conciliation booking.</div>`
+                : `<div style="font-weight: 700; color: #0f172a;">📅 ${escapeHtml(concDate)} at ${escapeHtml(concTime)}</div>
+                   <div style="font-size: 0.8rem; color: #475569;">📍 ${escapeHtml(venue)}</div>`;
 
             summary.innerHTML = `
-
                 <div style="font-weight: 800; font-size: 0.95rem; margin-bottom: 8px; color: #1e3a8a;">
-
-                    Step 3 of 3: Review Referral &amp; 1st Conciliation Booking
-
+                    Step 3 of 3: Review Referral &amp; ${deferred ? 'Separate Booking' : '1st Conciliation Booking'}
                 </div>
-
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-
                     <div>
-
                         <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">1st Conciliation Hearing</div>
-
-                        <div style="font-weight: 700; color: #0f172a;">📅 ${escapeHtml(concDate)} at ${escapeHtml(concTime)}</div>
-
-                        <div style="font-size: 0.8rem; color: #475569;">📍 ${escapeHtml(venue)}</div>
-
+                        ${bookingSummaryHtml}
                     </div>
-
                     <div>
-
                         <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Referral Parameters</div>
-
                         <div style="font-weight: 600; color: #0f172a;">Date: ${escapeHtml(refDate)}</div>
-
                         <div style="font-size: 0.8rem; color: #475569;">Method: ${escapeHtml(selMethod)}</div>
-
                     </div>
-
                 </div>
-
                 <div style="border-top: 1px solid #bfdbfe; padding-top: 8px; margin-top: 6px;">
-
                     <div style="font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;">Pangkat Tagapagkasundo Panel (${quorumSize} Members)</div>
-
                     <div><strong>Head / Chair:</strong> ${escapeHtml(nameFor('referChairmanId'))}</div>
-
                     <div><strong>Secretary:</strong> ${escapeHtml(nameFor('referSecretaryId'))}</div>
-
                     <div><strong>Member:</strong> ${memberId ? escapeHtml(nameFor('referMemberId')) : '<em style="color:#64748b;">(Quorum Exception — 2 members)</em>'}</div>
-
                     ${quorumSize === 2 ? `<div style="font-size: 0.78rem; color: #b45309; margin-top: 3px;"><strong>Exception Justification:</strong> ${escapeHtml(quorumReason)}</div>` : ''}
-
                 </div>
-
                 <div style="font-size: 0.78rem; color: #475569; margin-top: 8px; font-style: italic;">
-
-                    <strong>Statutory Note:</strong> Upon confirmation, case advances to Conciliation, KP Forms 10, 11, and 12 are generated, and Officer's Return records are registered for KP Form 12.
-
+                    <strong>Statutory Note:</strong> ${deferred
+                        ? 'Upon confirmation, Pangkat referral and KP Forms 10 &amp; 11 are recorded while Conciliation remains Pending Scheduling until the 1st hearing is booked.'
+                        : 'Upon confirmation, case advances to Conciliation, KP Forms 10, 11, and 12 are generated, and Officer\'s Return records are registered for KP Form 12.'}
                 </div>
-
             `;
-
         }
 
     }
@@ -10499,123 +10506,76 @@ async function submitReferPangkat(e) {
 
 
 
-    const concDate = document.getElementById('referConciliationDate')?.value;
-
-    const concTime = document.getElementById('referConciliationTime')?.value;
-
-    const venue = document.getElementById('referConciliationVenue')?.value || 'Lupon Court Room';
-
-
+    const deferred = Boolean(document.getElementById('referDeferBooking')?.checked);
+    const concDate = deferred ? '' : (document.getElementById('referConciliationDate')?.value || '');
+    const concTime = deferred ? '' : (document.getElementById('referConciliationTime')?.value || '');
+    const venue = deferred ? '' : (document.getElementById('referConciliationVenue')?.value || 'Lupon Court Room');
 
     if (concDate) {
-
         const dObj = new Date(concDate + 'T00:00:00');
-
         if (dObj.getDay() === 2) {
-
             alert('Tuesdays reserved exclusively for Punong Barangay Mediation. Conciliation hearings must be scheduled on non-Tuesday weekdays (Mondays, Wednesdays, Thursdays, or Fridays).');
-
-            if (btn) btn.disabled = false;
-
+            setAsyncButtonState(btn, false);
             return;
-
         }
-
         if (dObj.getDay() === 0 || dObj.getDay() === 6) {
-
             alert('Conciliation hearings cannot be scheduled on weekends.');
-
-            if (btn) btn.disabled = false;
-
+            setAsyncButtonState(btn, false);
             return;
-
         }
-
     }
 
-
-
     const payload = {
-
         case_id: stageWorkspaceState.caseId,
-
         referral_date: document.getElementById('referDate')?.value || new Date().toISOString().split('T')[0],
-
         referral_reason: document.getElementById('referReason')?.value || 'Mediation before the Punong Barangay failed. Elevated to Pangkat Conciliation.',
-
         selection_method: document.getElementById('referSelectionMethod')?.value || 'Party Agreement',
-
         selection_notes: document.getElementById('referSelectionNotes')?.value || '',
-
         quorum_size: quorumSize,
-
         quorum_exception_reason: quorumReason,
-
         chairman_id: Number(chairmanId),
-
         secretary_id: Number(secretaryId),
-
         member_id: memberId ? Number(memberId) : null,
         duty_group_id: document.getElementById('referBulkPangkatSelect')?.value ? Number(document.getElementById('referBulkPangkatSelect').value) : null,
-
         conciliation_date: concDate || null,
-
         conciliation_time: concTime || null,
-
-        venue: venue
-
+        venue: venue || null
     };
 
-
-
     try {
-
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || window.agapCsrfToken || '';
         const res = await fetch(getStageApiUrl('stages/refer-pangkat.php'), {
-
             method: 'POST',
-
-            headers: { 'Content-Type': 'application/json' },
-
+            headers: {
+                'Content-Type': 'application/json',
+                ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {})
+            },
             body: JSON.stringify(payload)
-
         });
-
         const json = await res.json();
-
         if (json.success) {
-
-            notifyUser('Case successfully referred to Pangkat ng Tagapagkasundo. 1st Conciliation booked & KP Forms 10, 11, and 12 generated.', 'success');
-
+            const bookingPending = Boolean(json.is_booking_pending || !payload.conciliation_date);
+            notifyUser(
+                bookingPending
+                    ? 'Case referred to Pangkat ng Tagapagkasundo. 1st Conciliation booking remains pending until scheduled.'
+                    : 'Case successfully referred to Pangkat ng Tagapagkasundo. 1st Conciliation booked & KP Forms 10, 11, and 12 generated.',
+                'success'
+            );
             closeReferPangkatModal();
-
             setTimeout(() => {
-
                 if (typeof openTriPanelPangkatModal === 'function') {
-
                     openTriPanelPangkatModal(stageWorkspaceState.caseId);
-
                 }
-
                 loadStageData();
-
             }, 300);
-
         } else {
-
             notifyUser(json.message || 'Unable to refer case to Pangkat.', 'error');
-
         }
-
     } catch (err) {
-
         console.error('submitReferPangkat error:', err);
-
         notifyUser('Network error during referral.', 'error');
-
     } finally {
-
-        if (btn) btn.disabled = false;
-
+        setAsyncButtonState(btn, false);
     }
 
 }

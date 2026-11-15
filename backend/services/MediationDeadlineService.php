@@ -5,6 +5,11 @@ require_once __DIR__ . '/AuditService.php';
 
 class MediationDeadlineService
 {
+    public const MEDIATION_PERIOD_DAYS = 15;
+    public const CONCILIATION_PERIOD_DAYS = 15;
+    public const PANGKAT_CONVENING_DAYS = 3;
+    public const MEDIATION_REFERRAL_REQUIRED_SESSIONS = 2;
+
     private PDO $conn;
     private AuditService $audit;
 
@@ -12,6 +17,92 @@ class MediationDeadlineService
     {
         $this->conn = $conn ?? (new Database())->connect();
         $this->audit = new AuditService();
+    }
+
+    /**
+     * Single source of truth for Barangay Tumana's mediation session booking cap
+     * vs. the approved Pangkat referral threshold.
+     */
+    public static function getMediationPolicy(PDO $conn): array
+    {
+        require_once __DIR__ . '/../models/Setting.php';
+        $configuredMax = min(
+            self::MEDIATION_REFERRAL_REQUIRED_SESSIONS,
+            max(1, (int) Setting::getSetting('mediation_max_sessions', self::MEDIATION_REFERRAL_REQUIRED_SESSIONS, $conn))
+        );
+        $required = self::MEDIATION_REFERRAL_REQUIRED_SESSIONS;
+        $hasConflict = ($configuredMax < $required);
+
+        return [
+            'referral_required_sessions' => $required,
+            'configured_max_sessions' => $configuredMax,
+            'has_policy_conflict' => $hasConflict,
+            'policy_conflict_message' => $hasConflict
+                ? sprintf(
+                    'Configured mediation_max_sessions (%d) conflicts with the approved %d-session Pangkat referral rule: booking stops at %d session while session-based referral requires %d completed Mediation sessions unless the %d-day mediation period lapses.',
+                    $configuredMax,
+                    $required,
+                    $configuredMax,
+                    $required,
+                    self::MEDIATION_PERIOD_DAYS
+                )
+                : null,
+        ];
+    }
+
+    /**
+     * Removes provisional Mediation Period deadlines and clears cases.mediation_deadline_date
+     * when mediation has not actually commenced. Commenced cases and other deadline types are preserved.
+     */
+    public function clearUncommencedDeadline(int $caseId): void
+    {
+        $period = $this->resolveMediationPeriodForCase($caseId);
+        if (!empty($period['commenced'])) {
+            return;
+        }
+
+        $this->conn->prepare(
+            "DELETE FROM case_deadlines
+             WHERE case_id = ? AND deadline_type IN ('Mediation Period', '15-Day Mediation Deadline')"
+        )->execute([$caseId]);
+
+        $this->conn->prepare(
+            "UPDATE cases SET mediation_deadline_date = NULL WHERE case_id = ? AND mediation_deadline_date IS NOT NULL"
+        )->execute([$caseId]);
+    }
+
+    /**
+     * Synchronizes cases.mediation_start_date, cases.mediation_deadline_date, and the
+     * Mediation Period row in case_deadlines to match commencement + authorized extensions.
+     */
+    public function syncCommencedDeadlines(int $caseId, ?array $period = null): ?string
+    {
+        $period = $period ?? $this->resolveMediationPeriodForCase($caseId);
+        if (empty($period['commenced']) || empty($period['deadline_date'])) {
+            $this->clearUncommencedDeadline($caseId);
+            return null;
+        }
+
+        $effectiveDeadline = $period['deadline_date'];
+        $startDate = $period['start_date'];
+
+        $this->conn->prepare(
+            "UPDATE cases
+             SET mediation_start_date = ?,
+                 mediation_deadline_date = ?
+             WHERE case_id = ?"
+        )->execute([$startDate, $effectiveDeadline, $caseId]);
+
+        $this->conn->prepare(
+            "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+             VALUES (?, 'Mediation Period', ?, 'Pending')
+             ON DUPLICATE KEY UPDATE
+                due_date = VALUES(due_date),
+                status = IF(status = 'Completed', 'Completed', IF(VALUES(due_date) < CURDATE(), 'Overdue', 'Pending')),
+                updated_at = CURRENT_TIMESTAMP"
+        )->execute([$caseId, $effectiveDeadline]);
+
+        return $effectiveDeadline;
     }
 
     /**
@@ -260,11 +351,89 @@ class MediationDeadlineService
         ];
     }
 
+    public function getCommencementContext(int $caseId): ?array
+    {
+        if ($caseId <= 0) {
+            return null;
+        }
+        try {
+            $stmt = $this->conn->prepare(
+                'SELECT commencement_id, case_id, hearing_id, first_actual_meeting_at, mediation_deadline_at, source
+                 FROM mediation_commencements
+                 WHERE case_id = ?
+                 LIMIT 1'
+            );
+            $stmt->execute([$caseId]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $row ?: null;
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Evaluates recorded pause/extension decisions from mediation_pause_decisions.
+     * Only explicitly authorized extensions with positive extension days shift the deadline.
+     */
+    public function getAuthorizedExtensionDays(int $caseId): int
+    {
+        if ($caseId <= 0) {
+            return 0;
+        }
+        try {
+            $stmt = $this->conn->prepare(
+                "SELECT COALESCE(SUM(CASE WHEN extension_authorised = 1 AND NULLIF(TRIM(COALESCE(extension_basis, '')), '') IS NOT NULL THEN GREATEST(extension_days, 0) ELSE 0 END), 0)
+                 FROM mediation_pause_decisions
+                 WHERE case_id = ?"
+            );
+            $stmt->execute([$caseId]);
+            return max(0, (int) $stmt->fetchColumn());
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
+    /**
+     * Resolves the statutory Mediation Period dates for scheduling and referral.
+     * Once commenced, the clock remains anchored to first_actual_meeting_at (+ authorized pause extensions).
+     */
+    public function resolveMediationPeriodForCase(int $caseId, ?string $fallbackScheduledDate = null): array
+    {
+        $commencement = $this->getCommencementContext($caseId);
+        if (!$commencement || empty($commencement['first_actual_meeting_at'])) {
+            return [
+                'commenced' => false,
+                'first_actual_meeting_at' => null,
+                'start_date' => $fallbackScheduledDate ? substr($fallbackScheduledDate, 0, 10) : null,
+                'deadline_date' => null,
+                'extension_days' => 0,
+            ];
+        }
+
+        $startDate = substr((string) $commencement['first_actual_meeting_at'], 0, 10);
+        $baseDeadline = !empty($commencement['mediation_deadline_at'])
+            ? substr((string) $commencement['mediation_deadline_at'], 0, 10)
+            : self::calculateDeadline($startDate, self::MEDIATION_PERIOD_DAYS);
+        $extDays = $this->getAuthorizedExtensionDays($caseId);
+        $effectiveDeadline = $extDays > 0
+            ? (new DateTimeImmutable($baseDeadline))->modify("+{$extDays} days")->format('Y-m-d')
+            : $baseDeadline;
+
+        return [
+            'commenced' => true,
+            'first_actual_meeting_at' => $commencement['first_actual_meeting_at'],
+            'start_date' => $startDate,
+            'deadline_date' => $effectiveDeadline,
+            'extension_days' => $extDays,
+        ];
+    }
+
     /**
      * Computes the 15-day statutory mediation status, days remaining, and urgency badge for a case.
      */
     public function computeStatus(array $case): array
     {
+        $caseId = (int) ($case['case_id'] ?? 0);
         $caseStatus = $case['case_status'] ?? '';
         $startDate = $case['mediation_start_date'] ?? null;
         $deadlineDate = $case['mediation_deadline_date'] ?? null;
@@ -292,8 +461,17 @@ class MediationDeadlineService
             ];
         }
 
-        // If in Mediation but start date is somehow missing, fall back to docket date or first hearing date
-        if (!$startDate) {
+        // Anchor commenced cases strictly to mediation_commencements (+ any authorized pause extension).
+        $commencementPeriod = $caseId > 0 ? $this->resolveMediationPeriodForCase($caseId, $startDate) : ['commenced' => false];
+        if (!empty($commencementPeriod['commenced'])) {
+            $startDate = $commencementPeriod['start_date'];
+            $deadlineDate = $commencementPeriod['deadline_date'];
+        } else {
+            // Before first actual meeting, statutory clock has not commenced and cannot lapse.
+            $deadlineDate = null;
+        }
+
+        if (!$startDate && !$deadlineDate) {
             return [
                 'days_remaining' => null,
                 'timer_status' => 'Pending Start',
@@ -311,8 +489,26 @@ class MediationDeadlineService
             ];
         }
 
+        if (!$commencementPeriod['commenced']) {
+            return [
+                'days_remaining' => null,
+                'timer_status' => 'Pending Commencement',
+                'badge_class' => 'badge-status-pending',
+                'badge_label' => 'Pending First Meeting',
+                'is_lapsed' => false,
+                'is_paused' => $isPaused,
+                'mediation_start_date' => $startDate,
+                'mediation_deadline_date' => null,
+                'pause_reason' => $isPaused ? $pauseReason : null,
+                'pause_notes' => $isPaused ? $pauseNotes : null,
+                'paused_at' => $isPaused ? $pausedAt : null,
+                'can_pause' => false,
+                'can_resume' => $isPaused,
+            ];
+        }
+
         if (!$deadlineDate) {
-            $deadlineDate = self::calculateDeadline($startDate, 15);
+            $deadlineDate = self::calculateDeadline($startDate, self::MEDIATION_PERIOD_DAYS);
         }
 
         // If paused, clock is frozen
@@ -339,17 +535,18 @@ class MediationDeadlineService
             ];
         }
 
-        // Active timer calculation
+        // Active timer calculation anchored to first actual meeting
         $today = new DateTimeImmutable(date('Y-m-d'));
         $deadlineObj = new DateTimeImmutable($deadlineDate);
         $daysRemaining = (int) $today->diff($deadlineObj)->format('%r%a');
+        $isLapsed = ($daysRemaining < 0);
 
         return [
-            'days_remaining' => null,
-            'timer_status' => 'Active Proceeding',
-            'badge_class' => 'badge-within-period',
-            'badge_label' => 'Active Proceeding',
-            'is_lapsed' => false,
+            'days_remaining' => $daysRemaining,
+            'timer_status' => $isLapsed ? 'Lapsed' : 'Active Proceeding',
+            'badge_class' => $isLapsed ? 'badge-danger' : 'badge-within-period',
+            'badge_label' => $isLapsed ? '15-Day Period Lapsed' : 'Active Proceeding',
+            'is_lapsed' => $isLapsed,
             'is_paused' => false,
             'mediation_start_date' => $startDate,
             'mediation_deadline_date' => $deadlineDate,
@@ -419,6 +616,18 @@ class MediationDeadlineService
      */
     public function initializeClock(int $caseId, string $hearingDate, ?int $actorUserId = null): array
     {
+        $commenced = $this->resolveMediationPeriodForCase($caseId, $hearingDate);
+        if (!empty($commenced['commenced'])) {
+            $effectiveDeadline = $this->syncCommencedDeadlines($caseId, $commenced);
+            return [
+                'success' => true,
+                'scheduled_date' => $commenced['start_date'],
+                'mediation_start_date' => $commenced['start_date'],
+                'mediation_deadline_date' => $effectiveDeadline,
+                'notice' => 'Statutory 15-day clock already commenced from the first actual Mediation meeting and remains anchored.'
+            ];
+        }
+
         $scheduledDate = substr($hearingDate, 0, 10);
 
         // Store only the scheduled date; deadline will be set by MediationCommencementService
@@ -436,16 +645,8 @@ class MediationDeadlineService
         );
         $stmt->execute([$scheduledDate, $caseId]);
 
-        // Insert a Pending placeholder — due_date will be updated by MediationCommencementService.
-        $tentativeDueDate = date('Y-m-d', strtotime($scheduledDate . ' + 15 days'));
-        $deadlineStmt = $this->conn->prepare(
-            "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-             VALUES (?, 'Mediation Period', ?, 'Pending')
-             ON DUPLICATE KEY UPDATE
-                due_date = IF(status = 'Pending', VALUES(due_date), due_date),
-                updated_at = CURRENT_TIMESTAMP"
-        );
-        $deadlineStmt->execute([$caseId, $tentativeDueDate]);
+        // Clear any pre-existing provisional Mediation Period deadline; do not create one before commencement.
+        $this->clearUncommencedDeadline($caseId);
 
         $this->audit->log(
             $actorUserId ?? 0,
@@ -479,7 +680,11 @@ class MediationDeadlineService
         bool $useBusinessDays = false
     ): array {
         $startDate    = substr($meetingDate, 0, 10);
-        $deadlineDate = self::calculateDeadline($startDate, 15, $useBusinessDays);
+        $baseDeadline = self::calculateDeadline($startDate, self::MEDIATION_PERIOD_DAYS, $useBusinessDays);
+        $extDays      = $this->getAuthorizedExtensionDays($caseId);
+        $deadlineDate = $extDays > 0
+            ? (new DateTimeImmutable($baseDeadline))->modify("+{$extDays} days")->format('Y-m-d')
+            : $baseDeadline;
         $countingMode = $useBusinessDays ? 'business days (local rule applied)' : 'calendar days (RA 7160 §410 default)';
 
         $stmt = $this->conn->prepare(
@@ -709,17 +914,32 @@ class MediationDeadlineService
         $today       = new DateTimeImmutable($now->format('Y-m-d'));
         $daysPaused  = (int) $pauseDay->diff($today)->days;
         $nowStr      = $now->format('Y-m-d H:i:s');
+        $oldDeadlineStr = !empty($case['mediation_deadline_date']) ? (string) $case['mediation_deadline_date'] : null;
 
-        // Existing statutory deadline (may be NULL if commencement not yet recorded)
-        $oldDeadlineStr = $case['mediation_deadline_date'] ?? null;
+        // Persist pause decision before recalculating effective deadline from commencement + extensions.
+        try {
+            $this->conn->prepare(
+                "UPDATE mediation_pause_decisions
+                 SET resumed_at              = ?,
+                     extension_authorised    = ?,
+                     extension_days          = ?,
+                     extension_basis         = ?
+                 WHERE case_id = ? AND resumed_at IS NULL
+                 ORDER BY paused_at DESC LIMIT 1"
+            )->execute([$nowStr, $authoriseExtension ? 1 : 0, $daysPaused, $extensionBasis, $caseId]);
+        } catch (Throwable) {
+            // Table may not exist yet — non-fatal
+        }
 
-        if ($authoriseExtension && $oldDeadlineStr) {
-            // Extend by the calendar days the clock was on hold, as authorised.
-            $newDeadline    = (new DateTimeImmutable($oldDeadlineStr))->modify("+{$daysPaused} days");
-            $newDeadlineStr = $newDeadline->format('Y-m-d');
+        $period = $this->resolveMediationPeriodForCase($caseId);
+        if (!empty($period['commenced']) && !empty($period['deadline_date'])) {
+            $newDeadlineStr = $period['deadline_date'];
+        } elseif ($authoriseExtension && !empty($case['mediation_deadline_date'])) {
+            $newDeadlineStr = (new DateTimeImmutable((string) $case['mediation_deadline_date']))
+                ->modify("+{$daysPaused} days")
+                ->format('Y-m-d');
         } else {
-            // No extension: keep existing deadline or NULL.
-            $newDeadlineStr = $oldDeadlineStr;
+            $newDeadlineStr = null;
         }
 
         $update = $this->conn->prepare(
@@ -734,28 +954,9 @@ class MediationDeadlineService
         $update->execute([$nowStr, $newDeadlineStr, $caseId]);
 
         if ($newDeadlineStr) {
-            $this->conn->prepare(
-                "UPDATE case_deadlines
-                 SET due_date = ?,
-                     status   = IF(? < CURDATE(), 'Overdue', 'Pending'),
-                     updated_at = CURRENT_TIMESTAMP
-                 WHERE case_id = ? AND deadline_type = 'Mediation Period'"
-            )->execute([$newDeadlineStr, $newDeadlineStr, $caseId]);
-        }
-
-        // Update pause decision record
-        try {
-            $this->conn->prepare(
-                "UPDATE mediation_pause_decisions
-                 SET resumed_at              = ?,
-                     extension_authorised    = ?,
-                     extension_days          = ?,
-                     extension_basis         = ?
-                 WHERE case_id = ? AND resumed_at IS NULL
-                 ORDER BY paused_at DESC LIMIT 1"
-            )->execute([$nowStr, $authoriseExtension ? 1 : 0, $daysPaused, $extensionBasis, $caseId]);
-        } catch (Throwable) {
-            // Table may not exist yet — non-fatal
+            $this->syncCommencedDeadlines($caseId, $period['commenced'] ? $period : null);
+        } else {
+            $this->clearUncommencedDeadline($caseId);
         }
 
         $extensionNote = $authoriseExtension && $newDeadlineStr

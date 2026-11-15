@@ -58,7 +58,7 @@ $caseStmt = $db->prepare("
 $caseStmt->execute([$caseId]);
 $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$case) {
+if (!$case || ($complaintId && (int) $case['complaint_id'] !== (int) $complaintId)) {
     http_response_code(404);
     echo json_encode(['success' => false, 'message' => 'Case record not found.']);
     exit;

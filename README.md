@@ -68,7 +68,7 @@ The **Automated Grievance Assistance Platform (AGAP)** is a comprehensive web-ba
     3. **Category** (Badge)
     4. **Parties** (Complainant, Respondent, and Witness pills with role tags)
     5. **Incident Date** (Formatted date)
-    6. **Status** (Clean color-coded badges for Intake, Dispute Stage, and Final Outcome without label prefixes; stage automatically expires and hides after 3 mediations and 3 conciliations)
+    6. **Status** (Clean color-coded badges for Intake, Dispute Stage, and Final Outcome without label prefixes; stage automatically tracks up to 2 mediations and up to 3 conciliations)
     7. **Actions** (View Details, Edit Page, and Archive modal trigger)
 - **Complaint Workspace (`complaint-details.php`)**:
   - Multi-stage review gate: `Filed` $\rightarrow$ `Under Review` / `Needs Information` $\rightarrow$ `Accepted` / `Rejected`.
@@ -88,10 +88,10 @@ The server records the result under **Proof of Service → My Paanyaya Assignmen
   - Standardized across all complaint and case screens, eliminating non-standard alphanumeric prefixes.
   - Thread-safe atomic generation via `CaseModel::generateCaseNumber()`.
 - **Statutory Hearing Progression & 2nd Mediation Summons Exemption**:
-  - **Mediation Stage**: 1st Mediation $\rightarrow$ 2nd Mediation $\rightarrow$ 3rd Mediation (up to 3 mediation sessions conducted by the Punong Barangay).
+  - **Mediation Stage**: 1st Mediation $\rightarrow$ 2nd Mediation (up to 2 mediation sessions conducted by the Punong Barangay).
   - **Second Mediation Summons Exemption (RA 7160 Sec. 410)**: After the 1st Mediation, scheduling the 2nd Mediation does not require re-issuance of summonses. Prior notice is recognized, attendance gate is unlocked, and party service badges display `Served (Prior Notice)`.
   - **Presider Substitution Flow**: When the scheduled Punong Barangay presider is absent, selecting an active Lupon member as substitute presider, specifying the reason, and verifying mutual party consent is mandatory on the server before proceedings can proceed.
-  - **Progression to Conciliation**: Unresolved cases advance to conciliation: 1st Conciliation $\rightarrow$ 2nd Conciliation $\rightarrow$ 3rd Conciliation (up to 3 conciliation sessions conducted by the Pangkat Tagapagkasundo). Progression is locked until the 3rd mediation is completed.
+  - **Progression to Conciliation**: Unresolved cases advance to conciliation after 2 qualifying mediation sessions (or an authorized lapsed 15-day mediation period) via explicit referral to the Pangkat: 1st Conciliation $\rightarrow$ 2nd Conciliation $\rightarrow$ 3rd Conciliation (up to 3 conciliation sessions conducted by the Pangkat Tagapagkasundo). Progression remains locked until Pangkat referral is completed.
   - **Scheduling Ceiling**: Once the 3rd Conciliation hearing is scheduled, the scheduling engine permanently halts further hearing additions, enforcing KP statutory limits.
 - **Dual Notice Auto-Generation & "Print summon" Side-by-Side Review**:
   - Triggering `Issue Summon 1st Attempt` atomically books the 1st Mediation session, updates complaint status, generates both **KP Form 8 (Notice of Hearing for Complainant)** and **KP Form 9 (Summons for Respondent)**, and immediately opens the dedicated **Print summon** preview modal.

@@ -69,13 +69,23 @@ contain justification tracking and user audit fields, apply
 `database/migrations/20260929_hearing_attendance_monitoring.sql` once. Fresh
 databases receive these fields and constraints directly from `schema.sql`.
 
+## Mediation pause decisions upgrade
+
+Existing installations must also apply
+[`20261115_002_mediation_pause_decisions.sql`](migrations/20261115_002_mediation_pause_decisions.sql)
+after `20261115_001_link_show_cause_recipients.sql` so pause decisions and
+authorized deadline extensions are persisted consistently alongside `cases` and
+`mediation_commencements`. Fresh databases receive this table directly from
+`schema.sql`.
+
 ## Show-cause recipient and service upgrade
 
 Existing installations must apply
 [`20261115_001_link_show_cause_recipients.sql`](migrations/20261115_001_link_show_cause_recipients.sql)
-before deploying recipient-specific show-cause evaluation. Existing determinations
-remain in history. New issuance based on a determination requires verified evidence
-for the named recipient.
+before deploying recipient-specific show-cause evaluation, followed by
+[`20261115_002_mediation_pause_decisions.sql`](migrations/20261115_002_mediation_pause_decisions.sql).
+Existing determinations remain in history. New issuance based on a determination
+requires verified evidence for the named recipient.
 
 ## Relationship rules
 
@@ -254,10 +264,9 @@ For an existing database, apply the missing migrations in this order. Check the 
 4. [Paanyaya preparation](migrations/20261112_001_paanyaya_preparations.sql) adds the verified party snapshot, appointment, PDF, and Ready for Release record.
 5. [Paanyaya service attempts](migrations/20261113_001_paanyaya_service_attempts.sql) adds release assignments, delivery results, and optional proof images.
 6. [Paanyaya dialogue invitations](migrations/20261113_002_paanyaya_dialogue_invitations.sql) adds invitation numbering so the first and second notices have separate PDFs and service attempts. Existing notices and attempts become invitation 1.
+7. [Complaint information requests](migrations/20261114_001_complaint_information_requests.sql) adds structured LISO information requests and resident replies.
+8. [Version rescheduled notices](migrations/20261114_002_version_rescheduled_notices.sql) adds storage for prior Paanyaya PDFs and the issued details of each formal replacement notice. Existing service attempts retain their saved versions and evidence; earlier appointment details overwritten before this migration cannot be reconstructed.
+9. [Link show-cause recipients](migrations/20261115_001_link_show_cause_recipients.sql) links show-cause evaluations cleanly to individual recipients and operative notices.
+10. [Mediation pause decisions](migrations/20261115_002_mediation_pause_decisions.sql) creates `mediation_pause_decisions` to record authorized statutory mediation holds and extensions. This migration is idempotent (`CREATE TABLE IF NOT EXISTS`) and safe to apply cleanly after `20261115_001_link_show_cause_recipients.sql`.
 
 The [Barangay News migration](migrations/20261111_002_barangay_news.sql) is independent and enables the news widget.
-
-Apply the [complaint information requests migration](migrations/20261114_001_complaint_information_requests.sql)
-before deploying the resident reply and complaint timeline features to an existing database.
-
-Apply [Version rescheduled notices](migrations/20261114_002_version_rescheduled_notices.sql) before deploying the notice changes to an existing database. It adds storage for prior Paanyaya PDFs and the issued details of each formal replacement notice. Existing service attempts retain their saved versions and evidence. Earlier appointment details overwritten by previous releases cannot be reconstructed by this migration.

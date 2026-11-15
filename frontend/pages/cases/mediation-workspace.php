@@ -770,7 +770,12 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
             <div class="referral-step" data-referral-step="1">
 
-
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 7px; padding: 9px 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="referDeferBooking" onchange="toggleReferBookingMode()" style="width: 16px; height: 16px; cursor: pointer;">
+                    <label for="referDeferBooking" style="font-size: 0.82rem; font-weight: 600; color: #0c4a6e; cursor: pointer; margin: 0;">
+                        Schedule 1st Conciliation separately later (keep Conciliation visibly <strong>Pending Scheduling</strong> until booked)
+                    </label>
+                </div>
 
                 <!-- 1. TOP SECTION: Selected Conciliation Date & Hearing Venue (MOVED ABOVE) -->
 
@@ -814,6 +819,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
                                style="padding: 9px 12px; width: 100%; border: 1.5px solid #cbd5e1; border-radius: 7px; font-size: 0.88rem; box-sizing: border-box;" 
 
+                               oninput="this.dataset.userEdited='1'"
                                onchange="checkReferScheduleConflict()">
 
                     </div>
@@ -878,15 +884,9 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
                     </label>
 
-                    <div id="referSlotBtnGroup" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+                    <div id="referSlotBtnGroup" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 8px;">
 
-                        <button type="button" class="refer-slot-btn active" data-time="09:00" onclick="selectReferConciliationSlot('09:00')" style="padding: 8px 6px; border: 1.5px solid #0284c7; background: #e0f2fe; color: #0369a1; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; text-align: center;">09:00 - 10:00 AM</button>
-
-                        <button type="button" class="refer-slot-btn" data-time="10:00" onclick="selectReferConciliationSlot('10:00')" style="padding: 8px 6px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; text-align: center;">10:00 - 11:00 AM</button>
-
-                        <button type="button" class="refer-slot-btn" data-time="14:00" onclick="selectReferConciliationSlot('14:00')" style="padding: 8px 6px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; text-align: center;">02:00 - 03:00 PM</button>
-
-                        <button type="button" class="refer-slot-btn" data-time="15:00" onclick="selectReferConciliationSlot('15:00')" style="padding: 8px 6px; border: 1px solid #cbd5e1; background: #fff; color: #334155; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; text-align: center;">03:00 - 04:00 PM</button>
+                        <button type="button" class="refer-slot-btn active" data-time="09:00" onclick="selectReferConciliationSlot('09:00')" style="padding: 8px 6px; border: 1.5px solid #0284c7; background: #e0f2fe; color: #0369a1; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; text-align: center;">9:00 - 10:00 AM</button>
 
                     </div>
 

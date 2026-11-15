@@ -37,6 +37,8 @@ The current workflow supports two invitations. Delivery retries are recorded aga
 | Prepared invitation and delivery result | `paanyaya_preparations`, `paanyaya_invitation_versions`, and `paanyaya_service_attempts`, linked by complaint, invitation number, and document version |
 | Dialogue schedule, attendance, and outcome | `paanyaya_stages`, `paanyaya_sessions`, and `paanyaya_minutes`. The `paanyayas` register reflects the scheduled invitation and progression. |
 | Formal case, stage, hearing, and service | `cases.case_status`, `case_stages`, `hearings`, `hearing_attendance`, `hearing_minutes`, and `summon_deliveries` |
+| Mediation commencement and procedural deadline | `mediation_commencements.first_actual_meeting_at` and `mediation_deadline_at`, coordinated by `MediationCommencementService` and `MediationDeadlineService` |
+| Show-cause findings and CFA issuance | `show_cause_evaluations` links the hearing, resident, and notice delivery. `CFA::determineCfaEligibility()` evaluates the saved evidence and `cfa_records` records issuance. |
 | Daily docket call order and schedule rules | `hearings.queue_order`, `paanyayas.queue_order`, `paanyaya_sessions.queue_order`, `system_settings`, `scheduling_holidays`, and `venue_unavailabilities` via `DocketScheduleService` and `OfficeLogisticsService` |
 | Formal documents and history | `document_templates`, `generated_documents`, `case_history`, and `audit_trails` |
 
@@ -55,36 +57,54 @@ The Administrator dashboard (`frontend/assets/js/dashboard.js`) and Clerk Agenda
   - Triggered by dropping a docket card onto another calendar date (`[data-date]` in `#dashboardCalendarGrid`) or activating the card's accessible **Reschedule** control. Dropping a card onto the calendar never saves or infers an appointment silently; it restores the card in the current list and opens the confirmation modal.
   - Fetches valid time slots, venues, presiding officers, and rule explanations from `DocketScheduleService::getAvailableSlots`, derived dynamically from `system_settings`, `scheduling_holidays`, `venue_unavailabilities`, `OfficeLogisticsService`, and `Hearing::findConflict`.
   - Displays old vs. proposed Date, Official Time, Call Order (`#`), Venue, and Presiding Officer, and requires both explicit confirmation (`confirmed = true`) and a mandatory reason (`reschedule_reason`).
-  - For formal hearings, updates `hearings`, synchronizes `case_deadlines`, and marks previous delivery returns read-only as `Superseded`. Each recipient gets a pending delivery linked to the hearing and its own document. Proof of Service previews and prints the issued details stored in `hearing_reschedule_notices` and records the return against the selected delivery.
+  - For formal hearings, updates `hearings` and marks previous delivery returns read-only as `Superseded`. Each recipient gets a pending delivery linked to the hearing and its own document. Proof of Service previews and prints the issued details stored in `hearing_reschedule_notices` and records the return against the selected delivery. Preserving the Mediation deadline after actual commencement is open in Order 2.
   - For prepared Paanyaya invitations, rescheduling archives the prior PDF and its schedule and saves a new version for the same invitation number. Staff review and release the revised PDF through the existing complaint workflow. Dialogue and resident appointment confirmation require successful delivery of that version. History retains the appointment, PDF, result, notes, and proof associated with each prior attempt.
 - **Server-side eligibility and concurrency (`DocketScheduleService`)**:
   - Only active Administrators and Lupon Clerks (verified against `users` and `roles`) may reorder or reschedule; Lupon Members and unauthenticated/CSRF-invalid requests are rejected (`401`/`403`).
   - Records that are `In_Session`, attendance-recorded (`Attendance Recorded`, `attendance_recorded_at IS NOT NULL`, or party attendance recorded), minutes-recorded, `Concluded`, `Completed`, `Cancelled`, `Office Cancelled`, `Resolved`, `Unresolved`, `Escalated`, `Settled`, or superseded are locked (`422`).
   - Every submitted `paanyaya_sessions.session_id` is verified against the submitted `complaint_id` and `paanyayas.paanyaya_id`.
-  - Stale (`expected_updated_at`, `expected_hearing_date`, `expected_queue_order`), duplicate, cross-date, incomplete, and filtered/paginated payloads are rejected safely (`409`/`422`) inside `FOR UPDATE` row-locked transactions.
+  - The server checks the submitted expected timestamp, appointment, and queue order inside row-locked transactions. It rejects stale, duplicate, cross-date, incomplete, and filtered or paginated payloads. The shared dashboard currently sends the timestamp. Sending the full original state and verifying both dashboards in a browser are open in Order 5.
 
-## Pending implementation for attendance, show cause, and CFA
+## Implemented attendance, show cause, and CFA
 
-Use the existing hearing workspace, daily docket, Proof of Service, and Outcomes tab. Build on the recipient-specific replacement notices and apply their database migration before testing against an existing installation. Confirm any change to session limits, summons-attempt limits, certificate mappings, or deadlines with the barangay policy owner.
+- Formal attendance and docket check-in use service evidence for the exact recipient and operative hearing notice. A retry on a replacement notice creates a new attempt and retains the failed return and proof. Preserve the distinction among `Not Served`, `Pending Verification`, `Excused`, and verified non-appearance. Apply a prior-notice exception only where the saved basis covers that recipient and hearing.
+- The show-cause evaluation endpoint requires a linked show-cause hearing and verifies service of the original and show-cause notices and the recipient's unexcused absence. The bar approval workflow verifies the selected person's evidence and commits the approval, certificate document, case history, and audit together. Valid respondent defaults from the evaluation endpoint use the standard CFA issuance path.
+- The Outcomes tab, Proof of Service, preview, and standard CFA issuance share the server eligibility decision. Delivery failures and verified no-shows are counted per respondent and applicable service sequence. Issuance rechecks eligibility under lock. A document failure rolls back the issuance, and duplicate submissions return the saved certificate. A client-supplied reopening flag cannot establish eligibility.
+- For existing installations, follow the [database migration guide](database/README.md) for the replacement-notice and recipient-specific show-cause upgrades. Older role-only show-cause records remain available in history. New bar approvals and issuance require evidence tied to the named recipient.
 
-### Mediation and Conciliation attendance and show cause
+## Remaining workflow implementation
 
-- Use one server-side service check across the hearing workspace, docket check-in, and direct attendance and show-cause endpoints. For failure to appear, require verified service for the exact recipient on the operative notice for that hearing. A prior-notice exception requires a recorded basis for that recipient and hearing. Superseded returns remain available as historical evidence.
-- Keep `Not Served`, `Pending Verification`, `Excused`, and verified non-appearance distinct. Tie each show-cause determination to the party, hearing, and relevant notice. Require a recorded determination before applying a bar or default where the existing procedure requires one. Show staff the party awaiting service and the next available action.
-- Add a retry action in Proof of Service for an unserved replacement notice. Create a new attempt for the same hearing, recipient, and current notice. Preserve the failed return and its proof, apply the configured limit to that recipient's service sequence, and reject submissions against a superseded notice. Lock or recheck the current notice when saving the retry or return.
+Follow the order below when planning the work. Changes to session limits, summons-attempt limits, certificate mappings, or procedural periods require a confirmed policy basis. Continue work on evidence, transitions, and verification using the current rules while any policy discrepancy is resolved.
 
-### CFA eligibility, preview, and issuance
+### Order 1 — Paanyaya to first formal summons
 
-- Use one server-side eligibility decision for the Outcomes tab, form preview, and issuance. Derive the ground and allowed KP Forms 20, 20-A, and 20-B from saved evidence. A client-supplied workflow flag, status, or reason cannot grant eligibility. If the noncompliance reopening action applies under existing policy, verify the saved settlement and required grounds on the server.
-- Scope evidence to the relevant stage, hearing, and recipient. A conciliation impasse requires a finalized Conciliation outcome. Exclude draft and wrong-stage minutes, superseded service returns, and unverified or excused absences from eligibility. Count summons failures and no-shows for the applicable recipient and service sequence.
-- Recheck authorization and eligibility under a transaction. Keep the certificate and its document, case and complaint status, and history consistent. A document-generation failure must leave issuance available for retry. Return the existing certificate on duplicate submissions and preserve its original date and reason.
+- Route the Clerk Agenda attendance and outcome shortcuts through the prepared-invitation workflow when the complaint has a preparation record. Validate the exact complaint, invitation number, document version, and session. Recheck verified service on that version when saving, and propagate failures to the dashboard. Use the complaint's dialogue form when the action needs minutes or agreed terms. Keep legacy handling scoped to legacy records.
+- Treat eligibility to docket and eligibility to issue the first summons as distinct server decisions. A current, valid escalation authorizes docketing once on the original prepared complaint. Formal issuance and its preview require the linked case. Enforce the sequence in direct requests and keep legacy flags from authorizing issuance for a prepared complaint.
+- Restore Stage 0 in the staff Proof of Service timeline from saved invitations, versioned returns, and dialogue records linked to the formal case's complaint. Show prior attempts with their original appointment and result. On a fresh schema, tests must assert at least one real Paanyaya entry and its service data.
+- Verify a stale or unserved shortcut leaves the register, session, minutes, and formal case unchanged. Exercise the second invitation on the same complaint, the settlement path, direct premature document requests, and retry or concurrent docketing that returns the same case.
 
-### Regression coverage
+### Order 2 — Mediation through Pangkat Conciliation
 
-- Reschedule a hearing with two respondents and serve one. Verify that the other remains pending and cannot advance to failure to appear or show cause.
-- Record a failed replacement delivery, retry it successfully, and reject a stale submission against the superseded notice. Verify that the failed return and proof remain available.
-- Reject a direct CFA request with `noncompliance_reopen` and no documented ground, and reject draft or wrong-stage minutes as a basis for issuance.
-- Verify valid CFA issuance, a duplicate submission, and a document-generation failure followed by a successful retry. Exercise the staff browser path from Proof of Service through attendance and the Outcomes tab.
+- Make a qualifying unsuccessful Mediation outcome ready for referral. Use the same server decision for workspace action availability and the referral endpoint. Count distinct completed Mediation hearings using finalized evidence, and exclude draft minutes, attendance alone, cancellations, and superseded sessions. Preserve the existing authorized deadline exception and use its recorded basis.
+- Reconcile the README's three-session description with the two-session rule enforced by the referral endpoint. Preserve the runtime threshold unless there is a confirmed policy change, and align the documentation, UI, and tests with the rule in effect. Count booking slots and qualifying completions according to their separately documented purposes.
+- Keep the explicit referral action responsible for saving the Pangkat panel, referral and records handoff, KP Form 10, and the first Conciliation hearing when booked in the same action. Recheck eligibility and scheduling under lock. Retries must reuse the saved referral, and a failed save must leave the case in a consistent state. A separately booked hearing remains visibly pending until it is saved.
+- Anchor the Mediation clock to the first actual meeting. After commencement, later bookings, changed appointments, and referral use the saved commencement and deadline. Continue updating appointment data and replacement notices through the shared scheduler. Verify a move before commencement, a move after commencement, and the applicable expiry decision.
+- Exercise the staff route from minutes finalization to referral and the first Conciliation appointment, along with direct premature requests, a duplicate referral, a failed booking or document write, and the deadline exception. Keep Conciliation locked until the explicit handoff succeeds.
+
+### Order 3 — Staff show-cause decisions and CFA entry points
+
+- Connect the hearing workspace explanation action to the exact recipient, hearing, and served KP Form 18 or 19. Show which recipients await service and which are ready for a determination. Exercise the browser path from Proof of Service to attendance, determination, and Outcomes.
+- Require finalized, operative Conciliation evidence for an impasse and close the generic stage-outcome path into CFA. Save settlement repudiation as an eligible ground and route KP Form 20 through standard issuance. Make existing CFA rows with missing PDFs recoverable without duplicate issuance and retain the original date and reason.
+
+### Order 4 — Settlement, arbitration, and court transmittal
+
+- Keep an agreement recorded in minutes distinct from a signed and attested settlement. Require a recorded written arbitration agreement and its actual signing date before issuing an award. Commit the award, document, stage outcome, and disposition together.
+- Use the operative signed settlement or finalized award for the applicable finality and execution checks. Keep repudiation, documented noncompliance, and execution as distinct recorded actions. Build the court packet from the current eligible settlement, finalized award, or issued CFA and its document.
+
+### Order 5 — Dashboard concurrency and deployment
+
+- Send the original appointment and call order with the dashboard save payload. Exercise drag cancellation, rejected-save rollback, keyboard rescheduling, and competing edits in both the Administrator dashboard and Clerk Agenda.
+- Gate Azure deployment on the PHP 8.3 integration suite with disposable MySQL. Exclude database backups from release artifacts and verify the package contents.
 
 ## Implementation and verification
 
@@ -94,4 +114,5 @@ Use the existing hearing workspace, daily docket, Proof of Service, and Outcomes
 - Make schema upgrades safe to rerun where practical, preserve existing records, and update `database/schema.sql` for new installations. Verify the target database before applying migrations. The [database guide](database/README.md) lists the workflow migration order.
 - Run syntax checks for modified PHP and JavaScript and run `git diff --check`. Exercise the normal browser path, a blocked action, and a retry where relevant. Use synthetic accounts and an isolated local database for tests that create records.
 - Run `npm test` as the repository baseline. The Paanyaya end-to-end suite (`npm run test:paanyaya`) covers walk-in and online intake, resident information requests and replies, invitation preparation, failed delivery and retry, dialogue outcomes, the clerk's next-action links, the resident timeline, settlement, a second invitation, escalation, single-case docketing, and the KP Form 7 hold. The scheduling suite (`npm run test:sched`, `backend/tests/test_scheduling_fixes.php`) covers same-day queue reordering without appointment shifts, no-op drags, locked/in-progress/terminal records, role/CSRF/ownership enforcement, filtered/paginated/multi-day list protection, formal hearing and Paanyaya rescheduling (notice superseding, PDF regeneration, and resident timeline synchronization), and concurrent stale-state rejection.
+- The show-cause and CFA regression suites cover differential service for co-respondents, failed replacement returns and retries, recipient-specific determinations, premature issuance, duplicate submissions, and rollback on certificate generation failure. Keep those checks in place when changing the earlier handoffs.
 - For Gemini dictation, keep credentials server-side. Require explicit consent before sending audio and let the user review and edit the transcript before inserting it into the narrative. Use synthetic audio and a mocked response for browser tests that cover the UI.

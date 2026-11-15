@@ -2003,6 +2003,9 @@ class KpFormService
         // 3. Generate PDF file
         try {
             $this->generatePdf($code, $caseId, $hearingId, $absolutePath, $options['resident_id'] ?? null);
+            if (!empty($options['strict_pdf']) && (!is_file($absolutePath) || filesize($absolutePath) === 0)) {
+                throw new RuntimeException("Unable to write PDF for {$code}.");
+            }
         } catch (Throwable $e) {
             if (!empty($options['strict_pdf'])) {
                 if (is_file($absolutePath)) {
@@ -2013,7 +2016,26 @@ class KpFormService
             file_put_contents($absolutePath, "%PDF-1.4 {$code} for Case {$caseNumber}");
         }
 
+        try {
+            return $this->persistGeneratedForm($code, $caseId, $userId, $hearingId, $templateId, $relativePath, $caseData, $options);
+        } catch (Throwable $e) {
+            if (!empty($options['strict_pdf']) && is_file($absolutePath)) {
+                @unlink($absolutePath);
+            }
+            throw $e;
+        }
+    }
 
+    private function persistGeneratedForm(
+        string $code,
+        int $caseId,
+        int $userId,
+        ?int $hearingId,
+        int $templateId,
+        string $relativePath,
+        array $caseData,
+        array $options
+    ): array {
 
         // 4. Persist in generated_documents
 
@@ -2371,7 +2393,7 @@ class KpFormService
 
         require_once __DIR__ . '/AuditService.php';
 
-        $audit = new AuditService();
+        $audit = new AuditService($this->conn);
 
         $audit->log($userId, "Generated and persisted {$code}", 'Documents', $documentId);
 
@@ -2387,7 +2409,7 @@ class KpFormService
 
             'file_path' => $relativePath,
 
-            'full_path' => $absolutePath,
+            'full_path' => dirname(__DIR__, 2) . '/' . $relativePath,
 
             'hearing_id' => $assocHearingId ?? $hearingId,
 

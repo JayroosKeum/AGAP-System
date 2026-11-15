@@ -99,7 +99,7 @@ class CaseModel
             FROM hearings h
             WHERE h.status != 'Cancelled'
               AND NOT EXISTS (
-                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id AND next_h.status NOT IN ('Cancelled', 'Office Cancelled') AND next_h.hearing_type NOT IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
               )
             GROUP BY h.case_id
         ");
@@ -234,7 +234,7 @@ class CaseModel
             FROM hearings h
             WHERE h.status != 'Cancelled'
               AND NOT EXISTS (
-                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id AND next_h.status NOT IN ('Cancelled', 'Office Cancelled') AND next_h.hearing_type NOT IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
               )
             GROUP BY h.case_id
         ");
@@ -621,6 +621,7 @@ class CaseModel
             if ($dialogue->fetchColumn() !== 'Escalate_Mediation') {
                 return 'paanyaya_preparation_required';
             }
+            return null;
         }
 
         require_once __DIR__ . '/Paanyaya.php';

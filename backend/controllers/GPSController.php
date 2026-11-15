@@ -469,55 +469,236 @@ class GPSController
         $paanyayaItems = [];
         try {
             if ($complaintId > 0) {
-                $pStmt = $db->prepare("
-                    SELECT ps.*, co.complainant_name
-                    FROM paanyaya_sessions ps
-                    LEFT JOIN complaints co ON co.complaint_id = ps.complaint_id
-                    WHERE ps.complaint_id = ?
-                    ORDER BY ps.attempt_number ASC, ps.session_id ASC
+                $respStmt = $db->prepare("
+                    SELECT TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) AS full_name
+                    FROM complaint_parties cp
+                    INNER JOIN residents r ON r.resident_id = cp.resident_id
+                    WHERE cp.complaint_id = ? AND cp.party_type = 'Respondent'
+                    ORDER BY cp.party_id ASC
                 ");
-                $pStmt->execute([$complaintId]);
-                $paaSessions = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+                $respStmt->execute([$complaintId]);
+                $respNamesList = array_values(array_filter(array_map('trim', $respStmt->fetchAll(PDO::FETCH_COLUMN))));
+                $defaultInviteeName = !empty($respNamesList)
+                    ? implode(', ', $respNamesList)
+                    : ($case['respondent_names'] ?? 'Respondent');
 
-                foreach ($paaSessions as $pSess) {
-                    $pStatus = $pSess['session_outcome'] ?: 'Scheduled';
-                    $statusPill = 'pending';
-                    $statusLabel = 'Scheduled';
-                    if (in_array($pStatus, ['Settled', 'Resolved'], true)) {
-                        $statusPill = 'served-personal';
-                        $statusLabel = 'Settled';
-                    } elseif (in_array($pStatus, ['Escalated', 'Impasse_Escalate'], true)) {
-                        $statusPill = 'refused';
-                        $statusLabel = 'Escalated';
-                    } elseif ($pStatus === 'Dismissed') {
-                        $statusPill = 'unserved';
-                        $statusLabel = 'Dismissed';
+                $minStmt = $db->prepare("
+                    SELECT minutes_id, stage_type, dialogue_date, complainant_attended, respondent_attended,
+                           discussion_summary, outcome, complainant_choice, scanned_minutes_path
+                    FROM paanyaya_minutes
+                    WHERE complaint_id = ?
+                    ORDER BY FIELD(stage_type, 'Paanyaya 1', 'Paanyaya 2'), minutes_id ASC
+                ");
+                $minStmt->execute([$complaintId]);
+                $minutesByStage = [];
+                foreach ($minStmt->fetchAll(PDO::FETCH_ASSOC) as $minRow) {
+                    $minutesByStage[$minRow['stage_type']] = $minRow;
+                }
+
+                $attStmt = $db->prepare("
+                    SELECT a.attempt_id, a.invitation_number, a.appointment_at AS attempt_appointment_at,
+                           a.document_version, a.released_at, a.outcome, a.notes, a.recorded_at, a.proof_mime,
+                           v.appointment_at AS version_appointment_at, v.venue AS version_venue,
+                           (v.document_pdf IS NOT NULL) AS has_version_pdf,
+                           p.appointment_at AS prep_appointment_at, p.venue AS prep_venue,
+                           (p.document_pdf IS NOT NULL) AS has_prep_pdf,
+                           TRIM(CONCAT_WS(' ', srv.first_name, srv.last_name)) AS served_by_name
+                    FROM paanyaya_service_attempts a
+                    INNER JOIN paanyaya_preparations p
+                        ON p.complaint_id = a.complaint_id AND p.invitation_number = a.invitation_number
+                    LEFT JOIN paanyaya_invitation_versions v
+                        ON v.complaint_id = a.complaint_id
+                       AND v.invitation_number = a.invitation_number
+                       AND v.document_version = a.document_version
+                    LEFT JOIN users srv ON srv.user_id = a.assigned_to
+                    WHERE a.complaint_id = ?
+                    ORDER BY a.invitation_number ASC, a.attempt_id ASC
+                ");
+                $attStmt->execute([$complaintId]);
+                $attempts = $attStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                $prepStmt = $db->prepare("
+                    SELECT invitation_number, appointment_at, venue, prepared_at, ready_at, document_version
+                    FROM paanyaya_preparations
+                    WHERE complaint_id = ?
+                    ORDER BY invitation_number ASC
+                ");
+                $prepStmt->execute([$complaintId]);
+                $preparations = $prepStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                $attemptsPerInvitation = [];
+                foreach ($attempts as $att) {
+                    $invNum = (int) ($att['invitation_number'] ?: 1);
+                    $attemptsPerInvitation[$invNum] = ($attemptsPerInvitation[$invNum] ?? 0) + 1;
+                    $seq = $attemptsPerInvitation[$invNum];
+                    $origAppt = $att['version_appointment_at'] ?: ($att['attempt_appointment_at'] ?: $att['prep_appointment_at']);
+                    $venue = $att['version_venue'] ?: ($att['prep_venue'] ?: 'Barangay Hall');
+                    $outcome = $att['outcome'] ?: 'Pending';
+                    [$statusPill, $statusLabel] = match ($outcome) {
+                        'Delivered' => ['served-personal', 'Delivered'],
+                        'Not Delivered' => ['unserved', 'Not Delivered'],
+                        default => ['pending', 'Pending Service'],
+                    };
+                    $hasPdf = !empty($att['has_version_pdf']) || !empty($att['has_prep_pdf']);
+                    $previewUrl = $hasPdf
+                        ? ('../../../backend/api/paanyaya/service.php?view=invitation&attempt_id=' . (int) $att['attempt_id'])
+                        : null;
+                    $proofUrl = !empty($att['proof_mime'])
+                        ? ('../../../backend/api/paanyaya/service.php?view=proof&attempt_id=' . (int) $att['attempt_id'])
+                        : null;
+                    $remarksParts = [];
+                    if ($origAppt) {
+                        $remarksParts[] = 'Appointment: ' . $origAppt . ($venue !== '' ? " ({$venue})" : '');
+                    }
+                    if (!empty($att['notes'])) {
+                        $remarksParts[] = trim((string) $att['notes']);
                     }
 
-                    $previewUrl = !empty($pSess['pdf_path']) ? ('../../../' . ltrim($pSess['pdf_path'], '/')) : null;
-
                     $paanyayaItems[] = [
-                        'delivery_id' => (int) $pSess['session_id'],
+                        'delivery_id' => (int) $att['attempt_id'],
                         'hearing_id' => null,
                         'document_id' => null,
                         'stage' => 'Paanyaya',
                         'stage_index' => 0,
-                        'document_code' => 'Paanyaya',
-                        'document_title' => 'Paanyaya Invitation Letter',
-                        'party_type' => 'Invitee',
-                        'recipient_name' => $pSess['invitee_name'] ?: 'Invitee',
-                        'attempt_number' => (int) ($pSess['attempt_number'] ?: 1),
-                        'attempt_label' => 'Dialogue #' . ((int) ($pSess['attempt_number'] ?: 1)),
+                        'document_code' => 'Paanyaya #' . $invNum,
+                        'document_title' => 'Paanyaya Invitation #' . $invNum,
+                        'party_type' => 'Respondent',
+                        'recipient_name' => $defaultInviteeName,
+                        'attempt_number' => $seq,
+                        'invitation_number' => $invNum,
+                        'attempt_label' => 'Invitation #' . $invNum . ' · Service Attempt #' . $seq,
+                        'delivery_status' => $statusLabel,
+                        'status_pill' => $statusPill,
+                        'unserved_reason' => $outcome === 'Not Delivered' ? ($att['notes'] ?: 'Not Delivered') : null,
+                        'served_by_name' => trim((string) ($att['served_by_name'] ?? '')) ?: 'Summons Server',
+                        'appointment_at' => $origAppt,
+                        'service_datetime' => $att['recorded_at'] ?: ($origAppt ?: $att['released_at']),
+                        'service_method' => 'Paanyaya Invitation Delivery',
+                        'proof_file_path' => $proofUrl,
+                        'remarks' => implode(' — ', $remarksParts) ?: 'Paanyaya Invitation Delivery',
+                        'preview_url' => $previewUrl,
+                    ];
+                }
+
+                // Include prepared invitations without service attempts yet
+                foreach ($preparations as $prep) {
+                    $invNum = (int) ($prep['invitation_number'] ?: 1);
+                    if (!isset($attemptsPerInvitation[$invNum])) {
+                        $paanyayaItems[] = [
+                            'delivery_id' => $invNum,
+                            'hearing_id' => null,
+                            'document_id' => null,
+                            'stage' => 'Paanyaya',
+                            'stage_index' => 0,
+                            'document_code' => 'Paanyaya #' . $invNum,
+                            'document_title' => 'Paanyaya Invitation #' . $invNum,
+                            'party_type' => 'Respondent',
+                            'recipient_name' => $defaultInviteeName,
+                            'attempt_number' => 1,
+                            'invitation_number' => $invNum,
+                            'attempt_label' => 'Invitation #' . $invNum . ' · Prepared',
+                            'delivery_status' => !empty($prep['ready_at']) ? 'Ready for Release' : 'Prepared',
+                            'status_pill' => 'pending',
+                            'unserved_reason' => null,
+                            'served_by_name' => 'Barangay Office',
+                            'appointment_at' => $prep['appointment_at'],
+                            'service_datetime' => $prep['appointment_at'] ?: $prep['prepared_at'],
+                            'service_method' => 'Paanyaya Preparation',
+                            'proof_file_path' => null,
+                            'remarks' => 'Appointment: ' . ($prep['appointment_at'] ?: 'TBD') . (!empty($prep['venue']) ? ' (' . $prep['venue'] . ')' : ''),
+                            'preview_url' => '../../../backend/api/paanyaya/preparation.php?complaint_id=' . $complaintId . '&invitation_number=' . $invNum,
+                        ];
+                    }
+                }
+
+                // Append recorded Stage 0 dialogue entries
+                foreach ($minutesByStage as $stageType => $minRow) {
+                    $invNum = $stageType === 'Paanyaya 2' ? 2 : 1;
+                    $mOutcome = (string) ($minRow['outcome'] ?? 'No_Agreement');
+                    $mChoice = (string) ($minRow['complainant_choice'] ?? '');
+                    [$statusPill, $statusLabel] = match (true) {
+                        $mOutcome === 'Settled' => ['served-personal', 'Settled at Paanyaya'],
+                        $mChoice === 'Escalate_Mediation' => ['served-personal', 'Escalated to Mediation'],
+                        $mOutcome === 'Dismissed' => ['unserved', 'Dismissed'],
+                        default => ['pending', $mOutcome],
+                    };
+
+                    $paanyayaItems[] = [
+                        'delivery_id' => (int) $minRow['minutes_id'],
+                        'hearing_id' => null,
+                        'document_id' => null,
+                        'stage' => 'Paanyaya',
+                        'stage_index' => 0,
+                        'document_code' => 'Paanyaya Dialogue #' . $invNum,
+                        'document_title' => $stageType . ' Informal Dialogue',
+                        'party_type' => 'Parties',
+                        'recipient_name' => $defaultInviteeName,
+                        'attempt_number' => $invNum,
+                        'invitation_number' => $invNum,
+                        'attempt_label' => 'Dialogue #' . $invNum . ' · Outcome',
                         'delivery_status' => $statusLabel,
                         'status_pill' => $statusPill,
                         'unserved_reason' => null,
-                        'served_by_name' => 'Barangay Office',
-                        'service_datetime' => $pSess['scheduled_date'] . ' ' . $pSess['scheduled_time'],
-                        'service_method' => 'Invitation Delivery',
-                        'proof_file_path' => null,
-                        'remarks' => $pSess['outcome_notes'] ?: ($pSess['session_remarks'] ?: 'Paanyaya Informal Dialogue Invitation'),
-                        'preview_url' => $previewUrl
+                        'served_by_name' => 'Lupon Clerk',
+                        'service_datetime' => $minRow['dialogue_date'],
+                        'service_method' => 'Informal Dialogue',
+                        'proof_file_path' => !empty($minRow['scanned_minutes_path']) ? ('../../../' . ltrim((string) $minRow['scanned_minutes_path'], '/')) : null,
+                        'remarks' => $minRow['discussion_summary'] ?: 'Paanyaya Dialogue Recorded',
+                        'preview_url' => null,
                     ];
+                }
+
+                // Legacy fallback when no prepared invitations/attempts/minutes exist
+                if (empty($paanyayaItems)) {
+                    $pStmt = $db->prepare("
+                        SELECT ps.*
+                        FROM paanyaya_sessions ps
+                        WHERE ps.complaint_id = ?
+                        ORDER BY ps.attempt_number ASC, ps.session_id ASC
+                    ");
+                    $pStmt->execute([$complaintId]);
+                    $paaSessions = $pStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                    foreach ($paaSessions as $pSess) {
+                        $pStatus = $pSess['session_outcome'] ?: 'Scheduled';
+                        $statusPill = 'pending';
+                        $statusLabel = 'Scheduled';
+                        if (in_array($pStatus, ['Settled', 'Resolved'], true)) {
+                            $statusPill = 'served-personal';
+                            $statusLabel = 'Settled';
+                        } elseif (in_array($pStatus, ['Escalated', 'Impasse_Escalate'], true)) {
+                            $statusPill = 'refused';
+                            $statusLabel = 'Escalated';
+                        } elseif ($pStatus === 'Dismissed') {
+                            $statusPill = 'unserved';
+                            $statusLabel = 'Dismissed';
+                        }
+
+                        $previewUrl = !empty($pSess['pdf_path']) ? ('../../../' . ltrim($pSess['pdf_path'], '/')) : null;
+
+                        $paanyayaItems[] = [
+                            'delivery_id' => (int) $pSess['session_id'],
+                            'hearing_id' => null,
+                            'document_id' => null,
+                            'stage' => 'Paanyaya',
+                            'stage_index' => 0,
+                            'document_code' => 'Paanyaya',
+                            'document_title' => 'Paanyaya Invitation Letter',
+                            'party_type' => 'Invitee',
+                            'recipient_name' => $pSess['invitee_name'] ?: $defaultInviteeName,
+                            'attempt_number' => (int) ($pSess['attempt_number'] ?: 1),
+                            'attempt_label' => 'Dialogue #' . ((int) ($pSess['attempt_number'] ?: 1)),
+                            'delivery_status' => $statusLabel,
+                            'status_pill' => $statusPill,
+                            'unserved_reason' => null,
+                            'served_by_name' => 'Barangay Office',
+                            'service_datetime' => $pSess['scheduled_date'] . ' ' . $pSess['scheduled_time'],
+                            'service_method' => 'Invitation Delivery',
+                            'proof_file_path' => null,
+                            'remarks' => $pSess['outcome_notes'] ?: ($pSess['session_remarks'] ?: 'Paanyaya Informal Dialogue Invitation'),
+                            'preview_url' => $previewUrl
+                        ];
+                    }
                 }
             }
         } catch (Throwable $e) {

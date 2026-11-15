@@ -21,7 +21,7 @@ class Pangkat
         }
 
         require_once __DIR__ . '/../services/MediationDeadlineService.php';
-        $conveningDeadline = MediationDeadlineService::calculateDeadline(date('Y-m-d'), 3);
+        $conveningDeadline = MediationDeadlineService::calculateDeadline(date('Y-m-d'), MediationDeadlineService::PANGKAT_CONVENING_DAYS);
 
         $stmt = $this->conn->prepare("
             INSERT INTO pangkat_groups

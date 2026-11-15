@@ -111,7 +111,12 @@ final class ResidentComplaintTimeline
             $hearings = $this->db->prepare("SELECT hearing_type, hearing_date, venue, status, created_at FROM hearings
                 WHERE case_id = ? AND hearing_type IN ('Initial Hearing', 'Mediation', 'Conciliation', 'Arbitration')
                 AND status IN ('Scheduled', 'Attendance Recorded', 'Completed')
-                AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = hearings.hearing_id)
+                AND NOT EXISTS (
+                    SELECT 1 FROM hearings nh
+                    WHERE nh.rescheduled_from_id = hearings.hearing_id
+                      AND nh.status NOT IN ('Cancelled', 'Office Cancelled')
+                      AND nh.hearing_type NOT IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
+                )
                 ORDER BY hearing_id");
             $hearings->execute([$complaint['case_id']]);
             foreach ($hearings->fetchAll() as $hearing) {

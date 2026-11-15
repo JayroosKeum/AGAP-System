@@ -8,6 +8,9 @@ class DeadlineService
     public const MEDIATION = 'Mediation Period';
     public const CONCILIATION = 'Conciliation Period';
     public const CONCILIATION_EXTENSION = 'Conciliation Extension';
+    public const MEDIATION_PERIOD_DAYS = MediationDeadlineService::MEDIATION_PERIOD_DAYS;
+    public const CONCILIATION_PERIOD_DAYS = MediationDeadlineService::CONCILIATION_PERIOD_DAYS;
+    public const PANGKAT_CONVENING_DAYS = MediationDeadlineService::PANGKAT_CONVENING_DAYS;
 
     public static function addCalendarDays(string $date, int $days): string
     {
@@ -44,25 +47,24 @@ class DeadlineService
 
             return [
                 'deadline_type' => self::CONCILIATION,
-                'due_date' => self::addCalendarDays($date, 15),
+                'due_date' => self::addCalendarDays($date, self::CONCILIATION_PERIOD_DAYS),
             ];
         }
 
-        return match ($type) {
-            'Initial Hearing' => [
-                'deadline_type' => self::INITIAL_HEARING,
-                'due_date' => $date,
-            ],
+        if (in_array($type, ['Initial Hearing', 'Mediation'], true)) {
+            if ($conn && $caseId) {
+                $period = (new MediationDeadlineService($conn))->resolveMediationPeriodForCase($caseId, $date);
+                if (!empty($period['commenced']) && !empty($period['deadline_date'])) {
+                    return [
+                        'deadline_type' => self::MEDIATION,
+                        'due_date' => $period['deadline_date'],
+                    ];
+                }
+            }
+            // Pre-commencement bookings and reschedules keep the statutory clock pending.
+            return null;
+        }
 
-            'Mediation' => [
-                'deadline_type' => self::MEDIATION,
-                'due_date' => MediationDeadlineService::calculateDeadline(
-                    $date,
-                    15
-                ),
-            ],
-
-            default => null,
-        };
+        return null;
     }
 }

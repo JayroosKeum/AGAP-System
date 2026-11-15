@@ -11,7 +11,16 @@ class CaseStage
     public function __construct(?PDO $conn = null)
     {
         $this->conn = $conn ?? (new Database())->connect();
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->conn);
+    }
+
+    /**
+     * Instantiates the document generator service (overridable for failure-injection tests).
+     */
+    protected function createKpFormService(): KpFormService
+    {
+        require_once __DIR__ . '/../services/KpFormService.php';
+        return new KpFormService($this->conn);
     }
 
     /**
@@ -94,6 +103,169 @@ class CaseStage
     }
 
     /**
+     * Single server-side eligibility decision shared by the stage workspace and referToPangkat().
+     * Counts distinct qualifying completed Mediation hearings (excluding Drafts, attendance-only
+     * rows, cancellations, and superseded hearings) and evaluates any authorized deadline lapse.
+     */
+    public static function evaluateMediationReferralEligibility(PDO $conn, int $caseId, ?array $caseRow = null): array
+    {
+        if ($caseRow === null) {
+            $cStmt = $conn->prepare('SELECT * FROM cases WHERE case_id = ? LIMIT 1');
+            $cStmt->execute([$caseId]);
+            $caseRow = $cStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if (!$caseRow) {
+            return [
+                'eligible' => false,
+                'already_referred' => false,
+                'is_arbitration' => false,
+                'is_closed' => true,
+                'is_settled' => false,
+                'is_lapsed' => false,
+                'completed_mediation_count' => 0,
+                'required_mediation_sessions' => 2,
+                'configured_max_sessions' => 2,
+                'policy_conflict' => false,
+                'policy_conflict_message' => null,
+                'latest_qualifying_outcome' => null,
+                'has_finalized_unsuccessful' => false,
+                'stage_record' => null,
+                'timer' => [],
+                'basis' => null,
+                'reason' => 'Case not found.',
+            ];
+        }
+
+        $stageStmt = $conn->prepare("SELECT * FROM case_stages WHERE case_id = ? AND stage_type = 'Mediation' LIMIT 1");
+        $stageStmt->execute([$caseId]);
+        $stageRecord = $stageStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $arbStageStmt = $conn->prepare("SELECT stage_status, outcome FROM case_stages WHERE case_id = ? AND stage_type = 'Arbitration' LIMIT 1");
+        $arbStageStmt->execute([$caseId]);
+        $arbStage = $arbStageStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        $arbRecStmt = $conn->prepare("SELECT 1 FROM arbitration_records WHERE case_id = ? LIMIT 1");
+        $arbRecStmt->execute([$caseId]);
+        $hasArbRecord = (bool) $arbRecStmt->fetchColumn();
+
+        require_once __DIR__ . '/Hearing.php';
+        require_once __DIR__ . '/../services/MediationDeadlineService.php';
+        $medPolicy = MediationDeadlineService::getMediationPolicy($conn);
+        $requiredSessions = $medPolicy['referral_required_sessions'];
+        $deadlineSvc = new MediationDeadlineService($conn);
+        $timer = $deadlineSvc->computeStatus($caseRow);
+
+        $nonSupSql = Hearing::nonSupersededSql('h', 'next_h');
+        $hStmt = $conn->prepare("
+            SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.status,
+                   hm.minute_id, hm.status AS minutes_status, hm.session_outcome
+            FROM hearings h
+            LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
+            WHERE h.case_id = ?
+              AND h.hearing_type IN ('Initial Hearing', 'Mediation')
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+              AND {$nonSupSql}
+            ORDER BY h.hearing_date ASC, h.hearing_id ASC
+        ");
+        $hStmt->execute([$caseId]);
+        $rows = $hStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $seenHearings = [];
+        $completedMediationCount = 0;
+        $hasSettledSession = false;
+        $latestQualifyingOutcome = null;
+
+        foreach ($rows as $row) {
+            $hid = (int) ($row['hearing_id'] ?? 0);
+            if ($hid <= 0 || isset($seenHearings[$hid])) {
+                continue;
+            }
+            $seenHearings[$hid] = true;
+
+            $isFinalized = !empty($row['minute_id']) && ($row['minutes_status'] ?? '') === 'Finalized';
+            $outcomeVal = (string) ($row['session_outcome'] ?? '');
+            $isCompletedQualifying = ($row['status'] === 'Completed' && $isFinalized && $outcomeVal !== 'Rescheduled');
+            if (!$isCompletedQualifying) {
+                continue;
+            }
+
+            $completedMediationCount++;
+            $latestQualifyingOutcome = $outcomeVal;
+            if ($outcomeVal === 'Settled') {
+                $hasSettledSession = true;
+            }
+        }
+
+        $hasFinalizedUnsuccessful = in_array($latestQualifyingOutcome, ['Failed', 'Elevate to Pangkat'], true);
+
+        $caseStatus = (string) ($caseRow['case_status'] ?? '');
+        $stageStatus = (string) ($stageRecord['stage_status'] ?? '');
+        $stageOutcome = (string) ($stageRecord['outcome'] ?? '');
+        $isSettled = ($caseStatus === 'Settled' || $stageOutcome === 'Settled' || $hasSettledSession);
+        $isArbitration = (
+            $caseStatus === 'Arbitration'
+            || $stageOutcome === 'Arbitration'
+            || $latestQualifyingOutcome === 'Arbitration'
+            || $hasArbRecord
+            || ($arbStage && ($arbStage['stage_status'] ?? 'Locked') !== 'Locked')
+        );
+        $isClosed = in_array($caseStatus, ['Settled', 'Resolved', 'Completed', 'Dismissed', 'DISMISSED_BARRED', 'Archived', 'CFA Issued', 'Repudiated'], true);
+        $alreadyReferred = ($caseStatus === 'Conciliation' || $stageStatus === 'Referred to Pangkat');
+        $isLapsed = !empty($timer['is_lapsed']) && empty($timer['is_paused']);
+
+        $eligible = false;
+        $basis = null;
+        $reason = null;
+
+        if ($isSettled) {
+            $reason = 'Cannot elevate to Pangkat Conciliation: An amicable settlement was already reached for this case.';
+        } elseif ($isArbitration) {
+            $reason = 'Case is already in Arbitration and cannot be referred to Pangkat Conciliation.';
+        } elseif ($isClosed) {
+            $reason = 'This concluded case is read-only; it cannot be referred to Pangkat.';
+        } elseif ($alreadyReferred) {
+            $reason = 'Case has already been referred to Pangkat Conciliation.';
+        } elseif ($caseStatus !== 'Mediation') {
+            $reason = 'Only a case in active Mediation can be referred to Pangkat Conciliation.';
+        } elseif ($isLapsed) {
+            $eligible = true;
+            $basis = 'statutory_deadline_lapsed';
+        } elseif ($completedMediationCount < $requiredSessions) {
+            $reason = sprintf(
+                'Progression to Conciliation is locked: Completed %d of %d required mediation sessions. Barangay Tumana policy (RA 7160) requires %d mediation sessions before elevating to Pangkat Conciliation.',
+                $completedMediationCount,
+                $requiredSessions,
+                $requiredSessions
+            );
+        } elseif (!$hasFinalizedUnsuccessful) {
+            $reason = 'Finalize the latest Mediation session with an unsuccessful outcome (Failed or Elevate to Pangkat) before referring to Pangkat.';
+        } else {
+            $eligible = true;
+            $basis = 'sessions_completed_unsuccessful';
+        }
+
+        return [
+            'eligible' => $eligible,
+            'already_referred' => $alreadyReferred,
+            'is_arbitration' => $isArbitration,
+            'is_closed' => $isClosed,
+            'is_settled' => $isSettled,
+            'is_lapsed' => $isLapsed,
+            'completed_mediation_count' => $completedMediationCount,
+            'required_mediation_sessions' => $requiredSessions,
+            'configured_max_sessions' => $medPolicy['configured_max_sessions'],
+            'policy_conflict' => $medPolicy['has_policy_conflict'],
+            'policy_conflict_message' => $medPolicy['policy_conflict_message'],
+            'latest_qualifying_outcome' => $latestQualifyingOutcome,
+            'has_finalized_unsuccessful' => $hasFinalizedUnsuccessful,
+            'stage_record' => $stageRecord,
+            'timer' => $timer,
+            'basis' => $basis,
+            'reason' => $reason,
+        ];
+    }
+
+    /**
      * Builds summary for Mediation Stage.
      */
     private function buildMediationOverview(array $case, ?array $stageRecord, string $pbName): array
@@ -101,6 +273,8 @@ class CaseStage
         $caseId = (int) $case['case_id'];
 
         // Mediation Hearings (type Initial Hearing or Mediation)
+        require_once __DIR__ . '/Hearing.php';
+        $nonSupSql = Hearing::nonSupersededSql('h', 'next_h');
         $hStmt = $this->conn->prepare("
             SELECT h.hearing_id, h.hearing_type, h.hearing_date, h.venue, h.status,
                    h.complainant_attendance, h.respondent_attendance,
@@ -109,7 +283,7 @@ class CaseStage
             LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
             WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation')
               AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
-              AND NOT EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id)
+              AND {$nonSupSql}
             ORDER BY h.hearing_date ASC
         ");
         $hStmt->execute([$caseId]);
@@ -159,6 +333,8 @@ class CaseStage
                 INNER JOIN hearings h ON h.hearing_id = ha.hearing_id
                 INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
                 WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation')
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+                  AND {$nonSupSql}
                 GROUP BY cp.party_type, ha.attendance_status
             ");
             $attStmt->execute([(int) $case['complaint_id'], $caseId]);
@@ -185,83 +361,51 @@ class CaseStage
         $docStmt->execute([$caseId]);
         $noticeCount = (int) $docStmt->fetchColumn();
 
-        // Count completed mediation sessions
-        $completedMediationCount = 0;
-        foreach ($hearings as $h) {
-            if ($h['status'] === 'Completed' || !empty($h['minute_id']) || !empty($h['complainant_attendance']) || !empty($h['attendance_recorded_at'])) {
-                $completedMediationCount++;
-            }
-        }
-
-        $isLapsed = !empty($case['mediation_timer']['is_expired']);
-        $pangkatLockReason = null;
+        // Count qualifying finalized completed mediation sessions & shared eligibility
+        $eligibility = self::evaluateMediationReferralEligibility($this->conn, $caseId, $case);
+        $completedMediationCount = $eligibility['completed_mediation_count'];
+        $isLapsed = $eligibility['is_lapsed'];
+        $hasSettledSession = $hasSettledSession || $eligibility['is_settled'];
+        $hasFinalizedUnsuccessful = $eligibility['has_finalized_unsuccessful'];
+        $canProceedToPangkat = $eligibility['eligible'];
+        $pangkatLockReason = $eligibility['reason'];
 
         // Determine Mediation Status & Outcome
         $stageStatus = 'Not Started';
         $outcome = $stageRecord['outcome'] ?? 'Pending';
         $outcomeRemarks = $stageRecord['outcome_remarks'] ?? null;
 
-        if ($stageRecord && !empty($stageRecord['stage_status']) && !in_array($stageRecord['stage_status'], ['Not Started', 'Pending', 'In Progress'], true) && !$hasSettledSession && $case['case_status'] !== 'Conciliation') {
+        if (!empty($eligibility['is_settled']) || $case['case_status'] === 'Settled' || $outcome === 'Settled') {
+            $stageStatus = 'Completed';
+            $outcome = 'Settled';
+        } elseif (!empty($eligibility['already_referred']) || in_array($case['case_status'], ['Conciliation', 'CFA Issued', 'Dismissed'], true)) {
+            $stageStatus = 'Referred to Pangkat';
+            $outcome = 'Referred to Pangkat';
+        } elseif ($canProceedToPangkat) {
+            $stageStatus = 'Ready for Referral';
+            $outcome = 'Unsuccessful';
+        } elseif ($stageRecord && !empty($stageRecord['stage_status']) && !in_array($stageRecord['stage_status'], ['Not Started', 'Pending', 'In Progress', 'Awaiting Outcome', 'Ready for Referral'], true)) {
             $stageStatus = $stageRecord['stage_status'];
-        } else {
-            if ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
-                $stageStatus = 'Completed';
-                $outcome = 'Settled';
-            } elseif ($case['case_status'] === 'Conciliation' || in_array($case['case_status'], ['CFA Issued', 'Dismissed'], true)) {
-                $stageStatus = 'Referred to Pangkat';
-                $outcome = 'Referred to Pangkat';
-            } elseif ($completedMediationCount >= 2 || $isLapsed) {
-                // Only ready for referral after 2 mediation sessions or statutory period expired
-                if ($hasFailedSession || in_array($outcome, ['Unsuccessful', 'Failed'], true)) {
-                    $stageStatus = 'Ready for Referral';
-                    $outcome = 'Unsuccessful';
-                } else {
-                    $stageStatus = 'Awaiting Outcome';
-                }
-            } elseif ($sessionCount > 0) {
-                $hasPendingOrFuture = false;
-                foreach ($hearings as $h) {
-                    if ($h['hearing_date'] >= $now || $h['status'] === 'Scheduled') {
-                        $hasPendingOrFuture = true;
-                        break;
-                    }
-                }
-                $stageStatus = 'In Progress';
-                if ($completedMediationCount === 1) {
-                    $outcome = '1st Mediation Unresolved';
-                } elseif ($completedMediationCount === 2) {
-                    $outcome = '2nd Mediation Unresolved';
-                }
+        } elseif ($completedMediationCount >= ($eligibility['required_mediation_sessions'] ?? 2) && !$hasFinalizedUnsuccessful) {
+            $stageStatus = 'Awaiting Outcome';
+        } elseif ($sessionCount > 0) {
+            $stageStatus = 'In Progress';
+            if ($completedMediationCount === 1) {
+                $outcome = '1st Mediation Unresolved';
             }
         }
 
         // Attendance Finalized status
         $attendanceFinalized = ($sessionCount > 0 && ($complainantAtt['present'] + $complainantAtt['absent'] + $complainantAtt['excused']) > 0);
 
-        // Actions prerequisites:
-        // Permit progression to Conciliation after 2nd Mediation has completed and issue remains unresolved.
-        // (Barangay Tumana policy: max 2 mediation sessions before the Punong Barangay)
-        if ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
-            $canProceedToPangkat = false;
-            $pangkatLockReason = 'An amicable settlement was reached for this case.';
-        } elseif ($case['case_status'] === 'Conciliation' || $stageStatus === 'Referred to Pangkat') {
-            $canProceedToPangkat = false;
-            $pangkatLockReason = 'Case has already been referred to Pangkat Conciliation.';
-        } elseif ($completedMediationCount < 2 && !$isLapsed) {
-            $canProceedToPangkat = false;
-            $pangkatLockReason = sprintf(
-                'Progression to Conciliation is locked: Completed %d of 2 required mediation sessions. Barangay Tumana policy (RA 7160) requires 2 mediation sessions before elevating to Pangkat Conciliation.',
-                $completedMediationCount
-            );
-        } else {
-            // Unlocked when 2 sessions completed (or statutory 15 days lapsed) and dispute is unresolved
-            $canProceedToPangkat = ($stageStatus === 'Ready for Referral' || $outcome === 'Unsuccessful' || $hasFailedSession || $isLapsed);
-            if (!$canProceedToPangkat) {
-                $pangkatLockReason = 'Complete 2nd mediation minutes and record unsuccessful outcome to elevate.';
-            }
-        }
-
-        $canBookNextMediation = ($completedMediationCount >= 1 && $completedMediationCount < 2 && $outcome !== 'Settled' && $case['case_status'] !== 'Settled');
+        $canBookNextMediation = (
+            $completedMediationCount >= 1
+            && $completedMediationCount < ($eligibility['configured_max_sessions'] ?? 2)
+            && !$hasSettledSession
+            && empty($eligibility['already_referred'])
+            && empty($eligibility['is_closed'])
+            && empty($eligibility['is_arbitration'])
+        );
 
         // Determine next permitted canonical action for workspace
         $hasActiveScheduledHearing = false;
@@ -332,11 +476,18 @@ class CaseStage
                 'action_type' => 'schedule_hearing',
                 'badge' => 'badge-primary'
             ];
-        } elseif ($completedMediationCount >= 2 || $isLapsed) {
+        } elseif ($canProceedToPangkat) {
             $nextPermittedAction = [
                 'action' => 'Elevate to Pangkat (KP Form 10)',
-                'description' => '2 mediation attempts completed without settlement. Refer dispute to Pangkat panel for conciliation.',
+                'description' => 'Mediation eligibility satisfied. Refer dispute to Pangkat panel for conciliation.',
                 'action_type' => 'elevate_pangkat',
+                'badge' => 'badge-warning'
+            ];
+        } elseif (!empty($eligibility['policy_conflict'])) {
+            $nextPermittedAction = [
+                'action' => 'Policy Conflict: Single-Session Cap vs 2-Session Referral',
+                'description' => $eligibility['policy_conflict_message'],
+                'action_type' => 'policy_conflict',
                 'badge' => 'badge-warning'
             ];
         }
@@ -350,6 +501,10 @@ class CaseStage
             'presiding_officer' => $pbName,
             'sessions_count' => $sessionCount,
             'completed_mediation_count' => $completedMediationCount,
+            'required_mediation_sessions' => $eligibility['required_mediation_sessions'] ?? 2,
+            'configured_max_sessions' => $eligibility['configured_max_sessions'] ?? 2,
+            'policy_conflict' => !empty($eligibility['policy_conflict']),
+            'policy_conflict_message' => $eligibility['policy_conflict_message'] ?? null,
             'current_mediation_session' => min(2, max(1, $completedMediationCount + 1)),
             'next_hearing' => $nextHearing,
             'latest_hearing_date' => $latestHearingDate,
@@ -373,6 +528,8 @@ class CaseStage
                 'can_record_outcome' => ($sessionCount > 0),
                 'can_proceed_to_pangkat' => $canProceedToPangkat,
                 'pangkat_lock_reason' => $pangkatLockReason,
+                'policy_conflict' => !empty($eligibility['policy_conflict']),
+                'policy_conflict_message' => $eligibility['policy_conflict_message'] ?? null,
                 'can_book_next_mediation' => $canBookNextMediation,
                 'next_mediation_session_number' => min(2, $completedMediationCount + 1),
                 'completed_mediation_count' => $completedMediationCount,
@@ -406,18 +563,19 @@ class CaseStage
             ($stageRecord && in_array($stageRecord['stage_status'], ['Not Started', 'In Progress', 'Awaiting Outcome', 'Completed'], true))
         );
 
-        $isReadyForReferral = ($medStage['stage_status'] === 'Ready for Referral' || $medStage['outcome'] === 'Unsuccessful' || !empty($case['mediation_timer']['is_expired']));
+        $isReadyForReferral = !empty($medStage['documents_and_actions']['can_proceed_to_pangkat'])
+            || ($medStage['stage_status'] ?? '') === 'Ready for Referral';
 
         $stageStatus = 'Locked';
         if (!$isUnlocked) {
             $stageStatus = $isReadyForReferral ? 'Ready for Referral' : 'Locked';
-        } elseif ($stageRecord && !empty($stageRecord['stage_status']) && $stageRecord['stage_status'] !== 'Locked') {
+        } elseif ($stageRecord && !empty($stageRecord['stage_status']) && !in_array($stageRecord['stage_status'], ['Locked', 'In Progress', 'Not Started'], true)) {
             $stageStatus = $stageRecord['stage_status'];
         } else {
             if ($case['case_status'] === 'Settled') {
                 $stageStatus = 'Completed';
             } elseif ($case['case_status'] === 'Conciliation') {
-                $stageStatus = 'In Progress';
+                $stageStatus = ($stageRecord && ($stageRecord['stage_status'] ?? '') === 'In Progress') ? 'In Progress' : 'Not Started';
             } else {
                 $stageStatus = 'Not Started';
             }
@@ -434,7 +592,8 @@ class CaseStage
             FROM hearings h
             LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
             WHERE h.case_id = ? AND h.hearing_type = 'Conciliation'
-              AND h.status != 'Cancelled'
+              AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+              AND " . Hearing::nonSupersededSql('h', 'next_h') . "
             ORDER BY h.hearing_date ASC
         ");
         $hStmt->execute([$caseId]);
@@ -486,6 +645,8 @@ class CaseStage
                 INNER JOIN hearings h ON h.hearing_id = ha.hearing_id
                 INNER JOIN complaint_parties cp ON cp.resident_id = ha.resident_id AND cp.complaint_id = ?
                 WHERE h.case_id = ? AND h.hearing_type = 'Conciliation'
+                  AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
+                  AND NOT EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id)
                 GROUP BY cp.party_type, ha.attendance_status
             ");
             $attStmt->execute([(int) $case['complaint_id'], $caseId]);
@@ -539,6 +700,12 @@ class CaseStage
         $cfaElig = (new CFA($this->conn))->determineCfaEligibility($caseId);
         $canIssueCfa = $isUnlocked && !empty($cfaElig['eligible']) && in_array('KP Form 20', $cfaElig['available_forms'] ?? [], true);
 
+        $isBookingPending = ($isUnlocked && $sessionCount === 0 && !in_array($case['case_status'], ['Settled', 'Dismissed', 'CFA Issued', 'Archived'], true));
+        if ($isBookingPending && $stageStatus === 'Not Started') {
+            // Keep Conciliation booking visibly pending until 1st Conciliation hearing is saved.
+            $stageStatus = 'Not Started';
+        }
+
         return [
             'stage_type' => 'Conciliation',
             'stage_title' => '8. Pangkat Conciliation',
@@ -546,6 +713,8 @@ class CaseStage
             'stage_status' => $stageStatus,
             'stage_badge_class' => self::getBadgeClass($stageStatus),
             'is_locked' => ($stageStatus === 'Locked'),
+            'is_booking_pending' => $isBookingPending,
+            'booking_status' => $sessionCount > 0 ? 'Scheduled' : ($isUnlocked ? 'Pending Scheduling' : 'Locked'),
             'lock_message' => 'Pangkat Conciliation is locked. Complete the mediation stage and record an authorized referral to unlock this workspace.',
             'pangkat_assignment' => $pangkatInfo,
             'sessions_count' => $sessionCount,
@@ -915,6 +1084,7 @@ class CaseStage
                    (SELECT next_h.hearing_id
                     FROM hearings next_h
                     WHERE next_h.rescheduled_from_id = h.hearing_id
+                      AND " . Hearing::operativeReplacementCondition('next_h') . "
                     ORDER BY next_h.hearing_date ASC, next_h.hearing_id ASC
                     LIMIT 1) AS rescheduled_to_id,
                    h.complainant_attendance, h.respondent_attendance, h.remarks,
@@ -939,7 +1109,7 @@ class CaseStage
             LEFT JOIN users fin_u ON fin_u.user_id = hm.finalized_by
             WHERE h.case_id = ? AND h.hearing_type IN ('$inClause')
               AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
-              AND NOT EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id)
+              AND " . Hearing::nonSupersededSql('h', 'next_h') . "
             ORDER BY h.hearing_date ASC
         ");
         $stmt->execute([$caseId]);
@@ -1430,115 +1600,121 @@ class CaseStage
      */
     public function referToPangkat(int $caseId, array $data, int $userId): array
     {
-        $overview = $this->getStageOverview($caseId);
-        if (!$overview) {
-            return ['success' => false, 'message' => 'Case not found.'];
-        }
-
-        if (in_array((string) ($overview['case']['case_status'] ?? ''), ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'], true)) {
-            return ['success' => false, 'message' => 'This concluded case is read-only; it cannot be referred to Pangkat.'];
-        }
-
-        $med = $overview['mediation'];
-
-        // Enforce progression rules server-side
-        if ($overview['case']['case_status'] === 'Settled' || $med['outcome'] === 'Settled') {
-            return [
-                'success' => false,
-                'message' => 'Cannot elevate to Pangkat Conciliation: An amicable settlement was already reached for this case.'
-            ];
-        }
-
-        // Bulk Pangkat Group Selection: when a standing duty group is chosen, its
-        // seated members (resolved server-side) replace any individually submitted IDs.
-        $dutyGroupId = filter_var($data['duty_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
-        if ($dutyGroupId) {
-            require_once __DIR__ . '/../services/PangkatDutyGroupService.php';
-            $resolved = (new PangkatDutyGroupService($this->conn))->resolvePanel((int) $dutyGroupId);
-            if (!$resolved['success']) {
-                return ['success' => false, 'message' => $resolved['message']];
-            }
-            $data['chairman_id'] = $resolved['chairman_id'];
-            $data['secretary_id'] = $resolved['secretary_id'];
-            $data['member_id'] = $resolved['member_id'];
-            $data['quorum_size'] = 3;
-            $groupNote = "Panel drawn from standing duty group \"{$resolved['group']['group_name']}\" ({$resolved['group']['duty_day']} duty).";
-            $data['selection_notes'] = trim($groupNote . ' ' . trim((string) ($data['selection_notes'] ?? '')));
-        }
-
-        $panelValidation = $this->validatePangkatPanel($data);
-        if (!$panelValidation['valid']) {
-            return ['success' => false, 'message' => $panelValidation['message']];
-        }
-
-        // Query completed mediation count directly from database
-        $completedStmt = $this->conn->prepare("
-            SELECT COUNT(*) FROM hearings h
-            LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
-            WHERE h.case_id = ? 
-              AND h.hearing_type IN ('Initial Hearing', 'Mediation')
-              AND h.status != 'Cancelled'
-              AND (h.status = 'Completed' OR hm.minute_id IS NOT NULL OR h.complainant_attendance IS NOT NULL OR h.attendance_recorded_at IS NOT NULL)
-        ");
-        $completedStmt->execute([$caseId]);
-        $completedMediationCount = (int) $completedStmt->fetchColumn();
-
-        $isLapsed = !empty($overview['case']['mediation_timer']['is_expired']);
-
-        // Enforce Barangay Tumana policy: 2 mediation sessions before elevation to Pangkat
-        if ($completedMediationCount < 2 && !$isLapsed) {
-            return [
-                'success' => false,
-                'message' => "Progression to Conciliation is locked: Completed {$completedMediationCount} of 2 required mediation sessions. Barangay Tumana policy (RA 7160) requires 2 mediation sessions before elevating to Pangkat ng Tagapagkasundo."
-            ];
-        }
-
-        $canRefer = $med['documents_and_actions']['can_proceed_to_pangkat'] || $completedMediationCount >= 2 || $isLapsed;
-        if (!$canRefer) {
-            return [
-                'success' => false,
-                'message' => 'Mediation requirements not satisfied. Complete 2 mediation sessions or record an unsuccessful mediation outcome before referring to Pangkat.'
-            ];
-        }
-
-        $referralDate = !empty($data['referral_date']) ? date('Y-m-d', strtotime($data['referral_date'])) : date('Y-m-d');
-        $referralReason = trim((string) ($data['referral_reason'] ?? 'Mediation before the Punong Barangay failed to produce an amicable settlement. Referred for formal conciliation before the Pangkat ng Tagapagkasundo.'));
-        $selectionMethod = in_array($data['selection_method'] ?? '', ['Party Agreement', 'PB Assignment', 'Raffle Draw'], true) ? $data['selection_method'] : 'Party Agreement';
-        $selectionNotes = trim((string) ($data['selection_notes'] ?? ''));
-        $quorumSize = !empty($data['quorum_size']) ? (int) $data['quorum_size'] : 3;
-
-        $conciliationDate = !empty($data['conciliation_date']) ? date('Y-m-d', strtotime($data['conciliation_date'])) : null;
-        $conciliationTime = !empty($data['conciliation_time']) ? trim($data['conciliation_time']) : null;
-        $venue = !empty($data['venue']) ? trim($data['venue']) : 'Lupon Court Room';
-
-        if ($conciliationDate) {
-            $conciliationDow = (int) (new DateTimeImmutable($conciliationDate))->format('N');
-            if (!in_array($conciliationDow, [1, 3, 4, 5], true)) {
-                return [
-                    'success' => false,
-                    'message' => 'Conciliation hearings may be scheduled only on Monday, Wednesday, Thursday, or Friday.'
-                ];
-            }
-            $hearingTimeStr = $conciliationTime ? date('H:i', strtotime($conciliationTime)) : '09:00';
-            require_once __DIR__ . '/Summons.php';
-            $summonsModel = new Summons($this->conn);
-            $conflict = $summonsModel->findMediationConflict("{$conciliationDate} {$hearingTimeStr}", $venue, $caseId, null, 'Conciliation');
-            if ($conflict !== null) {
-                return [
-                    'success' => false,
-                    'message' => $conflict['message'] ?? 'Schedule conflict detected for conciliation hearing.'
-                ];
-            }
-        }
-
         $manageTx = false;
+        $savepointCreated = false;
+        $generatedPaths = [];
         try {
             if (!$this->conn->inTransaction()) {
                 $this->conn->beginTransaction();
                 $manageTx = true;
             }
 
-            // 1. Update Mediation Stage in case_stages
+            $caseLockStmt = $this->conn->prepare('SELECT * FROM cases WHERE case_id = ? FOR UPDATE');
+            $caseLockStmt->execute([$caseId]);
+            $lockedCase = $caseLockStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$lockedCase) {
+                throw new DomainException('Case not found.');
+            }
+
+            $eligibility = self::evaluateMediationReferralEligibility($this->conn, $caseId, $lockedCase);
+            if (empty($eligibility['eligible'])) {
+                if ($manageTx && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
+                return [
+                    'success' => false,
+                    'already_referred' => !empty($eligibility['already_referred']),
+                    'message' => $eligibility['reason'] ?? 'Mediation requirements not satisfied before referring to Pangkat.'
+                ];
+            }
+
+            if (!$manageTx) {
+                $this->conn->exec('SAVEPOINT pangkat_referral');
+                $savepointCreated = true;
+            }
+
+            // Bulk Pangkat Group Selection: when a standing duty group is chosen, its
+            // seated members (resolved server-side) replace any individually submitted IDs.
+            $dutyGroupId = filter_var($data['duty_group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+            if ($dutyGroupId) {
+                require_once __DIR__ . '/../services/PangkatDutyGroupService.php';
+                $resolved = (new PangkatDutyGroupService($this->conn))->resolvePanel((int) $dutyGroupId);
+                if (!$resolved['success']) {
+                    throw new DomainException($resolved['message']);
+                }
+                $data['chairman_id'] = $resolved['chairman_id'];
+                $data['secretary_id'] = $resolved['secretary_id'];
+                $data['member_id'] = $resolved['member_id'];
+                $data['quorum_size'] = 3;
+                $groupNote = "Panel drawn from standing duty group \"{$resolved['group']['group_name']}\" ({$resolved['group']['duty_day']} duty).";
+                $data['selection_notes'] = trim($groupNote . ' ' . trim((string) ($data['selection_notes'] ?? '')));
+            }
+
+            $panelValidation = $this->validatePangkatPanel($data);
+            if (!$panelValidation['valid']) {
+                throw new DomainException($panelValidation['message']);
+            }
+
+            $referralDate = !empty($data['referral_date']) ? date('Y-m-d', strtotime($data['referral_date'])) : date('Y-m-d');
+            $referralReason = trim((string) ($data['referral_reason'] ?? 'Mediation before the Punong Barangay failed to produce an amicable settlement. Referred for formal conciliation before the Pangkat ng Tagapagkasundo.'));
+            $selectionMethod = in_array($data['selection_method'] ?? '', ['Party Agreement', 'PB Assignment', 'Raffle Draw'], true) ? $data['selection_method'] : 'Party Agreement';
+            $selectionNotes = trim((string) ($data['selection_notes'] ?? ''));
+            $quorumSize = !empty($data['quorum_size']) ? (int) $data['quorum_size'] : 3;
+
+            require_once __DIR__ . '/../services/MediationDeadlineService.php';
+            require_once __DIR__ . '/../services/OfficeLogisticsService.php';
+            $logistics = new OfficeLogisticsService($this->conn);
+
+            $conciliationDate = !empty($data['conciliation_date']) ? date('Y-m-d', strtotime((string) $data['conciliation_date'])) : null;
+            $conciliationTime = !empty($data['conciliation_time']) ? trim((string) $data['conciliation_time']) : null;
+            $venue = !empty($data['venue']) ? trim((string) $data['venue']) : $logistics->getConfiguredDefaultVenue('Conciliation');
+            $concilDuration = max(15, (int) $logistics->getSetting('conciliation_default_duration_min', 60));
+
+            $hearingDateTime = null;
+            $hearingEndTime = null;
+            if ($conciliationDate) {
+                $workStart = (string) $logistics->getSetting('working_hours_start', '08:00');
+                $defaultSlotTime = ($workStart > '09:00') ? $workStart : '09:00';
+                $hearingTimeStr = $conciliationTime ? date('H:i', strtotime($conciliationTime)) : $defaultSlotTime;
+                $schedValidation = $logistics->validateHearingSchedule(
+                    "{$conciliationDate} {$hearingTimeStr}:00",
+                    $concilDuration,
+                    'Conciliation',
+                    $data['duration_exceed_reason'] ?? null
+                );
+                if (empty($schedValidation['valid'])) {
+                    throw new DomainException($schedValidation['message']);
+                }
+                $hearingDateTime = $schedValidation['start_time'];
+                $hearingEndTime = $schedValidation['end_time'];
+                $concilDuration = (int) ($schedValidation['duration_minutes'] ?? $concilDuration);
+
+                $capCheck = $logistics->validateDailyCapacity($hearingDateTime, $panelValidation['chairman_id']);
+                if (!$capCheck['valid']) {
+                    throw new DomainException($capCheck['message']);
+                }
+                $venueCheck = $logistics->validateVenueAvailability($venue, $hearingDateTime, $hearingEndTime, null);
+                if (!$venueCheck['available']) {
+                    throw new DomainException($venueCheck['message']);
+                }
+                foreach (array_filter([$panelValidation['chairman_id'], $panelValidation['secretary_id'], $panelValidation['member_id']]) as $panelMemberId) {
+                    $memCheck = $logistics->validateMemberAvailability((int) $panelMemberId, $hearingDateTime, $hearingEndTime, null, 'Pangkat Member');
+                    if (!$memCheck['available']) {
+                        throw new DomainException($memCheck['message']);
+                    }
+                }
+
+                require_once __DIR__ . '/Summons.php';
+                $summonsModel = new Summons($this->conn);
+                $conflict = $summonsModel->findMediationConflict("{$conciliationDate} {$hearingTimeStr}", $venue, $caseId, null, 'Conciliation');
+                if ($conflict !== null) {
+                    throw new DomainException($conflict['message'] ?? 'Schedule conflict detected for conciliation hearing.');
+                }
+            }
+
+            $prevMedStageStatus = $eligibility['stage_record']['stage_status'] ?? 'Ready for Referral';
+
+            // 1. Update Mediation Stage in case_stages (records handoff & referral)
             $medStmt = $this->conn->prepare("
                 INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, referral_date, referring_officer_id, referral_reason, records_transmitted, completed_at)
                 VALUES (?, 'Mediation', 'Referred to Pangkat', 'Referred to Pangkat', ?, ?, ?, 1, NOW())
@@ -1554,16 +1730,18 @@ class CaseStage
             ");
             $medStmt->execute([$caseId, $referralDate, $userId, $referralReason]);
 
-            // 2. Unlock Conciliation Stage in case_stages
+            // 2. Unlock Conciliation Stage in case_stages (remain 'Not Started' while separate booking is pending)
+            $conStageStatus = $conciliationDate ? 'In Progress' : 'Not Started';
+            $conStartedAt = $conciliationDate ? date('Y-m-d H:i:s') : null;
             $conStmt = $this->conn->prepare("
                 INSERT INTO case_stages (case_id, stage_type, stage_status, started_at)
-                VALUES (?, 'Conciliation', 'In Progress', NOW())
+                VALUES (?, 'Conciliation', ?, ?)
                 ON DUPLICATE KEY UPDATE
-                    stage_status = 'In Progress',
-                    started_at = COALESCE(started_at, NOW()),
+                    stage_status = VALUES(stage_status),
+                    started_at = COALESCE(started_at, VALUES(started_at)),
                     updated_at = CURRENT_TIMESTAMP
             ");
-            $conStmt->execute([$caseId]);
+            $conStmt->execute([$caseId, $conStageStatus, $conStartedAt]);
 
             // 3. Update cases & complaints status to Conciliation
             $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Conciliation', updated_at = NOW() WHERE case_id = ?");
@@ -1572,9 +1750,15 @@ class CaseStage
             $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation', co.updated_at = NOW() WHERE c.case_id = ?");
             $updComp->execute([$caseId]);
 
+            $this->conn->prepare("
+                UPDATE case_deadlines
+                SET status = 'Completed', completed_at = NOW(), updated_at = CURRENT_TIMESTAMP
+                WHERE case_id = ? AND status <> 'Completed'
+                  AND deadline_type IN ('Mediation Period', '15-Day Mediation Deadline')
+            ")->execute([$caseId]);
+
             // 4. Set 3-Day Statutory Convening Deadline (RA 7160 Sec. 410(c))
-            require_once __DIR__ . '/../services/MediationDeadlineService.php';
-            $conveningDeadline = MediationDeadlineService::calculateDeadline($referralDate, 3);
+            $conveningDeadline = MediationDeadlineService::calculateDeadline($referralDate, MediationDeadlineService::PANGKAT_CONVENING_DAYS);
 
             $dlStmt = $this->conn->prepare("
                 INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
@@ -1586,7 +1770,7 @@ class CaseStage
             ");
             $dlStmt->execute([$caseId, $conveningDeadline]);
 
-            // 5. Pangkat Panel Members Assignment (if provided)
+            // 5. Pangkat Panel Members Assignment
             $chairmanId = $panelValidation['chairman_id'];
             $secretaryId = $panelValidation['secretary_id'];
             $memberId = $panelValidation['member_id'];
@@ -1597,7 +1781,6 @@ class CaseStage
             $partyAgreementFailureReason = trim((string) ($data['party_agreement_failure_reason'] ?? ''));
 
             if ($chairmanId && $secretaryId) {
-                // Upsert pangkat_groups
                 $insGroup = $this->conn->prepare("
                     INSERT INTO pangkat_groups (
                         case_id, formation_date, convening_deadline, selection_method, selection_notes,
@@ -1629,11 +1812,10 @@ class CaseStage
                 $pangkatId = (int) $this->conn->lastInsertId();
 
                 if ($pangkatId > 0) {
-                    // Link (or unlink) the standing duty group this panel was drawn from.
                     try {
                         $this->conn->prepare("UPDATE pangkat_groups SET duty_group_id = ? WHERE pangkat_id = ?")->execute([$dutyGroupId, $pangkatId]);
                     } catch (PDOException $e) {
-                        // Column is created lazily by PangkatDutyGroupService; ignore if not yet present.
+                        // Optional duty_group_id column
                     }
                     $this->conn->prepare("DELETE FROM pangkat_members WHERE pangkat_id = ?")->execute([$pangkatId]);
                     $insMem = $this->conn->prepare("INSERT INTO pangkat_members (pangkat_id, member_id, position, status) VALUES (?, ?, ?, 'Active')");
@@ -1656,52 +1838,82 @@ class CaseStage
 
             // 5.5 Book 1st Conciliation Hearing if conciliation_date provided
             $conciliationHearingId = null;
-            if ($conciliationDate) {
-                $hearingDateTime = $conciliationDate . ' ' . ($conciliationTime ? date('H:i:s', strtotime($conciliationTime)) : '09:00:00');
+            if ($conciliationDate && $hearingDateTime) {
                 $insHearing = $this->conn->prepare("
                     INSERT INTO hearings (
-                        case_id, hearing_type, hearing_date, venue, status,
+                        case_id, hearing_type, hearing_date, end_time, duration_minutes, venue, status,
                         presiding_officer_id, remarks
                     ) VALUES (
-                        ?, 'Conciliation', ?, ?, 'Scheduled',
+                        ?, 'Conciliation', ?, ?, ?, ?, 'Scheduled',
                         ?, '1st Conciliation Hearing before Pangkat ng Tagapagkasundo'
                     )
                 ");
                 $insHearing->execute([
                     $caseId,
                     $hearingDateTime,
+                    $hearingEndTime,
+                    $concilDuration,
                     $venue,
                     $chairmanId ?: null
                 ]);
                 $conciliationHearingId = (int) $this->conn->lastInsertId();
+
+                $conDeadline = MediationDeadlineService::calculateDeadline($conciliationDate, MediationDeadlineService::CONCILIATION_PERIOD_DAYS);
+                $this->conn->prepare("
+                    UPDATE pangkat_groups
+                    SET convened_date = COALESCE(convened_date, ?),
+                        conciliation_deadline = COALESCE(conciliation_deadline, ?),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE case_id = ?
+                ")->execute([$conciliationDate, $conDeadline, $caseId]);
+
+                $this->conn->prepare("
+                    INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
+                    VALUES (?, 'Conciliation Period', ?, 'Pending')
+                    ON DUPLICATE KEY UPDATE
+                        due_date = VALUES(due_date),
+                        status = IF(status = 'Completed', 'Completed', 'Pending'),
+                        updated_at = CURRENT_TIMESTAMP
+                ")->execute([$caseId, $conDeadline]);
+
+                $this->conn->prepare("
+                    UPDATE case_deadlines
+                    SET status = 'Completed', completed_at = NOW(), updated_at = CURRENT_TIMESTAMP
+                    WHERE case_id = ? AND deadline_type = 'Pangkat Convening'
+                ")->execute([$caseId]);
             }
 
-            // 6. Generate and Persist KP Forms 10, 11, and 12
-            require_once __DIR__ . '/../services/KpFormService.php';
-            $kpFormService = new KpFormService($this->conn);
+            // 6. Generate and Persist KP Forms 10, 11, and (when booked) 12 atomically
+            $kpFormService = $this->createKpFormService();
+            $noticeOptions = ['bypass_prerequisites' => true, 'strict_pdf' => true];
+            $requireNotice = static function (array $result, string $form) use (&$generatedPaths): int {
+                $path = $result['full_path'] ?? '';
+                if ($path !== '') {
+                    $generatedPaths[] = $path;
+                }
+                if (empty($result['success']) || empty($result['document_id']) || !is_file($path)) {
+                    throw new RuntimeException($result['message'] ?? "Unable to generate {$form} during referral.");
+                }
+                return (int) $result['document_id'];
+            };
 
-            $kp10Result = $kpFormService->generateAndPersistKp10($caseId, $userId, [
-                'bypass_prerequisites' => true,
+            $kp10Result = $kpFormService->generateAndPersistKp10($caseId, $userId, $noticeOptions + [
                 'venue' => $venue,
                 'constitution_date' => $referralDate
             ]);
-            $kp10DocId = !empty($kp10Result['document_id']) ? (int) $kp10Result['document_id'] : null;
+            $kp10DocId = $requireNotice($kp10Result, 'KP Form 10');
 
-            $kp11Result = $kpFormService->generateAndPersistKp11($caseId, $userId, [
-                'bypass_prerequisites' => true,
+            $kp11Result = $kpFormService->generateAndPersistKp11($caseId, $userId, $noticeOptions);
+            $kp11DocId = $requireNotice($kp11Result, 'KP Form 11');
 
-            ]);
-            $kp11DocId = !empty($kp11Result['document_id']) ? (int) $kp11Result['document_id'] : null;
-
-            $kp12Result = $kpFormService->generateAndPersistKp12($caseId, $userId, [
-                'bypass_prerequisites' => true,
-
-                'hearing_id' => $conciliationHearingId,
-                'venue' => $venue
-            ]);
-            $kp12DocId = !empty($kp12Result['document_id']) ? (int) $kp12Result['document_id'] : null;
-
-            if ($conciliationHearingId && $kp12DocId) {
+            $kp12Result = null;
+            $kp12DocId = null;
+            if ($conciliationHearingId !== null) {
+                $kp12Result = $kpFormService->generateAndPersistKp12($caseId, $userId, $noticeOptions + [
+                    'hearing_id' => $conciliationHearingId,
+                    'venue' => $venue
+                ]);
+                $kp12DocId = $requireNotice($kp12Result, 'KP Form 12');
                 $this->conn->prepare("UPDATE hearings SET kp12_document_id = ? WHERE hearing_id = ?")
                     ->execute([$kp12DocId, $conciliationHearingId]);
             }
@@ -1713,7 +1925,7 @@ class CaseStage
             ");
             $trans->execute([
                 $caseId,
-                $med['stage_status'],
+                $prevMedStageStatus,
                 $userId,
                 "Mediation elevated to Pangkat Conciliation. Reason: {$referralReason}"
             ]);
@@ -1730,24 +1942,40 @@ class CaseStage
 
             if ($manageTx && $this->conn->inTransaction()) {
                 $this->conn->commit();
+            } elseif ($savepointCreated) {
+                $this->conn->exec('RELEASE SAVEPOINT pangkat_referral');
             }
 
             return [
                 'success' => true,
-                'message' => 'Case successfully referred to Pangkat ng Tagapagkasundo. Conciliation workspace unlocked, 1st conciliation hearing booked, and KP Forms 10, 11, and 12 generated.',
+                'message' => $conciliationHearingId
+                    ? 'Case successfully referred to Pangkat ng Tagapagkasundo. Conciliation workspace unlocked, 1st conciliation hearing booked, and KP Forms 10, 11, and 12 generated.'
+                    : 'Case successfully referred to Pangkat ng Tagapagkasundo and KP Forms 10 and 11 generated. 1st conciliation booking remains pending until scheduled.',
                 'case_id' => $caseId,
                 'hearing_id' => $conciliationHearingId,
+                'is_booking_pending' => ($conciliationHearingId === null),
                 'kp10_document_id' => $kp10DocId,
                 'kp11_document_id' => $kp11DocId,
                 'kp12_document_id' => $kp12DocId,
                 'kp10' => $kp10Result,
-                'open_notices_modal' => true
+                'open_notices_modal' => ($conciliationHearingId !== null)
             ];
         } catch (Throwable $e) {
             if ($manageTx && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
+            } elseif ($savepointCreated && $this->conn->inTransaction()) {
+                $this->conn->exec('ROLLBACK TO SAVEPOINT pangkat_referral');
+                $this->conn->exec('RELEASE SAVEPOINT pangkat_referral');
             }
-            return ['success' => false, 'message' => 'Referral to Pangkat failed: ' . $e->getMessage()];
+            foreach ($generatedPaths as $path) {
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+            }
+            return [
+                'success' => false,
+                'message' => $e instanceof DomainException ? $e->getMessage() : 'Referral to Pangkat failed: ' . $e->getMessage(),
+            ];
         }
     }
 

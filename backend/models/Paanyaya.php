@@ -1514,7 +1514,7 @@ class Paanyaya
             $lock = $this->conn->prepare('SELECT case_type, status FROM complaints WHERE complaint_id = ? FOR UPDATE');
             $lock->execute([$complaintId]);
             $complaint = $lock->fetch(PDO::FETCH_ASSOC);
-            $lookup = $this->conn->prepare('SELECT case_id, case_number FROM cases WHERE complaint_id = ?');
+            $lookup = $this->conn->prepare('SELECT case_id, case_number FROM cases WHERE complaint_id = ? FOR UPDATE');
             $lookup->execute([$complaintId]);
             $case = $lookup->fetch(PDO::FETCH_ASSOC);
             if (!$case) {
@@ -1781,6 +1781,17 @@ class Paanyaya
             ];
         }
 
+        require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
+        if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)
+            || PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
+            return [
+                'allowed' => false,
+                'reason' => 'docketing_required',
+                'message' => 'Docket this complaint into a formal case before issuing the first formal summons.'
+            ];
+        }
+
+        // Legacy fallback strictly for non-prepared legacy records without a linked cases row.
         $escalatedStmt = $this->conn->prepare(
             "SELECT (
                 EXISTS (

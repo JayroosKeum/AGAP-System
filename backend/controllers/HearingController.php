@@ -122,9 +122,12 @@ class HearingController
         }
 
         try {
+            $db = (new Database())->connect();
             $deadline = DeadlineService::deadlineForHearing(
                 $values['hearing_type'],
-                $values['hearing_date']
+                $values['hearing_date'],
+                $db,
+                (int) $values['case_id']
             );
             $result = $this->hearing->createProgression($values, $deadline, $userId);
             if (!$result['success']) {
@@ -215,9 +218,12 @@ class HearingController
         }
 
         try {
+            $db = (new Database())->connect();
             $deadline = DeadlineService::deadlineForHearing(
                 $values['hearing_type'],
-                $values['hearing_date']
+                $values['hearing_date'],
+                $db,
+                (int) $values['case_id']
             );
             if (!$this->hearing->update($id, $values, $deadline)) {
                 return ['success' => false, 'message' => 'Unable to update the hearing. Please try again.'];
@@ -843,11 +849,12 @@ class HearingController
         }
         if ($type === 'Mediation' && !$allowExistingTypes) {
             $db = (new Database())->connect();
+            $nonSupMed = Hearing::nonSupersededSql('h', 'nh');
             $medStmt = $db->prepare("
                 SELECT h.hearing_id, h.status, h.mediation_attempt, m.minute_id, m.status AS minutes_status, m.session_outcome
                 FROM hearings h
                 LEFT JOIN hearing_minutes m ON m.hearing_id = h.hearing_id
-                WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation') AND h.status NOT IN ('Cancelled', 'Office Cancelled') AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = h.hearing_id)
+                WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation') AND h.status NOT IN ('Cancelled', 'Office Cancelled') AND {$nonSupMed}
                 ORDER BY h.hearing_date ASC, h.hearing_id ASC
             ");
             $medStmt->execute([(int)$caseId]);
@@ -872,8 +879,9 @@ class HearingController
                         'message' => 'Save the 1st Mediation minutes before scheduling the 2nd Mediation session.'
                     ];
                 }
-                require_once __DIR__ . '/../models/Setting.php';
-                $maxMediationSessions = min(2, max(1, (int) Setting::getSetting('mediation_max_sessions', 2, $db)));
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                $medPolicy = MediationDeadlineService::getMediationPolicy($db);
+                $maxMediationSessions = $medPolicy['configured_max_sessions'];
                 if (count($prevHearings) >= $maxMediationSessions) {
                     return [
                         'success' => false,

@@ -8,16 +8,27 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../models/CFA.php';
 require_once __DIR__ . '/../models/CaseModel.php';
 require_once __DIR__ . '/../models/CaseStage.php';
+require_once __DIR__ . '/../models/Complaint.php';
 require_once __DIR__ . '/../models/Hearing.php';
 require_once __DIR__ . '/../models/HearingAttendance.php';
+require_once __DIR__ . '/../models/HearingMinutes.php';
 require_once __DIR__ . '/../models/HearingWorkflow.php';
+require_once __DIR__ . '/../models/Paanyaya.php';
+require_once __DIR__ . '/../models/Summons.php';
+require_once __DIR__ . '/../models/Report.php';
 require_once __DIR__ . '/../controllers/HearingController.php';
 require_once __DIR__ . '/../services/KpFormService.php';
+require_once __DIR__ . '/../services/MediationCommencementService.php';
+require_once __DIR__ . '/../services/MediationDeadlineService.php';
+require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
+require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
 require_once __DIR__ . '/../services/ShowCauseService.php';
 require_once __DIR__ . '/../services/SummonDeliveryService.php';
 require_once __DIR__ . '/../services/SummonServiceGate.php';
 require_once __DIR__ . '/../services/OfficeLogisticsService.php';
 require_once __DIR__ . '/../services/DocketScheduleService.php';
+require_once __DIR__ . '/../services/DeadlineAlertService.php';
+require_once __DIR__ . '/../services/DeadlineService.php';
 require_once __DIR__ . '/TestDataCleanup.php';
 
 $token = bin2hex(random_bytes(6));
@@ -1185,6 +1196,954 @@ $quickPresent = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.
 assertReg($quickPresent['status'] === 200
     && (int) $db->query("SELECT COUNT(*) FROM hearing_attendance WHERE hearing_id = {$conciliation8} AND attendance_status = 'Present'")->fetchColumn() === 3,
     'Conciliation Quick Attendance still records Present once every recipient is served');
+
+// =========================================================================
+// SCENARIO 9: Order 1.1 — Clerk Agenda Prepared Paanyaya Shortcuts
+// =========================================================================
+echo "\n--- SCENARIO 9: Order 1.1 Clerk Agenda Prepared Paanyaya Shortcuts ---\n";
+
+$prepSvc = new PaanyayaPreparationService($db);
+$paaDeliverySvc = new PaanyayaServiceDelivery($db);
+$paaModel = new Paanyaya($db);
+$activeServerRow = $db->query("SELECT user_id FROM users WHERE role_id = 4 AND status = 'Active' ORDER BY user_id ASC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+$paaServerId = $activeServerRow ? (int) $activeServerRow['user_id'] : $serverId;
+$lisoReviewerId = (int) ($db->query("SELECT u.user_id FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE r.role_name = 'Lupon Member' AND u.status = 'Active' ORDER BY u.user_id ASC LIMIT 1")->fetchColumn() ?: $clerkId);
+
+$db->prepare("
+    INSERT INTO complaints (
+        complaint_number, complaint_title, status, screening_decision, liso_assigned_to, liso_reviewed_by, liso_reviewed_at,
+        category_id, case_type, incident_date, narrative, encoded_by, created_at
+    ) VALUES (?, 'Reg9 Paanyaya Shortcuts', 'Accepted', 'Eligible', ?, ?, NOW(), ?, 'Civil', CURDATE(), 'Prepared Paanyaya shortcut guards', ?, NOW())
+")->execute(["CMP-REG9-{$token}", $lisoReviewerId, $lisoReviewerId, $catId, $clerkId]);
+$comp9 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp9);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp9, $resComp, $comp9, $resResp1]);
+
+$paaApptTs = time() + 7200;
+$paaToday = date('Y-m-d', $paaApptTs);
+$paaTime9 = date('H:i', $paaApptTs);
+$prepSvc->save($comp9, $clerkId, 'generate', [
+    'appointment_date' => $paaToday,
+    'appointment_time' => $paaTime9,
+    'venue' => 'Barangay Session Hall',
+    'verify_parties' => '1',
+    'party_version' => PaanyayaPreparationService::partyVersion($prepSvc->parties($comp9)),
+], 1);
+$prep9v1 = $prepSvc->intake($comp9, 1);
+$ver9v1 = (string) ($prep9v1['document_version'] ?? '');
+$prepSvc->save($comp9, $clerkId, 'ready', ['document_version' => $ver9v1], 1);
+$paaDeliverySvc->release($comp9, $clerkId, $paaServerId, $ver9v1, 1);
+$att9_1 = PaanyayaServiceDelivery::latestAttempt($db, $comp9, 1);
+
+// Direct unserved attendance shortcut fails cleanly without mutating paanyayas/paanyaya_sessions/paanyaya_minutes/cases
+$unservedQuickAtt = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'mark_paanyaya_attendance',
+    'complaint_id' => $comp9,
+    'session_id' => 0,
+    'invitation_number' => 1,
+    'document_version' => $ver9v1,
+    'status' => 'Present',
+]);
+assertReg(
+    $unservedQuickAtt['status'] >= 400
+    && empty($unservedQuickAtt['json']['success'])
+    && (int) $db->query("SELECT COUNT(*) FROM paanyaya_sessions WHERE complaint_id = {$comp9}")->fetchColumn() === 0
+    && (int) $db->query("SELECT COUNT(*) FROM paanyaya_minutes WHERE complaint_id = {$comp9}")->fetchColumn() === 0
+    && (int) $db->query("SELECT COUNT(*) FROM cases WHERE complaint_id = {$comp9}")->fetchColumn() === 0,
+    'Clerk Agenda Paanyaya attendance rejects unserved invitation with zero DB mutation'
+);
+
+// Deliver v1 so session/agenda item is created, verify dashboard metadata, then reschedule to v2 so v1 becomes stale
+$paaDeliverySvc->record((int) $att9_1['attempt_id'], $paaServerId, ['outcome' => 'Delivered', 'notes' => 'Delivered v1'], []);
+$stats9 = (new Report())->dashboardStats('all');
+$agendaItem9 = null;
+foreach (array_merge($stats9['today_paanyayas'] ?? [], $stats9['calendar_hearings'] ?? []) as $item) {
+    if (($item['record_type'] ?? '') === 'paanyaya' && (int) ($item['complaint_id'] ?? 0) === $comp9) {
+        $agendaItem9 = $item;
+        break;
+    }
+}
+$sess9Id = (int) ($agendaItem9['session_id'] ?? 0);
+$paa9Id = (int) ($agendaItem9['paanyaya_id'] ?? $db->query("SELECT paanyaya_id FROM paanyayas WHERE complaint_id = {$comp9} LIMIT 1")->fetchColumn());
+assertReg(
+    $agendaItem9 !== null
+    && !empty($agendaItem9['is_prepared'])
+    && (int) ($agendaItem9['invitation_number'] ?? 0) === 1
+    && ($agendaItem9['document_version'] ?? '') === $ver9v1
+    && !empty($agendaItem9['service_verified'])
+    && $sess9Id > 0,
+    'Report::dashboardStats attaches prepared invitation version, session_id, and verified service state'
+);
+
+$resched9 = regHttpRequest($baseUrl, $clerkSession, 'hearings/queue.php', [
+    'action' => 'reschedule_item',
+    'type' => 'paanyaya',
+    'id' => $paa9Id,
+    'complaint_id' => $comp9,
+    'session_id' => $sess9Id,
+    'target_date' => nextWeekdayDate($logistics, 2, 2),
+    'target_time' => '11:00',
+    'venue' => 'Barangay Session Hall',
+    'presiding_officer_id' => $lisoReviewerId,
+    'reschedule_reason' => 'Testing stale version rejection on quick action',
+    'confirmed' => true,
+]);
+$prep9v2 = $prepSvc->intake($comp9, 1);
+$ver9v2 = (string) ($prep9v2['document_version'] ?? '');
+$sess9Before = $db->query("SELECT complainant_attended, respondent_attended FROM paanyaya_sessions WHERE session_id = {$sess9Id}")->fetch(PDO::FETCH_ASSOC);
+$staleQuickAtt = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'mark_paanyaya_attendance',
+    'complaint_id' => $comp9,
+    'session_id' => $sess9Id,
+    'invitation_number' => 1,
+    'document_version' => $ver9v1,
+    'status' => 'Present',
+]);
+$sess9After = $db->query("SELECT complainant_attended, respondent_attended FROM paanyaya_sessions WHERE session_id = {$sess9Id}")->fetch(PDO::FETCH_ASSOC);
+assertReg(
+    ($resched9['status'] === 200) && !empty($ver9v2) && $ver9v2 !== $ver9v1
+    && $staleQuickAtt['status'] >= 400 && empty($staleQuickAtt['json']['success'])
+    && $sess9After === $sess9Before
+    && (int) $db->query("SELECT COUNT(*) FROM paanyaya_minutes WHERE complaint_id = {$comp9}")->fetchColumn() === 0,
+    'Clerk Agenda Paanyaya attendance rejects stale document_version after reschedule with zero DB mutation'
+);
+
+// Deliver v2, then verify outcome shortcut without dialogue notes redirects to #paanyaya-dialogue-1 cleanly
+$prepSvc->save($comp9, $clerkId, 'ready', ['document_version' => $ver9v2], 1);
+$paaDeliverySvc->release($comp9, $clerkId, $paaServerId, $ver9v2, 1);
+$att9_2 = PaanyayaServiceDelivery::latestAttempt($db, $comp9, 1);
+$paaDeliverySvc->record((int) $att9_2['attempt_id'], $paaServerId, ['outcome' => 'Delivered', 'notes' => 'Delivered v2'], []);
+
+$missingNotesOutcome = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'log_paanyaya_outcome',
+    'complaint_id' => $comp9,
+    'session_id' => $sess9Id,
+    'invitation_number' => 1,
+    'document_version' => $ver9v2,
+    'outcome' => 'Settled',
+    'dialogue_date' => date('Y-m-d\TH:i'),
+    'complainant_attended' => 'Present',
+    'respondent_attended' => 'Present',
+]);
+assertReg(
+    $missingNotesOutcome['status'] === 422
+    && !empty($missingNotesOutcome['json']['requires_dialogue_form'])
+    && str_contains((string) ($missingNotesOutcome['json']['dialogue_url'] ?? ''), '#paanyaya-dialogue-1')
+    && (int) $db->query("SELECT COUNT(*) FROM paanyaya_minutes WHERE complaint_id = {$comp9}")->fetchColumn() === 0
+    && (int) $db->query("SELECT COUNT(*) FROM cases WHERE complaint_id = {$comp9}")->fetchColumn() === 0,
+    'Clerk Agenda Settled outcome without minutes/agreed terms returns requires_dialogue_form pointing to #paanyaya-dialogue-1 with zero DB changes (got ' . $missingNotesOutcome['status'] . ': ' . $missingNotesOutcome['body'] . ')'
+);
+
+$validQuickAtt = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'mark_paanyaya_attendance',
+    'complaint_id' => $comp9,
+    'session_id' => $sess9Id,
+    'invitation_number' => 1,
+    'document_version' => $ver9v2,
+    'status' => 'Present',
+]);
+$validQuickOutcome = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'log_paanyaya_outcome',
+    'complaint_id' => $comp9,
+    'session_id' => $sess9Id,
+    'invitation_number' => 1,
+    'document_version' => $ver9v2,
+    'outcome' => 'Escalate_Mediation',
+    'dialogue_date' => date('Y-m-d\TH:i'),
+    'discussion_summary' => 'Both parties appeared; complainant elected formal mediation docketing.',
+    'complainant_attended' => 'Present',
+    'respondent_attended' => 'Present',
+]);
+$validQuickDocket = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'log_paanyaya_outcome',
+    'complaint_id' => $comp9,
+    'session_id' => $sess9Id,
+    'invitation_number' => 1,
+    'document_version' => $ver9v2,
+    'outcome' => 'Impasse_Escalate',
+]);
+assertReg(
+    $validQuickAtt['status'] === 200 && $validQuickOutcome['status'] === 200
+    && $validQuickDocket['status'] === 200
+    && !empty($validQuickDocket['json']['result']['case_id'])
+    && (int) $db->query("SELECT COUNT(*) FROM paanyaya_minutes WHERE complaint_id = {$comp9}")->fetchColumn() === 1,
+    'Prepared Clerk Agenda attendance, full dialogue Escalate_Mediation outcome, and explicit docketing succeed cleanly (got ' . $validQuickOutcome['body'] . ' / ' . $validQuickDocket['body'] . ')'
+);
+
+// =========================================================================
+// SCENARIO 10: Order 1.2 — Docketing vs 1st Formal Summons & Concurrency
+// =========================================================================
+echo "\n--- SCENARIO 10: Order 1.2 Docketing vs 1st Summons & Legacy Scope ---\n";
+
+$db->prepare("
+    INSERT INTO complaints (
+        complaint_number, complaint_title, status, screening_decision, liso_assigned_to, liso_reviewed_by, liso_reviewed_at,
+        category_id, case_type, incident_date, narrative, encoded_by, created_at
+    ) VALUES (?, 'Reg10 Separate Docket & Summons', 'Accepted', 'Eligible', ?, ?, NOW(), ?, 'Civil', CURDATE(), 'Docketing before first summons test', ?, NOW())
+")->execute(["CMP-REG10-{$token}", $lisoReviewerId, $lisoReviewerId, $catId, $clerkId]);
+$comp10 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp10);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp10, $resComp, $comp10, $resResp1]);
+
+$prepSvc->save($comp10, $clerkId, 'generate', [
+    'appointment_date' => date('Y-m-d', time() + 10800),
+    'appointment_time' => date('H:i', time() + 10800),
+    'venue' => 'Barangay Session Hall',
+    'verify_parties' => '1',
+    'party_version' => PaanyayaPreparationService::partyVersion($prepSvc->parties($comp10)),
+], 1);
+$ver10 = (string) ($prepSvc->intake($comp10, 1)['document_version'] ?? '');
+$prepSvc->save($comp10, $clerkId, 'ready', ['document_version' => $ver10], 1);
+$paaDeliverySvc->release($comp10, $clerkId, $paaServerId, $ver10, 1);
+$att10 = PaanyayaServiceDelivery::latestAttempt($db, $comp10, 1);
+$paaDeliverySvc->record((int) $att10['attempt_id'], $paaServerId, ['outcome' => 'Delivered', 'notes' => 'Delivered'], []);
+$paaModel->recordMinutes($comp10, 'Paanyaya 1', [
+    'dialogue_date' => date('Y-m-d\TH:i'),
+    'document_version' => $ver10,
+    'complainant_attended' => 'Present',
+    'respondent_attended' => 'Present',
+    'outcome' => 'Escalate_Mediation',
+    'discussion_summary' => 'Escalate for formal docketing check.',
+], $clerkId);
+
+$prereqModernUndocketed = $paaModel->checkSummonsPrerequisite($comp10);
+$summonsDirectBeforeDocket = (new Summons($db))->issueFirstSummon($comp10, $clerkId, [
+    'mediation_date' => $tue1,
+    'mediation_time' => '14:00',
+    'venue' => 'Lupon Court Room',
+    'override_paanyaya' => true,
+]);
+$issueHttpBeforeDocket = regHttpRequest($baseUrl, $clerkSession, 'summons/issue.php', [
+    'complaint_id' => $comp10,
+    'mediation_date' => $tue3,
+    'mediation_time' => '15:30',
+    'venue' => 'Lupon Court Room',
+], true);
+$previewHttpBeforeDocket = regHttpRequest($baseUrl, $clerkSession, "summons/preview.php?complaint_id={$comp10}&case_id=0");
+
+assertReg(
+    empty($prereqModernUndocketed['allowed']) && ($prereqModernUndocketed['reason'] ?? '') === 'docketing_required'
+    && empty($summonsDirectBeforeDocket['success'])
+    && $issueHttpBeforeDocket['status'] === 422
+    && $previewHttpBeforeDocket['status'] >= 400
+    && (int) $db->query("SELECT COUNT(*) FROM cases WHERE complaint_id = {$comp10}")->fetchColumn() === 0,
+    'First formal summons, API issue, and preview are blocked before formal docketing even after Escalate_Mediation dialogue'
+);
+
+// Legacy fallback remains strictly scoped to non-prepared legacy records
+$db->prepare("
+    INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
+    VALUES (?, 'Reg10 Legacy Complaint', 'Pre-Docketed (Paanyaya)', ?, 'Civil', CURDATE(), 'Legacy fallback scope test', ?, NOW())
+")->execute(["CMP-REG10LEG-{$token}", $catId, $clerkId]);
+$comp10Leg = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp10Leg);
+$db->prepare("INSERT INTO paanyayas (complaint_id, invitee_name, scheduled_date, scheduled_time, status, dialogue_notes, created_at) VALUES (?, 'Legacy Respondent', CURDATE(), '10:00:00', 'Escalated', 'Escalate_Mediation', NOW())")
+    ->execute([$comp10Leg]);
+$db->prepare("INSERT INTO complaint_paanyaya (complaint_id, invitation_date, invitation_time, status) VALUES (?, CURDATE(), '10:00:00', 'Escalated')")
+    ->execute([$comp10Leg]);
+$prereqLegacy = $paaModel->checkSummonsPrerequisite($comp10Leg);
+assertReg(!empty($prereqLegacy['allowed']), 'Paanyaya::checkSummonsPrerequisite preserves legacy fallback only for non-prepared legacy records');
+
+// Concurrent/duplicate docketing idempotency
+$complaintModelReg = new Complaint($db);
+$docketA = $complaintModelReg->docket($comp10, $clerkId);
+$docketB = $complaintModelReg->docket($comp10, $clerkId);
+$docketC = $paaModel->escalateToFormalDocketing($comp10, $clerkId);
+assertReg(
+    !empty($docketA['success']) && !empty($docketB['success']) && !empty($docketC['success'])
+    && (int) $docketA['case_id'] === (int) $docketB['case_id']
+    && (int) $docketA['case_id'] === (int) $docketC['case_id']
+    && (string) $docketA['case_number'] === (string) $docketB['case_number']
+    && (int) $db->query("SELECT COUNT(*) FROM cases WHERE complaint_id = {$comp10}")->fetchColumn() === 1,
+    'Retrying or duplicate formal docketing returns the exact same single case_id and case_number'
+);
+
+$comp10CaseId = (int) $docketA['case_id'];
+$previewMismatchedCase = regHttpRequest($baseUrl, $clerkSession, "summons/preview.php?complaint_id={$comp10}&case_id=" . ($comp10CaseId + 99999));
+$issueHttpAfterDocket = regHttpRequest($baseUrl, $clerkSession, 'summons/issue.php', [
+    'complaint_id' => $comp10,
+    'case_id' => $comp10CaseId,
+    'mediation_date' => $tue3,
+    'mediation_time' => '15:30',
+    'venue' => 'Lupon Court Room',
+], true);
+$previewValidCase = regHttpRequest($baseUrl, $clerkSession, "summons/preview.php?complaint_id={$comp10}&case_id={$comp10CaseId}&form_type=kp9");
+assertReg(
+    $previewMismatchedCase['status'] >= 400
+    && $issueHttpAfterDocket['status'] === 200
+    && $previewValidCase['status'] === 200,
+    'First summons issuance & preview reject mismatched case_id and succeed once formal case is docketed (issue=' . $issueHttpAfterDocket['status'] . ', preview=' . $previewValidCase['status'] . ')'
+);
+
+// =========================================================================
+// SCENARIO 11: Order 2.1 & 2.2 — Qualifying Sessions, Exclusions & Extensions
+// =========================================================================
+echo "\n--- SCENARIO 11: Order 2.1 & 2.2 Referral Eligibility, Exclusions & Extensions ---\n";
+
+$luponPanelIds = $db->query("SELECT u.user_id FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE r.role_name = 'Lupon Member' AND u.status = 'Active' ORDER BY u.user_id ASC LIMIT 3")->fetchAll(PDO::FETCH_COLUMN);
+if (count($luponPanelIds) < 3) {
+    $luponPanelIds = $db->query("SELECT user_id FROM users WHERE status = 'Active' ORDER BY user_id ASC LIMIT 3")->fetchAll(PDO::FETCH_COLUMN);
+}
+$pChair = (int) $luponPanelIds[0];
+$pSec = (int) $luponPanelIds[1];
+$pMem = (int) $luponPanelIds[2];
+
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at) VALUES (?, 'Reg11 Mediation Referral Rules', 'Mediation', ?, 'Civil', CURDATE(), 'Mediation referral rules', ?, NOW())")
+    ->execute(["CMP-REG11-{$token}", $catId, $clerkId]);
+$comp11 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp11);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp11, $resComp, $comp11, $resResp1]);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Mediation', CURDATE(), NOW())")
+    ->execute([$comp11, "REG-011-{$token}"]);
+$case11 = (int) $db->lastInsertId();
+
+// Create 1st & 2nd Scheduled Mediation (HearingMinutes::save transitions to Completed), plus attendance-only 3rd, Cancelled 4th, and Rescheduled 5th
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, attendance_recorded_at, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Scheduled', NOW(), 1)")
+    ->execute([$case11, $tue1 . ' 09:00:00']);
+$h11_1 = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, attendance_recorded_at, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Scheduled', NOW(), 2)")
+    ->execute([$case11, $tue2 . ' 09:00:00']);
+$h11_2 = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, attendance_recorded_at, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Completed', NOW(), 2)")
+    ->execute([$case11, $tue2 . ' 10:30:00']); // attendance only (no minutes)
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Cancelled', 2)")
+    ->execute([$case11, $tue2 . ' 13:30:00']);
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, attendance_recorded_at, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Rescheduled', NOW(), 2)")
+    ->execute([$case11, $tue2 . ' 15:00:00']);
+$h11_resched = (int) $db->lastInsertId();
+
+$minutesModelReg = new HearingMinutes($db);
+$save11_1 = $minutesModelReg->save([
+    'hearing_id' => $h11_1,
+    'session_type' => '1st Mediation',
+    'session_outcome' => 'Continue Mediation',
+    'status' => 'Finalized',
+    'settlement_discussion_notes' => '1st Mediation held cleanly.',
+], $clerkId);
+$save11_2Draft = $minutesModelReg->save([
+    'hearing_id' => $h11_2,
+    'session_type' => '2nd Mediation',
+    'session_outcome' => 'Failed',
+    'status' => 'Draft',
+    'settlement_discussion_notes' => 'Draft notes only.',
+], $clerkId);
+$db->prepare("INSERT INTO hearing_minutes (hearing_id, case_id, session_type, session_outcome, status, recorded_by) VALUES (?, ?, '2nd Mediation', 'Failed', 'Finalized', ?)")
+    ->execute([$h11_resched, $case11, $clerkId]);
+
+$eligBeforeFinalize = CaseStage::evaluateMediationReferralEligibility($db, $case11);
+$eligAfterFinalizeCheck = null;
+assertReg(
+    empty($eligBeforeFinalize['eligible'])
+    && (int) ($eligBeforeFinalize['completed_mediation_count'] ?? 0) === 1,
+    'Draft minutes, attendance-only sessions, cancelled hearings, and rescheduled hearings do NOT unlock Pangkat referral'
+);
+
+// Finalize 2nd Mediation Failed -> Ready for Referral without auto-opening Conciliation
+$finalize11_2 = $minutesModelReg->finalize($h11_2, $clerkId);
+$case11AfterFin = $db->query("SELECT case_status FROM cases WHERE case_id = {$case11}")->fetchColumn();
+$medStage11 = $db->query("SELECT stage_status FROM case_stages WHERE case_id = {$case11} AND stage_type = 'Mediation'")->fetchColumn();
+$eligAfterFinalize = CaseStage::evaluateMediationReferralEligibility($db, $case11);
+assertReg(
+    !empty($finalize11_2['success'])
+    && $case11AfterFin === 'Mediation'
+    && $medStage11 === 'Ready for Referral'
+    && !empty($eligAfterFinalize['eligible'])
+    && (int) ($eligAfterFinalize['completed_mediation_count'] ?? 0) === 2,
+    'Finalizing 2nd Mediation Failed keeps case in Mediation, marks stage Ready for Referral, and does not auto-open Conciliation'
+);
+
+// Deadline exception via mediation_commencements + mediation_pause_decisions
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at) VALUES (?, 'Reg11 Pause Extension Policy', 'Mediation', ?, 'Civil', CURDATE(), 'Extension exception basis check', ?, NOW())")
+    ->execute(["CMP-REG11EXT-{$token}", $catId, $clerkId]);
+$comp11Ext = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp11Ext);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Mediation', CURDATE(), NOW())")
+    ->execute([$comp11Ext, "REG-011EXT-{$token}"]);
+$case11Ext = (int) $db->lastInsertId();
+$start20Ago = date('Y-m-d', strtotime('-20 days'));
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Completed')")
+    ->execute([$case11Ext, $start20Ago . ' 10:00:00']);
+$h11Ext = (int) $db->lastInsertId();
+$dl15 = MediationDeadlineService::calculateDeadline($start20Ago, 15);
+$db->prepare("INSERT INTO mediation_commencements (case_id, hearing_id, first_actual_meeting_at, mediation_deadline_at, source, created_by) VALUES (?, ?, ?, ?, 'Attendance', ?)")
+    ->execute([$case11Ext, $h11Ext, $start20Ago . ' 10:00:00', $dl15 . ' 00:00:00', $clerkId]);
+$db->prepare("INSERT INTO mediation_pause_decisions (case_id, legal_basis, reason, decided_by, paused_at, resumed_at, extension_authorised, extension_days, extension_basis) VALUES (?, 'Force Majeure / Barangay Emergency', 'Typhoon suspension', ?, ?, ?, 1, 15, 'Barangay Emergency Proclamation No. 12')")
+    ->execute([$case11Ext, $clerkId, date('Y-m-d H:i:s', strtotime('-10 days')), date('Y-m-d H:i:s', strtotime('-1 day'))]);
+
+$eligWithExt = CaseStage::evaluateMediationReferralEligibility($db, $case11Ext);
+$dlSvcReg = new MediationDeadlineService($db);
+$case11ExtRow = $db->query("SELECT * FROM cases WHERE case_id = {$case11Ext}")->fetch(PDO::FETCH_ASSOC);
+$dlStatusWithExt = $dlSvcReg->computeStatus($case11ExtRow);
+assertReg(
+    empty($dlStatusWithExt['is_lapsed']) && empty($eligWithExt['eligible']),
+    'Authorized extension in mediation_pause_decisions shifts deadline cleanly and prevents premature lapse'
+);
+
+// =========================================================================
+// SCENARIO 12: Order 2.3 — Atomic Referral, Pending Booking & Rollbacks
+// =========================================================================
+echo "\n--- SCENARIO 12: Order 2.3 Atomic Referral, Separate Booking & Rollback ---\n";
+
+$stageModelReg = new CaseStage($db);
+
+// 12a. Booking failure (Tuesday conflict) rolls back entire referral cleanly
+$refTueFail = $stageModelReg->referToPangkat($case11, [
+    'referral_date' => date('Y-m-d'),
+    'referral_reason' => 'Should rollback on Tuesday conciliation booking',
+    'chairman_id' => $pChair,
+    'secretary_id' => $pSec,
+    'member_id' => $pMem,
+    'conciliation_date' => $tue3,
+    'conciliation_time' => '10:00',
+    'venue' => 'Lupon Court Room',
+], $clerkId);
+assertReg(
+    empty($refTueFail['success'])
+    && $db->query("SELECT case_status FROM cases WHERE case_id = {$case11}")->fetchColumn() === 'Mediation'
+    && (int) $db->query("SELECT COUNT(*) FROM pangkat_groups WHERE case_id = {$case11}")->fetchColumn() === 0
+    && (int) $db->query("SELECT COUNT(*) FROM generated_documents WHERE case_id = {$case11}")->fetchColumn() === 0,
+    'Booking failure on referToPangkat rolls back case status, Pangkat panel, and documents cleanly'
+);
+
+// 12b. Inject render failures through the same PDF path as a real referral.
+$nextThu = nextWeekdayDate($logistics, 2, 4);
+$firstBooking11 = [
+    'referral_date' => date('Y-m-d'),
+    'referral_reason' => 'Rollback when a required notice fails to render',
+    'chairman_id' => $pChair,
+    'secretary_id' => $pSec,
+    'member_id' => $pMem,
+    'conciliation_date' => $nextThu,
+    'conciliation_time' => '10:00',
+    'venue' => 'Lupon Court Room',
+];
+$referralPdfPattern = $root . "/storage/documents/kp-forms/{$case11}/*.pdf";
+$pdfsBeforeReferral = glob($referralPdfPattern) ?: [];
+foreach (['KP Form 10', 'KP Form 11', 'KP Form 12'] as $failedForm) {
+    $failingStageModel = new class($db, $failedForm) extends CaseStage {
+        public function __construct(private PDO $testConnection, private string $failedForm)
+        {
+            parent::__construct($testConnection);
+        }
+
+        protected function createKpFormService(): KpFormService
+        {
+            return new class($this->testConnection, $this->failedForm) extends KpFormService {
+                public function __construct(PDO $connection, private string $failedForm)
+                {
+                    parent::__construct($connection);
+                }
+
+                public function generatePdf(string $formCode, int $caseId, ?int $hearingId = null, ?string $outputPath = null, ?int $residentId = null): string
+                {
+                    if ($formCode === $this->failedForm) {
+                        file_put_contents($outputPath, '%PDF-1.4 partial output');
+                        throw new RuntimeException("Simulated {$formCode} renderer failure");
+                    }
+                    return parent::generatePdf($formCode, $caseId, $hearingId, $outputPath, $residentId);
+                }
+            };
+        }
+    };
+
+    $testOuterTransaction = $failedForm === 'KP Form 12';
+    if ($testOuterTransaction) {
+        $db->beginTransaction();
+    }
+    try {
+        $refDocFail = $failingStageModel->referToPangkat($case11, $firstBooking11, $clerkId);
+        assertReg(
+            empty($refDocFail['success'])
+            && str_contains($refDocFail['message'] ?? '', "Simulated {$failedForm} renderer failure")
+            && $db->inTransaction() === $testOuterTransaction
+            && $db->query("SELECT case_status FROM cases WHERE case_id = {$case11}")->fetchColumn() === 'Mediation'
+            && (int) $db->query("SELECT COUNT(*) FROM pangkat_groups WHERE case_id = {$case11}")->fetchColumn() === 0
+            && (int) $db->query("SELECT COUNT(*) FROM hearings WHERE case_id = {$case11} AND hearing_type = 'Conciliation'")->fetchColumn() === 0
+            && (int) $db->query("SELECT COUNT(*) FROM generated_documents WHERE case_id = {$case11}")->fetchColumn() === 0
+            && (glob($referralPdfPattern) ?: []) === $pdfsBeforeReferral,
+            "{$failedForm} rendering failure rolls back the referral and removes partial and earlier PDFs"
+        );
+    } finally {
+        if ($db->inTransaction()) {
+            $db->rollBack();
+        }
+    }
+}
+
+// 12c. Separate booking keeps Conciliation visibly pending until saved, then duplicate referral is rejected
+$commenced11 = date('Y-m-d', strtotime('-22 days'));
+$due11 = MediationDeadlineService::calculateDeadline($commenced11, MediationDeadlineService::MEDIATION_PERIOD_DAYS);
+$db->prepare("INSERT INTO mediation_commencements (case_id, hearing_id, first_actual_meeting_at, mediation_deadline_at, source, created_by)
+    VALUES (?, ?, ?, ?, 'Attendance', ?)")->execute([$case11, $h11_1, $commenced11 . ' 09:00:00', $due11 . ' 00:00:00', $clerkId]);
+$seedDeadline11 = $db->prepare("INSERT INTO case_deadlines (case_id, deadline_type, due_date, status) VALUES (?, ?, ?, ?)");
+$seedDeadline11->execute([$case11, 'Mediation Period', $due11, 'Pending']);
+$medDeadlineId11 = (int) $db->lastInsertId();
+$seedDeadline11->execute([$case11, '15-Day Mediation Deadline', $due11, 'Overdue']);
+$legacyDeadlineId11 = (int) $db->lastInsertId();
+$seedDeadline11->execute([$case11, 'Initial Hearing', $due11, 'Pending']);
+$unrelatedDeadlineId11 = (int) $db->lastInsertId();
+
+$refSeparate = $stageModelReg->referToPangkat($case11, [
+    'referral_date' => date('Y-m-d'),
+    'referral_reason' => 'Explicit referral with separate Conciliation booking.',
+    'chairman_id' => $pChair,
+    'secretary_id' => $pSec,
+    'member_id' => $pMem,
+], $clerkId);
+$conOverviewPending = $stageModelReg->getStageOverview($case11)['conciliation'] ?? [];
+$dupReferral = $stageModelReg->referToPangkat($case11, [
+    'referral_date' => date('Y-m-d'),
+    'referral_reason' => 'Duplicate referral attempt',
+    'chairman_id' => $pChair,
+    'secretary_id' => $pSec,
+    'member_id' => $pMem,
+], $clerkId);
+assertReg(
+    !empty($refSeparate['success'])
+    && !empty($refSeparate['is_booking_pending'])
+    && ($conOverviewPending['stage_status'] ?? '') === 'Not Started'
+    && !empty($conOverviewPending['is_booking_pending'])
+    && ($conOverviewPending['booking_status'] ?? '') === 'Pending Scheduling'
+    && empty($refSeparate['hearing_id'])
+    && !empty($refSeparate['kp10_document_id'])
+    && empty($dupReferral['success']) && !empty($dupReferral['already_referred'])
+    && (int) $db->query("SELECT COUNT(*) FROM pangkat_groups WHERE case_id = {$case11}")->fetchColumn() === 1,
+    'Separate booking keeps Conciliation visibly Pending Scheduling until booked and rejects duplicate referrals'
+);
+
+$deadlineState11 = $db->prepare("SELECT status, completed_at, due_date FROM case_deadlines WHERE deadline_id = ?");
+$deadlineState11->execute([$medDeadlineId11]);
+$closedDeadline11 = $deadlineState11->fetch(PDO::FETCH_ASSOC);
+$deadlineState11->execute([$legacyDeadlineId11]);
+$closedLegacyDeadline11 = $deadlineState11->fetch(PDO::FETCH_ASSOC);
+$deadlineState11->execute([$unrelatedDeadlineId11]);
+$unrelatedDeadline11 = $deadlineState11->fetch(PDO::FETCH_ASSOC);
+assertReg(
+    ($closedDeadline11['status'] ?? null) === 'Completed' && !empty($closedDeadline11['completed_at'])
+    && ($closedLegacyDeadline11['status'] ?? null) === 'Completed' && !empty($closedLegacyDeadline11['completed_at'])
+    && $closedDeadline11['due_date'] === $due11 && $closedLegacyDeadline11['due_date'] === $due11
+    && ($unrelatedDeadline11['status'] ?? null) === 'Pending',
+    'A successful referral completes both Mediation deadline types even when booking is deferred'
+);
+
+// Older referred cases can still carry open Mediation deadline rows.
+$db->prepare("UPDATE case_deadlines SET status = 'Pending', completed_at = NULL WHERE deadline_id IN (?, ?)")->execute([$medDeadlineId11, $legacyDeadlineId11]);
+(new DeadlineAlertService())->dispatch($clerkId);
+$alertCount11 = $db->prepare("SELECT COUNT(*) FROM deadline_alert_log WHERE deadline_id = ?");
+$alertCount11->execute([$medDeadlineId11]);
+$medAlerts11 = (int) $alertCount11->fetchColumn();
+$alertCount11->execute([$legacyDeadlineId11]);
+$legacyAlerts11 = (int) $alertCount11->fetchColumn();
+$alertCount11->execute([$unrelatedDeadlineId11]);
+assertReg(
+    $medAlerts11 === 0 && $legacyAlerts11 === 0 && (int) $alertCount11->fetchColumn() === 1,
+    'Alert dispatch skips stale Mediation deadlines after referral and still processes unrelated deadlines'
+);
+
+// =========================================================================
+// SCENARIO 13: Order 2.4 — Rescheduling Before & After Commencement Anchor
+// =========================================================================
+echo "\n--- SCENARIO 13: Order 2.4 Pre/Post-Commencement Deadline Anchor ---\n";
+
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at) VALUES (?, 'Reg13 Commencement Anchor', 'Mediation', ?, 'Civil', CURDATE(), 'Deadline anchor before and after commencement', ?, NOW())")
+    ->execute(["CMP-REG13-{$token}", $catId, $clerkId]);
+$comp13 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp13);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp13, $resComp, $comp13, $resResp1]);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Mediation', CURDATE(), NOW())")
+    ->execute([$comp13, "REG-013-{$token}"]);
+$case13 = (int) $db->lastInsertId();
+
+$tueList13 = [];
+$probe13 = new DateTime('now');
+for ($i = 0; $i < 90 && count($tueList13) < 3; $i++) {
+    $probe13->modify('+1 day');
+    if ((int) $probe13->format('w') === 2 && $logistics->isPhilippineHoliday($probe13) === null && $i >= 18) {
+        $tueList13[] = $probe13->format('Y-m-d');
+    }
+}
+[$tue4, $tue5, $tue6] = $tueList13;
+
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Court Room', 'Scheduled', 1)")
+    ->execute([$case13, $tue4 . ' 14:00:00']);
+$h13_1 = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO summon_deliveries (case_id, hearing_id, party_type, resident_id, attempt_number, form_type, delivery_status, recipient_name, relationship, served_at, served_by, created_at) VALUES (?, ?, 'Respondent', ?, 1, 'KP Form 9', 'Served Personal', 'Respondent', 'Self', NOW(), ?, NOW())")
+    ->execute([$case13, $h13_1, $resResp1, $clerkId]);
+
+// Reschedule BEFORE commencement: deadline remains NULL, not lapsed, referral locked
+$reschedPre = $docketService->rescheduleItem([
+    'confirmed' => true,
+    'item_type' => 'hearing',
+    'item_id' => $h13_1,
+    'target_date' => $tue5,
+    'target_time' => '14:00',
+    'venue' => 'Lupon Court Room',
+    'reschedule_reason' => 'Pre-commencement move check',
+    'force_reschedule' => true,
+], $clerkId, (int) $clerkSession['role_id']);
+$case13Pre = $db->query("SELECT * FROM cases WHERE case_id = {$case13}")->fetch(PDO::FETCH_ASSOC);
+$status13Pre = $dlSvcReg->computeStatus($case13Pre);
+$elig13Pre = CaseStage::evaluateMediationReferralEligibility($db, $case13);
+assertReg(
+    !empty($reschedPre['success'])
+    && $case13Pre['mediation_deadline_date'] === null
+    && empty($status13Pre['is_lapsed'])
+    && empty($elig13Pre['eligible']),
+    'Rescheduling before commencement leaves statutory deadline unset, not lapsed, and referral locked (got: ' . ($reschedPre['message'] ?? 'err') . ')'
+);
+
+// Record commencement (first actual meeting 20 days ago -> 15-day period elapsed) then reschedule 2nd Mediation hearing
+$commDate13 = date('Y-m-d', strtotime('-20 days'));
+$commDl13 = MediationDeadlineService::calculateDeadline($commDate13, 15);
+$db->prepare("UPDATE hearings SET status = 'Completed', hearing_date = ? WHERE hearing_id = ?")
+    ->execute([$commDate13 . ' 10:00:00', $h13_1]);
+$db->prepare("INSERT INTO mediation_commencements (case_id, hearing_id, first_actual_meeting_at, mediation_deadline_at, source, created_by) VALUES (?, ?, ?, ?, 'Attendance', ?)")
+    ->execute([$case13, $h13_1, $commDate13 . ' 10:00:00', $commDl13 . ' 00:00:00', $clerkId]);
+$db->prepare("UPDATE cases SET mediation_start_date = ?, mediation_deadline_date = ? WHERE case_id = ?")
+    ->execute([$commDate13, $commDl13, $case13]);
+
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Court Room', 'Scheduled', 2)")
+    ->execute([$case13, $tue5 . ' 15:00:00']);
+$h13_2 = (int) $db->lastInsertId();
+$reschedPost = $docketService->rescheduleItem([
+    'confirmed' => true,
+    'item_type' => 'hearing',
+    'item_id' => $h13_2,
+    'target_date' => $tue6,
+    'target_time' => '15:00',
+    'venue' => 'Lupon Court Room',
+    'reschedule_reason' => 'Post-commencement move check',
+    'force_reschedule' => true,
+], $clerkId, (int) $clerkSession['role_id']);
+$case13Post = $db->query("SELECT mediation_start_date, mediation_deadline_date FROM cases WHERE case_id = {$case13}")->fetch(PDO::FETCH_ASSOC);
+$elig13Post = CaseStage::evaluateMediationReferralEligibility($db, $case13);
+$replacementCount13 = (int) $db->query("SELECT COUNT(*) FROM summon_deliveries WHERE hearing_id = {$h13_2} AND delivery_status <> 'Superseded'")->fetchColumn();
+
+assertReg(
+    !empty($reschedPost['success'])
+    && $case13Post['mediation_start_date'] === $commDate13
+    && $case13Post['mediation_deadline_date'] === $commDl13
+    && $replacementCount13 >= 2
+    && !empty($elig13Post['eligible'])
+    && ($elig13Post['basis'] ?? '') === 'statutory_deadline_lapsed',
+    'Rescheduling after commencement preserves first_actual_meeting_at deadline anchor, issues replacement notices, and unlocks lapsed-period referral (post=' . ($reschedPost['message'] ?? 'err') . ', notices=' . $replacementCount13 . ', basis=' . ($elig13Post['basis'] ?? 'none') . ')'
+);
+
+// =========================================================================
+// [14] Latest Qualifying Outcome, Show-Cause/Cancelled Follow-ups & Arbitration Exclusion
+// =========================================================================
+echo "\n[14] Testing latest qualifying outcome, Arbitration rejection, and show-cause/cancelled follow-ups...\n";
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, narrative, category_id, status, case_type, incident_date, encoded_by, created_at) VALUES (?, 'Referral Rule Check', 'Test', ?, 'Mediation', 'Civil', CURDATE(), ?, NOW())")
+    ->execute(["CMP-REG14-{$token}", $catId, $clerkId]);
+$comp14 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp14);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp14, $resComp, $comp14, $resResp1]);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Mediation', CURDATE(), NOW())")
+    ->execute([$comp14, "CASE-REG14-{$token}"]);
+$case14 = (int) $db->lastInsertId();
+
+$tue14a = nextWeekdayDate($logistics, 2, 2);
+$tue14b = nextWeekdayDate($logistics, 9, 2);
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Court Room', 'Completed', 1), (?, 'Mediation', ?, 'Lupon Court Room', 'Completed', 2)")
+    ->execute([$case14, $tue14a . ' 13:00:00', $case14, $tue14b . ' 14:00:00']);
+$h14Rows = $db->query("SELECT hearing_id FROM hearings WHERE case_id = {$case14} ORDER BY hearing_id ASC")->fetchAll(PDO::FETCH_COLUMN);
+$h14_1 = (int) $h14Rows[0];
+$h14_2 = (int) $h14Rows[1];
+
+// 14a: Linked Show Cause hearing & Cancelled replacement on Session 1 must NOT strip Session 1 countability
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, rescheduled_from_id) VALUES (?, 'Show Cause (Respondent)', ?, 'Lupon Court Room', 'Completed', ?), (?, 'Mediation', ?, 'Lupon Court Room', 'Office Cancelled', ?)")
+    ->execute([$case14, $tue14a . ' 15:00:00', $h14_1, $case14, $tue14a . ' 16:00:00', $h14_1]);
+
+$db->prepare("INSERT INTO hearing_minutes (hearing_id, case_id, session_type, session_outcome, status, recorded_by, created_at) VALUES (?, ?, '1st Mediation', 'Failed', 'Finalized', ?, NOW()), (?, ?, '2nd Mediation', 'Continue Mediation', 'Finalized', ?, NOW())")
+    ->execute([$h14_1, $case14, $clerkId, $h14_2, $case14, $clerkId]);
+
+$elig14Continue = CaseStage::evaluateMediationReferralEligibility($db, $case14);
+$stageModel14 = new CaseStage();
+$luponPanel = $db->query("SELECT u.user_id FROM users u JOIN roles r ON r.role_id = u.role_id WHERE r.role_name = 'Lupon Member' AND u.status = 'Active' ORDER BY u.user_id ASC LIMIT 3")->fetchAll(PDO::FETCH_COLUMN);
+$panelPayload14 = [
+    'chairman_id' => (int) ($luponPanel[0] ?? 1),
+    'secretary_id' => (int) ($luponPanel[1] ?? 2),
+    'member_id' => (int) ($luponPanel[2] ?? 3),
+    'referral_reason' => 'Attempted premature referral when latest session was Continue Mediation',
+];
+$ref14Continue = $stageModel14->referToPangkat($case14, $panelPayload14, $clerkId);
+assertReg(
+    (int) ($elig14Continue['completed_mediation_count'] ?? 0) === 2
+    && empty($elig14Continue['eligible'])
+    && empty($elig14Continue['has_finalized_unsuccessful'])
+    && empty($ref14Continue['success']),
+    '1st Failed + 2nd Continue Mediation leaves Pangkat referral locked while keeping Show Cause / Cancelled follow-ups non-superseding'
+);
+
+// 14b: Change 2nd minutes to Failed AND set Arbitration -> Arbitration must reject referToPangkat()
+$db->prepare("UPDATE hearing_minutes SET session_outcome = 'Failed' WHERE hearing_id = ?")->execute([$h14_2]);
+$elig14Ready = CaseStage::evaluateMediationReferralEligibility($db, $case14);
+assertReg(
+    !empty($elig14Ready['eligible']) && ($elig14Ready['latest_qualifying_outcome'] ?? '') === 'Failed',
+    'Latest qualifying outcome Failed unlocks Pangkat referral'
+);
+$db->prepare("UPDATE cases SET case_status = 'Arbitration' WHERE case_id = ?")->execute([$case14]);
+$elig14Arb = CaseStage::evaluateMediationReferralEligibility($db, $case14);
+$ref14Arb = $stageModel14->referToPangkat($case14, $panelPayload14, $clerkId);
+assertReg(
+    empty($elig14Arb['eligible'])
+    && !empty($elig14Arb['is_arbitration'])
+    && empty($ref14Arb['success']),
+    'Cases in Arbitration are rejected from Pangkat referral even under lock'
+);
+
+$db->prepare("UPDATE cases SET case_status = 'RESPONDENT_DEFAULT' WHERE case_id = ?")->execute([$case14]);
+$db->prepare("INSERT INTO cfa_records (case_id, cfa_type, issuance_date, reason)
+    VALUES (?, 'KP Form 20-B', CURDATE(), 'Counterclaim bar recorded before referral request')")->execute([$case14]);
+$issuedBar14 = (int) $db->lastInsertId();
+$elig14Default = CaseStage::evaluateMediationReferralEligibility($db, $case14);
+$ref14Default = $stageModel14->referToPangkat($case14, $panelPayload14, $clerkId);
+assertReg(
+    empty($elig14Default['eligible']) && empty($ref14Default['success'])
+    && $db->query("SELECT case_status FROM cases WHERE case_id = {$case14}")->fetchColumn() === 'RESPONDENT_DEFAULT'
+    && $db->query("SELECT cfa_type FROM cfa_records WHERE cfa_id = {$issuedBar14}")->fetchColumn() === 'KP Form 20-B'
+    && (int) $db->query("SELECT COUNT(*) FROM pangkat_groups WHERE case_id = {$case14}")->fetchColumn() === 0,
+    'A recorded KP Form 20-B and respondent-default case remain intact when referral is attempted'
+);
+$db->prepare("DELETE FROM cfa_records WHERE cfa_id = ?")->execute([$issuedBar14]);
+
+// =========================================================================
+// [15] Pre-commencement & Post-commencement Deadlines + DeadlineAlertService + Pause Extensions
+// =========================================================================
+echo "\n[15] Testing pre-commencement pending deadlines, provisional row handling, alerts, and pause extensions...\n";
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, narrative, category_id, status, case_type, incident_date, encoded_by, created_at) VALUES (?, 'Deadline Consistency Check', 'Test', ?, 'Mediation', 'Civil', CURDATE(), ?, NOW())")
+    ->execute(["CMP-REG15-{$token}", $catId, $clerkId]);
+$comp15 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp15);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp15, $resComp, $comp15, $resResp1]);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Mediation', CURDATE(), NOW())")
+    ->execute([$comp15, "CASE-REG15-{$token}"]);
+$case15 = (int) $db->lastInsertId();
+
+$hearingModel15 = new Hearing($db);
+$tue15a = nextWeekdayDate($logistics, 3, 2);
+$tue15b = nextWeekdayDate($logistics, 10, 2);
+$create15 = $hearingModel15->createProgression([
+    'case_id' => $case15,
+    'hearing_type' => 'Mediation',
+    'hearing_date' => $tue15a . ' 13:30:00',
+    'venue' => 'Lupon Court Room',
+    'duration_minutes' => 45,
+], null, $clerkId);
+$medDlRows15 = (int) $db->query("SELECT COUNT(*) FROM case_deadlines WHERE case_id = {$case15} AND deadline_type = 'Mediation Period'")->fetchColumn();
+$case15Pre = $db->query("SELECT mediation_start_date, mediation_deadline_date FROM cases WHERE case_id = {$case15}")->fetch(PDO::FETCH_ASSOC);
+assertReg(
+    !empty($create15['success']) && $medDlRows15 === 0 && $case15Pre['mediation_deadline_date'] === null,
+    'Booking pre-commencement Mediation creates zero Mediation Period rows in case_deadlines and leaves mediation_deadline_date NULL'
+);
+
+// Inject a stale provisional overdue 'Mediation Period' row + an unrelated future 'Pangkat Convening' row
+$db->prepare("INSERT INTO case_deadlines (case_id, deadline_type, due_date, status) VALUES (?, 'Mediation Period', DATE_SUB(CURDATE(), INTERVAL 1 DAY), 'Pending'), (?, 'Pangkat Convening', DATE_ADD(CURDATE(), INTERVAL 10 DAY), 'Pending')")
+    ->execute([$case15, $case15]);
+$alertSvc15 = new DeadlineAlertService();
+$alertSvc15->dispatch($clerkId);
+$medAlertCnt15 = (int) $db->query("SELECT COUNT(*) FROM notifications WHERE case_id = {$case15} AND title LIKE '%Mediation Deadline%'")->fetchColumn();
+$medDlAfterDisp15 = (int) $db->query("SELECT COUNT(*) FROM case_deadlines WHERE case_id = {$case15} AND deadline_type = 'Mediation Period'")->fetchColumn();
+$unrelatedAfterDisp15 = (int) $db->query("SELECT COUNT(*) FROM case_deadlines WHERE case_id = {$case15} AND deadline_type = 'Pangkat Convening'")->fetchColumn();
+assertReg(
+    $medAlertCnt15 === 0 && $medDlAfterDisp15 === 0 && $unrelatedAfterDisp15 === 1,
+    'DeadlineAlertService sends zero procedural alerts for provisional uncommenced Mediation Period and preserves unrelated deadlines'
+);
+
+// Commence 16 days ago (would have lapsed) then pause + resume with +5 day authorized extension -> extended to +4 days from today
+$commDate15 = date('Y-m-d', strtotime('-16 days'));
+$baseDl15 = MediationDeadlineService::calculateDeadline($commDate15, MediationDeadlineService::MEDIATION_PERIOD_DAYS);
+$db->prepare("INSERT INTO mediation_commencements (case_id, hearing_id, first_actual_meeting_at, mediation_deadline_at, source, created_by) VALUES (?, ?, ?, ?, 'Attendance', ?)")
+    ->execute([$case15, (int) $create15['hearing_id'], $commDate15 . ' 13:30:00', $baseDl15 . ' 00:00:00', $clerkId]);
+$db->prepare("INSERT INTO mediation_pause_decisions (case_id, legal_basis, reason, notes, decided_by, paused_at, resumed_at, extension_authorised, extension_days, extension_basis) VALUES (?, 'Force Majeure', 'Typhoon suspension', 'Extended 5 days', ?, DATE_SUB(NOW(), INTERVAL 6 DAY), DATE_SUB(NOW(), INTERVAL 1 DAY), 1, 5, 'Typhoon clearance')")
+    ->execute([$case15, $clerkId]);
+$extDeadline15 = $dlSvcReg->syncCommencedDeadlines($case15);
+$expectedExtDl15 = date('Y-m-d', strtotime($commDate15 . ' +20 days'));
+$timer15Ext = $dlSvcReg->computeStatus($db->query("SELECT * FROM cases WHERE case_id = {$case15}")->fetch(PDO::FETCH_ASSOC));
+$elig15Ext = CaseStage::evaluateMediationReferralEligibility($db, $case15);
+$alertSvc15->dispatch($clerkId);
+$medAlertExtCnt15 = (int) $db->query("SELECT COUNT(*) FROM notifications WHERE case_id = {$case15} AND title LIKE '%Mediation Deadline%'")->fetchColumn();
+assertReg(
+    $extDeadline15 === $expectedExtDl15
+    && empty($timer15Ext['is_lapsed'])
+    && empty($elig15Ext['eligible'])
+    && $medAlertExtCnt15 === 0,
+    'Commenced Mediation uses saved first_actual_meeting_at + authorized extension for timer, case_deadlines, alerts, and referral lock (expected=' . $expectedExtDl15 . ', got=' . ($extDeadline15 ?? 'null') . ')'
+);
+
+// =========================================================================
+// [16] Shared Policy Cap (mediation_max_sessions=1) & Dynamic Conciliation Settings
+// =========================================================================
+echo "\n[16] Testing mediation_max_sessions=1 policy alignment & non-default Conciliation settings...\n";
+$savedSettingsStmt = $db->query("SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ('mediation_max_sessions', 'conciliation_default_duration_min', 'default_hearing_venue', 'working_hours_start', 'working_hours_end')");
+$origSettings = $savedSettingsStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+$upsertSetting16 = $db->prepare("INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+try {
+    $upsertSetting16->execute(['mediation_max_sessions', '1']);
+    $policy1 = MediationDeadlineService::getMediationPolicy($db);
+    assertReg(
+        $policy1['configured_max_sessions'] === 1
+        && $policy1['referral_required_sessions'] === 2
+        && !empty($policy1['has_policy_conflict']),
+        'Shared mediation policy reports conflict when mediation_max_sessions=1 vs approved 2-session referral rule'
+    );
+
+    // Check Hearing::createProgression stops at 1 session when mediation_max_sessions=1
+    $tue16 = nextWeekdayDate($logistics, 16, 2);
+    $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, narrative, category_id, status, case_type, incident_date, encoded_by, created_at) VALUES (?, 'Cap Check', 'Test', ?, 'Mediation', 'Civil', CURDATE(), ?, NOW())")
+        ->execute(["CMP-REG16-{$token}", $catId, $clerkId]);
+    $comp16 = (int) $db->lastInsertId();
+    $cleanup->trackComplaint($comp16);
+    $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Mediation', CURDATE(), NOW())")
+        ->execute([$comp16, "CASE-REG16-{$token}"]);
+    $case16 = (int) $db->lastInsertId();
+    $db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Court Room', 'Completed', 1)")
+        ->execute([$case16, $tue16 . ' 13:30:00']);
+    $h16_1 = (int) $db->lastInsertId();
+    $db->prepare("INSERT INTO hearing_minutes (hearing_id, case_id, session_type, session_outcome, status, recorded_by, created_at) VALUES (?, ?, '1st Mediation', 'Continue Mediation', 'Finalized', ?, NOW())")
+        ->execute([$h16_1, $case16, $clerkId]);
+    $secondCapRes = $hearingModel15->createProgression([
+        'case_id' => $case16,
+        'hearing_type' => 'Mediation',
+        'hearing_date' => nextWeekdayDate($logistics, 23, 2) . ' 14:00:00',
+        'venue' => 'Lupon Court Room',
+    ], null, $clerkId);
+    $elig16 = CaseStage::evaluateMediationReferralEligibility($db, $case16);
+    assertReg(
+        empty($secondCapRes['success']) && !empty($elig16['policy_conflict']) && empty($elig16['eligible']),
+        'Hearing::createProgression honors mediation_max_sessions=1 while evaluateMediationReferralEligibility surfaces policy conflict and preserves 2-session threshold'
+    );
+
+    // Non-default Conciliation duration (90 min) & venue + hours alignment between check-schedule.php and referToPangkat()
+    $upsertSetting16->execute(['conciliation_default_duration_min', '90']);
+    $upsertSetting16->execute(['default_hearing_venue', 'Annex Mediation Hall']);
+    $wed16 = nextWeekdayDate($logistics, 4, 3);
+    $schedResp = regHttpRequest($baseUrl, $clerkSession, "summons/check-schedule.php?date={$wed16}&time=11:00&hearing_type=Conciliation&get_window=1");
+    $schedSlots = $schedResp['json']['conciliation_slots'] ?? [];
+    $has1100Slot = false;
+    foreach ($schedSlots as $sl) {
+        if (($sl['time'] ?? '') === '11:00') {
+            $has1100Slot = true;
+        }
+    }
+    assertReg(
+        $schedResp['status'] === 200
+        && ($schedResp['json']['default_venue'] ?? '') === 'Annex Mediation Hall'
+        && !empty($schedResp['json']['has_conflict'])
+        && !$has1100Slot,
+        'check-schedule.php honors 90-min Conciliation duration (rejects 11:00 crossing 12:00 lunch) and default_hearing_venue (venue=' . ($schedResp['json']['default_venue'] ?? 'null') . ', conflict=' . json_encode($schedResp['json']['has_conflict'] ?? null) . ')'
+    );
+
+    // Prepare case ready for referral (use $case14 after restoring case_status='Mediation')
+    $db->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?")->execute([$case14]);
+    $refBadLunch = $stageModel14->referToPangkat($case14, array_merge($panelPayload14, [
+        'conciliation_date' => $wed16,
+        'conciliation_time' => '11:00',
+    ]), $clerkId);
+    $refOkCustom = $stageModel14->referToPangkat($case14, array_merge($panelPayload14, [
+        'conciliation_date' => $wed16,
+        'conciliation_time' => '09:30',
+    ]), $clerkId);
+    $conHearing14 = $db->query("SELECT venue, duration_minutes FROM hearings WHERE case_id = {$case14} AND hearing_type = 'Conciliation' ORDER BY hearing_id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    assertReg(
+        empty($refBadLunch['success'])
+        && !empty($refOkCustom['success'])
+        && ($conHearing14['venue'] ?? '') === 'Annex Mediation Hall'
+        && (int) ($conHearing14['duration_minutes'] ?? 0) === 90,
+        'CaseStage::referToPangkat enforces 90-min duration & lunch boundary consistently with check-schedule.php and saves configured venue + duration (okMsg=' . ($refOkCustom['message'] ?? '') . ')'
+    );
+} finally {
+    foreach (['mediation_max_sessions', 'conciliation_default_duration_min', 'default_hearing_venue', 'working_hours_start', 'working_hours_end'] as $k) {
+        if (array_key_exists($k, $origSettings)) {
+            $upsertSetting16->execute([$k, $origSettings[$k]]);
+        } else {
+            $db->prepare("DELETE FROM system_settings WHERE setting_key = ?")->execute([$k]);
+        }
+    }
+}
+
+// =========================================================================
+// [17] Prepared Paanyaya quick-action log_paanyaya_outcome Requires Explicit Dialogue Date & Attendance
+// =========================================================================
+echo "\n[17] Testing Clerk Agenda prepared Paanyaya outcome rejects missing/invalid dialogue_date and attendance...\n";
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, narrative, category_id, status, case_type, screening_decision, liso_assigned_to, liso_reviewed_by, liso_reviewed_at, incident_date, encoded_by, created_at) VALUES (?, 'Prepared QA Check', 'Test', ?, 'Accepted', 'Civil', 'Eligible', ?, ?, NOW(), CURDATE(), ?, NOW())")
+    ->execute(["CMP-REG17-{$token}", $catId, $lisoReviewerId, $lisoReviewerId, $clerkId]);
+$comp17 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp17);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp17, $resComp, $comp17, $resResp1]);
+$prepSvc17 = new PaanyayaPreparationService($db);
+$prepSvc17->save($comp17, $clerkId, 'generate', [
+    'appointment_date' => nextWeekdayDate($logistics, 2, 1),
+    'appointment_time' => '09:00',
+    'venue' => 'Lupon Court Room',
+    'verify_parties' => '1',
+    'party_version' => PaanyayaPreparationService::partyVersion($prepSvc17->parties($comp17)),
+], 1);
+$ver17 = (string) ($prepSvc17->intake($comp17, 1)['document_version'] ?? '');
+$prepSvc17->save($comp17, $clerkId, 'ready', ['document_version' => $ver17], 1);
+$paaDeliverySvc->release($comp17, $clerkId, $paaServerId, $ver17, 1);
+$att17 = PaanyayaServiceDelivery::latestAttempt($db, $comp17, 1);
+$paaDeliverySvc->record((int) $att17['attempt_id'], $paaServerId, ['outcome' => 'Delivered', 'notes' => 'Delivered for QA check'], []);
+$sess17Id = (int) $db->query("SELECT session_id FROM paanyaya_sessions WHERE complaint_id = {$comp17} ORDER BY session_id DESC LIMIT 1")->fetchColumn();
+
+$qaMissingDate = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'log_paanyaya_outcome',
+    'complaint_id' => $comp17,
+    'session_id' => $sess17Id,
+    'invitation_number' => 1,
+    'document_version' => $ver17,
+    'outcome' => 'Escalated to Mediation',
+    'complainant_attended' => 'Present',
+    'respondent_attended' => 'Present',
+    'discussion_summary' => 'Attempted without dialogue_date',
+]);
+$qaMissingAtt = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'log_paanyaya_outcome',
+    'complaint_id' => $comp17,
+    'session_id' => $sess17Id,
+    'invitation_number' => 1,
+    'document_version' => $ver17,
+    'outcome' => 'Settled',
+    'dialogue_date' => date('Y-m-d\TH:i'),
+    'discussion_summary' => 'Attempted without attendance',
+    'agreed_terms' => 'Terms agreed',
+]);
+$qaImpossibleDate = regHttpRequest($baseUrl, $clerkSession, 'dashboard/quick-action.php', [
+    'action' => 'log_paanyaya_outcome',
+    'complaint_id' => $comp17,
+    'session_id' => $sess17Id,
+    'invitation_number' => 1,
+    'document_version' => $ver17,
+    'outcome' => 'Escalated to Mediation',
+    'dialogue_date' => (date('Y') - 1) . '-02-30T10:00',
+    'complainant_attended' => 'Present',
+    'respondent_attended' => 'Present',
+    'discussion_summary' => 'Attempted with a nonexistent calendar date',
+]);
+assertReg(
+    $qaImpossibleDate['status'] === 422
+    && !empty($qaImpossibleDate['json']['requires_dialogue_form'])
+    && str_contains($qaImpossibleDate['json']['message'] ?? '', 'A valid actual dialogue date and time')
+    && str_contains($qaImpossibleDate['json']['dialogue_url'] ?? '', '#paanyaya-dialogue-1'),
+    'The Paanyaya shortcut sends staff back to the dialogue form when the calendar date is impossible'
+);
+$pmCnt17 = (int) $db->query("SELECT COUNT(*) FROM paanyaya_minutes WHERE complaint_id = {$comp17}")->fetchColumn();
+assertReg(
+    $qaMissingDate['status'] === 422
+    && !empty($qaMissingDate['json']['requires_dialogue_form'])
+    && str_contains((string) ($qaMissingDate['json']['dialogue_url'] ?? ''), '#paanyaya-dialogue-1')
+    && $qaMissingAtt['status'] === 422
+    && !empty($qaMissingAtt['json']['requires_dialogue_form'])
+    && $pmCnt17 === 0,
+    'log_paanyaya_outcome rejects missing dialogue_date or missing party attendance with HTTP 422 + requires_dialogue_form and leaves zero DB writes (d=' . $qaMissingDate['status'] . ':' . $qaMissingDate['body'] . ', a=' . $qaMissingAtt['status'] . ':' . $qaMissingAtt['body'] . ')'
+);
 
 echo "\n====================================================================\n";
 echo "   TOTAL REGRESSIONS: " . ($passCount + $failCount) . " | PASSED: {$passCount} | FAILED: {$failCount}\n";

@@ -155,35 +155,35 @@ class MediationSchedule
 
             $startDate = substr($hearingDate, 0, 10);
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
-            $deadlineDate = MediationDeadlineService::calculateDeadline($startDate, 15);
+            $dlSvc = new MediationDeadlineService($this->conn);
+            $period = $dlSvc->resolveMediationPeriodForCase($caseId, $startDate);
 
-            // Transition case status to Mediation and set mediation clock
-            $updateCase = $this->conn->prepare(
-                "UPDATE cases
-                 SET case_status = 'Mediation',
-                     mediation_start_date = COALESCE(mediation_start_date, ?),
-                     mediation_deadline_date = ?,
-                     is_paused = 0,
-                     paused_at = NULL,
-                     resumed_at = NULL,
-                     pause_reason = NULL,
-                     pause_notes = NULL
-                 WHERE case_id = ?"
-            );
-            $updateCase->execute([$startDate, $deadlineDate, $caseId]);
+            // Transition case status to Mediation without overwriting a commenced statutory clock
+            if (!empty($period['commenced'])) {
+                $updateCase = $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?");
+                $updateCase->execute([$caseId]);
+                $dlSvc->syncCommencedDeadlines($caseId, $period);
+            } else {
+                $updateCase = $this->conn->prepare(
+                    "UPDATE cases
+                     SET case_status = 'Mediation',
+                         mediation_start_date = COALESCE(mediation_start_date, ?),
+                         mediation_deadline_date = NULL,
+                         is_paused = 0,
+                         paused_at = NULL,
+                         resumed_at = NULL,
+                         pause_reason = NULL,
+                         pause_notes = NULL
+                     WHERE case_id = ?"
+                );
+                $updateCase->execute([$startDate, $caseId]);
+                $dlSvc->clearUncommencedDeadline($caseId);
+            }
 
             if ($existingCase['case_status'] === 'Docketed') {
                 $updateComplaint = $this->conn->prepare("UPDATE complaints SET status = 'Mediation' WHERE complaint_id = ?");
                 $updateComplaint->execute([$complaintId]);
             }
-
-            // Upsert Mediation Period deadline
-            $deadline = $this->conn->prepare(
-                "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-                 VALUES (?, 'Mediation Period', ?, 'Pending')
-                 ON DUPLICATE KEY UPDATE due_date = VALUES(due_date), status = IF(status = 'Completed', 'Completed', 'Pending')"
-            );
-            $deadline->execute([$caseId, $deadlineDate]);
 
             // Record in case history
             $history = $this->conn->prepare(

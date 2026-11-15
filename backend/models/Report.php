@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/Paanyaya.php';
 require_once __DIR__ . '/../services/DocketScheduleService.php';
 require_once __DIR__ . '/../services/SummonDeliveryService.php';
+require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
 
 class Report
 {
@@ -129,6 +130,128 @@ class Report
             $row['lock_reason'] = $elig['lock_reason'];
         }
         unset($row);
+        return $this->attachPreparedPaanyayaMetadata($rows);
+    }
+
+    private function attachPreparedPaanyayaMetadata(array $rows): array
+    {
+        $complaintIds = [];
+        foreach ($rows as $row) {
+            $cid = (int) ($row['complaint_id'] ?? ($row['escalated_to_complaint_id'] ?? 0));
+            if ($cid > 0) {
+                $complaintIds[$cid] = $cid;
+            }
+        }
+        if (empty($complaintIds)) {
+            foreach ($rows as &$row) {
+                $row['is_prepared'] = false;
+                $row['invitation_number'] = (int) ($row['attempt_number'] ?? $row['mediation_attempt'] ?? 1);
+                $row['document_version'] = null;
+                $row['prepared_document_version'] = null;
+                $row['service_verified'] = false;
+                $row['service_outcome'] = null;
+                $row['has_dialogue_minutes'] = false;
+                $row['dialogue_url'] = null;
+            }
+            unset($row);
+            return $rows;
+        }
+
+        $ids = array_values($complaintIds);
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+
+        $prepStmt = $this->conn->prepare(
+            "SELECT p.complaint_id, p.invitation_number, p.appointment_at, p.venue, " . PaanyayaPreparationService::CURRENT_VERSION . " AS document_version
+             FROM paanyaya_preparations p
+             WHERE p.complaint_id IN ({$ph})
+             ORDER BY p.complaint_id ASC, p.invitation_number DESC"
+        );
+        $prepStmt->execute($ids);
+        $prepsByComplaint = [];
+        foreach ($prepStmt->fetchAll(PDO::FETCH_ASSOC) as $prep) {
+            $cid = (int) $prep['complaint_id'];
+            $inv = (int) $prep['invitation_number'];
+            $prepsByComplaint[$cid][$inv] = $prep;
+        }
+
+        $attStmt = $this->conn->prepare(
+            "SELECT complaint_id, invitation_number, document_version, outcome, recorded_at
+             FROM paanyaya_service_attempts
+             WHERE complaint_id IN ({$ph})
+             ORDER BY attempt_id DESC"
+        );
+        $attStmt->execute($ids);
+        $latestAttemptByKey = [];
+        foreach ($attStmt->fetchAll(PDO::FETCH_ASSOC) as $att) {
+            $key = $att['complaint_id'] . ':' . $att['invitation_number'] . ':' . $att['document_version'];
+            if (!isset($latestAttemptByKey[$key])) {
+                $latestAttemptByKey[$key] = $att;
+            }
+        }
+
+        $sessStmt = $this->conn->prepare(
+            "SELECT session_id, complaint_id, attempt_number
+             FROM paanyaya_sessions
+             WHERE complaint_id IN ({$ph})
+             ORDER BY session_id DESC"
+        );
+        $sessStmt->execute($ids);
+        $sessionsByKey = [];
+        foreach ($sessStmt->fetchAll(PDO::FETCH_ASSOC) as $sess) {
+            $key = $sess['complaint_id'] . ':' . $sess['attempt_number'];
+            if (!isset($sessionsByKey[$key])) {
+                $sessionsByKey[$key] = (int) $sess['session_id'];
+            }
+        }
+
+        $minStmt = $this->conn->prepare(
+            "SELECT complaint_id, stage_type
+             FROM paanyaya_minutes
+             WHERE complaint_id IN ({$ph})"
+        );
+        $minStmt->execute($ids);
+        $minutesByKey = [];
+        foreach ($minStmt->fetchAll(PDO::FETCH_ASSOC) as $min) {
+            $minutesByKey[$min['complaint_id'] . ':' . $min['stage_type']] = true;
+        }
+
+        foreach ($rows as &$row) {
+            $cid = (int) ($row['complaint_id'] ?? ($row['escalated_to_complaint_id'] ?? 0));
+            $rowAttempt = (int) ($row['attempt_number'] ?? $row['mediation_attempt'] ?? 1);
+            $compPreps = $cid > 0 ? ($prepsByComplaint[$cid] ?? []) : [];
+
+            if (empty($compPreps)) {
+                $row['is_prepared'] = false;
+                $row['invitation_number'] = $rowAttempt > 0 ? $rowAttempt : 1;
+                $row['document_version'] = null;
+                $row['prepared_document_version'] = null;
+                $row['service_verified'] = false;
+                $row['service_outcome'] = null;
+                $row['has_dialogue_minutes'] = !empty($minutesByKey[$cid . ':Paanyaya ' . $row['invitation_number']]);
+                $row['dialogue_url'] = $cid > 0 ? ('../complaints/complaint-details.php?id=' . $cid . '#paanyaya-dialogue-' . $row['invitation_number']) : null;
+                continue;
+            }
+
+            $prep = $compPreps[$rowAttempt] ?? reset($compPreps);
+            $inv = (int) $prep['invitation_number'];
+            $docVer = (string) ($prep['document_version'] ?? '');
+            $attKey = $cid . ':' . $inv . ':' . $docVer;
+            $latestAtt = $latestAttemptByKey[$attKey] ?? null;
+
+            $row['is_prepared'] = true;
+            $row['invitation_number'] = $inv;
+            $row['document_version'] = $docVer !== '' ? $docVer : null;
+            $row['prepared_document_version'] = $row['document_version'];
+            $row['service_outcome'] = $latestAtt['outcome'] ?? null;
+            $row['service_verified'] = ($latestAtt['outcome'] ?? null) === 'Delivered';
+            $row['has_dialogue_minutes'] = !empty($minutesByKey[$cid . ':Paanyaya ' . $inv]);
+            $row['dialogue_url'] = '../complaints/complaint-details.php?id=' . $cid . '#paanyaya-dialogue-' . $inv;
+            if (empty($row['session_id']) && isset($sessionsByKey[$cid . ':' . $inv])) {
+                $row['session_id'] = $sessionsByKey[$cid . ':' . $inv];
+            }
+        }
+        unset($row);
+
         return $rows;
     }
 

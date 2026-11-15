@@ -2,21 +2,26 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/NotificationService.php';
+require_once __DIR__ . '/MediationDeadlineService.php';
 
 class DeadlineAlertService
 {
     private PDO $conn;
     private NotificationService $notifications;
+    private MediationDeadlineService $mediationDeadlines;
 
     public function __construct()
     {
         $this->conn = (new Database())->connect();
         $this->notifications = new NotificationService();
+        $this->mediationDeadlines = new MediationDeadlineService($this->conn);
     }
 
     public function dispatch(int $actorUserId): int
     {
         $sent = 0;
+        $today = date('Y-m-d');
+        $alertHorizon = date('Y-m-d', strtotime('+3 days'));
 
         // =====================================================================
         // 1. STATUTORY CASE DEADLINES (15-Day Mediation, Pangkat Convening, etc.)
@@ -26,16 +31,52 @@ class DeadlineAlertService
                    CASE WHEN d.due_date < CURDATE() THEN 'Overdue' ELSE 'Due Soon' END AS alert_type,
                    DATEDIFF(d.due_date, CURDATE()) AS days_diff
             FROM case_deadlines d
+            INNER JOIN cases c ON c.case_id = d.case_id
             WHERE d.status <> 'Completed'
-              AND d.due_date <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+              AND (c.case_status = 'Mediation' OR d.deadline_type NOT IN ('Mediation Period', '15-Day Mediation Deadline'))
+              AND (
+                  d.due_date <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+                  OR d.deadline_type IN ('Mediation Period', '15-Day Mediation Deadline')
+              )
         ");
 
+        $log = $this->conn->prepare("
+            INSERT IGNORE INTO deadline_alert_log (deadline_id, alert_type)
+            SELECT d.deadline_id, ?
+            FROM case_deadlines d
+            INNER JOIN cases c ON c.case_id = d.case_id
+            WHERE d.deadline_id = ? AND d.status <> 'Completed'
+              AND (c.case_status = 'Mediation' OR d.deadline_type NOT IN ('Mediation Period', '15-Day Mediation Deadline'))
+        ");
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $deadline) {
-            $log = $this->conn->prepare('INSERT IGNORE INTO deadline_alert_log (deadline_id, alert_type) VALUES (?, ?)');
-            $log->execute([(int) $deadline['deadline_id'], $deadline['alert_type']]);
+            $caseId = (int) $deadline['case_id'];
+            if (in_array($deadline['deadline_type'], ['Mediation Period', '15-Day Mediation Deadline'], true)) {
+                $period = $this->mediationDeadlines->resolveMediationPeriodForCase($caseId);
+                if (empty($period['commenced']) || empty($period['deadline_date'])) {
+                    // Provisional pre-commencement row must never trigger procedural alerts.
+                    if ($deadline['deadline_type'] === 'Mediation Period') {
+                        $this->mediationDeadlines->clearUncommencedDeadline($caseId);
+                    }
+                    continue;
+                }
+
+                $effectiveDueDate = $period['deadline_date'];
+                if ($deadline['due_date'] !== $effectiveDueDate) {
+                    $this->mediationDeadlines->syncCommencedDeadlines($caseId, $period);
+                    $deadline['due_date'] = $effectiveDueDate;
+                }
+                if ($effectiveDueDate > $alertHorizon) {
+                    continue;
+                }
+                $deadline['alert_type'] = ($effectiveDueDate < $today) ? 'Overdue' : 'Due Soon';
+                $deadline['days_diff'] = (int) (new DateTimeImmutable($today))
+                    ->diff(new DateTimeImmutable($effectiveDueDate))
+                    ->format('%r%a');
+            }
+
+            $log->execute([$deadline['alert_type'], (int) $deadline['deadline_id']]);
             if ($log->rowCount() !== 1) continue;
 
-            $caseId = (int) $deadline['case_id'];
             $caseNumber = $this->notifications->caseNumber($caseId);
             $actionUrl = "../cases/case-details.php?id=" . $caseId;
             $dueDateFmt = date('F j, Y', strtotime($deadline['due_date']));

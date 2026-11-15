@@ -130,7 +130,7 @@ class HearingMinutes
             'presiding_officer_id' => $source['presiding_officer_id'] ?? null,
             'duration_minutes' => 45,
             'schedule_reviewed' => '1',
-        ], DeadlineService::deadlineForHearing($targetType, $nextDateTime), $userId);
+        ], DeadlineService::deadlineForHearing($targetType, $nextDateTime, $this->conn, (int) $source['case_id']), $userId);
 
         if (empty($result['success'])) {
             return ['success' => false, 'message' => $result['message'] ?? 'Unable to schedule the next hearing.'];
@@ -386,11 +386,11 @@ class HearingMinutes
                 $histMsg = sprintf('%s session concluded: Complaint dismissed due to unexcused absence/non-appearance of the complainant.', $sessionType);
                 $this->logCaseHistory($caseId, 'Dismissed', $histMsg, $userId);
             } elseif ($outcome === 'Failed') {
-                $histMsg = sprintf('%s session concluded: Mediation failed to reach settlement. Case eligible for Pangkat constitution (KP Form 10).', $sessionType);
-                $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);
+                $histMsg = sprintf('%s session concluded: Mediation failed to reach settlement.', $sessionType);
+                $this->logCaseHistory($caseId, $hearing['case_status'] ?? 'Mediation', $histMsg, $userId);
             } elseif ($outcome === 'Elevate to Pangkat') {
-                $histMsg = sprintf('%s session concluded: Case elevated to Pangkat Tagapagkasundo (Conciliation).', $sessionType);
-                $this->logCaseHistory($caseId, 'Conciliation', $histMsg, $userId);
+                $histMsg = sprintf('%s session concluded without settlement: Mediation marked unsuccessful and ready for Pangkat referral review.', $sessionType);
+                $this->logCaseHistory($caseId, $hearing['case_status'] ?? 'Mediation', $histMsg, $userId);
             } elseif ($outcome === 'Pending CFA') {
                 $histMsg = sprintf('%s session concluded: Conciliation unsuccessful. Eligible for Certificate to File Action (KP Form 20).', $sessionType);
                 $this->logCaseHistory($caseId, $hearing['case_status'], $histMsg, $userId);
@@ -449,17 +449,12 @@ class HearingMinutes
                 $this->conn->commit();
             }
 
-            // A finalized, unresolved second mediation is the transition
-            // point. Do not require a second, unrelated UI action merely to
-            // unlock the already-scheduled/next Conciliation stage.
+            // A qualifying finalized unsuccessful Mediation session becomes Ready for Referral,
+            // leaving opening Conciliation and records handoff strictly to CaseStage::referToPangkat().
             if ($status === 'Finalized'
                 && in_array($outcome, ['Elevate to Pangkat', 'Failed'], true)
                 && in_array($hearing['hearing_type'], ['Initial Hearing', 'Mediation'], true)) {
-                $medCountStmt = $this->conn->prepare("\n                    SELECT COUNT(*) FROM hearings\n                    WHERE case_id = ?\n                      AND hearing_type IN ('Initial Hearing', 'Mediation')\n                      AND status NOT IN ('Cancelled', 'Office Cancelled')\n                      AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = hearings.hearing_id)\n                ");
-                $medCountStmt->execute([$caseId]);
-                if ((int) $medCountStmt->fetchColumn() >= 2) {
-                    $this->transitionToConciliationOnMediationFailure($caseId, $userId);
-                }
+                $this->syncMediationReferralReadiness($caseId, $remarks ?: null);
             }
 
             // Post-commit triggers for Dismissed, Party Absent, Rescheduled
@@ -520,7 +515,7 @@ class HearingMinutes
                             'schedule_reviewed' => '1'
                         ];
 
-                        $deadline = DeadlineService::deadlineForHearing($targetType, $nextDateTime);
+                        $deadline = DeadlineService::deadlineForHearing($targetType, $nextDateTime, $this->conn, $caseId);
                         $bookResult = $hearingModel->createProgression($schedValues, $deadline, $userId);
 
                         if (!empty($bookResult['success'])) {
@@ -610,14 +605,16 @@ class HearingMinutes
 
             $caseId = (int) $minutes['case_id'];
             $outcome = $minutes['session_outcome'] ?? '';
+            $hearingType = $minutes['hearing_type'] ?? '';
 
-            if ($outcome === 'Elevate to Pangkat') {
-                $this->transitionToConciliationOnMediationFailure($caseId, $userId);
+            if (in_array($outcome, ['Elevate to Pangkat', 'Failed'], true)
+                && in_array($hearingType, ['Initial Hearing', 'Mediation'], true)) {
+                $this->syncMediationReferralReadiness($caseId, $minutes['outcome_remarks'] ?? null);
             } elseif ($outcome === 'Dismissed') {
                 $this->generateKp21OnDismissed($caseId, $hearingId, $userId);
             }
 
-            $this->logCaseHistory($caseId, ($outcome === 'Elevate to Pangkat' ? 'Conciliation' : ($minutes['case_status'] ?? 'Mediation')), "Session minutes for hearing #{$hearingId} ({$minutes['session_type']}) finalized and approved.", $userId);
+            $this->logCaseHistory($caseId, ($minutes['case_status'] ?? 'Mediation'), "Session minutes for hearing #{$hearingId} ({$minutes['session_type']}) finalized and approved.", $userId);
 
             return [
                 'success' => true,
@@ -630,60 +627,32 @@ class HearingMinutes
         }
     }
 
-    private function transitionToConciliationOnMediationFailure(int $caseId, int $userId): void
+    private function syncMediationReferralReadiness(int $caseId, ?string $remarks = null): void
     {
-        try {
-            // 1. Update cases and complaints status to Conciliation
-            $this->conn->prepare("UPDATE cases SET case_status = 'Conciliation', updated_at = NOW() WHERE case_id = ?")->execute([$caseId]);
-            $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation', co.updated_at = NOW() WHERE c.case_id = ?")->execute([$caseId]);
-
-            // 2. Update case_stages: Mediation to 'Referred to Pangkat', Conciliation to 'In Progress'
-            $medStmt = $this->conn->prepare("
-                INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, referral_date, referring_officer_id, referral_reason, records_transmitted, completed_at)
-                VALUES (?, 'Mediation', 'Referred to Pangkat', 'Referred to Pangkat', CURDATE(), ?, 'Mediation failed; elevated to Pangkat Conciliation.', 1, NOW())
-                ON DUPLICATE KEY UPDATE
-                    stage_status = 'Referred to Pangkat',
-                    outcome = 'Referred to Pangkat',
-                    referral_date = COALESCE(referral_date, VALUES(referral_date)),
-                    referring_officer_id = COALESCE(referring_officer_id, VALUES(referring_officer_id)),
-                    referral_reason = COALESCE(referral_reason, VALUES(referral_reason)),
-                    records_transmitted = 1,
-                    completed_at = COALESCE(completed_at, NOW()),
-                    updated_at = CURRENT_TIMESTAMP
-            ");
-            $medStmt->execute([$caseId, $userId]);
-
-            $conStmt = $this->conn->prepare("
-                INSERT INTO case_stages (case_id, stage_type, stage_status, started_at)
-                VALUES (?, 'Conciliation', 'In Progress', NOW())
-                ON DUPLICATE KEY UPDATE
-                    stage_status = 'In Progress',
-                    started_at = COALESCE(started_at, NOW()),
-                    updated_at = CURRENT_TIMESTAMP
-            ");
-            $conStmt->execute([$caseId]);
-
-            // 3. Set 3-Day Statutory Convening Deadline (RA 7160 Sec. 410(c))
-            require_once __DIR__ . '/../services/MediationDeadlineService.php';
-            $conveningDeadline = MediationDeadlineService::calculateDeadline(date('Y-m-d'), 3);
-            $dlStmt = $this->conn->prepare("
-                INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-                VALUES (?, 'Pangkat Convening', ?, 'Pending')
-                ON DUPLICATE KEY UPDATE
-                    due_date = VALUES(due_date),
-                    updated_at = CURRENT_TIMESTAMP
-            ");
-            $dlStmt->execute([$caseId, $conveningDeadline]);
-
-            // 4. Generate KP Form 10
-            require_once __DIR__ . '/../services/PDFService.php';
-            (new PDFService())->generateKp10($caseId, $userId, [
-                'venue' => 'Lupon Court Room',
-                'constitution_date' => date('Y-m-d')
-            ], $this->conn);
-        } catch (Throwable $e) {
-            error_log('transitionToConciliationOnMediationFailure error: ' . $e->getMessage());
+        require_once __DIR__ . '/CaseStage.php';
+        $eligibility = CaseStage::evaluateMediationReferralEligibility($this->conn, $caseId);
+        if (!empty($eligibility['already_referred']) || !empty($eligibility['is_closed'])) {
+            return;
         }
+        $nextStageStatus = !empty($eligibility['eligible']) ? 'Ready for Referral' : 'In Progress';
+        $nextOutcome = !empty($eligibility['eligible']) ? 'Unsuccessful' : 'Pending';
+        $stmt = $this->conn->prepare("
+            INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+            VALUES (?, 'Mediation', ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                stage_status = IF(stage_status = 'Referred to Pangkat', stage_status, VALUES(stage_status)),
+                outcome = IF(stage_status = 'Referred to Pangkat', outcome, VALUES(outcome)),
+                outcome_remarks = COALESCE(VALUES(outcome_remarks), outcome_remarks),
+                completed_at = COALESCE(completed_at, VALUES(completed_at)),
+                updated_at = CURRENT_TIMESTAMP
+        ");
+        $stmt->execute([
+            $caseId,
+            $nextStageStatus,
+            $nextOutcome,
+            $remarks,
+            !empty($eligibility['eligible']) ? date('Y-m-d H:i:s') : null
+        ]);
     }
 
     private function generateKp21OnDismissed(int $caseId, int $hearingId, int $userId): void

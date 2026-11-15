@@ -336,9 +336,11 @@ class Assignment
                 $history->execute([$caseId, "Case moved to conciliation with assigned {$quorumSize}-member Lupon team (Method: {$selectionMethod}).", $userId]);
 
                 // Sync 3-day statutory Pangkat convening deadline
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                $conveningDays = MediationDeadlineService::PANGKAT_CONVENING_DAYS;
                 $dlStmt = $this->conn->prepare("
                     INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-                    VALUES (?, 'Pangkat Convening', DATE_ADD(CURDATE(), INTERVAL 3 DAY), 'Pending')
+                    VALUES (?, 'Pangkat Convening', DATE_ADD(CURDATE(), INTERVAL {$conveningDays} DAY), 'Pending')
                     ON DUPLICATE KEY UPDATE
                         due_date = VALUES(due_date),
                         status = IF(status = 'Completed', 'Completed', 'Pending'),

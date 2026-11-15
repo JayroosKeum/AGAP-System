@@ -1801,22 +1801,37 @@ class DocketScheduleService
                 $hearingId
             ]);
 
-            // Update case_deadlines if applicable
-            $deadline = DeadlineService::deadlineForHearing($hearingType, $startTime);
-            if ($deadline !== null && $hearingType !== 'Conciliation') {
-                $dlCheck = $this->conn->prepare("
-                    SELECT deadline_id FROM case_deadlines
-                    WHERE case_id = ? AND deadline_type = ? AND status <> 'Completed'
-                    ORDER BY deadline_id DESC LIMIT 1
-                ");
-                $dlCheck->execute([$caseId, $deadline['deadline_type']]);
-                $dlId = $dlCheck->fetchColumn();
-                if ($dlId) {
-                    $this->conn->prepare("UPDATE case_deadlines SET due_date = ?, updated_at = CURRENT_TIMESTAMP WHERE deadline_id = ?")
-                        ->execute([$deadline['due_date'], $dlId]);
+            // Update case_deadlines if applicable, keeping commenced Mediation anchored to first_actual_meeting_at
+            // and never creating provisional deadlines before commencement.
+            if (in_array($hearingType, ['Initial Hearing', 'Mediation'], true)) {
+                require_once __DIR__ . '/MediationDeadlineService.php';
+                $dlSvc = new MediationDeadlineService($this->conn);
+                $period = $dlSvc->resolveMediationPeriodForCase($caseId, $startTime);
+                if (!empty($period['commenced'])) {
+                    $dlSvc->syncCommencedDeadlines($caseId, $period);
                 } else {
-                    $this->conn->prepare("INSERT INTO case_deadlines (case_id, deadline_type, due_date, status) VALUES (?, ?, ?, 'Pending')")
-                        ->execute([$caseId, $deadline['deadline_type'], $deadline['due_date']]);
+                    $this->conn->prepare(
+                        "UPDATE cases SET mediation_start_date = ?, mediation_deadline_date = NULL WHERE case_id = ?"
+                    )->execute([substr($startTime, 0, 10), $caseId]);
+                    $dlSvc->clearUncommencedDeadline($caseId);
+                }
+            } else {
+                $deadline = DeadlineService::deadlineForHearing($hearingType, $startTime, $this->conn, $caseId);
+                if ($deadline !== null && $hearingType !== 'Conciliation') {
+                    $dlCheck = $this->conn->prepare("
+                        SELECT deadline_id FROM case_deadlines
+                        WHERE case_id = ? AND deadline_type = ? AND status <> 'Completed'
+                        ORDER BY deadline_id DESC LIMIT 1
+                    ");
+                    $dlCheck->execute([$caseId, $deadline['deadline_type']]);
+                    $dlId = $dlCheck->fetchColumn();
+                    if ($dlId) {
+                        $this->conn->prepare("UPDATE case_deadlines SET due_date = ?, updated_at = CURRENT_TIMESTAMP WHERE deadline_id = ?")
+                            ->execute([$deadline['due_date'], $dlId]);
+                    } else {
+                        $this->conn->prepare("INSERT INTO case_deadlines (case_id, deadline_type, due_date, status) VALUES (?, ?, ?, 'Pending')")
+                            ->execute([$caseId, $deadline['deadline_type'], $deadline['due_date']]);
+                    }
                 }
             }
 

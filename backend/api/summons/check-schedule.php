@@ -8,6 +8,7 @@ header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/../../models/Summons.php';
 require_once __DIR__ . '/../../models/Setting.php';
 require_once __DIR__ . '/../../services/MediationDeadlineService.php';
+require_once __DIR__ . '/../../services/OfficeLogisticsService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET' && $_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -25,7 +26,6 @@ $input = ($_SERVER['REQUEST_METHOD'] === 'POST') ? $_POST : $_GET;
 
 $date = trim((string) ($input['date'] ?? ''));
 $time = trim((string) ($input['time'] ?? ''));
-$venue = trim((string) ($input['venue'] ?? 'Lupon Court Room'));
 $hearingType = trim((string) ($input['hearing_type'] ?? ($input['stage'] ?? 'Mediation')));
 if ($hearingType !== 'Conciliation') {
     $hearingType = 'Mediation';
@@ -35,6 +35,12 @@ $caseId = filter_var($input['case_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
 $getWindow = !empty($input['get_window']) || !empty($input['window']);
 
 $summons = new Summons();
+$logisticsSvc = new OfficeLogisticsService();
+$defaultVenue = $logisticsSvc->getConfiguredDefaultVenue($hearingType);
+$medVenue = ($hearingType === 'Mediation')
+    ? (trim((string) Setting::getSetting('mediation_venue', '')) ?: $defaultVenue)
+    : $defaultVenue;
+$venue = trim((string) ($input['venue'] ?? $defaultVenue)) ?: $defaultVenue;
 
     $rawMedDays = Setting::getSetting('mediation_day_of_week', 'Tue');
     $allowedMedDays = [];
@@ -62,7 +68,6 @@ $summons = new Summons();
     $concilDefaultDuration = (int) Setting::getSetting('conciliation_default_duration_min', 60) ?: 60;
     $concilMaxDuration = (int) Setting::getSetting('conciliation_max_duration_min', 90) ?: 90;
     $dailyCap = (int) Setting::getSetting('daily_hearing_capacity', 8) ?: 8;
-    $medVenue = Setting::getSetting('mediation_venue', 'Lupon Court Room');
 
 $db = null;
 
@@ -127,11 +132,22 @@ if ($complaintId || $getWindow) {
     $workStartMin = (int)date('H', strtotime($workStart)) * 60 + (int)date('i', strtotime($workStart));
     $workEndMin = (int)date('H', strtotime($workEnd)) * 60 + (int)date('i', strtotime($workEnd));
     $concilDur = max(15, $concilDefaultDuration);
-    $fullDayConcilSlots = 0;
+    $concilSlotList = [];
     for ($m = $workStartMin; $m <= $workEndMin - $concilDur; $m += $concilDur) {
         if ($m >= 720 && $m < 780) continue;
-        $fullDayConcilSlots++;
+        $slotEnd = $m + $concilDur;
+        if ($m < 720 && $slotEnd > 720) continue;
+        if ($m >= 780 && $slotEnd > $workEndMin) continue;
+        $startTimeSlot = sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+        $endTimeSlot = sprintf('%02d:%02d', intdiv($slotEnd, 60), $slotEnd % 60);
+        $concilSlotList[] = [
+            'time' => $startTimeSlot,
+            'end_time' => $endTimeSlot,
+            'duration_minutes' => $concilDur,
+            'label' => date('g:i', strtotime($startTimeSlot)) . ' - ' . date('g:i A', strtotime($endTimeSlot)),
+        ];
     }
+    $fullDayConcilSlots = count($concilSlotList);
     $concilMaxFull = min($dailyCap, $fullDayConcilSlots);
 
     $days = [];
@@ -216,10 +232,12 @@ $isTuesday = ($dayOfWeek === 2);
             'mediation_hours_start' => $medHoursStart,
             'mediation_hours_end' => $medHoursEnd,
             'mediation_venue' => $medVenue,
+            'default_venue' => $defaultVenue,
             'mediation_default_duration_min' => $medDefaultDuration,
             'mediation_max_duration_min' => $medMaxDuration,
             'conciliation_default_duration_min' => $concilDefaultDuration,
             'conciliation_max_duration_min' => $concilMaxDuration,
+            'conciliation_slots' => $concilSlotList,
             'daily_hearing_capacity' => $dailyCap,
             'effective_mediation_slots_per_day' => $medMaxSlots,
             'effective_conciliation_slots_per_day' => $concilMaxFull
@@ -390,7 +408,27 @@ if ($hearingType === 'Conciliation' && $isTuesday) {
             'venue' => $venue,
             'message' => "Mediation sessions must have target call times within the configured Mediation Session Window (" . date('g:i A', strtotime($medHoursStart)) . " – " . date('g:i A', strtotime($medHoursEnd)) . ")."
         ];
-    } else {
+    } elseif ($hearingType === 'Conciliation') {
+        require_once __DIR__ . '/../../services/OfficeLogisticsService.php';
+        $logisticsCheck = (new OfficeLogisticsService($db))->validateHearingSchedule(
+            substr($date, 0, 10) . ' ' . substr($time, 0, 5) . ':00',
+            $concilDefaultDuration,
+            'Conciliation'
+        );
+        if (empty($logisticsCheck['valid'])) {
+            $hasConflict = true;
+            $conflictData = [
+                'case_number' => '',
+                'hearing_type' => 'Operating Hours Restriction',
+                'hearing_date' => $date,
+                'start_time' => $time,
+                'end_time' => '',
+                'venue' => $venue,
+                'message' => $logisticsCheck['message']
+            ];
+        }
+    }
+    if (!$hasConflict) {
         $hearingDateTime = substr($date, 0, 10) . ' ' . substr($time, 0, 5) . ':00';
         $conflict = $summons->findMediationConflict($hearingDateTime, $venue, $caseId, null, $hearingType);
         if ($conflict) {
@@ -431,10 +469,12 @@ echo json_encode([
     'mediation_hours_start' => $medHoursStart,
     'mediation_hours_end' => $medHoursEnd,
     'mediation_venue' => $medVenue,
+    'default_venue' => $defaultVenue,
     'mediation_default_duration_min' => $medDefaultDuration,
     'mediation_max_duration_min' => $medMaxDuration,
     'conciliation_default_duration_min' => $concilDefaultDuration,
     'conciliation_max_duration_min' => $concilMaxDuration,
+    'conciliation_slots' => $windowMeta['settings']['conciliation_slots'] ?? [],
     'daily_hearing_capacity' => $dailyCap,
     'total_booked' => $totalBooked,
     'max_slots' => $maxSlots,

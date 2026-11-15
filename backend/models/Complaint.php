@@ -667,8 +667,21 @@ class Complaint
                 throw new InvalidArgumentException('Only complaint intakes marked eligible by preliminary screening may be formally docketed.');
             }
             $caseModel = new CaseModel($this->conn);
-            if ($caseModel->getDocketingError($id) === 'paanyaya_preparation_required') {
+            $docketingError = $caseModel->getDocketingError($id);
+            if ($docketingError === 'duplicate_case') {
+                $existingQuery = $this->conn->prepare('SELECT case_id, case_number FROM cases WHERE complaint_id = ? FOR UPDATE');
+                $existingQuery->execute([$id]);
+                $existingCase = $existingQuery->fetch(PDO::FETCH_ASSOC);
+                if ($existingCase) {
+                    $this->conn->commit();
+                    return ['success' => true, 'message' => 'Complaint already formally docketed.', 'case_id' => (int) $existingCase['case_id'], 'case_number' => $existingCase['case_number']];
+                }
+            }
+            if ($docketingError === 'paanyaya_preparation_required') {
                 throw new InvalidArgumentException('Continue this walk-in from Paanyaya Preparation on its intake record.');
+            }
+            if ($docketingError !== null) {
+                throw new InvalidArgumentException('This complaint is not yet authorized for formal docketing.');
             }
             if (!$caseModel->create(['complaint_id' => $id, 'case_type' => $complaint['case_type']])) {
                 throw new RuntimeException('Formal case docketing could not be completed.');

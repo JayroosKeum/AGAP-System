@@ -593,7 +593,7 @@ class HearingAttendance
                 'recommended_actions' => [
                     'Proceed with mediation/conciliation discussion.',
                     'If an agreement is reached: Draft and execute KP Form 16 (Amicable Settlement).',
-                    'If more time is needed: Schedule the next session (up to 3 mediation or conciliation sessions within the 15-day limit).',
+                    'If more time is needed: Schedule the next session (up to 2 mediation or 3 conciliation sessions within the 15-day limit).',
                     'If parties fail to agree: Elevate to Pangkat Tagapagkasundo (if currently in Mediation) or issue Certificate to File Action (CFA).'
                 ],
                 'action_keys' => ['settlement', 'reschedule', 'elevate_pangkat', 'cfa']

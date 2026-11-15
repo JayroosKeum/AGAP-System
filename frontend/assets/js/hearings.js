@@ -907,7 +907,7 @@ function updateNextSchedule() {
         type.add(new Option('Mediation outcome required', ''));
         type.disabled = true;
         help.innerHTML = `
-            <span style="color: #92400e; font-weight: 600;">Three mediation sessions are on record.</span>
+            <span style="color: #92400e; font-weight: 600;">Two mediation sessions are on record.</span>
             Record and approve the mediation outcome before referring the case to Pangkat. Conciliation cannot be scheduled from the session count alone.
         `;
         if (submitBtn) {

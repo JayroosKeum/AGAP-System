@@ -11,17 +11,38 @@ class Hearing
         $this->conn = $conn ?? (new Database())->connect();
     }
 
+    /**
+     * SQL predicate matching only operative replacement hearings (not cancelled follow-ups
+     * and not linked Show Cause hearings).
+     */
+    public static function operativeReplacementCondition(string $nextAlias = 'next_h'): string
+    {
+        return "{$nextAlias}.status NOT IN ('Cancelled', 'Office Cancelled') "
+            . "AND {$nextAlias}.hearing_type NOT IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')";
+    }
+
+    /**
+     * SQL NOT EXISTS clause ensuring a hearing is only excluded when an operative replacement supersedes it.
+     */
+    public static function nonSupersededSql(string $parentAlias = 'h', string $nextAlias = 'next_h'): string
+    {
+        return "NOT EXISTS (SELECT 1 FROM hearings {$nextAlias} "
+            . "WHERE {$nextAlias}.rescheduled_from_id = {$parentAlias}.hearing_id AND "
+            . self::operativeReplacementCondition($nextAlias) . ')';
+    }
+
     public function getAll(): array
     {
+        $opCond = self::operativeReplacementCondition('next_h');
         $stmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date,
                     h.venue, h.remarks, h.rescheduled_from_id, h.reschedule_reason,
                     h.status, h.created_at, h.updated_at,
                     CASE WHEN EXISTS (
-                        SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                        SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id AND {$opCond}
                     ) THEN 1 ELSE 0 END AS is_superseded,
                     (SELECT next_h.hearing_id FROM hearings next_h
-                     WHERE next_h.rescheduled_from_id = h.hearing_id
+                     WHERE next_h.rescheduled_from_id = h.hearing_id AND {$opCond}
                      ORDER BY next_h.created_at DESC, next_h.hearing_id DESC LIMIT 1) AS superseded_by_id,
                     c.case_number, c.case_status, c.docket_date,
                     co.complaint_number, co.complaint_title
@@ -36,15 +57,16 @@ class Hearing
 
     public function getById(int $id): array|false
     {
+        $opCond = self::operativeReplacementCondition('next_h');
         $stmt = $this->conn->prepare(
             "SELECT h.*, c.case_number, c.case_status, c.docket_date,
                     co.complaint_number, co.complaint_title,
                     TRIM(CONCAT_WS(' ', po.first_name, po.middle_name, po.last_name)) AS presiding_officer_name,
                     CASE WHEN EXISTS (
-                        SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                        SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id AND {$opCond}
                     ) THEN 1 ELSE 0 END AS is_superseded,
                     (SELECT next_h.hearing_id FROM hearings next_h
-                     WHERE next_h.rescheduled_from_id = h.hearing_id
+                     WHERE next_h.rescheduled_from_id = h.hearing_id AND {$opCond}
                      ORDER BY next_h.created_at DESC, next_h.hearing_id DESC LIMIT 1) AS superseded_by_id
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
@@ -302,15 +324,14 @@ class Hearing
      */
     public function getLatestBookedHearing(int $caseId): ?array
     {
+        $nonSup = self::nonSupersededSql('h', 'next_h');
         $stmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
                     DATE(h.hearing_date) AS hearing_day
              FROM hearings h
              WHERE h.case_id = ?
-               AND h.status != 'Cancelled'
-               AND NOT EXISTS (
-                   SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
-               )
+               AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+               AND {$nonSup}
              ORDER BY h.hearing_date DESC
              LIMIT 1"
         );
@@ -357,6 +378,7 @@ class Hearing
             $stagePredicate = 'h.hearing_type = ?';
         }
 
+        $nonSup = self::nonSupersededSql('h', 'next_h');
         if ($hearingType === 'Arbitration') {
             $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
                            DATE(h.hearing_date) AS hearing_day, c.case_number
@@ -364,10 +386,8 @@ class Hearing
                     INNER JOIN cases c ON c.case_id = h.case_id
                     WHERE h.case_id = ?
                       AND {$stagePredicate}
-                      AND h.status != 'Cancelled'
-                      AND NOT EXISTS (
-                          SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
-                      )";
+                      AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                      AND {$nonSup}";
         } else {
             $sql = "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.status,
                            DATE(h.hearing_date) AS hearing_day, c.case_number
@@ -375,10 +395,8 @@ class Hearing
                     INNER JOIN cases c ON c.case_id = h.case_id
                     WHERE h.case_id = ?
                       AND {$stagePredicate}
-                      AND h.status != 'Cancelled'
-                      AND NOT EXISTS (
-                          SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
-                      )";
+                      AND h.status NOT IN ('Cancelled', 'Office Cancelled')
+                      AND {$nonSup}";
         }
         $params = [$caseId];
         if (!in_array($hearingType, ['Mediation', 'Initial Hearing', 'Conciliation', 'Arbitration'], true)) {
@@ -514,13 +532,14 @@ class Hearing
                 : (($caseRecord['case_status'] === 'Conciliation') ? 'Conciliation' : 'Mediation');
 
             // Active mediation attempt count for this case (excluding cancelled/superseded)
+            $nonSupMed = self::nonSupersededSql('h', 'nh');
             $medQuery = $this->conn->prepare("
                 SELECT h.hearing_id, h.mediation_attempt, h.status, h.queue_status, hm.minute_id, hm.status AS minutes_status, hm.session_outcome
                 FROM hearings h
                 LEFT JOIN hearing_minutes hm ON hm.hearing_id = h.hearing_id
                 WHERE h.case_id = ? AND h.hearing_type IN ('Initial Hearing', 'Mediation')
                   AND h.status NOT IN ('Cancelled', 'Office Cancelled')
-                  AND NOT EXISTS (SELECT 1 FROM hearings nh WHERE nh.rescheduled_from_id = h.hearing_id)
+                  AND {$nonSupMed}
                 ORDER BY h.hearing_date ASC, h.hearing_id ASC
             ");
             $medQuery->execute([$data['case_id']]);
@@ -531,12 +550,17 @@ class Hearing
             $attemptExceptionReason = null;
 
             if ($expectedType === 'Mediation') {
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                $medPolicy = MediationDeadlineService::getMediationPolicy($this->conn);
+                $maxMedSessions = $medPolicy['configured_max_sessions'];
                 $nextAttempt = $activeMediationCount + 1;
-                if ($activeMediationCount >= 2) {
+                if ($activeMediationCount >= $maxMedSessions) {
                     $this->conn->rollBack();
                     return [
                         'success' => false,
-                        'message' => 'Two mediation attempts (Mediation 1 and 2) have already been conducted or scheduled for this case. Under Barangay Tumana policy (RA 7160), the maximum is 2 mediation sessions before the Punong Barangay. You must now refer the dispute to the Pangkat Tagapagkasundo (KP Form 10).'
+                        'message' => $maxMedSessions === 1
+                            ? 'Maximum of 1 mediation session has already been conducted or scheduled under the current mediation_max_sessions setting.'
+                            : 'Two mediation attempts (Mediation 1 and 2) have already been conducted or scheduled for this case. Under Barangay Tumana policy (RA 7160), the maximum is 2 mediation sessions before the Punong Barangay. You must now refer the dispute to the Pangkat Tagapagkasundo (KP Form 10).'
                     ];
                 }
 
@@ -606,10 +630,24 @@ class Hearing
                 }
             }
 
-            // Initialize clock if 1st Mediation hearing
-            if ($expectedType === 'Mediation' && empty($caseRecord['mediation_start_date'])) {
+            // Initialize clock if 1st Mediation hearing (keeps statutory clock pending before first actual meeting)
+            if ($expectedType === 'Mediation') {
                 require_once __DIR__ . '/../services/MediationDeadlineService.php';
-                (new MediationDeadlineService($this->conn))->initializeClock((int) $data['case_id'], $data['hearing_date'], $userId);
+                $dlSvc = new MediationDeadlineService($this->conn);
+                if (empty($caseRecord['mediation_start_date'])) {
+                    $dlSvc->initializeClock((int) $data['case_id'], $data['hearing_date'], $userId);
+                } else {
+                    $period = $dlSvc->resolveMediationPeriodForCase((int) $data['case_id'], $data['hearing_date']);
+                    if (!empty($period['commenced'])) {
+                        $dlSvc->syncCommencedDeadlines((int) $data['case_id'], $period);
+                    } else {
+                        $dlSvc->clearUncommencedDeadline((int) $data['case_id']);
+                    }
+                }
+            }
+            if (in_array($expectedType, ['Initial Hearing', 'Mediation'], true)) {
+                require_once __DIR__ . '/../services/DeadlineService.php';
+                $deadline = DeadlineService::deadlineForHearing($expectedType, $data['hearing_date'], $this->conn, (int) $data['case_id']);
             }
 
             // Progression date validation: cannot schedule on the same day or any prior date relative to already booked hearings.
@@ -773,7 +811,7 @@ class Hearing
                 if ($scheduled['Conciliation'] === 0) {
                     $convenedDate = substr($data['hearing_date'], 0, 10);
                     require_once __DIR__ . '/../services/MediationDeadlineService.php';
-                    $conDeadline = MediationDeadlineService::calculateDeadline($convenedDate, 15);
+                    $conDeadline = MediationDeadlineService::calculateDeadline($convenedDate, MediationDeadlineService::CONCILIATION_PERIOD_DAYS);
 
                     // Update pangkat_groups with convened_date and conciliation_deadline
                     $this->conn->prepare("
@@ -809,6 +847,14 @@ class Hearing
                 $status->execute([$data['case_id']]);
                 $complaintStatus = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Conciliation' WHERE c.case_id = ?");
                 $complaintStatus->execute([$data['case_id']]);
+                $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, started_at)
+                    VALUES (?, 'Conciliation', 'In Progress', NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = IF(stage_status = 'Completed', stage_status, 'In Progress'),
+                        started_at = COALESCE(started_at, NOW()),
+                        updated_at = CURRENT_TIMESTAMP
+                ")->execute([$data['case_id']]);
                 $history = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Conciliation', ?, ?)");
                 $history->execute([$data['case_id'], 'Case moved to conciliation when the 1st Conciliation was scheduled.', $userId]);
             } elseif ($expectedType === 'Arbitration' && $scheduled['Arbitration'] === 0) {
@@ -1035,6 +1081,22 @@ class Hearing
                 $id,
             ]);
 
+            if (in_array((string) ($data['hearing_type'] ?? ''), ['Initial Hearing', 'Mediation'], true)) {
+                require_once __DIR__ . '/../services/DeadlineService.php';
+                $deadline = DeadlineService::deadlineForHearing((string) $data['hearing_type'], $startTime, $this->conn, (int) $data['case_id']);
+                require_once __DIR__ . '/../services/MediationDeadlineService.php';
+                $dlSvc = new MediationDeadlineService($this->conn);
+                $period = $dlSvc->resolveMediationPeriodForCase((int) $data['case_id'], $startTime);
+                if (!empty($period['commenced'])) {
+                    $dlSvc->syncCommencedDeadlines((int) $data['case_id'], $period);
+                } else {
+                    $this->conn->prepare("UPDATE cases SET mediation_start_date = ?, mediation_deadline_date = NULL WHERE case_id = ?")
+                        ->execute([substr($startTime, 0, 10), (int) $data['case_id']]);
+                    $dlSvc->clearUncommencedDeadline((int) $data['case_id']);
+                    $deadline = null;
+                }
+            }
+
             if ($deadline !== null && ($data['hearing_type'] ?? '') !== 'Conciliation') {
                 $this->upsertDeadline(
                     (int) $data['case_id'],
@@ -1096,8 +1158,9 @@ class Hearing
 
     public function isSuperseded(int $hearingId): bool
     {
+        $opCond = self::operativeReplacementCondition('next_h');
         $stmt = $this->conn->prepare(
-            'SELECT EXISTS(SELECT 1 FROM hearings WHERE rescheduled_from_id = ?)'
+            "SELECT EXISTS(SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = ? AND {$opCond})"
         );
         $stmt->execute([$hearingId]);
         return (bool) $stmt->fetchColumn();
@@ -1118,6 +1181,7 @@ class Hearing
             $dateConditionDeadline = 'd.due_date = CURDATE()';
         }
 
+        $opCond = self::operativeReplacementCondition('next_h');
         $baseSql = "
         SELECT
             'hearing' AS record_type,
@@ -1152,7 +1216,7 @@ class Hearing
             h.reschedule_document_path,
             CASE
                 WHEN h.status = 'Office Cancelled' THEN 'Office Cancelled'
-                WHEN EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id) THEN 'Rescheduled'
+                WHEN EXISTS (SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id AND {$opCond}) THEN 'Rescheduled'
                 WHEN h.status = 'Cancelled' THEN 'Cancelled'
                 WHEN h.hearing_date < NOW() OR h.status = 'Completed' THEN 'Completed'
                 ELSE 'Scheduled'
@@ -1160,10 +1224,10 @@ class Hearing
             h.remarks,
             h.rescheduled_from_id,
             CASE WHEN EXISTS (
-                SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id AND {$opCond}
             ) THEN 1 ELSE 0 END AS is_superseded,
             (SELECT next_h.hearing_id FROM hearings next_h
-             WHERE next_h.rescheduled_from_id = h.hearing_id
+             WHERE next_h.rescheduled_from_id = h.hearing_id AND {$opCond}
              ORDER BY next_h.created_at DESC, next_h.hearing_id DESC LIMIT 1) AS superseded_by_id,
             CASE WHEN EXISTS (SELECT 1 FROM hearing_nonappearances hn WHERE hn.hearing_id = h.hearing_id AND hn.resolution = 'Pending') THEN '1' ELSE '0' END AS has_pending_nonappearance,
             (SELECT COUNT(*) FROM hearing_attendance ha WHERE ha.hearing_id = h.hearing_id) AS attendance_count,
@@ -2403,8 +2467,8 @@ class Hearing
             require_once __DIR__ . '/../services/MediationDeadlineService.php';
             $deadlineService = new MediationDeadlineService($this->conn);
             $formationDate = date('Y-m-d');
-            $conveningDeadline = MediationDeadlineService::calculateDeadline($formationDate, 3);
-            $pangkatDueDate = $deadlineService->calculateTargetDate($formationDate, 15);
+            $conveningDeadline = MediationDeadlineService::calculateDeadline($formationDate, MediationDeadlineService::PANGKAT_CONVENING_DAYS);
+            $pangkatDueDate = $deadlineService->calculateTargetDate($formationDate, MediationDeadlineService::CONCILIATION_PERIOD_DAYS);
             
             // Set 3-day statutory convening deadline per RA 7160 Sec. 410(c)
             $this->upsertDeadline($caseId, 'Pangkat Convening', $conveningDeadline);

@@ -35,11 +35,29 @@ class Summons
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
 
+            // Check linked formal case first — the first formal summons requires a docketed cases row.
+            $caseStmt = $this->conn->prepare('SELECT case_id, case_number, case_status FROM cases WHERE complaint_id = ? FOR UPDATE');
+            $caseStmt->execute([$complaintId]);
+            $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
+
+            require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
+            $isPreparedOrModern = PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)
+                || PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId);
+            $allowLegacyAutoCreate = !$case && !$isPreparedOrModern && !empty($mediationData['override_paanyaya']);
+
+            if (!$case && !$allowLegacyAutoCreate) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Docket this complaint into a formal case before issuing the first formal summons.'
+                ];
+            }
+
             // Enforce Paanyaya prerequisite before allowing formal summons creation
             require_once __DIR__ . '/Paanyaya.php';
             $paaModel = new Paanyaya($this->conn);
             $prereq = $paaModel->checkSummonsPrerequisite($complaintId);
-            if (!$prereq['allowed'] && empty($mediationData['override_paanyaya'])) {
+            if (!$prereq['allowed'] && !$allowLegacyAutoCreate) {
                 $this->conn->rollBack();
                 return [
                     'success' => false,
@@ -105,12 +123,19 @@ class Summons
 
             $hearingDateTime = substr($medDate, 0, 10) . ' ' . substr($medTime, 0, 5) . ':00';
 
-            // Check if case exists or needs to be created
+            // Resolve locked case row (already verified above unless legacy fixture auto-created)
             $caseStmt = $this->conn->prepare('SELECT case_id, case_number, case_status FROM cases WHERE complaint_id = ? FOR UPDATE');
             $caseStmt->execute([$complaintId]);
             $case = $caseStmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$case) {
+                if (!$allowLegacyAutoCreate) {
+                    $this->conn->rollBack();
+                    return [
+                        'success' => false,
+                        'message' => 'Docket this complaint into a formal case before issuing the first formal summons.'
+                    ];
+                }
                 // Must locate active Administrator as automatic Head
                 $adminStmt = $this->conn->prepare(
                     "SELECT u.user_id
@@ -202,30 +227,34 @@ class Summons
                 $updateHearing->execute([$hearingDateTime, $hearingEndTime, $medDefaultDur, $venue, $remarks, $hearingId]);
             }
 
-            // Set case status to Mediation and activate the 15-day mediation clock
-            $updateCase = $this->conn->prepare(
-                "UPDATE cases
-                 SET case_status = 'Mediation',
-                     mediation_start_date = COALESCE(mediation_start_date, ?),
-                     mediation_deadline_date = ?,
-                     is_paused = 0,
-                     paused_at = NULL,
-                     resumed_at = NULL,
-                     pause_reason = NULL,
-                     pause_notes = NULL
-                 WHERE case_id = ?"
-            );
-            $updateCase->execute([$startDate, $deadlineDate, $caseId]);
+            // Set case status to Mediation without overriding a commenced statutory clock
+            require_once __DIR__ . '/../services/MediationDeadlineService.php';
+            $dlSvc = new MediationDeadlineService($this->conn);
+            $period = $dlSvc->resolveMediationPeriodForCase($caseId, $startDate);
+
+            if (!empty($period['commenced'])) {
+                $updateCase = $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?");
+                $updateCase->execute([$caseId]);
+                $dlSvc->syncCommencedDeadlines($caseId, $period);
+            } else {
+                $updateCase = $this->conn->prepare(
+                    "UPDATE cases
+                     SET case_status = 'Mediation',
+                         mediation_start_date = COALESCE(mediation_start_date, ?),
+                         mediation_deadline_date = NULL,
+                         is_paused = 0,
+                         paused_at = NULL,
+                         resumed_at = NULL,
+                         pause_reason = NULL,
+                         pause_notes = NULL
+                     WHERE case_id = ?"
+                );
+                $updateCase->execute([$startDate, $caseId]);
+                $dlSvc->clearUncommencedDeadline($caseId);
+            }
 
             $updateComplaint = $this->conn->prepare("UPDATE complaints SET status = 'Mediation' WHERE complaint_id = ?");
             $updateComplaint->execute([$complaintId]);
-
-            $deadline = $this->conn->prepare(
-                "INSERT INTO case_deadlines (case_id, deadline_type, due_date, status)
-                 VALUES (?, 'Mediation Period', ?, 'Pending')
-                 ON DUPLICATE KEY UPDATE due_date = VALUES(due_date), status = IF(status = 'Completed', 'Completed', 'Pending')"
-            );
-            $deadline->execute([$caseId, $deadlineDate]);
 
             // Template ID for KP Form 8 (Notice of Hearing)
             $kp8TplStmt = $this->conn->prepare(

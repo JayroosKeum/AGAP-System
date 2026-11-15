@@ -124,7 +124,10 @@ class PangkatService
             $failureReason = trim((string) ($data['party_agreement_failure_reason'] ?? ''));
             $selectionNotes = trim((string) ($data['selection_notes'] ?? ''));
             $formationDate = !empty($data['formation_date']) ? date('Y-m-d', strtotime($data['formation_date'])) : date('Y-m-d');
-            $conveningDeadline = MediationDeadlineService::calculateDeadline($formationDate, 3);
+            $conveningDeadline = MediationDeadlineService::calculateDeadline(
+                $formationDate,
+                MediationDeadlineService::PANGKAT_CONVENING_DAYS
+            );
 
             $chairmanId = !empty($data['chairman_id']) ? (int) $data['chairman_id'] : null;
             $secretaryId = !empty($data['secretary_id']) ? (int) $data['secretary_id'] : null;

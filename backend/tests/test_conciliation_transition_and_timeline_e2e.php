@@ -14,10 +14,13 @@ require_once __DIR__ . '/../models/Summons.php';
 require_once __DIR__ . '/../models/Hearing.php';
 require_once __DIR__ . '/../models/HearingMinutes.php';
 require_once __DIR__ . '/../models/CaseStage.php';
+require_once __DIR__ . '/../models/Paanyaya.php';
 require_once __DIR__ . '/../models/Document.php';
 require_once __DIR__ . '/../services/KpFormService.php';
 require_once __DIR__ . '/../services/PDFService.php';
 require_once __DIR__ . '/../services/PangkatService.php';
+require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
+require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
 require_once __DIR__ . '/../services/SummonDeliveryService.php';
 require_once __DIR__ . '/../controllers/GPSController.php';
 require_once __DIR__ . '/TestDataCleanup.php';
@@ -111,21 +114,76 @@ try {
     testAssert($testComplaintId > 0, "Test complaint created with ID: {$testComplaintId} " . ($compCreate['message'] ?? ''));
     $cleanup->trackComplaint($testComplaintId);
 
+    // Complete screening, prepared Paanyaya service (failed attempt 1 + delivered retry), dialogue escalation, and formal docketing
+    $db->prepare("
+        UPDATE complaints
+        SET status = 'Accepted', screening_decision = 'Eligible', liso_reviewed_at = NOW(), liso_reviewed_by = ?
+        WHERE complaint_id = ?
+    ")->execute([$lisoId, $testComplaintId]);
+
+    $prepSvc = new PaanyayaPreparationService($db);
+    $paanyayaDeliverySvc = new PaanyayaServiceDelivery($db);
+    $paanyayaApptDate = date('Y-m-d', strtotime('+2 days'));
+    $prepSvc->save($testComplaintId, 1, 'generate', [
+        'appointment_date' => $paanyayaApptDate,
+        'appointment_time' => '10:00',
+        'venue' => 'Barangay Session Hall',
+        'verify_parties' => '1',
+        'party_version' => PaanyayaPreparationService::partyVersion($prepSvc->parties($testComplaintId)),
+    ], 1);
+    $paanyayaPrepRow = $prepSvc->intake($testComplaintId, 1);
+    $paanyayaVersion = (string) ($paanyayaPrepRow['document_version'] ?? '');
+    $prepSvc->save($testComplaintId, 1, 'ready', ['document_version' => $paanyayaVersion], 1);
+
+    $serverId = (int) ($db->query("SELECT user_id FROM users WHERE role_id = 4 AND status = 'Active' ORDER BY user_id ASC LIMIT 1")->fetchColumn() ?: 1);
+    if ($serverId === 1) {
+        // Ensure user 1 can act or pick an active server
+        $serversList = $paanyayaDeliverySvc->servers();
+        if (!empty($serversList[0]['user_id'])) {
+            $serverId = (int) $serversList[0]['user_id'];
+        }
+    }
+    $paanyayaDeliverySvc->release($testComplaintId, 1, $serverId, $paanyayaVersion, 1);
+    $firstPaanyayaAttempt = PaanyayaServiceDelivery::latestAttempt($db, $testComplaintId, 1);
+    $paanyayaDeliverySvc->record((int) $firstPaanyayaAttempt['attempt_id'], $serverId, [
+        'outcome' => 'Not Delivered',
+        'notes' => 'Recipient temporarily out on first Paanyaya service visit'
+    ], []);
+    $paanyayaDeliverySvc->release($testComplaintId, 1, $serverId, $paanyayaVersion, 1);
+    $secondPaanyayaAttempt = PaanyayaServiceDelivery::latestAttempt($db, $testComplaintId, 1);
+    $paanyayaDeliverySvc->record((int) $secondPaanyayaAttempt['attempt_id'], $serverId, [
+        'outcome' => 'Delivered',
+        'notes' => 'Personally received on retry'
+    ], []);
+
+    $paanyayaModel = new Paanyaya($db);
+    $dialogueRes = $paanyayaModel->recordMinutes($testComplaintId, 'Paanyaya 1', [
+        'dialogue_date' => date('Y-m-d\TH:i'),
+        'document_version' => $paanyayaVersion,
+        'complainant_attended' => 'Present',
+        'respondent_attended' => 'Present',
+        'outcome' => 'Escalate_Mediation',
+        'discussion_summary' => 'Parties appeared; complainant opted for formal mediation docketing.',
+    ], 1);
+    testAssert(!empty($dialogueRes['success']), "Paanyaya dialogue escalation saved before docketing: " . ($dialogueRes['message'] ?? ''));
+
+    $docketRes = $complaintModel->docket($testComplaintId, 1);
+    testAssert(!empty($docketRes['success']) && !empty($docketRes['case_id']), "Complaint formally docketed before issuing 1st summons: " . ($docketRes['message'] ?? ''));
+
     // Find open Tuesday slot
     $targetTuesday = new DateTime('next Tuesday + 7 days');
     $medDateStr = $targetTuesday->format('Y-m-d');
 
-    // Docket into active mediation
+    // Issue 1st Formal Summons after formal docketing
     $issueRes = $summonsModel->issueFirstSummon($testComplaintId, 1, [
         'mediation_date' => $medDateStr,
         'mediation_time' => '15:00',
-        'venue' => 'Lupon Court Room',
-        'override_paanyaya' => true
+        'venue' => 'Lupon Court Room'
     ]);
     if (empty($issueRes['success'])) {
         var_dump($issueRes);
     }
-    testAssert(!empty($issueRes['success']), "Case successfully docketed into Mediation (Case #" . ($issueRes['case_number'] ?? '') . ")");
+    testAssert(!empty($issueRes['success']), "Case successfully issued 1st Formal Summons into Mediation (Case #" . ($issueRes['case_number'] ?? '') . ")");
     $testCaseId = (int)$issueRes['case_id'];
 
     // Docketing automatically created 1st Mediation summon attempt (Attempt 1).
@@ -300,6 +358,14 @@ try {
     testAssert($stage0['stage_name'] === 'Stage 0: Paanyaya', "Stage 0 is Paanyaya");
     testAssert($stage1['stage_name'] === 'Stage 1: Mediation', "Stage 1 is Mediation");
     testAssert($stage2['stage_name'] === 'Stage 2: Conciliation', "Stage 2 is Conciliation");
+
+    // Verify Stage 0 contains real saved Paanyaya entry, prior attempts with original appointment & results, and dialogue outcome
+    testAssert(!empty($stage0['items']) && count($stage0['items']) >= 3, "Stage 0 (Paanyaya) contains real invitation, prior service attempts, and dialogue entries (count: " . count($stage0['items'] ?? []) . ")");
+    $stage0AttemptStatuses = array_map(static fn(array $it): string => (string) ($it['delivery_status'] ?? ''), $stage0['items']);
+    $stage0AttemptDates = array_map(static fn(array $it): string => substr((string) ($it['appointment_at'] ?? ''), 0, 10), $stage0['items']);
+    testAssert(in_array('Not Delivered', $stage0AttemptStatuses, true) && in_array('Delivered', $stage0AttemptStatuses, true), "Stage 0 preserves both prior failed ('Not Delivered') and retry ('Delivered') Paanyaya attempts");
+    testAssert(in_array($paanyayaApptDate, $stage0AttemptDates, true), "Stage 0 preserves each prior attempt's original appointment date ({$paanyayaApptDate})");
+    testAssert(!empty(array_filter($stage0['items'], static fn(array $it): bool => ($it['document_code'] ?? '') === 'Paanyaya Dialogue #1')), "Stage 0 includes the recorded Paanyaya dialogue outcome");
 
     // Check Stage 1 (Mediation)
     testAssert(!empty($stage1['items']), "Stage 1 (Mediation) has service records");

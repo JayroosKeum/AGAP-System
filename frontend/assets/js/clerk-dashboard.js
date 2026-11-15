@@ -135,7 +135,9 @@
 
         const data = await res.json().catch(() => ({ success: false, message: 'Server communication error.' }));
         if (!res.ok || !data.success) {
-            throw new Error(data.message || `Request failed with status ${res.status}`);
+            const err = new Error(data.message || `Request failed with status ${res.status}`);
+            err.payload = data;
+            throw err;
         }
         return data;
     };
@@ -314,6 +316,11 @@
                         id: rec.paanyaya_id || rec.id,
                         complaint_id: rec.complaint_id,
                         session_id: rec.session_id,
+                        invitation_number: Number(rec.invitation_number || rec.attempt_number || 1),
+                        document_version: rec.prepared_document_version || rec.document_version || null,
+                        is_prepared: Boolean(rec.is_prepared),
+                        service_verified: Boolean(rec.service_verified),
+                        dialogue_url: rec.dialogue_url || null,
                         queue_date: String(rec.scheduled_date || rec.hearing_date || activeDate).slice(0, 10),
                         queue_order: Number(rec.queue_order || 0),
                         time: rec.scheduled_time || rec.hearing_date || rec.scheduled_date,
@@ -378,6 +385,11 @@
                     id: p.paanyaya_id,
                     complaint_id: p.complaint_id,
                     session_id: p.session_id,
+                    invitation_number: Number(p.invitation_number || p.attempt_number || 1),
+                    document_version: p.prepared_document_version || p.document_version || null,
+                    is_prepared: Boolean(p.is_prepared),
+                    service_verified: Boolean(p.service_verified),
+                    dialogue_url: p.dialogue_url || null,
                     queue_date: String(p.scheduled_date || activeDate || getLocalDate()).slice(0, 10),
                     queue_order: Number(p.queue_order || 0),
                     time: p.scheduled_time || p.scheduled_date,
@@ -584,6 +596,10 @@
                         await postQuickAction({
                             action: 'mark_paanyaya_attendance',
                             paanyaya_id: item.id,
+                            complaint_id: item.complaint_id,
+                            invitation_number: item.invitation_number,
+                            document_version: item.document_version,
+                            session_id: item.session_id,
                             status: 'Present'
                         });
                     } else {
@@ -620,6 +636,10 @@
                         await postQuickAction({
                             action: 'mark_paanyaya_attendance',
                             paanyaya_id: item.id,
+                            complaint_id: item.complaint_id,
+                            invitation_number: item.invitation_number,
+                            document_version: item.document_version,
+                            session_id: item.session_id,
                             status: 'Absent'
                         });
                     } else {
@@ -662,6 +682,25 @@
                 outcomeLabel.textContent = '1-Click Outcome:';
                 outcomeGroup.appendChild(outcomeLabel);
 
+                const buildPaanyayaOutcomePayload = (outcomeLabel) => ({
+                    action: 'log_paanyaya_outcome',
+                    paanyaya_id: item.id,
+                    complaint_id: item.complaint_id,
+                    invitation_number: item.invitation_number,
+                    document_version: item.document_version,
+                    session_id: item.session_id,
+                    outcome: outcomeLabel
+                });
+                const handlePaanyayaOutcomeError = (err, btn) => {
+                    if (err?.payload?.requires_dialogue_form && err?.payload?.dialogue_url) {
+                        showToast(err.message, false);
+                        window.location.href = err.payload.dialogue_url;
+                        return;
+                    }
+                    showToast(err.message, true);
+                    btn.disabled = false;
+                };
+
                 // 1. Settled Privately
                 const btnSettled = document.createElement('button');
                 btnSettled.type = 'button';
@@ -672,17 +711,11 @@
                     if (!confirm(`I-log ang 'Settled Privately' para sa Paanyaya na ito?`)) return;
                     btnSettled.disabled = true;
                     try {
-                        await postQuickAction({
-                            action: 'log_paanyaya_outcome',
-                            paanyaya_id: item.id,
-                            complaint_id: item.complaint_id,
-                            outcome: 'Settled Privately'
-                        });
+                        await postQuickAction(buildPaanyayaOutcomePayload('Settled Privately'));
                         showToast(`Logged outcome: Settled Privately!`);
                         await fetchDashboardData();
                     } catch (err) {
-                        showToast(err.message, true);
-                        btnSettled.disabled = false;
+                        handlePaanyayaOutcomeError(err, btnSettled);
                     }
                 });
                 outcomeGroup.appendChild(btnSettled);
@@ -697,17 +730,11 @@
                     if (!confirm(`Mag-isyu ng 2nd Paanyaya invitation para sa hindi sumipot na partido?`)) return;
                     btnRetry.disabled = true;
                     try {
-                        await postQuickAction({
-                            action: 'log_paanyaya_outcome',
-                            paanyaya_id: item.id,
-                            complaint_id: item.complaint_id,
-                            outcome: 'Issue 2nd Paanyaya'
-                        });
+                        await postQuickAction(buildPaanyayaOutcomePayload('Issue 2nd Paanyaya'));
                         showToast(`Logged outcome: Issue 2nd Paanyaya!`);
                         await fetchDashboardData();
                     } catch (err) {
-                        showToast(err.message, true);
-                        btnRetry.disabled = false;
+                        handlePaanyayaOutcomeError(err, btnRetry);
                     }
                 });
                 outcomeGroup.appendChild(btnRetry);
@@ -722,17 +749,11 @@
                     if (!confirm(`I-escalate ang reklamong ito mula sa Paanyaya patungo sa pormal na Mediation?`)) return;
                     btnEscalate.disabled = true;
                     try {
-                        await postQuickAction({
-                            action: 'log_paanyaya_outcome',
-                            paanyaya_id: item.id,
-                            complaint_id: item.complaint_id,
-                            outcome: 'Escalate to Mediation'
-                        });
+                        await postQuickAction(buildPaanyayaOutcomePayload('Escalate to Mediation'));
                         showToast(`Escalated to Mediation successfully!`);
                         await fetchDashboardData();
                     } catch (err) {
-                        showToast(err.message, true);
-                        btnEscalate.disabled = false;
+                        handlePaanyayaOutcomeError(err, btnEscalate);
                     }
                 });
                 outcomeGroup.appendChild(btnEscalate);

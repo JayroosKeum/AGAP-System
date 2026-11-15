@@ -233,38 +233,43 @@ class OfficeLogisticsService
                 ];
             }
             if ($dayOfWeek === 2) {
-                // Tuesday morning only: 8:00 AM – 12:00 PM
-                if ($hour < 8 || $hour >= 12) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Conciliation hearings on Tuesdays are permitted only in the morning (8:00 AM – 12:00 PM). Tuesday afternoons (1:00 PM – 5:00 PM) are exclusively reserved for Formal Mediation in the Lupon Court Room.'
-                    ];
-                }
-            } else {
-                // Mon, Wed, Thu, Fri: 8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM
-                if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                    return [
-                        'valid' => false,
-                        'message' => 'Conciliation hearings must be during regular office hours (8:00 AM – 12:00 PM & 1:00 PM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'
-                    ];
-                }
+                return [
+                    'valid' => false,
+                    'message' => 'Conciliation hearings cannot be scheduled on Tuesdays; select Monday, Wednesday, Thursday, or Friday.'
+                ];
+            }
+
+            $workStart = (string) $this->getSetting('working_hours_start', '08:00');
+            $workEnd = (string) $this->getSetting('working_hours_end', '17:00');
+            $timeStr = $start->format('H:i');
+            $endTimeStr = $end->format('H:i');
+            $workStartFmt = date('g:i A', strtotime($workStart));
+            $workEndFmt = date('g:i A', strtotime($workEnd));
+
+            if ($timeStr >= '12:00' && $timeStr < '13:00') {
+                return [
+                    'valid' => false,
+                    'message' => 'Conciliation hearings cannot be scheduled during lunch break (12:00 PM – 1:00 PM).'
+                ];
+            }
+            if ($timeStr < $workStart || $timeStr >= $workEnd) {
+                return [
+                    'valid' => false,
+                    'message' => "Conciliation hearings must be during regular office hours ({$workStartFmt} – 12:00 PM & 1:00 PM – {$workEndFmt}, excluding 12:00 PM – 1:00 PM lunch break)."
+                ];
             }
             if ($hour < 12) {
-                $endHour = (int) $end->format('H');
-                $endMin = (int) $end->format('i');
-                if ($endHour > 12 || ($endHour === 12 && $endMin > 0)) {
+                if ($endTimeStr > '12:00') {
                     return [
                         'valid' => false,
                         'message' => 'Morning conciliation hearings must conclude by 12:00 PM for lunch break.'
                     ];
                 }
             } else {
-                $endHour = (int) $end->format('H');
-                $endMin = (int) $end->format('i');
-                if ($endHour > 17 || ($endHour === 17 && $endMin > 0)) {
+                if ($endTimeStr > $workEnd) {
                     return [
                         'valid' => false,
-                        'message' => 'Afternoon conciliation hearings must conclude by 5:00 PM.'
+                        'message' => "Afternoon conciliation hearings must conclude by {$workEndFmt}."
                     ];
                 }
             }
@@ -463,7 +468,10 @@ class OfficeLogisticsService
             WHERE (h.presiding_officer_id = ? OR h.substitute_presider_id = ? OR ca.member_id = ? OR pm.member_id = ?)
               AND h.status NOT IN ('Cancelled', 'Office Cancelled')
               AND NOT EXISTS (
-                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = h.hearing_id
+                  SELECT 1 FROM hearings next_h
+                  WHERE next_h.rescheduled_from_id = h.hearing_id
+                    AND next_h.status NOT IN ('Cancelled', 'Office Cancelled')
+                    AND next_h.hearing_type NOT IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
               )
               AND (
                   CASE 
@@ -602,7 +610,10 @@ class OfficeLogisticsService
             WHERE case_id = ?
               AND status NOT IN ('Cancelled', 'Office Cancelled')
               AND NOT EXISTS (
-                  SELECT 1 FROM hearings next_h WHERE next_h.rescheduled_from_id = hearings.hearing_id
+                  SELECT 1 FROM hearings next_h
+                  WHERE next_h.rescheduled_from_id = hearings.hearing_id
+                    AND next_h.status NOT IN ('Cancelled', 'Office Cancelled')
+                    AND next_h.hearing_type NOT IN ('Show Cause (Complainant)', 'Show Cause (Respondent)')
               )
               AND (
                   CASE 
@@ -819,6 +830,15 @@ class OfficeLogisticsService
     public static function getDefaultVenue(string $hearingType): string
     {
         return 'Lupon Court Room';
+    }
+
+    /**
+     * Returns configured default hearing venue from system_settings, with stage fallback.
+     */
+    public function getConfiguredDefaultVenue(string $hearingType = 'Mediation'): string
+    {
+        $configured = trim((string) $this->getSetting('default_hearing_venue', ''));
+        return $configured !== '' ? $configured : self::getDefaultVenue($hearingType);
     }
 
     /**

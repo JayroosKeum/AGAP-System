@@ -19,19 +19,33 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
     exit;
 }
 
+require_once '../../config/database.php';
+
 $complaintId = filter_var($_POST['complaint_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-if (!$complaintId && !empty($_POST['case_id'])) {
-    $caseId = (int) $_POST['case_id'];
-    require_once '../../config/database.php';
-    $db = (new Database())->connect();
+$postedCaseId = filter_var($_POST['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$db = (new Database())->connect();
+
+if (!$complaintId && $postedCaseId) {
     $stmt = $db->prepare('SELECT complaint_id FROM cases WHERE case_id = ?');
-    $stmt->execute([$caseId]);
+    $stmt->execute([$postedCaseId]);
     $complaintId = (int) $stmt->fetchColumn();
 }
 
 if (!$complaintId) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'A valid complaint ID is required to issue a summons.']);
+    exit;
+}
+
+$caseCheckStmt = $db->prepare('SELECT case_id FROM cases WHERE complaint_id = ? LIMIT 1');
+$caseCheckStmt->execute([(int) $complaintId]);
+$linkedCaseId = (int) $caseCheckStmt->fetchColumn();
+if ($linkedCaseId <= 0 || ($postedCaseId && $postedCaseId !== $linkedCaseId)) {
+    http_response_code(422);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Docket this complaint into a formal case before issuing the first formal summons.'
+    ]);
     exit;
 }
 
