@@ -347,14 +347,33 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         }
 
         async function docketEligibleIntake(complaintId) {
+            if (window.__agapDocketIntakeSubmitting) return;
             if (!window.confirm('Create the formal KP case docket for this eligible intake?')) return;
-            const form = new FormData();
-            form.append('complaint_id', complaintId);
-            const response = await fetch('../../../backend/api/complaints/docket.php', { method: 'POST', headers: { 'X-CSRF-Token': window.agapCsrfToken || '' }, body: form });
-            const result = await response.json();
-            if (!result.success) { window.agapNotify?.(result.message || 'Unable to docket this intake.', 'error'); return; }
-            window.agapNotify?.(`Formal case ${result.case_number} created.`, 'success');
-            window.location.reload();
+            window.__agapDocketIntakeSubmitting = true;
+            const activeBtn = window.event?.target?.closest?.('button') || document.querySelector('[onclick*="docketEligibleIntake"]');
+            const originalText = activeBtn ? activeBtn.textContent : '';
+            if (activeBtn) {
+                activeBtn.disabled = true;
+                activeBtn.textContent = 'Docketing...';
+            }
+            try {
+                const form = new FormData();
+                form.append('complaint_id', complaintId);
+                const response = await fetch('../../../backend/api/complaints/docket.php', { method: 'POST', headers: { 'X-CSRF-Token': window.agapCsrfToken || '' }, body: form });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || 'Unable to docket this intake.');
+                }
+                window.agapNotify?.(`Formal case ${result.case_number} created.`, 'success');
+                window.location.reload();
+            } catch (error) {
+                window.__agapDocketIntakeSubmitting = false;
+                if (activeBtn) {
+                    activeBtn.disabled = false;
+                    if (originalText) activeBtn.textContent = originalText;
+                }
+                window.agapNotify?.(error.message || 'Unable to docket this intake.', 'error');
+            }
         }
         </script>
 

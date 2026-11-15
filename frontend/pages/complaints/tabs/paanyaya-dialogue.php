@@ -20,7 +20,7 @@ $dialogueStatus = $preparation['complaint_status'];
         <?php if ($paanyayaMinutes['complainant_choice'] === 'Request_Paanyaya_2' && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
             <a href="#paanyaya-invitation-2">Continue to the second invitation</a>
         <?php elseif ($paanyayaMinutes['complainant_choice'] === 'Escalate_Mediation' && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
-            <form method="post" action="<?= $dialogueEndpoint ?>">
+            <form method="post" action="<?= $dialogueEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Creating formal docket...';}">
                 <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                 <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                 <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
@@ -31,7 +31,7 @@ $dialogueStatus = $preparation['complaint_status'];
             <a class="btn-case-primary" href="?id=<?= $complaintId ?>&amp;tab=mediation">Open mediation on this complaint</a>
         <?php endif; ?>
     <?php elseif ($dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
-        <form method="post" action="<?= $dialogueEndpoint ?>">
+        <form method="post" action="<?= $dialogueEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Saving dialogue minutes...';}">
             <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
             <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
             <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">

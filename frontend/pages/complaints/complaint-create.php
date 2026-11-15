@@ -148,7 +148,7 @@ $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 $old = $complaintFlash['old'] ?? [];
 unset($_SESSION['complaint_flash']);
 
-$escalatePaanyayaId = (int)($_GET['escalate_paanyaya_id'] ?? ($_GET['paanyaya_id'] ?? (filter_input(INPUT_GET, 'escalate_paanyaya_id', FILTER_VALIDATE_INT) ?: 0)));
+$escalatePaanyayaId = $isResidentPortal ? 0 : (int) ($_GET['escalate_paanyaya_id'] ?? $_GET['paanyaya_id'] ?? 0);
 $escalatePaanyaya = null;
 if ($escalatePaanyayaId > 0) {
     $epStmt = $db->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? LIMIT 1');

@@ -705,21 +705,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const caseType = String(row.case_type || 'Civil');
         const caseTypeClass = caseType.toLowerCase() === 'criminal' ? 'badge-type-criminal' : 'badge-type-civil';
 
-        const isPaanyaya = false;
+        const rowStatus = String(row.complaint_status || row.status || '');
+        const caseStatusVal = String(row.case_status || '');
+        const hasCase = Boolean(row.case_id);
+        const isPaanyaya = !hasCase && (
+            rowStatus.includes('Paanyaya') ||
+            caseStatusVal.includes('Paanyaya') ||
+            row.lifecycle_status === 'Paanyaya' ||
+            (Number(row.paanyaya_count || 0) > 0 && !['Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA', 'CFA Issued', 'Settled', 'Resolved'].includes(rowStatus))
+        );
 
         // 1. Case No. / Complaint Reference ID (with small icon badge matching list reference)
         const docIconSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
         let caseNumberHtml;
-        if (!row.case_id && row.complaint_number) {
+        if (!hasCase && (row.intake_reference || row.complaint_number)) {
+            const refLabel = String(row.intake_reference || row.complaint_number);
             caseNumberHtml = `
-                <div class="agap-rec-id-wrap" title="Complaint Reference ID">
-                    <span class="agap-rec-icon is-blue">${docIconSvg}</span>
-                    <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(String(row.complaint_number))}</a>
+                <div class="agap-rec-id-wrap" title="${isPaanyaya ? 'Pre-Docketed Paanyaya Reference' : 'Complaint Reference ID'}">
+                    <span class="agap-rec-icon ${isPaanyaya ? 'is-amber' : 'is-blue'}">${docIconSvg}</span>
+                    <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(refLabel)}</a>
                 </div>
             `;
         } else if (isPaanyaya) {
             const formatPaanyayaDisplay = (cNum, compId, dt) => {
                 if (cNum && String(cNum).startsWith('P-')) return String(cNum);
+                if (cNum && String(cNum).startsWith('INT-')) return String(cNum);
                 const d = dt ? new Date(dt) : new Date();
                 const mm = String(d.getMonth() + 1).padStart(2, '0');
                 const ss = String(compId || 1).padStart(2, '0');
@@ -733,9 +743,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(displayCaseNum)}</a>
                 </div>
             `;
-        } else {
+        } else if (hasCase) {
             const formatDocketDisplay = (cNum, compId, dt) => {
-                if (cNum && !String(cNum).startsWith('CMP-') && !String(cNum).startsWith('P-')) return String(cNum);
+                if (cNum && !String(cNum).startsWith('CMP-') && !String(cNum).startsWith('P-') && !String(cNum).startsWith('INT-')) return String(cNum);
                 const d = dt ? new Date(dt) : new Date();
                 const mm = String(d.getMonth() + 1).padStart(2, '0');
                 const ss = String(compId || 1).padStart(2, '0');
@@ -747,6 +757,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="agap-rec-id-wrap" title="Docket / Case Number">
                     <span class="agap-rec-icon">${docIconSvg}</span>
                     <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(displayCaseNum)}</a>
+                </div>
+            `;
+        } else {
+            const fallbackRef = `INT-${new Date().getFullYear()}-${String(id).padStart(6, '0')}`;
+            caseNumberHtml = `
+                <div class="agap-rec-id-wrap" title="Complaint Reference ID">
+                    <span class="agap-rec-icon is-blue">${docIconSvg}</span>
+                    <a href="complaint-details.php?id=${id}" class="agap-rec-id-text">${escapeHtml(fallbackRef)}</a>
                 </div>
             `;
         }
@@ -818,12 +836,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else if (row.lifecycle_status === 'CFA' || row.status === 'CFA Issued' || row.case_status === 'CFA Issued') {
                 labelsToRender = ['CFA'];
+            } else if (isPaanyaya) {
+                labelsToRender = [row.current_stage || ((Number(row.paanyaya_attempt || 1) >= 2 || rowStatus.includes('2nd')) ? '2nd Paanyaya' : '1st Paanyaya')];
+            } else if (!hasCase && row.lifecycle_status === 'Verification') {
+                labelsToRender = [row.current_stage || rowStatus || 'Under Review'];
             } else if (row.lifecycle_status && row.lifecycle_status !== 'Resolution / Closed') {
-                labelsToRender = [row.lifecycle_status];
-            } else if (!row.case_id || isPaanyaya) {
-                labelsToRender = ['1st Mediation'];
+                labelsToRender = [row.current_stage || row.lifecycle_status];
             } else {
-                labelsToRender = ['1st Mediation'];
+                labelsToRender = [hasCase ? '1st Mediation' : (rowStatus || 'Under Review')];
             }
         }
 

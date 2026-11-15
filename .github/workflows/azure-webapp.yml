@@ -50,19 +50,31 @@ jobs:
           node --check frontend/assets/js/docket-drag-schedule.js
           node --check frontend/assets/js/dashboard.js
           node --check frontend/assets/js/clerk-dashboard.js
+          node --check frontend/assets/js/complaints.js
+          node --check frontend/assets/js/search.js
+          bash -n .github/scripts/upgrade-azure-database.sh
 
       - name: Import canonical schema and verify upgrade migrations
         env:
           MYSQL_PWD: ''
+          DB_HOST: '127.0.0.1'
+          DB_PORT: '3306'
+          DB_NAME: 'agap_upgrade_test'
+          DB_USER: 'root'
+          DB_PASS: ''
         run: |
           sed -e 's/`agap_db`/`agap_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_test/' -e 's/USE agap_db/USE agap_test/' database/schema.sql > /tmp/agap_test_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_test_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root -e "CREATE DATABASE IF NOT EXISTS agap_upgrade_test;"
-          sed -e 's/`agap_db`/`agap_upgrade_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_upgrade_test/' -e 's/USE agap_db/USE agap_upgrade_test/' database/schema.sql > /tmp/agap_upgrade_schema.sql
+          sed -e 's/`agap_db`/`agap_upgrade_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_upgrade_test/' -e 's/USE agap_db/USE agap_upgrade_test/' -e '/parent_paanyaya_id INT UNSIGNED NULL,/d' -e '/KEY idx_paanyayas_parent (parent_paanyaya_id),/d' database/schema.sql > /tmp/agap_upgrade_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_upgrade_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_002_mediation_pause_decisions.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_003_preserve_show_cause_and_cfa_decisions.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_004_order4_settlement_arbitration_transmittal.sql
+          php tests/verify_paanyaya_upgrade.php seed
+          php .github/scripts/apply-release-migrations.php
+          php .github/scripts/apply-release-migrations.php
+          php tests/verify_paanyaya_upgrade.php verify
           mysql -h 127.0.0.1 -P 3306 -u root -e "DROP DATABASE agap_upgrade_test;"
           rm -f /tmp/agap_test_schema.sql /tmp/agap_upgrade_schema.sql
 
@@ -75,10 +87,6 @@ jobs:
           DB_PASS: ''
           PHP_BINARY: 'php'
         run: npm test
-
-      - name: Production migration prerequisite notice
-        run: |
-          echo "::notice::Production Prerequisite: Ensure database/migrations/20261115_002, 20261115_003, and 20261115_004_order4_settlement_arbitration_transmittal.sql are applied via the authorized production migration procedure."
 
       # Deploy only application code and runtime dependencies. Runtime user files
       # are kept on the mounted Azure Files share at /home/site/wwwroot/storage.
@@ -125,12 +133,18 @@ jobs:
 
   deploy:
     needs: test-and-package
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: agap-azure-production
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download verified release artifact
         uses: actions/download-artifact@v4
         with:
@@ -144,9 +158,21 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_DFC2C15D65784E45A8ED28731128DA80 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_BFA18332F3314BB2B3975BC75386ABD2 }}
 
+      - name: Apply and verify production database migrations
+        id: schema
+        run: bash .github/scripts/upgrade-azure-database.sh
+
       - name: Deploy release package to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'AGAP'
           slot-name: 'Production'
           package: release
+
+      - name: Smoke-test production login page
+        env:
+          APP_URL: ${{ steps.schema.outputs.url }}
+        run: |
+          curl --fail --silent --show-error --location --retry 5 --retry-all-errors --max-time 20 \
+            "$APP_URL/frontend/pages/auth/login.php" --output "$RUNNER_TEMP/agap-login.html"
+          grep -qi 'AGAP' "$RUNNER_TEMP/agap-login.html"

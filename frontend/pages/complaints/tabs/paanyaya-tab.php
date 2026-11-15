@@ -1011,11 +1011,16 @@ async function handleSavePaanyaya(e) {
 // Handle Progression Engine Submit via AJAX
 async function handleProgressionSubmit(e) {
     e.preventDefault();
-    const btn = document.getElementById('btnConfirmProgression');
-    btn.disabled = true;
-    btn.textContent = 'Processing Outcome...';
-
     const form = document.getElementById('progressionEngineForm');
+    const btn = document.getElementById('btnConfirmProgression');
+    if (form?.dataset.submitting === '1' || btn?.disabled) return;
+    if (form) form.dataset.submitting = '1';
+    const originalText = btn ? btn.textContent : 'Confirm Attendance & Advance Outcome';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Processing Outcome...';
+    }
+
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
     payload.action = 'progress';
@@ -1028,7 +1033,8 @@ async function handleProgressionSubmit(e) {
         });
         const data = await res.json();
         if (data.success) {
-            alert(data.message || 'Naipatupad ang desisyon sa Paanyaya.');
+            form?.reset();
+            window.agapNotify?.(data.message || 'Naipatupad ang desisyon sa Paanyaya.', 'success');
             if (payload.progression_action === 'escalate_mediation' && payload.complaint_id) {
                 window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(payload.complaint_id)}&tab=mediation`;
                 return;
@@ -1040,8 +1046,11 @@ async function handleProgressionSubmit(e) {
     } catch (err) {
         alert('Server connection error: ' + err.message);
     } finally {
-        btn.disabled = false;
-        btn.textContent = 'Confirm Attendance & Advance Outcome';
+        if (form) delete form.dataset.submitting;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
     }
 }
 

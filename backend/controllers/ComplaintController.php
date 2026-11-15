@@ -24,12 +24,12 @@ class ComplaintController
     public function __construct()
     {
         $this->conn = (new Database())->connect();
-        $this->complaint = new Complaint();
+        $this->complaint = new Complaint($this->conn);
         $this->complaintParty = new ComplaintParty();
         $this->attachment = new Attachment();
         $this->location = new Location();
         $this->scannedDoc = new ComplaintScannedDocument();
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->conn);
     }
 
     public function index(): array
@@ -149,8 +149,18 @@ class ComplaintController
 
     public function store(array $data, array $files = []): array
     {
-        // Time restrictions for intaking complaints are disabled (24/7 intake allowed)
-        // Lupon office hours check is bypassed for complaint intake.
+        $sourcePaanyaya = $data['escalated_from_paanyaya_id'] ?? $data['escalate_paanyaya_id'] ?? '';
+        $actorId = (int) ($_SESSION['user_id'] ?? 0);
+        $sourcePaanyayaId = null;
+        if ($sourcePaanyaya !== '') {
+            if ($actorId < 1 || ($_SESSION['role_name'] ?? '') === 'Resident' || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)) {
+                return ['success' => false, 'code' => 'PAANYAYA_HANDOFF_FORBIDDEN', 'message' => 'Only authorized staff may docket a Paanyaya.'];
+            }
+            $sourcePaanyayaId = filter_var($sourcePaanyaya, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            if ($sourcePaanyayaId === false) {
+                return ['success' => false, 'message' => 'Select a valid Paanyaya record.'];
+            }
+        }
 
         $evidenceFiles = [];
         if (!empty($files['evidence'])) {
@@ -186,17 +196,16 @@ class ComplaintController
             }
         }
 
-        $result = $this->complaint->create($data);
+        $result = $sourcePaanyayaId === null
+            ? $this->complaint->create($data)
+            : $this->createFromPaanyaya($sourcePaanyayaId, $actorId, $data);
 
         if ($result['success']) {
             $complaintId = (int) ($result['complaint_id'] ?? 0);
 
-            $this->audit->log(
-                $_SESSION['user_id'] ?? 1,
-                'Created Complaint',
-                'Complaints',
-                $complaintId ?: null
-            );
+            if ($sourcePaanyayaId === null) {
+                $this->audit->log($actorId ?: 1, 'Created Complaint', 'Complaints', $complaintId ?: null);
+            }
 
             // Handle evidence attachments
             if (!empty($evidenceFiles) && $complaintId > 0) {
@@ -227,80 +236,60 @@ class ComplaintController
                 }
             }
 
-            // Optional: If Paanyaya schedule details were provided, schedule an independent Paanyaya referencing this dispute
-            $isDraft = !empty($data['is_draft']);
-            if (false && $complaintId > 0 && !$isDraft && !empty($data['paanyaya_date']) && !empty($data['paanyaya_time'])) {
-                require_once __DIR__ . '/../models/Paanyaya.php';
-                $paanyayaModel = new Paanyaya();
-                $paaDate = trim((string)$data['paanyaya_date']);
-                $paaTime = trim((string)$data['paanyaya_time']);
-                $paaVenue = !empty($data['paanyaya_venue']) ? trim((string)$data['paanyaya_venue']) : 'Tanggapan ng Barangay Tumana';
-                $paaInvitee = !empty($data['invitee_name']) ? trim((string)$data['invitee_name']) : (!empty($data['paanyaya_invitee_name']) ? trim((string)$data['paanyaya_invitee_name']) : '');
-
-                $paaResult = $paanyayaModel->schedule([
-                    'complaint_id' => $complaintId,
-                    'invitee_name' => $paaInvitee,
-                    'scheduled_date' => $paaDate,
-                    'scheduled_time' => $paaTime,
-                    'venue' => $paaVenue,
-                ], (int) ($_SESSION['user_id'] ?? 1));
-
-                if ($paaResult['success']) {
-                    $result['message'] .= ' (Paanyaya invitation scheduled.)';
-                    $result['paanyaya_id'] = $paaResult['paanyaya_id'] ?? null;
-                }
-            }
-
-            // A complaint created from Paanyaya must immediately become a formal docket.
-            // Linking the Paanyaya alone left the newly-created complaint in its old
-            // Paanyaya status and made the workflow appear stuck at Stage 0.
-            $escalatedPaanyayaId = (int)($data['escalated_from_paanyaya_id'] ?? ($data['escalate_paanyaya_id'] ?? 0));
-            if ($complaintId > 0 && $escalatedPaanyayaId > 0) {
-                try {
-                    require_once __DIR__ . '/../models/Paanyaya.php';
-                    $paanyayaModel = new Paanyaya();
-                    $docketResult = $paanyayaModel->escalateToFormalDocketing(
-                        $complaintId,
-                        (int) ($_SESSION['user_id'] ?? 1),
-                        "Formal complaint created from Paanyaya #{$escalatedPaanyayaId}."
-                    );
-
-                    if (empty($docketResult['success'])) {
-                        throw new RuntimeException($docketResult['message'] ?? 'Unable to create the formal Mediation docket.');
-                    }
-
-                    $updP = $this->conn->prepare("UPDATE paanyayas SET status = 'Escalated', complaint_id = ?, escalated_to_complaint_id = ?, updated_at = NOW() WHERE paanyaya_id = ?");
-                    $updP->execute([(int)$complaintId, (int)$complaintId, $escalatedPaanyayaId]);
-
-                    // Escalation is the formal conclusion of the informal dialogue:
-                    // there was no agreement at Paanyaya, so preserve that outcome
-                    // for the Paanyaya details and audit trail.
-                    $noAgreementNotes = 'No agreement at Paanyaya; escalated to formal Mediation.';
-                    $this->conn->prepare("\n                        UPDATE paanyaya_sessions\n                        SET session_outcome = 'Impasse_Escalate',\n                            outcome_notes = COALESCE(NULLIF(outcome_notes, ''), ?),\n                            session_remarks = COALESCE(NULLIF(session_remarks, ''), ?),\n                            escalated_at = COALESCE(escalated_at, NOW()),\n                            queue_status = 'Concluded',\n                            updated_at = NOW()\n                        WHERE complaint_id = ?\n                    ")->execute([$noAgreementNotes, $noAgreementNotes, (int)$complaintId]);
-
-                    $this->conn->prepare("\n                        UPDATE complaints\n                        SET paanyaya_1_outcome = COALESCE(NULLIF(paanyaya_1_outcome, ''), 'Impasse_Escalate'),\n                            updated_at = NOW()\n                        WHERE complaint_id = ?\n                    ")->execute([(int)$complaintId]);
-
-                    $result = array_merge($result, $docketResult, [
-                        'escalated_from_paanyaya' => true,
-                        'paanyaya_id' => $escalatedPaanyayaId,
-                        'message' => ($result['message'] ?? 'Complaint created.') . ' Formal docket created and moved to Mediation.'
-                    ]);
-                } catch (Throwable $pe) {
-                    error_log('Failed to docket escalated paanyaya in ComplaintController: ' . $pe->getMessage());
-                    return [
-                        'success' => false,
-                        'complaint_id' => $complaintId,
-                        'message' => 'The official complaint was saved, but it could not be docketed into Mediation: ' . $pe->getMessage()
-                    ];
-                }
-            }
-
             if (empty($result['redirect_url'])) {
                 $result['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=overview';
             }
         }
 
         return $result;
+    }
+
+    private function createFromPaanyaya(int $sourceId, int $actorId, array $data): array
+    {
+        require_once __DIR__ . '/../models/Paanyaya.php';
+        $paanyaya = new Paanyaya($this->conn);
+        $this->conn->beginTransaction();
+        try {
+            $source = $paanyaya->lockStandaloneHandoff($sourceId);
+            if (empty($source['attendance_recorded_at'])) {
+                throw new DomainException('Record the Paanyaya attendance before docketing.');
+            }
+
+            $result = $this->complaint->create($data, true);
+            if (empty($result['success'])) {
+                $this->conn->rollBack();
+                return $result;
+            }
+
+            $complaintId = (int) $result['complaint_id'];
+            $paanyaya->linkStandaloneHandoff($sourceId, (int) ($source['parent_paanyaya_id'] ?? $sourceId), $complaintId);
+            $this->conn->prepare("UPDATE complaints SET paanyaya_1_outcome = 'Impasse_Escalate' WHERE complaint_id = ?")
+                ->execute([$complaintId]);
+            if (!$this->audit->log($actorId, 'Created Complaint from Paanyaya', 'Complaints', $complaintId)) {
+                throw new RuntimeException('Could not audit the Paanyaya handoff.');
+            }
+            $docket = $paanyaya->escalateToFormalDocketing($complaintId, $actorId, "Formal complaint created from Paanyaya #{$sourceId}.");
+            if (empty($docket['success']) || empty($docket['case_id'])) {
+                throw new RuntimeException($docket['message'] ?? 'Unable to create the formal Mediation docket.');
+            }
+
+            $this->conn->commit();
+            return array_merge($result, $docket, [
+                'escalated_from_paanyaya' => true,
+                'paanyaya_id' => $sourceId,
+                'status' => 'Mediation',
+                'complaint_number' => $docket['case_number'],
+            ]);
+        } catch (DomainException $e) {
+            $this->conn->rollBack();
+            return ['success' => false, 'message' => $e->getMessage()];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Failed to docket Paanyaya: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to docket this Paanyaya. Please try again.'];
+        }
     }
 
     public function update(int $id, array $data, array $files = []): array

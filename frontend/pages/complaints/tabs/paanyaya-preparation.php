@@ -46,7 +46,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
         <?php endif; ?>
 
         <?php if ($preparation['eligible'] && !$preparation['ready_at']): ?>
-            <form method="post" action="<?= $prepEndpoint ?>">
+            <form method="post" action="<?= $prepEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Generating PDF...';}">
                 <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                 <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                 <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
@@ -86,7 +86,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
             <?php if ($preparation['ready_at']): ?>
                 <p><strong>Marked ready</strong> <?= $escapePrep($preparation['ready_at']) ?> · <?= $escapePrep($preparation['ready_by_name'] ?: 'Staff account') ?></p>
             <?php elseif ($preparation['eligible']): ?>
-                <form method="post" action="<?= $prepEndpoint ?>">
+                <form method="post" action="<?= $prepEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Marking ready...';}">
                     <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                     <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                     <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
@@ -136,7 +136,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
                 <?php if (!$paanyayaServers): ?>
                     <p>No active summons servers are available.</p>
                 <?php elseif (strtotime($savedAppointment) > time()): ?>
-                    <form method="post" action="<?= $serviceEndpoint ?>">
+                    <form method="post" action="<?= $serviceEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Assigning delivery...';}">
                         <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                         <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                         <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">

@@ -1020,13 +1020,18 @@ function handleOutcomeSelect(radio) {
 
 async function submitOutcome(e) {
     e.preventDefault();
+    const form = document.getElementById('recordOutcomeForm');
     const btn = document.getElementById('btnSubmitOutcome');
+    if (form?.dataset.submitting === '1' || btn?.disabled) return;
+    if (form) form.dataset.submitting = '1';
     const err = document.getElementById('outcomeErrorAlert');
     if (err) err.style.display = 'none';
-    btn.disabled = true;
-    btn.textContent = 'Recording...';
+    const originalText = btn ? btn.textContent : 'Save Outcome Decision';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Recording...';
+    }
 
-    const form = document.getElementById('recordOutcomeForm');
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
 
@@ -1039,6 +1044,7 @@ async function submitOutcome(e) {
         const data = await res.json();
 
         if (data.success) {
+            form?.reset();
             window.agapNotify?.(data.message, 'success', 'Paanyaya Workflow');
             setTimeout(() => {
                 if (data.escalated && data.workspace_url) {
@@ -1046,22 +1052,28 @@ async function submitOutcome(e) {
                 } else {
                     window.location.reload();
                 }
-            }, 1000);
+            }, 400);
         } else {
+            if (form) delete form.dataset.submitting;
             if (err) {
                 err.textContent = data.message || 'Failed to record outcome.';
                 err.style.display = 'block';
             }
-            btn.disabled = false;
-            btn.textContent = 'Save Outcome Decision';
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
         }
     } catch (errExp) {
+        if (form) delete form.dataset.submitting;
         if (err) {
             err.textContent = 'Network error: ' + errExp.message;
             err.style.display = 'block';
         }
-        btn.disabled = false;
-        btn.textContent = 'Save Outcome Decision';
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
     }
 }
 
@@ -1147,14 +1159,19 @@ function triggerEscalation() {
 
 async function submitDirectEscalation(e) {
     e.preventDefault();
+    const form = document.getElementById('directEscalationForm');
     const btn = document.getElementById('btnSubmitDirectEscalation');
+    if (form?.dataset.submitting === '1' || btn?.disabled) return;
+    if (form) form.dataset.submitting = '1';
     const err = document.getElementById('directEscalationError');
     if (err) err.style.display = 'none';
+    const originalText = btn ? btn.textContent : 'Confirm Escalation & Issue Summons';
 
-    btn.disabled = true;
-    btn.textContent = 'Escalating & Generating Forms...';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Escalating & Generating Forms...';
+    }
 
-    const form = document.getElementById('directEscalationForm');
     const formData = new FormData(form);
     const payload = Object.fromEntries(formData.entries());
 
@@ -1167,6 +1184,7 @@ async function submitDirectEscalation(e) {
         const data = await res.json();
 
         if (data.success) {
+            form?.reset();
             window.agapNotify?.(data.message, 'success', 'Formal Docketing');
             closeDirectEscalationModal();
             setTimeout(() => {
@@ -1175,22 +1193,28 @@ async function submitDirectEscalation(e) {
                 } else {
                     window.location.reload();
                 }
-            }, 1000);
+            }, 400);
         } else {
+            if (form) delete form.dataset.submitting;
             if (err) {
                 err.textContent = data.message || 'Failed to escalate dispute.';
                 err.style.display = 'block';
             }
-            btn.disabled = false;
-            btn.textContent = 'Confirm Escalation & Issue Summons';
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
         }
     } catch (errExp) {
+        if (form) delete form.dataset.submitting;
         if (err) {
             err.textContent = 'Network error: ' + errExp.message;
             err.style.display = 'block';
         }
-        btn.disabled = false;
-        btn.textContent = 'Confirm Escalation & Issue Summons';
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
     }
 }
 </script>

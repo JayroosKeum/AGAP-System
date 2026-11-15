@@ -241,9 +241,18 @@ final class PaanyayaServiceDelivery
                 ->execute([$invitees, $complaintId, $number]);
             return;
         }
-        $this->db->prepare('INSERT INTO paanyayas (complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time, venue, scheduled_by, attempt_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)')->execute([
-                $complaintId, $complainants, $invitees, $date, $time, $preparation['venue'], $attempt['released_by'], $number,
+        $parentPaanyayaId = null;
+        if ($number >= 2) {
+            $parentLookup = $this->db->prepare('SELECT MIN(paanyaya_id) FROM paanyayas WHERE (complaint_id = ? OR escalated_to_complaint_id = ?) AND attempt_number = 1');
+            $parentLookup->execute([$complaintId, $complaintId]);
+            $foundParentId = (int) $parentLookup->fetchColumn();
+            if ($foundParentId > 0) {
+                $parentPaanyayaId = $foundParentId;
+            }
+        }
+        $this->db->prepare('INSERT INTO paanyayas (complaint_id, parent_paanyaya_id, complainant_name, invitee_name, scheduled_date, scheduled_time, venue, scheduled_by, attempt_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')->execute([
+                $complaintId, $parentPaanyayaId, $complainants, $invitees, $date, $time, $preparation['venue'], $attempt['released_by'], $number,
             ]);
         $this->db->prepare('INSERT INTO paanyaya_sessions
             (complaint_id, invitee_name, scheduled_date, scheduled_time, venue, has_e_signature, scheduled_by, attempt_number)

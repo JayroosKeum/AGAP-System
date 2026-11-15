@@ -41,7 +41,7 @@ $result['message'] = trim((string)($result['message'] ?? '')) ?: (
 
 if ($isJson) {
     header('Content-Type: application/json; charset=utf-8');
-    http_response_code($result['success'] ? 201 : 422);
+    http_response_code($result['success'] ? 201 : (($result['code'] ?? '') === 'PAANYAYA_HANDOFF_FORBIDDEN' ? 403 : 422));
     echo json_encode($result);
     exit;
 }
@@ -53,7 +53,7 @@ $_SESSION['complaint_flash'] = [
 
 if (!$result['success']) {
     $_SESSION['complaint_flash']['old'] = $_POST;
-    $sourcePaanyayaId = (int)($_POST['escalated_from_paanyaya_id'] ?? 0);
+    $sourcePaanyayaId = $isResidentPortal ? 0 : (int)($_POST['escalated_from_paanyaya_id'] ?? 0);
     $retryUrl = '../../../frontend/pages/complaints/complaint-create.php';
     if ($sourcePaanyayaId > 0) {
         $retryUrl .= '?escalate_paanyaya_id=' . $sourcePaanyayaId;

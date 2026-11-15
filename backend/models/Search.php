@@ -250,15 +250,23 @@ class Search
         } elseif ($hasCase) {
             // Case is docketed and disposed, default procedural entry point is 1st Mediation
             $stage = '1st Mediation';
-        } else {
-            // Paanyaya stage (pre-docketed / no case_id)
-            $isSecond = ($paanyayaAttempt >= 2) || str_contains($complaintStatus, '2nd') || str_contains($caseStatus, '2nd');
+        } elseif ($isDisposed) {
+            $stage = 'None';
+        } elseif (str_contains($complaintStatus, 'Paanyaya') || str_contains($caseStatus, 'Paanyaya')) {
+            // Pre-docketed Paanyaya stage (no formal case_id yet)
+            $isSecond = ($paanyayaAttempt >= 2) || str_contains($complaintStatus, '2nd') || str_contains($caseStatus, '2nd') || str_contains($complaintStatus, 'Paanyaya 2');
+            $stage = $isSecond ? '2nd Paanyaya' : '1st Paanyaya';
+        } elseif ($complaintStatus === 'Docketed' || $caseStatus === 'Docketed' || (!str_contains($complaintStatus, 'Pre-Docketed') && str_contains($complaintStatus, 'Docketed'))) {
             $stage = '1st Mediation';
+        } else {
+            $stage = $complaintStatus !== '' ? $complaintStatus : 'Under Review';
         }
 
         // 3. Intake / Administrative Status (Current administrative state)
-        $intake = 'Docketed';
-        if ($hasCase || $caseStatus === 'Docketed' || $complaintStatus === 'Docketed' || $stage !== 'None' || $isStageExhausted) {
+        $intake = $complaintStatus !== '' ? $complaintStatus : 'Under Review';
+        if (!$hasCase && (str_contains($complaintStatus, 'Paanyaya') || str_contains($caseStatus, 'Paanyaya') || str_contains($complaintStatus, 'Pre-Docketed'))) {
+            $intake = 'Pre-Docketed (Paanyaya)';
+        } elseif ($hasCase || $caseStatus === 'Docketed' || $complaintStatus === 'Docketed' || (!str_contains($complaintStatus, 'Pre-Docketed') && str_contains($complaintStatus, 'Docketed'))) {
             $intake = 'Docketed';
         }
 
@@ -318,8 +326,17 @@ class Search
         if ((int) ($row['mediation_count'] ?? 0) > 0 || $caseStatus === 'Mediation' || $complaintStatus === 'Mediation') {
             return 'Mediation';
         }
-        if (str_contains($complaintStatus, 'Paanyaya') || str_contains($caseStatus, 'Paanyaya') || empty($row['case_id'])) {
-            return 'Mediation';
+        if (str_contains($complaintStatus, 'Paanyaya') || str_contains($caseStatus, 'Paanyaya')) {
+            return 'Paanyaya';
+        }
+        if (empty($row['case_id'])) {
+            if (in_array($complaintStatus, ['Pending', 'Under Review', 'Submitted', 'For Verification', 'Accepted', 'Filed'], true) || $complaintStatus === '') {
+                return 'Verification';
+            }
+            if (str_contains($complaintStatus, 'Mediation') || str_contains($complaintStatus, 'Docketed')) {
+                return 'Mediation';
+            }
+            return 'Verification';
         }
         return 'Mediation';
     }

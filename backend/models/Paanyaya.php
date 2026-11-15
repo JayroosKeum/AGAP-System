@@ -34,7 +34,7 @@ class Paanyaya
     public function __construct(?PDO $conn = null)
     {
         $this->conn = $conn ?: (new Database())->connect();
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->conn);
         $this->pdf = new PDFService($this->conn);
         $this->ensurePartyColumns();
     }
@@ -553,13 +553,26 @@ class Paanyaya
 
     public function getGroupedPaanyayaCases(?string $status = null, ?string $search = null): array
     {
-        $groupKey = static function (array $record): string {
-            $complaintId = (int) ($record['complaint_id'] ?: ($record['escalated_to_complaint_id'] ?? 0));
-            return $complaintId > 0 ? 'complaint:' . $complaintId : 'single:' . (int) $record['paanyaya_id'];
+        $allRecords = $this->getAllPaanyayas();
+        $resolveRootId = static fn (array $record): int => (int) ($record['parent_paanyaya_id'] ?? $record['paanyaya_id']);
+
+        $threadComplaint = [];
+        foreach ($allRecords as $record) {
+            $rootId = $resolveRootId($record);
+            $cid = (int) ($record['complaint_id'] ?: ($record['escalated_to_complaint_id'] ?? 0));
+            if ($cid > 0 && !isset($threadComplaint[$rootId])) {
+                $threadComplaint[$rootId] = $cid;
+            }
+        }
+
+        $groupKey = static function (array $record) use ($resolveRootId, $threadComplaint): string {
+            $rootId = $resolveRootId($record);
+            $complaintId = (int) ($record['complaint_id'] ?: ($record['escalated_to_complaint_id'] ?? ($threadComplaint[$rootId] ?? 0)));
+            return $complaintId > 0 ? 'complaint:' . $complaintId : 'thread:' . $rootId;
         };
 
         $groups = [];
-        foreach ($this->getAllPaanyayas() as $record) {
+        foreach ($allRecords as $record) {
             $groups[$groupKey($record)][(int) $record['paanyaya_id']] = $record;
         }
 
@@ -580,6 +593,8 @@ class Paanyaya
             $lastIndex = count($items) - 1;
             foreach ($items as $index => &$item) {
                 $item['is_latest'] = $index === $lastIndex;
+                $item['step_index'] = $index + 1;
+                $item['step_label'] = ((int) ($item['attempt_number'] ?? ($index + 1)) >= 2) ? '2nd Paanyaya' : '1st Paanyaya';
                 $item['step_display_status'] = $item['status'] === 'Completed' ? 'Done' : $item['status'];
             }
             unset($item);
@@ -592,7 +607,7 @@ class Paanyaya
                 'group_key' => $key,
                 'latest' => $latest,
                 'items' => $items,
-                'has_second_paanyaya' => (int) $latest['attempt_number'] >= 2,
+                'has_second_paanyaya' => count($items) >= 2 || (int) ($latest['attempt_number'] ?? 1) >= 2,
                 'display_status' => $workflowStatus === 'Completed' ? 'Done' : $workflowStatus,
                 'workflow_status' => $workflowStatus,
                 'workflow_stage' => $latest['current_workflow_stage'],
@@ -1169,7 +1184,7 @@ class Paanyaya
             require_once __DIR__ . '/CaseModel.php';
             require_once __DIR__ . '/Summons.php';
 
-            $caseModel = new CaseModel();
+            $caseModel = new CaseModel($this->conn);
             $summonsModel = new Summons();
 
             // 1. Check if case already docketed
@@ -1463,7 +1478,7 @@ class Paanyaya
 
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';
-                $notifService = new NotificationService();
+                $notifService = new NotificationService($this->conn);
                 $notifService->notifyRoles(
                     ['Administrator', 'Lupon Clerk'],
                     "Dispute Escalated to Formal Mediation",
@@ -1521,7 +1536,8 @@ class Paanyaya
                 $minutes = $this->conn->prepare('SELECT complainant_choice FROM paanyaya_minutes WHERE complaint_id = ?
                     ORDER BY FIELD(stage_type, \'Paanyaya 2\', \'Paanyaya 1\'), minutes_id DESC LIMIT 1');
                 $minutes->execute([$complaintId]);
-                if (($complaint['status'] ?? '') !== 'Pre-Docketed (Paanyaya)' || $minutes->fetchColumn() !== 'Escalate_Mediation') {
+                $eligibleStatuses = ['Pre-Docketed (Paanyaya)', 'Paanyaya In Progress', '1st Paanyaya Failed (No-Show)', 'Pre-Docketed (Paanyaya 2 Authorized)'];
+                if (!in_array($complaint['status'] ?? '', $eligibleStatuses, true) || $minutes->fetchColumn() !== 'Escalate_Mediation') {
                     throw new DomainException('Record dialogue minutes with a mediation outcome before docketing this complaint.');
                 }
                 if (!(new CaseModel($this->conn))->create(['complaint_id' => $complaintId, 'case_type' => $complaint['case_type']])) {
@@ -1533,10 +1549,17 @@ class Paanyaya
                 $this->conn->prepare("INSERT INTO case_stages (case_id, stage_type, stage_status)
                     VALUES (?, 'Mediation', 'Not Started') ON DUPLICATE KEY UPDATE stage_type = VALUES(stage_type)")
                     ->execute([$case['case_id']]);
-                $this->conn->prepare('UPDATE complaints SET docketed_by = ?, docketed_at = NOW() WHERE complaint_id = ?')
+                $this->conn->prepare("UPDATE complaints SET status = 'Mediation', docketed_by = ?, docketed_at = NOW() WHERE complaint_id = ?")
                     ->execute([$userId, $complaintId]);
-                $this->conn->prepare("UPDATE paanyayas SET status = 'Escalated', escalated_to_complaint_id = ?
-                    WHERE complaint_id = ? AND attempt_number = (SELECT paanyaya_attempt_count FROM complaints WHERE complaint_id = ?)")
+                $this->conn->prepare("UPDATE paanyayas
+                    SET escalated_to_complaint_id = ?,
+                        status = CASE
+                            WHEN status = 'Scheduled' OR attempt_number = (SELECT paanyaya_attempt_count FROM complaints WHERE complaint_id = ?)
+                            THEN 'Escalated'
+                            ELSE status
+                        END,
+                        updated_at = NOW()
+                    WHERE complaint_id = ?")
                     ->execute([$complaintId, $complaintId, $complaintId]);
                 if (!(new AuditService($this->conn))->log($userId, 'Docketed Paanyaya for formal mediation', 'Complaints', $complaintId)) {
                     throw new RuntimeException('Unable to save the docketing audit entry.');
@@ -1816,9 +1839,14 @@ class Paanyaya
                     SELECT 1 FROM complaint_paanyaya cp
                     WHERE cp.complaint_id = ? AND cp.status IN ('Failed', 'No_Show', 'Escalated')
                 )
+                OR EXISTS (
+                    SELECT 1 FROM paanyayas py
+                    WHERE (py.complaint_id = ? OR py.escalated_to_complaint_id = ?)
+                      AND py.status = 'Escalated'
+                )
             ) AS is_escalated"
         );
-        $escalatedStmt->execute([$complaintId, $complaintId, $complaintId, $complaintId, $complaintId]);
+        $escalatedStmt->execute([$complaintId, $complaintId, $complaintId, $complaintId, $complaintId, $complaintId, $complaintId]);
         if (!(bool) $escalatedStmt->fetchColumn()) {
             return [
                 'allowed' => false,
@@ -2086,18 +2114,35 @@ class Paanyaya
                 (int)$stage['id']
             ]);
 
-            // Sync with independent paanyayas table
+            // Sync with independent paanyayas table (link Attempt 2+ back to Attempt 1 root)
+            $parentPaanyayaId = null;
+            if ($attemptNum >= 2) {
+                $parentLookup = $this->conn->prepare("
+                    SELECT MIN(paanyaya_id)
+                    FROM paanyayas
+                    WHERE (complaint_id = ? OR escalated_to_complaint_id = ?)
+                      AND attempt_number = 1
+                ");
+                $parentLookup->execute([$complaintId, $complaintId]);
+                $foundParentId = (int) $parentLookup->fetchColumn();
+                if ($foundParentId > 0) {
+                    $parentPaanyayaId = $foundParentId;
+                }
+            }
+
             $insP = $this->conn->prepare("
                 INSERT INTO paanyayas (
                     complaint_id, invitee_name, scheduled_date, scheduled_time,
-                    status, venue, pdf_path, scheduled_by
-                ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?, ?)
+                    status, attempt_number, parent_paanyaya_id, venue, pdf_path, scheduled_by
+                ) VALUES (?, ?, ?, ?, 'Scheduled', ?, ?, ?, ?, ?)
             ");
             $insP->execute([
                 $complaintId,
                 $inviteeName,
                 $invitationDate,
                 $invitationTime,
+                $attemptNum,
+                $parentPaanyayaId,
                 $venue,
                 $pdfRelativePath,
                 $userId
@@ -3026,38 +3071,50 @@ class Paanyaya
         ];
     }
 
+    public function lockStandaloneHandoff(int $sourceId): array
+    {
+        $root = $this->conn->prepare('SELECT COALESCE(parent_paanyaya_id, paanyaya_id) FROM paanyayas WHERE paanyaya_id = ?');
+        $root->execute([$sourceId]);
+        $rootId = (int) $root->fetchColumn();
+        $lock = $this->conn->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? OR parent_paanyaya_id = ? ORDER BY paanyaya_id FOR UPDATE');
+        $lock->execute([$rootId, $rootId]);
+        $thread = array_column($lock->fetchAll(PDO::FETCH_ASSOC), null, 'paanyaya_id');
+        if (!isset($thread[$sourceId], $thread[$rootId])) {
+            throw new DomainException('Paanyaya record not found.');
+        }
+
+        $source = $thread[$sourceId];
+        foreach ($thread as $invitation) {
+            if (!empty($invitation['complaint_id']) || !empty($invitation['escalated_to_complaint_id'])) {
+                throw new DomainException('This Paanyaya already belongs to a complaint. Open its existing record.');
+            }
+            if ((int) $invitation['attempt_number'] > (int) $source['attempt_number']) {
+                throw new DomainException('Open the latest Paanyaya invitation to continue.');
+            }
+        }
+        if (!in_array($source['status'], ['Scheduled', 'Unresolved'], true)) {
+            throw new DomainException('This Paanyaya is no longer eligible for docketing.');
+        }
+        return $source;
+    }
+
+    public function linkStandaloneHandoff(int $sourceId, int $rootId, int $complaintId): void
+    {
+        $this->conn->prepare("UPDATE paanyayas
+            SET complaint_id = ?, escalated_to_complaint_id = ?,
+                status = CASE WHEN paanyaya_id = ? OR status = 'Scheduled' THEN 'Escalated' ELSE status END
+            WHERE paanyaya_id = ? OR parent_paanyaya_id = ?")
+            ->execute([$complaintId, $complaintId, $sourceId, $rootId, $rootId]);
+    }
+
     /**
-     * Seamlessly escalates a pre-docketed Paanyaya into a formal complaint and Mediation case.
-     * Transfers Complainant, Invitee/Respondent, Salaysay (narrative), and Attendance records.
+     * Transfers the invitation parties and recorded dialogue into formal Mediation.
      */
     public function escalatePreDocketedPaanyaya(int $paanyayaId, ?int $userId = null, array $attendanceData = []): array
     {
         try {
             $this->conn->beginTransaction();
-
-            $pStmt = $this->conn->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? LIMIT 1 FOR UPDATE');
-            $pStmt->execute([$paanyayaId]);
-            $paanyaya = $pStmt->fetch(PDO::FETCH_ASSOC);
-
-            if (!$paanyaya) {
-                $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
-            }
-            if (!empty($paanyaya['complaint_id']) && PaanyayaPreparationService::managesDialogue($this->conn, (int) $paanyaya['complaint_id'])) {
-                $this->conn->rollBack();
-                return ['success' => false, 'message' => 'Continue to formal mediation from the original complaint.'];
-            }
-
-            // Check if already escalated
-            if (!empty($paanyaya['complaint_id']) && $paanyaya['status'] === 'Escalated') {
-                $this->conn->rollBack();
-                return [
-                    'success' => true,
-                    'already_escalated' => true,
-                    'complaint_id' => (int)$paanyaya['complaint_id'],
-                    'message' => 'Ang Paanyaya na ito ay nai-akyat na sa Pormal na Mediation.'
-                ];
-            }
+            $paanyaya = $this->lockStandaloneHandoff($paanyayaId);
 
             $compAttended = $attendanceData['complainant_attended'] ?? ($paanyaya['complainant_attended'] ?? 'Present');
             $invAttended = $attendanceData['invitee_attended'] ?? ($paanyaya['invitee_attended'] ?? 'Absent');
@@ -3204,12 +3261,12 @@ class Paanyaya
             $escalationNotes = $dialogueNotes !== ''
                 ? $dialogueNotes
                 : 'No agreement at Paanyaya; escalated to formal Mediation.';
+            $rootPaanyayaId = (int) ($paanyaya['parent_paanyaya_id'] ?? $paanyayaId);
+            $this->linkStandaloneHandoff($paanyayaId, $rootPaanyayaId, $complaintId);
+
             $updPaanyaya = $this->conn->prepare("
                 UPDATE paanyayas
-                SET status = 'Escalated',
-                    complaint_id = ?,
-                    escalated_to_complaint_id = ?,
-                    complainant_attended = ?,
+                SET complainant_attended = ?,
                     invitee_attended = ?,
                     salaysay = ?,
                     dialogue_notes = ?,
@@ -3218,8 +3275,6 @@ class Paanyaya
                 WHERE paanyaya_id = ?
             ");
             $updPaanyaya->execute([
-                $complaintId,
-                $complaintId,
                 $compAttended,
                 $invAttended,
                 $salaysay,
@@ -3234,14 +3289,16 @@ class Paanyaya
                 WHERE complaint_id = ?
             ")->execute([$complaintId]);
 
-            $this->conn->commit();
-
             // 6. Perform formal docketing using existing docketing pipeline
             $docketResult = $this->escalateToFormalDocketing(
                 $complaintId,
                 $userId,
                 "Inilipat mula sa Stage 0 (Paanyaya #{$paanyayaId}) patungong Formal Mediation. " . $compDetails
             );
+            if (empty($docketResult['success']) || empty($docketResult['case_id'])) {
+                throw new RuntimeException($docketResult['message'] ?? 'Unable to create the formal Mediation docket.');
+            }
+            $this->conn->commit();
 
             return [
                 'success' => true,
@@ -3251,6 +3308,9 @@ class Paanyaya
                 'hearing' => $docketResult['hearing'] ?? null,
                 'message' => 'Matagumpay na nai-akyat ang Paanyaya sa Pormal na Mediation (Stage 1). Nailipat ang Salaysay at rekord ng Pagdalo!'
             ];
+        } catch (DomainException $e) {
+            $this->conn->rollBack();
+            return ['success' => false, 'message' => $e->getMessage()];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {
                 $this->conn->rollBack();
@@ -3269,21 +3329,6 @@ class Paanyaya
      */
     public function scheduleSecondPaanyaya(int $paanyayaId, ?int $userId, array $data): array
     {
-        $paanyaya = $this->getPaanyayaById($paanyayaId);
-        if (!$paanyaya) {
-            return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
-        }
-        if (!empty($paanyaya['complaint_id']) && PaanyayaPreparationService::managesDialogue($this->conn, (int) $paanyaya['complaint_id'])) {
-            return ['success' => false, 'message' => 'Prepare the second invitation on the original complaint.'];
-        }
-
-        if ((int)($paanyaya['attempt_number'] ?? 1) >= 2) {
-            return [
-                'success' => false,
-                'message' => 'Ang usaping ito ay nasa Ikalawang Paanyaya (Attempt 2) na. Alinsunod sa proseso ng Katarungang Pambarangay, dalawang beses lamang ang Paanyaya bago umakyat sa Mediation.'
-            ];
-        }
-
         $p2Date = trim((string)($data['p2_date'] ?? ($data['scheduled_date'] ?? '')));
         $p2Time = trim((string)($data['p2_time'] ?? ($data['scheduled_time'] ?? '14:00')));
         if ($p2Date === '' || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $p2Date)) {
@@ -3297,10 +3342,54 @@ class Paanyaya
             ? $data['complainant_attended'] : 'Present';
         $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Absent'], true)
             ? $data['invitee_attended'] : 'Absent';
-        $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
 
         try {
             $this->conn->beginTransaction();
+
+            $lockStmt = $this->conn->prepare("SELECT * FROM paanyayas WHERE paanyaya_id = ? FOR UPDATE");
+            $lockStmt->execute([$paanyayaId]);
+            $paanyaya = $lockStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$paanyaya) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Hindi natagpuan ang tala ng Paanyaya.'];
+            }
+            if (!empty($paanyaya['complaint_id']) && PaanyayaPreparationService::managesDialogue($this->conn, (int) $paanyaya['complaint_id'])) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'Prepare the second invitation on the original complaint.'];
+            }
+
+            if ((int)($paanyaya['attempt_number'] ?? 1) >= 2) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Ang usaping ito ay nasa Ikalawang Paanyaya (Attempt 2) na. Alinsunod sa proseso ng Katarungang Pambarangay, dalawang beses lamang ang Paanyaya bago umakyat sa Mediation.'
+                ];
+            }
+
+            $rootPaanyayaId = (int) (!empty($paanyaya['parent_paanyaya_id']) ? $paanyaya['parent_paanyaya_id'] : $paanyayaId);
+            $existingComplaintId = (int) ($paanyaya['complaint_id'] ?? ($paanyaya['escalated_to_complaint_id'] ?? 0));
+            $dupStmt = $this->conn->prepare("
+                SELECT paanyaya_id
+                FROM paanyayas
+                WHERE parent_paanyaya_id = ?
+                   OR (? > 0 AND (complaint_id = ? OR escalated_to_complaint_id = ?) AND attempt_number >= 2)
+                LIMIT 1
+                FOR UPDATE
+            ");
+            $dupStmt->execute([$rootPaanyayaId, $existingComplaintId, $existingComplaintId, $existingComplaintId]);
+            if ($dupStmt->fetchColumn()) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'May naka-schedule nang 2nd Paanyaya para sa usaping ito.'
+                ];
+            }
+            if (!in_array($paanyaya['status'], ['Scheduled', 'Unresolved'], true)) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => 'This Paanyaya is no longer eligible for another invitation.'];
+            }
+
+            $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
 
             // 1. Mark 1st Paanyaya as Completed
             $updFirst = $this->conn->prepare("
@@ -3315,24 +3404,45 @@ class Paanyaya
             ");
             $updFirst->execute([$compAttended, $invAttended, $salaysay, $paanyayaId]);
 
-            // 2. Insert 2nd Paanyaya with attempt_number = 2
+            // 2. Insert 2nd Paanyaya linked cleanly under the 1st Paanyaya thread
             $venue = !empty($paanyaya['venue']) ? $paanyaya['venue'] : 'Tanggapan ng Barangay Tumana';
             $complaintId = !empty($paanyaya['complaint_id']) ? (int)$paanyaya['complaint_id'] : null;
 
             $insSecond = $this->conn->prepare("
                 INSERT INTO paanyayas (
-                    complaint_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
-                    status, attempt_number, venue, salaysay, scheduled_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'Scheduled', 2, ?, ?, ?, NOW(), NOW())
+                    complaint_id, parent_paanyaya_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
+                    status, attempt_number, venue, salaysay,
+                    complainant_resident_id, complainant_address, complainant_purok, complainant_contact_no, complainant_email,
+                    invitee_resident_id, invitee_address, invitee_purok, invitee_contact_no, invitee_email,
+                    complainant_latitude, complainant_longitude, invitee_latitude, invitee_longitude,
+                    location_latitude, location_longitude, scheduled_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'Scheduled', 2, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
             ");
             $insSecond->execute([
                 $complaintId,
+                $rootPaanyayaId,
                 $paanyaya['complainant_name'],
                 $paanyaya['invitee_name'],
                 $p2Date,
                 $p2Time,
                 $venue,
                 $salaysay !== '' ? $salaysay : null,
+                $paanyaya['complainant_resident_id'] ?? null,
+                $paanyaya['complainant_address'] ?? null,
+                $paanyaya['complainant_purok'] ?? null,
+                $paanyaya['complainant_contact_no'] ?? null,
+                $paanyaya['complainant_email'] ?? null,
+                $paanyaya['invitee_resident_id'] ?? null,
+                $paanyaya['invitee_address'] ?? null,
+                $paanyaya['invitee_purok'] ?? null,
+                $paanyaya['invitee_contact_no'] ?? null,
+                $paanyaya['invitee_email'] ?? null,
+                $paanyaya['complainant_latitude'] ?? null,
+                $paanyaya['complainant_longitude'] ?? null,
+                $paanyaya['invitee_latitude'] ?? null,
+                $paanyaya['invitee_longitude'] ?? null,
+                $paanyaya['location_latitude'] ?? null,
+                $paanyaya['location_longitude'] ?? null,
                 $userId
             ]);
             $newPaanyayaId = (int)$this->conn->lastInsertId();
@@ -3389,4 +3499,78 @@ class Paanyaya
         }
     }
 
+
+    /**
+     * Build carryover context from prior Paanyaya dialogue minutes or complaint intake.
+     */
+    public function getCarryoverContext(int $complaintId, string $stageType = self::STAGE_1): array
+    {
+        if ($complaintId <= 0) {
+            return [];
+        }
+
+        $compStmt = $this->conn->prepare(
+            "SELECT complaint_title, narrative, requested_resolution
+             FROM complaints
+             WHERE complaint_id = ?
+             LIMIT 1"
+        );
+        $compStmt->execute([$complaintId]);
+        $complaint = $compStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $prior = null;
+        if ($stageType === self::STAGE_2) {
+            $pmStmt = $this->conn->prepare(
+                "SELECT stage_type, discussion_summary, agreed_terms, session_remarks
+                 FROM paanyaya_minutes
+                 WHERE complaint_id = ? AND stage_type = 'Paanyaya 1'
+                 ORDER BY minutes_id DESC
+                 LIMIT 1"
+            );
+            $pmStmt->execute([$complaintId]);
+            $prior = $pmStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if (!$prior) {
+            $pmStmt = $this->conn->prepare(
+                "SELECT stage_type, discussion_summary, agreed_terms, session_remarks
+                 FROM paanyaya_minutes
+                 WHERE complaint_id = ?
+                 ORDER BY minutes_id DESC
+                 LIMIT 1"
+            );
+            $pmStmt->execute([$complaintId]);
+            $prior = $pmStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+
+        $pyStmt = $this->conn->prepare(
+            "SELECT salaysay
+             FROM paanyayas
+             WHERE complaint_id = ? OR escalated_to_complaint_id = ?
+             ORDER BY attempt_number DESC, paanyaya_id DESC
+             LIMIT 1"
+        );
+        $pyStmt->execute([$complaintId, $complaintId]);
+        $salaysay = (string) ($pyStmt->fetchColumn() ?: '');
+
+        $priorSummary = trim((string) ($prior['discussion_summary'] ?? ''));
+        if ($priorSummary === '') {
+            $priorSummary = trim((string) ($complaint['narrative'] ?? $salaysay));
+        }
+
+        $unresolved = trim((string) ($prior['session_remarks'] ?? ''));
+        if ($unresolved === '') {
+            $unresolved = trim((string) ($complaint['requested_resolution'] ?? ''));
+        }
+
+        $proposal = trim((string) ($prior['agreed_terms'] ?? ''));
+
+        return [
+            'carried_from_stage' => !empty($prior['stage_type']) ? (string) $prior['stage_type'] : 'Complaint Intake',
+            'prior_summary' => $priorSummary,
+            'unresolved_issues' => $unresolved,
+            'previous_proposal' => $proposal,
+            'agreed_terms' => $proposal,
+            'main_dispute_identified' => trim((string) ($complaint['complaint_title'] ?? '')),
+        ];
+    }
 }

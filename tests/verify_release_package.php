@@ -35,6 +35,7 @@ $requiredPaths = [
     'frontend/assets/images/marikina_logo.jpg',
     'database/schema.sql',
     'database/migrations/20261115_004_order4_settlement_arbitration_transmittal.sql',
+    'database/migrations/20261115_005_link_paanyaya_threads.sql',
 ];
 
 $missing = [];

@@ -508,7 +508,8 @@ class CaseProgress
             ];
         } elseif (
             empty($settlement)
-            && !empty((new CFA($this->conn))->determineCfaEligibility($caseId)['eligible'])
+            && !empty($case['case_id'])
+            && !empty((new CFA($this->conn))->determineCfaEligibility((int) $case['case_id'])['eligible'])
         ) {
             $stages[] = [
                 'id' => 'cfa',

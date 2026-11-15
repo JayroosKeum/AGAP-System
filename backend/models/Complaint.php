@@ -124,8 +124,9 @@ class Complaint
         }
     }
 
-    public function create(array $data): array
+    public function create(array $data, bool $paanyayaHandoff = false): array
     {
+        $ownsTransaction = !$this->conn->inTransaction();
         try {
             if (!empty($data['incident_datetime'])) {
                 $rawDt = trim((string) $data['incident_datetime']);
@@ -175,7 +176,7 @@ class Complaint
             $assignedDutySessionId = null;
             // A complaint escalated from the existing Paanyaya workflow is not
             // a new walk-in, so it must not be sent back through LISO intake.
-            $requiresLisoAssignment = !$isResidentPortal && empty($data['escalated_from_paanyaya_id']);
+            $requiresLisoAssignment = !$isResidentPortal && !$paanyayaHandoff;
             if ($requiresLisoAssignment) {
                 $assignedLisoId = filter_var($data['liso_assigned_to'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
                 if ($assignedLisoId === null) {
@@ -235,7 +236,9 @@ class Complaint
                 ? trim((string)$data['case_type'])
                 : 'Civil';
 
-            $this->conn->beginTransaction();
+            if ($ownsTransaction) {
+                $this->conn->beginTransaction();
+            }
             $stmt =
             $this->conn->prepare("
                 INSERT INTO complaints
@@ -323,7 +326,7 @@ class Complaint
             $this->saveIntakeScreening($complaintId, $data);
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';
-                $notifService = new NotificationService();
+                $notifService = new NotificationService($this->conn);
                 $cNum = $intakeReference;
                 $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
                 if ($assignedLisoId !== null) {
@@ -343,7 +346,7 @@ class Complaint
                         'info',
                         $actionUrl
                     );
-                } else {
+                } elseif (!$paanyayaHandoff) {
                     $notifService->notifyRoles(
                         ['Administrator', 'Lupon Member'],
                         'New Complaint Intake',
@@ -357,7 +360,9 @@ class Complaint
                 error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
             }
 
-            $this->conn->commit();
+            if ($ownsTransaction) {
+                $this->conn->commit();
+            }
             return [
                 'success' => true,
                 'message' => 'Complaint intake submitted for preliminary screening by a Lupon Member.',
@@ -371,9 +376,9 @@ class Complaint
             ];
 
         }
-        catch(Exception $e)
+        catch(Throwable $e)
         {
-            if ($this->conn->inTransaction()) {
+            if ($ownsTransaction && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
 

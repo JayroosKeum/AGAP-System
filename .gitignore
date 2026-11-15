@@ -3,3 +3,8 @@
 .env.*.local
 vendor/
 node_modules/
+/output/
+/storage/logs/
+/storage/documents/
+/storage/generated-documents/
+/storage/paanyaya/

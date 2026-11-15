@@ -788,6 +788,58 @@ class HearingMinutes
         }
     }
 
+    /**
+     * Retrieve prior hearing minutes or complaint narrative as carryover context.
+     */
+    public function getCarryoverContext(int $hearingId, int $caseId, string $hType = ''): array
+    {
+        if ($caseId <= 0) {
+            return [];
+        }
+
+        $priorStmt = $this->conn->prepare(
+            "SELECT hm.session_type, hm.main_dispute_identified, hm.settlement_discussion_notes,
+                    hm.unresolved_issues, hm.previous_proposal, hm.new_proposal, hm.agreements_action_items
+             FROM hearing_minutes hm
+             WHERE hm.case_id = ? AND (? <= 0 OR hm.hearing_id <> ?)
+             ORDER BY hm.minute_id DESC
+             LIMIT 1"
+        );
+        $priorStmt->execute([$caseId, $hearingId, $hearingId]);
+        $prior = $priorStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        if ($prior) {
+            $proposal = trim((string) ($prior['new_proposal'] ?? ($prior['previous_proposal'] ?? ($prior['agreements_action_items'] ?? ''))));
+            return [
+                'carried_from_stage' => (string) ($prior['session_type'] ?? ($hType !== '' ? $hType : 'Prior Session')),
+                'prior_summary' => trim((string) ($prior['settlement_discussion_notes'] ?? '')),
+                'unresolved_issues' => trim((string) ($prior['unresolved_issues'] ?? '')),
+                'previous_proposal' => $proposal,
+                'agreed_terms' => $proposal,
+                'main_dispute_identified' => trim((string) ($prior['main_dispute_identified'] ?? '')),
+            ];
+        }
+
+        $caseStmt = $this->conn->prepare(
+            "SELECT comp.complaint_title, comp.narrative, comp.requested_resolution
+             FROM cases c
+             JOIN complaints comp ON comp.complaint_id = c.complaint_id
+             WHERE c.case_id = ?
+             LIMIT 1"
+        );
+        $caseStmt->execute([$caseId]);
+        $comp = $caseStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        return [
+            'carried_from_stage' => 'Complaint Intake',
+            'prior_summary' => trim((string) ($comp['narrative'] ?? '')),
+            'unresolved_issues' => trim((string) ($comp['requested_resolution'] ?? '')),
+            'previous_proposal' => '',
+            'agreed_terms' => '',
+            'main_dispute_identified' => trim((string) ($comp['complaint_title'] ?? '')),
+        ];
+    }
+
     private function logCaseHistory(int $caseId, string $status, string $remarks, int $userId): void
     {
         try {

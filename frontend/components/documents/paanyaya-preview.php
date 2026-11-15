@@ -6,6 +6,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require_once __DIR__ . '/../../../backend/models/PaanyayaModel.php';
+
 // Allow standalone query parameters or passed variable data
 $complaintId = filter_var($_GET['complaint_id'] ?? ($_GET['id'] ?? null), FILTER_VALIDATE_INT) ?: 0;
 $stageType = in_array($_GET['stage_type'] ?? '', ['Paanyaya 1', 'Paanyaya 2'], true) ? $_GET['stage_type'] : 'Paanyaya 1';

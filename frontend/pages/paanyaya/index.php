@@ -50,10 +50,10 @@ $countScheduled = 0;
 $countCompleted = 0;
 $countCancelled = 0;
 foreach ($allList as $item) {
-    $st = (string) ($item['display_status'] ?? '1st Paanyaya');
-    if (in_array($st, ['1st Paanyaya', '2nd Paanyaya', 'Scheduled', 'Pending'], true)) $countScheduled++;
-    elseif (str_starts_with($st, 'Settled') || in_array($st, ['Resolved', 'Settled'], true)) $countCompleted++;
-    elseif (in_array($st, ['Escalated', 'Dismissed', 'Cancelled', 'Failed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Archived'], true)) $countCancelled++;
+    $st = (string) ($item['workflow_status'] ?? ($item['display_status'] ?? 'Scheduled'));
+    if (in_array($st, ['1st Paanyaya', '2nd Paanyaya', 'Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true)) $countScheduled++;
+    elseif (str_starts_with($st, 'Settled') || in_array($st, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true)) $countCompleted++;
+    elseif (in_array($st, ['Escalated', 'Cancelled', 'Failed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true)) $countCancelled++;
 }
 
 include '../../layouts/header.php';
@@ -1922,7 +1922,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                         string $dateLabel,
                                         string $timeLabel,
                                         bool $includeStage = true
-                                    ): string {
+                                    ) use ($canEditPaanyaya): string {
                                         $pid = (int)($row['paanyaya_id'] ?? 0);
                                         $cid = (int)($row['complaint_id'] ?? $linkedCid);
                                         $rawRowStatus = trim((string)($row['status'] ?? $actionStatus));
@@ -2023,14 +2023,15 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                         ], $stepSearchTokens)));
 
                                         $linkedComplaintId = (int)($p['complaint_id'] ?: ($p['escalated_to_complaint_id'] ?? 0));
+                                        $rootRecord = $items[0] ?? $p;
                                         $latestAttempt = min(2, max(1, (int)($p['step_index'] ?? ($p['attempt_number'] ?? 1))));
                                         $latestStepLabel = (string)($p['step_label'] ?? ($latestAttempt >= 2 ? '2nd Paanyaya' : '1st Paanyaya'));
                                         $recordRefLabel = !empty($p['complaint_number'])
                                             ? (string)$p['complaint_number']
-                                            : ('PY-' . str_pad((string)(int)($p['paanyaya_id'] ?? 0), 4, '0', STR_PAD_LEFT));
+                                            : ('PY-' . str_pad((string)(int)($rootRecord['paanyaya_id'] ?? ($p['paanyaya_id'] ?? 0)), 4, '0', STR_PAD_LEFT));
                                         $recordSubLabel = trim((string)($p['complaint_title'] ?? '')) !== ''
                                             ? (string)$p['complaint_title']
-                                            : ($latestAttempt >= 2 ? '2nd Invitation' : '1st Invitation');
+                                            : ($itemCount >= 2 ? '2 Invitations · Latest: ' . $latestStepLabel : ($latestAttempt >= 2 ? '2nd Invitation' : '1st Invitation'));
                                         $schedDateTimeText = trim($d . ($t !== '' ? ', ' . $t : ''));
                                         $schedSubLabel = trim((string)($p['venue'] ?? '')) !== ''
                                             ? (string)$p['venue']
@@ -2105,8 +2106,8 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                         <?php if (!empty($p['complaint_number'])): ?>
                                                             <span class="paanyaya-case-chip">Case #<?php echo htmlspecialchars($p['complaint_number']); ?></span>
                                                         <?php endif; ?>
-                                                        <?php if ($hasSecond): ?>
-                                                            <span class="paanyaya-series-pill">2 Connected Invitations</span>
+                                                        <?php if ($itemCount >= 2): ?>
+                                                            <span class="paanyaya-series-pill"><?php echo $itemCount; ?> Connected Invitations</span>
                                                         <?php endif; ?>
                                                     </div>
                                                     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
@@ -2120,7 +2121,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                         $showUpcomingSecond = (
                                                             count($items) === 1 && !$hasSecond
                                                             && !str_starts_with($displaySt, 'Settled')
-                                                            && !in_array($displaySt, ['Done', 'Resolved', 'Completed', 'Settled', 'Cancelled', 'Escalated', 'Dismissed', 'Archived', 'CFA Issued'], true)
+                                                            && !in_array($displaySt, ['Done', 'Resolved', 'Completed', 'Settled', 'Cancelled', 'Escalated', 'Dismissed', 'Archived', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true)
                                                         );
                                                     ?>
                                                     <?php foreach (array_slice($items, 0, 2) as $item): ?>
@@ -3742,6 +3743,9 @@ document.addEventListener('DOMContentLoaded', function() {
     if (schedForm) {
         schedForm.addEventListener('submit', async function(e) {
             e.preventDefault();
+            if (schedForm.dataset.submitting === '1' || submitSchedBtn?.disabled) {
+                return;
+            }
             const compResId = document.getElementById('schedComplainantResidentId')?.value || '';
             const compFirst = document.getElementById('schedComplainantFirstName').value.trim();
             const compMiddle = document.getElementById('schedComplainantMiddleName').value.trim();
@@ -3785,6 +3789,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const complainantFullName = [compFirst, compMiddle, compLast].filter(Boolean).join(' ');
             const inviteeFullName = [invFirst, invMiddle, invLast].filter(Boolean).join(' ');
 
+            schedForm.dataset.submitting = '1';
             submitSchedBtn.disabled = true;
             submitSchedBtn.textContent = 'Saving...';
 
@@ -3838,11 +3843,16 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 if (!res.ok || !result.success) {
                     agapAlert(result.message || 'Hindi ma-iskedyul ang Paanyaya.', 'error');
+                    delete schedForm.dataset.submitting;
                     submitSchedBtn.disabled = false;
                     submitSchedBtn.textContent = 'Save & Generate Paanyaya';
                     return;
                 }
 
+                schedForm.reset();
+                delete schedForm.dataset.submitting;
+                submitSchedBtn.disabled = false;
+                submitSchedBtn.textContent = 'Save & Generate Paanyaya';
                 closeSchedModal();
                 if (typeof window.showSuccessPopup === 'function') {
                     await window.showSuccessPopup('Matagumpay na nai-iskedyul ang Paanyaya para kay ' + inviteeFullName + '!', 'Tagumpay!');
@@ -3853,6 +3863,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (err) {
                 console.error(err);
                 agapAlert('May naganap na error sa pag-save ng Paanyaya.', 'error');
+                delete schedForm.dataset.submitting;
                 submitSchedBtn.disabled = false;
                 submitSchedBtn.textContent = 'Save & Generate Paanyaya';
             }
@@ -4753,6 +4764,10 @@ document.addEventListener('DOMContentLoaded', function() {
             agapAlert('Invalid Paanyaya record.', 'error');
             return;
         }
+        if (attModal?.dataset.submitting === '1') {
+            return;
+        }
+        if (attModal) attModal.dataset.submitting = '1';
 
         const notesText = attNotesInput?.value.trim() || '';
         const payload = {
@@ -4788,12 +4803,15 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (!res.ok || !data.success) {
                 agapAlert(data.message || 'Nabigo ang pag-proseso ng aksyon.', 'error');
+                if (attModal) delete attModal.dataset.submitting;
                 if (btnSaveAttOnly) btnSaveAttOnly.disabled = false;
                 if (btnConfirmOutcome) btnConfirmOutcome.disabled = false;
                 if (activeBtn) activeBtn.textContent = originalText;
                 return;
             }
 
+            if (attModal) delete attModal.dataset.submitting;
+            if (attNotesInput) attNotesInput.value = '';
             closeAttModal();
 
             if (actionType === 'escalate' && data.case_number) {
@@ -4833,6 +4851,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } catch (err) {
             console.error(err);
             agapAlert('May naganap na error sa pag-proseso ng aksyon.', 'error');
+            if (attModal) delete attModal.dataset.submitting;
             if (btnSaveAttOnly) btnSaveAttOnly.disabled = false;
             if (btnConfirmOutcome) btnConfirmOutcome.disabled = false;
             if (activeBtn) activeBtn.textContent = originalText;

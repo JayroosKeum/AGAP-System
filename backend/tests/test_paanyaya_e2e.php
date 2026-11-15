@@ -426,6 +426,156 @@ try {
         check(str_contains($page['body'], 'Complaint settled') && !str_contains($page['body'], 'Private formal case remarks'),
             'Resident timeline shows the recorded outcome without staff remarks');
     }
+
+    // Verify standalone Paanyaya 1st + 2nd attempt grouping, duplicate guard, and status progression.
+    require_once __DIR__ . '/../models/Paanyaya.php';
+    require_once __DIR__ . '/../models/Search.php';
+    $standalonePaanyaya = new Paanyaya($db);
+    $threadTag = 'Thread-' . $token;
+    $p1Insert = $db->prepare("
+        INSERT INTO paanyayas (
+            complaint_id, complainant_resident_id, invitee_resident_id, complainant_name, invitee_name, scheduled_date, scheduled_time,
+            status, attempt_number, venue, salaysay, scheduled_by
+        ) VALUES (NULL, ?, ?, ?, ?, ?, '14:00:00', 'Scheduled', 1, 'Tanggapan ng Barangay Tumana', 'Debt collection dialogue', ?)
+    ");
+    $p1Insert->execute([$residents[0], $residents[1], "Comp $threadTag", "Inv $threadTag", date('Y-m-d', strtotime('+2 days')), $clerk['user_id']]);
+    $p1Id = (int) $db->lastInsertId();
+    $createdPaanyayaIds = [$p1Id];
+    register_shutdown_function(static function () use ($db, &$createdPaanyayaIds): void {
+        if ($createdPaanyayaIds) {
+            $placeholders = implode(',', array_fill(0, count($createdPaanyayaIds), '?'));
+            $db->prepare("DELETE FROM paanyayas WHERE paanyaya_id IN ($placeholders)")->execute($createdPaanyayaIds);
+        }
+    });
+
+    $p2Res = $standalonePaanyaya->scheduleSecondPaanyaya($p1Id, (int) $clerk['user_id'], [
+        'p2_date' => date('Y-m-d', strtotime('+4 days')),
+        'p2_time' => '14:00',
+        'complainant_attended' => 'Present',
+        'invitee_attended' => 'Absent',
+        'salaysay' => 'Debt collection dialogue',
+    ]);
+    $p2Id = (int) ($p2Res['new_paanyaya_id'] ?? 0);
+    if ($p2Id > 0) {
+        $createdPaanyayaIds[] = $p2Id;
+    }
+    check(!empty($p2Res['success']) && $p2Id > 0, 'Standalone 2nd Paanyaya schedules cleanly');
+
+    $parentCheck = $db->prepare('SELECT parent_paanyaya_id, attempt_number FROM paanyayas WHERE paanyaya_id = ?');
+    $parentCheck->execute([$p2Id]);
+    $p2Row = $parentCheck->fetch();
+    check((int) ($p2Row['parent_paanyaya_id'] ?? 0) === $p1Id && (int) ($p2Row['attempt_number'] ?? 0) === 2, 'Standalone 2nd Paanyaya links to Attempt 1 parent');
+
+    $dupP2 = $standalonePaanyaya->scheduleSecondPaanyaya($p1Id, (int) $clerk['user_id'], [
+        'p2_date' => date('Y-m-d', strtotime('+5 days')),
+        'p2_time' => '15:00',
+    ]);
+    check(empty($dupP2['success']), 'Duplicate 2nd Paanyaya attempt is rejected for the same thread');
+
+    $grouped = $standalonePaanyaya->getGroupedPaanyayaCases(null, $threadTag);
+    check(count($grouped) === 1 && count($grouped[0]['items'] ?? []) === 2 && !empty($grouped[0]['has_second_paanyaya']),
+        'Grouped Paanyaya list nests 1st and 2nd standalone attempts under one progression thread');
+
+    $p1Insert->execute([$residents[1], $residents[0], "Comp $threadTag", "Inv $threadTag", date('Y-m-d', strtotime('+4 days')), $clerk['user_id']]);
+    $unrelatedId = (int) $db->lastInsertId();
+    $createdPaanyayaIds[] = $unrelatedId;
+    $db->prepare('UPDATE paanyayas SET attempt_number = 2 WHERE paanyaya_id = ?')->execute([$unrelatedId]);
+    check(count($standalonePaanyaya->getGroupedPaanyayaCases(null, $threadTag)) === 2,
+        'Unlinked legacy invitations with matching names appear as separate disputes');
+
+    $attendance = request($base, $clerk, 'paanyaya/attendance.php', [
+        'paanyaya_id' => $p2Id,
+        'complainant_attended' => 'Present',
+        'invitee_attended' => 'Absent',
+        'dialogue_notes' => 'Respondent remained absent on 2nd Paanyaya.',
+    ]);
+    check($attendance['status'] === 200 && !empty($attendance['json']['success']), 'Clerk saves attendance before the formal complaint handoff');
+
+    $filing = [
+        'complaint_title' => "Escalated $threadTag",
+        'case_type' => 'Civil',
+        'category_id' => 1,
+        'narrative' => 'Synthetic standalone Paanyaya escalated to formal mediation.',
+        'incident_date' => date('Y-m-d', strtotime('-1 day')),
+        'incident_time' => '09:30',
+        'incident_street' => 'Synthetic test street',
+        'complainant_resident_id' => $residents[0],
+        'respondent_resident_id' => $residents[1],
+        'latitude' => 14.6521,
+        'longitude' => 121.0854,
+        'jurisdiction_screened' => '1',
+        'duplicate_acknowledged' => '1',
+    ];
+    $filingLookup = $db->prepare('SELECT COUNT(*) FROM complaints WHERE complaint_title = ?');
+    $sourceLookup = $db->prepare('SELECT complaint_id, escalated_to_complaint_id, status FROM paanyayas WHERE paanyaya_id = ?');
+    foreach (['escalated_from_paanyaya_id', 'escalate_paanyaya_id'] as $sourceField) {
+        $denied = request($base, $actors['resident'], 'complaints/create.php', $filing + [$sourceField => $p2Id]);
+        check($denied['status'] === 403, 'Resident filing cannot escalate a standalone invitation through ' . $sourceField);
+    }
+    $invalid = request($base, $clerk, 'complaints/create.php', $filing + ['escalated_from_paanyaya_id' => PHP_INT_MAX]);
+    $stale = request($base, $clerk, 'complaints/create.php', $filing + ['escalated_from_paanyaya_id' => $p1Id]);
+    $filingLookup->execute([$filing['complaint_title']]);
+    $sourceLookup->execute([$p2Id]);
+    $source = $sourceLookup->fetch();
+    check($invalid['status'] === 422 && $stale['status'] === 422 && (int) $filingLookup->fetchColumn() === 0
+        && $source['complaint_id'] === null && $source['escalated_to_complaint_id'] === null && $source['status'] === 'Scheduled',
+        'Denied and invalid handoffs leave both the complaint and the invitation untouched');
+
+    $db->exec("CREATE TRIGGER test_paanyaya_docket_failure BEFORE INSERT ON cases FOR EACH ROW
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Synthetic docket failure'");
+    try {
+        $failedDocket = request($base, $clerk, 'complaints/create.php', $filing + ['escalated_from_paanyaya_id' => $p2Id]);
+    } finally {
+        $db->exec('DROP TRIGGER test_paanyaya_docket_failure');
+    }
+    $filingLookup->execute([$filing['complaint_title']]);
+    $sourceLookup->execute([$p2Id]);
+    $source = $sourceLookup->fetch();
+    check($failedDocket['status'] === 422 && (int) $filingLookup->fetchColumn() === 0 && $source['complaint_id'] === null && $source['status'] === 'Scheduled',
+        'A docketing error rolls back the complaint and invitation changes');
+
+    $handoff = request($base, $clerk, 'complaints/create.php', $filing + ['escalated_from_paanyaya_id' => $p2Id]);
+    $escalatedPre = $handoff['json'];
+    $escalatedCid = (int) ($escalatedPre['complaint_id'] ?? 0);
+    if ($escalatedCid > 0) {
+        $cleanup->trackComplaint($escalatedCid);
+    }
+    check($handoff['status'] === 201 && !empty($escalatedPre['success']) && $escalatedCid > 0 && !empty($escalatedPre['case_id']),
+        'Staff handoff after a docketing error creates both complaint and formal case');
+    $retry = request($base, $clerk, 'complaints/create.php', $filing + ['escalated_from_paanyaya_id' => $p2Id]);
+    $filingLookup->execute([$filing['complaint_title']]);
+    check($retry['status'] === 422 && (int) $filingLookup->fetchColumn() === 1, 'A repeated handoff cannot create a second complaint');
+    $sourceLookup->execute([$unrelatedId]);
+    check($sourceLookup->fetch()['complaint_id'] === null, 'Docketing preserves an unrelated invitation with matching names');
+
+    $threadLinks = $db->prepare('SELECT paanyaya_id, complaint_id, escalated_to_complaint_id, status FROM paanyayas WHERE paanyaya_id IN (?, ?) ORDER BY paanyaya_id');
+    $threadLinks->execute([$p1Id, $p2Id]);
+    $linkedRows = $threadLinks->fetchAll();
+    check(count($linkedRows) === 2
+        && (int) $linkedRows[0]['complaint_id'] === $escalatedCid
+        && (int) $linkedRows[1]['complaint_id'] === $escalatedCid
+        && $linkedRows[1]['status'] === 'Escalated',
+        'Escalating 2nd Paanyaya links both thread rows to the formal complaint');
+
+    $searchModel = new Search($db);
+    $preLifecycle = $searchModel->resolveLifecycle([
+        'complaint_status' => 'Pre-Docketed (Paanyaya)',
+        'case_id' => null,
+        'paanyaya_attempt' => 1,
+    ]);
+    $preStd = $searchModel->resolveStatusLabels([
+        'complaint_status' => 'Pre-Docketed (Paanyaya)',
+        'case_id' => null,
+        'paanyaya_attempt' => 2,
+    ]);
+    check($preLifecycle['current_stage'] === '1st Paanyaya' && $preLifecycle['intake_status'] === 'Pre-Docketed (Paanyaya)'
+        && $preStd === ['2nd Paanyaya'],
+        'Search lifecycle reports Paanyaya stage accurately before formal docketing instead of 1st Mediation');
+
+    $viewRes = request($base, $clerk, "complaints/view.php?id=$escalatedCid");
+    $viewJson = json_decode($viewRes['body'], true);
+    check($viewRes['status'] === 200 && !empty($viewJson['case_id']) && ($viewJson['case_status'] ?? '') === 'Mediation',
+        'Complaint view returns formal case status after Paanyaya escalation');
 } catch (Throwable $exception) {
     fwrite(STDERR, file_get_contents($logPath));
     throw $exception;

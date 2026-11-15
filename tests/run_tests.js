@@ -47,6 +47,7 @@ const preflight = spawnSync(php, ['-r', [
   '    fwrite(STDERR, "Selected database mismatch: expected {$expectedDb}, got {$selectedDb}." . PHP_EOL); exit(1);',
   '}',
   '$db->query("SELECT invitation_number FROM paanyaya_preparations LIMIT 0");',
+  '$db->query("SELECT parent_paanyaya_id FROM paanyayas LIMIT 0");',
   '$db->query("SELECT settlement_status FROM settlements LIMIT 0");',
   '$db->query("SELECT award_status FROM arbitration_records LIMIT 0");',
   '$db->query("SELECT source_document_id FROM case_transmittals LIMIT 0");',

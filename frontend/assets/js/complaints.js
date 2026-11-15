@@ -241,16 +241,22 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     const isPaanyayaCompletedOrEscalated = (
         Boolean(caseId) ||
         ['Mediation', 'Conciliation', 'Arbitration', 'CFA', 'Settled', 'Resolution / Closed'].includes(lifecycle) ||
-        ['Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Closed'].includes(cStatus) ||
+        ['Docketed', 'Docketed (Mediation)', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued', 'Escalated', 'Settled', 'Closed'].includes(cStatus) ||
+        complaint.paanyaya?.status === 'Escalated' ||
         Boolean(complaint.paanyaya_stages?.stage_1?.complainant_choice === 'Escalate_Mediation') ||
         Boolean(complaint.paanyaya_stages?.stage_2?.complainant_choice === 'Escalate_Mediation') ||
         Boolean(complaint.paanyaya_workspace?.escalated_to_case_id) ||
         Boolean(progress.summons && progress.summons.length > 0)
     );
+    const isFormallyDocketed = (
+        Boolean(caseId) ||
+        ['Mediation', 'Conciliation', 'Arbitration', 'CFA'].includes(lifecycle) ||
+        ['Docketed', 'Docketed (Mediation)', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'].includes(cStatus)
+    );
 
     const hasLoadedData = Boolean(window.complaintData && (window.complaintData.case_id || window.complaintData.complaint_id));
     if (tabId === 'tab-mediation' && hasLoadedData) {
-        if (!isPaanyayaCompletedOrEscalated || isSummonsLocked || isP2Pending) {
+        if (!isFormallyDocketed && (!isPaanyayaCompletedOrEscalated || isSummonsLocked || isP2Pending)) {
             return {
                 allowed: false,
                 prerequisite: 'Paanyaya',
@@ -644,7 +650,13 @@ async function loadComplaintDetails() {
 
         // Format Docket Number (e.g. 10-17-2026) or Paanyaya Case Number (e.g. P-10-86-2026)
         const hasFormalCaseRecord = Boolean(data.case_id || data.case_workspace?.case?.case_id);
-        const isPaanyayaRecord = !hasFormalCaseRecord;
+        const formalStatuses = ['Docketed', 'Docketed (Mediation)', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued', 'For CFA', 'Escalated'];
+        const hasFormalProgression = hasFormalCaseRecord
+            || formalStatuses.includes(data.status)
+            || formalStatuses.includes(data.case_status)
+            || ['Mediation', 'Conciliation', 'Arbitration', 'CFA'].includes(data.lifecycle_status)
+            || data.paanyaya?.status === 'Escalated';
+        const isPaanyayaRecord = !hasFormalProgression;
         const formatDocketDisplay = (num, id, dt) => {
             if (num && String(num).startsWith('P-')) return String(num);
             if (num && !String(num).startsWith('CMP-')) return String(num);
@@ -654,9 +666,19 @@ async function loadComplaintDetails() {
             const yy = d.getFullYear() || 2026;
             return isPaanyayaRecord ? `P-${mm}-${ss}-${yy}` : `${mm}-${ss}-${yy}`;
         };
-        const hasFormalDocket = Boolean(data.case_number || (hasFormalCaseRecord && data.complaint_number));
+        const rawDocketCandidate = data.case_number || data.case_workspace?.case?.case_number || '';
+        const hasPersistedCaseRecord = Number(data.case_id || data.case_workspace?.case?.case_id || 0) > 0;
+        const looksLikeIntakeRef = (val) => {
+            const s = String(val || '').trim();
+            return s === '' || s.startsWith('INT-') || s.startsWith('CMP-');
+        };
+        const hasFormalDocket = Boolean(
+            hasPersistedCaseRecord
+            || (rawDocketCandidate && !looksLikeIntakeRef(rawDocketCandidate))
+            || (hasFormalProgression && data.complaint_number && !looksLikeIntakeRef(data.complaint_number))
+        );
         const docketNum = hasFormalDocket
-            ? formatDocketDisplay(data.case_number || data.complaint_number, data.complaint_id, data.created_at)
+            ? formatDocketDisplay(data.case_number || data.case_workspace?.case?.case_number || data.complaint_number, data.complaint_id, data.created_at)
             : (data.intake_reference || data.complaint_number || 'Not yet docketed');
         const compNum = docketNum;
 
@@ -699,13 +721,16 @@ async function loadComplaintDetails() {
             settlement
         );
 
-        const caseStage = data.case_workspace?.case?.case_status || (hasFormalCaseRecord ? (data.current_stage || data.lifecycle_status) : '') || '';
+        const caseStage = data.case_workspace?.case?.case_status
+            || (hasFormalProgression ? (data.case_status || data.current_stage || (['Mediation', 'Conciliation', 'Arbitration'].includes(data.status) ? data.status : '') || (['Mediation', 'Conciliation', 'Arbitration', 'CFA'].includes(data.lifecycle_status) ? data.lifecycle_status : '')) : '')
+            || '';
         const isEligibleForPaanyaya = isPaanyayaRecord && (
             data.screening_decision === 'Eligible' ||
             data.status === 'Accepted' ||
             data.status === 'Pre-Docketed (Paanyaya)' ||
             data.status === 'Paanyaya In Progress' ||
-            data.status === '1st Paanyaya Failed (No-Show)'
+            data.status === '1st Paanyaya Failed (No-Show)' ||
+            data.status === 'Pre-Docketed (Paanyaya 2 Authorized)'
         );
         let displayStage = '';
 
@@ -730,8 +755,8 @@ async function loadComplaintDetails() {
                 displayStage = 'Preliminary Screening';
             }
         } else {
-            const effStage = caseStage || 'Mediation';
-            displayStage = effStage.endsWith('Stage') ? effStage : (effStage + ' Stage');
+            const normalizedStage = (caseStage === 'Docketed' || caseStage === 'Docketed (Mediation)' || caseStage === 'Escalated') ? 'Mediation' : (caseStage || 'Mediation');
+            displayStage = normalizedStage.endsWith('Stage') ? normalizedStage : (normalizedStage + ' Stage');
         }
 
         // Status Badge
@@ -837,10 +862,13 @@ async function loadComplaintDetails() {
         setText('sophosHeroHearingDate', nextHearing ? formatDateReadable(nextHearing) : 'N/A');
         setText('sophosHeroLastUpdate', data.updated_at ? formatDateReadable(data.updated_at) : (data.created_at ? formatDateReadable(data.created_at) : '—'));
 
+        const rawOrigin = String(data.complaint_source || data.intake_source || '').trim();
+        const normOrigin = rawOrigin.toLowerCase();
         let originDisplay = 'Resident Portal (Online)';
-        if (data.complaint_source === 'walk_in') originDisplay = 'Walk-in Blotter';
-        else if (data.complaint_source === 'referral') originDisplay = 'External Referral';
-        else if (data.complaint_source) originDisplay = data.complaint_source;
+        if (normOrigin === 'walk_in' || normOrigin === 'walk-in') originDisplay = 'Walk-in Blotter';
+        else if (normOrigin === 'referral' || normOrigin === 'external referral') originDisplay = 'External Referral';
+        else if (normOrigin === 'online' || normOrigin === 'resident portal') originDisplay = 'Resident Portal (Online)';
+        else if (rawOrigin) originDisplay = rawOrigin;
         setText('sophosInfoOrigin', originDisplay);
 
         // Populate Sophos Command Line Box
@@ -8730,6 +8758,9 @@ window.submitPaanyayaOutcome = async function(event) {
     event.preventDefault();
     const form = event.target;
     const btn = document.getElementById('btnSubmitPaanyayaOutcome');
+    if (form.dataset.submitting === '1' || btn?.disabled) return;
+    form.dataset.submitting = '1';
+    const originalBtnText = btn ? btn.textContent : 'Confirm Outcome';
     const errBox = document.getElementById('paanyayaOutcomeError');
 
     const formData = new FormData(form);
@@ -8758,6 +8789,7 @@ window.submitPaanyayaOutcome = async function(event) {
         });
 
         if (res.success) {
+            form.reset();
             window.agapNotify?.(res.message || 'Outcome recorded successfully!', 'success');
             closePaanyayaOutcomeModal();
             await loadComplaintDetails();
@@ -8778,9 +8810,10 @@ window.submitPaanyayaOutcome = async function(event) {
             else alert(err.message || 'Error recording outcome.');
         }
     } finally {
+        delete form.dataset.submitting;
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'Confirm Outcome';
+            btn.textContent = originalBtnText;
         }
     }
 };
@@ -9748,6 +9781,9 @@ window.submitPaanyayaMinutes = async function(event) {
     event.preventDefault();
     const form = event.target;
     const btn = document.getElementById('btnSubmitPaanyayaMinutes');
+    if (form.dataset.submitting === '1' || btn?.disabled) return;
+    form.dataset.submitting = '1';
+    const originalBtnText = btn ? btn.textContent : 'Save Minutes & Confirm Result';
     const errBox = document.getElementById('paanyayaMinutesError');
 
     const formData = new FormData(form);
@@ -9765,6 +9801,7 @@ window.submitPaanyayaMinutes = async function(event) {
         });
 
         if (res.success) {
+            form.reset();
             window.agapNotify?.(res.message || 'Dialogue minutes recorded successfully!', 'success');
             closePaanyayaMinutesModal();
             await loadComplaintDetails();
@@ -9785,9 +9822,10 @@ window.submitPaanyayaMinutes = async function(event) {
             else alert(err.message || 'Error recording dialogue minutes.');
         }
     } finally {
+        delete form.dataset.submitting;
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'Save Minutes & Confirm Result';
+            btn.textContent = originalBtnText;
         }
     }
 };
@@ -10051,6 +10089,7 @@ window.handleModalDialogueMinutesSubmit = async function(event) {
     event.preventDefault();
     const form = event.target;
     const btn = form.querySelector('button[type="submit"]');
+    if (form.dataset.submitting === '1' || btn?.disabled) return;
     const errBox = form.querySelector('.modal-minutes-error');
 
     const outcome = form.querySelector('input[name="outcome"]:checked')?.value;
@@ -10068,6 +10107,7 @@ window.handleModalDialogueMinutesSubmit = async function(event) {
         }
     }
 
+    form.dataset.submitting = '1';
     const formData = new FormData(form);
     try {
         if (btn) {
@@ -10083,6 +10123,7 @@ window.handleModalDialogueMinutesSubmit = async function(event) {
         const data = await res.json();
 
         if (data.success) {
+            form.reset();
             window.agapNotify?.(data.message || 'Dialogue minutes recorded successfully!', 'success');
             window.closeRecordDialogueMinutesModal();
             if (typeof loadComplaintDetails === 'function') {
@@ -10099,6 +10140,7 @@ window.handleModalDialogueMinutesSubmit = async function(event) {
             errBox.style.display = 'block';
         }
     } finally {
+        delete form.dataset.submitting;
         if (btn) {
             btn.disabled = false;
             window.toggleComplainantChoiceViews(form);

@@ -581,6 +581,10 @@ class PaanyayaModel
                     $userId,
                     "Inilipat mula sa Paanyaya: $remarks"
                 );
+                if (empty($docketResult['success'])) {
+                    throw new RuntimeException($docketResult['message'] ?? 'Unable to docket complaint to formal Mediation.');
+                }
+                $newComplaintStatus = 'Mediation';
             }
 
             // 6. If Progression is Issue 2nd Paanyaya, ensure Stage 2 record exists and is ready
