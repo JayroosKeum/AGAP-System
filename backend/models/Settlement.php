@@ -523,6 +523,16 @@ class Settlement
                 $this->conn->beginTransaction();
             }
 
+            $lockStmt = $this->conn->prepare("SELECT repudiation_status, repudiation_date FROM settlements WHERE settlement_id = ? LIMIT 1 FOR UPDATE");
+            $lockStmt->execute([$settlementId]);
+            $lockedRow = $lockStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$lockedRow || $lockedRow['repudiation_status'] === 'Repudiated' || !empty($lockedRow['repudiation_date'])) {
+                if (!$isNested && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
+                return ['success' => false, 'message' => 'This settlement has already been repudiated.'];
+            }
+
             $docPath = trim((string) ($data['supporting_document_path'] ?? ''));
 
             $stmt = $this->conn->prepare("
@@ -555,23 +565,12 @@ class Settlement
             ");
             $updStage->execute([$settlement['case_id'], "Settlement repudiated under RA 7160 Sec. 418. Ground: {$ground}. {$reason}"]);
 
-            // Automatically route case to generate KP Form 20 (Certificate to File Action - CFA)
-            $cfaCheck = $this->conn->prepare("SELECT cfa_id FROM cfa_records WHERE case_id = ?");
-            $cfaCheck->execute([$settlement['case_id']]);
-            if (!$cfaCheck->fetchColumn()) {
-                $insCfa = $this->conn->prepare("INSERT INTO cfa_records (case_id, issuance_date, reason) VALUES (?, CURDATE(), ?)");
-                $insCfa->execute([
-                    $settlement['case_id'],
-                    "Amicable settlement repudiated under RA 7160 Section 416 on grounds of: {$reason}"
-                ]);
-            }
-
             // Invalidate / cancel court transmittal countdown
             $cancelTrans = $this->conn->prepare("UPDATE case_transmittals SET status = 'Pending', transmittal_notified = 2, updated_at = NOW() WHERE case_id = ?");
             $cancelTrans->execute([$settlement['case_id']]);
 
             $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Repudiated', ?, ?)");
-            $hist->execute([$settlement['case_id'], "Settlement repudiated within the 10-day statutory window. Ground: {$ground}. Unlocked KP Form 20 (CFA).", $actorUserId]);
+            $hist->execute([$settlement['case_id'], "Settlement repudiated within the 10-day statutory window. Ground: {$ground}. Unlocked KP Form 20 (CFA) for standard issuance.", $actorUserId]);
 
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';

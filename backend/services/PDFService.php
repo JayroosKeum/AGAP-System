@@ -2296,11 +2296,11 @@ class PDFService
             $hYear = date('Y', $hearingTs);
             $hTime = date('g:i A', $hearingTs);
         } else {
-            $hDay = '___'; $hMonth = '________'; $hYear = '2026'; $hTime = '_____';
+            $hDay = '___'; $hMonth = '________'; $hYear = '____'; $hTime = '_____';
         }
 
         $missedTs = !empty($data['missed_hearing_date']) ? strtotime($data['missed_hearing_date']) : null;
-        $missedDateStr = $missedTs ? 'ika-' . date('j', $missedTs) . ' ng ' . $this->filipinoMonth((int) date('n', $missedTs)) . ', ' . date('Y', $missedTs) : '___________, 2026';
+        $missedDateStr = $missedTs ? 'ika-' . date('j', $missedTs) . ' ng ' . $this->filipinoMonth((int) date('n', $missedTs)) . ', ' . date('Y', $missedTs) : '___________';
 
         $noticeTs = !empty($data['notice_date']) ? strtotime($data['notice_date']) : time();
         $noticeDay = date('j', $noticeTs);
@@ -2429,7 +2429,9 @@ class PDFService
         $addressee = $data['notice_recipient'] ?? $data['target_party_name'] ?? '';
         $targetParty = $this->escape((string) ($addressee ?: (implode(' / ', $respList) ?: '________________________')));
         $venue = $this->escape((string) ($data['venue'] ?? 'Tanggapan ng Punong Barangay'));
-        $venueLine = !empty($data['is_replacement_notice']) ? '<div>Lugar: <strong>' . $venue . '</strong></div>' : '';
+        $venueLine = '<div>Lugar: <strong>' . $venue . '</strong></div>';
+        $missedTs = !empty($data['missed_hearing_date']) ? strtotime($data['missed_hearing_date']) : null;
+        $missedDateStr = $missedTs ? 'ika-' . date('j', $missedTs) . ' ng ' . $this->filipinoMonth((int) date('n', $missedTs)) . ', ' . date('Y', $missedTs) : '___________';
 
         $compLines = '';
         foreach ($compList as $c) { $compLines .= '<div style="border-bottom: 1px solid #111; min-height: 18px; margin-bottom: 5px; font-weight: bold;">' . $this->escape($c) . '</div>'; }
@@ -2448,7 +2450,7 @@ class PDFService
             $hTime = date('g:i', $hearingTs);
             $hAmPm = $this->filipinoTime((int) date('H', $hearingTs));
         } else {
-            $hDayOfWeek = '________'; $hDay = '___'; $hMonth = '________'; $hYear = '2026'; $hTime = '_____'; $hAmPm = 'umaga/hapon';
+            $hDayOfWeek = '________'; $hDay = '___'; $hMonth = '________'; $hYear = '____'; $hTime = '_____'; $hAmPm = 'umaga/hapon';
         }
 
         $missedTs = !empty($data['missed_hearing_date']) ? strtotime($data['missed_hearing_date']) : null;
@@ -2534,7 +2536,7 @@ class PDFService
 
     <div style="font-size: 11pt; line-height: 2; text-align: justify; margin-bottom: 25px;">
         <p style="text-indent: 40px; margin: 0 0 16px 0;">
-            Ikaw ay hinihilingan na humarap sa akin/Pangkat sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hDayOfWeek . '</span> ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $hDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $hMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hTime . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hAmPm . '</span> upang ipaliwanag kung bakit nabigo kang humarap para sa pamamagitan/pagkakasundo na itinakda noong, 2025 at kung bakit ang iyong reklamo ay hindi dapat ipawalang-saysay, ang katibayan upang humadlang sa paghahain ng sakdal sa hukuman/tanggapan ng pamahalaan ay di-dapat ipalabas, at ang paglilitis ng paglapastangan sa hukuman ay di-dapat ihain sa hukuman dahil sa pagkabigo o pagtangging humarap sa Punong Barangay/Pangkat ng Tagapagkasundo.
+            Ikaw ay hinihilingan na humarap sa akin/Pangkat sa <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 100px; font-weight: bold; text-align: center;">' . $hDayOfWeek . '</span> ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $hDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $hMonth . '</span>, <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hYear . '</span> sa ganap na ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 70px; font-weight: bold; text-align: center;">' . $hTime . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 90px; font-weight: bold; text-align: center;">' . $hAmPm . '</span> upang ipaliwanag kung bakit nabigo kang humarap para sa pamamagitan/pagkakasundo na itinakda noong <strong>' . $missedDateStr . '</strong> at kung bakit ang iyong reklamo ay hindi dapat ipawalang-saysay, ang katibayan upang humadlang sa paghahain ng sakdal sa hukuman/tanggapan ng pamahalaan ay di-dapat ipalabas, at ang paglilitis ng paglapastangan sa hukuman ay di-dapat ihain sa hukuman dahil sa pagkabigo o pagtangging humarap sa Punong Barangay/Pangkat ng Tagapagkasundo.
         </p>
         <p style="text-indent: 40px; margin: 0;">
             Ipinagbibigay-alam ngayong ika-<span style="display: inline-block; border-bottom: 1px solid #111; min-width: 60px; font-weight: bold; text-align: center;">' . $noticeDay . '</span> ng <span style="display: inline-block; border-bottom: 1px solid #111; min-width: 110px; font-weight: bold; text-align: center;">' . $noticeMonth . '</span>, ' . $noticeYear . '.

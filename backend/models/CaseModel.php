@@ -564,7 +564,10 @@ class CaseModel
         require_once __DIR__ . '/CFA.php';
         $cfaModel = new CFA($this->conn);
         $cfaRecord = $cfaModel->getByCase($id);
+        $cfaRecords = $cfaModel->getAllByCase($id);
         $cfaEligibility = $cfaModel->determineCfaEligibility($id);
+        $mediationShowCauseHearings = $stageModel->getShowCauseHearings($id, 'Mediation');
+        $conciliationShowCauseHearings = $stageModel->getShowCauseHearings($id, 'Conciliation');
 
         return [
             'case' => $case,
@@ -582,7 +585,10 @@ class CaseModel
             'arbitration' => $arbitration ?: null,
             'transmittal' => $transmittal ?: null,
             'cfa' => $cfaRecord ?: null,
-            'cfa_eligibility' => $cfaEligibility
+            'cfa_records' => $cfaRecords,
+            'cfa_eligibility' => $cfaEligibility,
+            'mediation_show_cause_hearings' => $mediationShowCauseHearings,
+            'conciliation_show_cause_hearings' => $conciliationShowCauseHearings
         ];
     }
 

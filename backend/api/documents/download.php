@@ -28,6 +28,10 @@ $storage = realpath(dirname(__DIR__, 3) . '/storage');
 $filePath = !empty($record['file_path']) ? ltrim($record['file_path'], '/\\') : '';
 $file = ($root && $filePath && is_file($root . DIRECTORY_SEPARATOR . $filePath)) ? realpath($root . DIRECTORY_SEPARATOR . $filePath) : false;
 if ($root === false || $storage === false || $file === false || !str_starts_with($file, $storage . DIRECTORY_SEPARATOR) || !is_file($file)) {
+    if (($_GET['stored'] ?? '') === '1') {
+        http_response_code(404);
+        exit('The saved document file is unavailable.');
+    }
     // If physical PDF file is missing or in custom path, redirect cleanly to kp-form.php generator
     header('Location: kp-form.php?document_id=' . urlencode((string)$documentId) . '&pdf=1');
     exit;

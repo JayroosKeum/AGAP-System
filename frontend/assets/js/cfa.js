@@ -60,7 +60,11 @@ async function loadCases() {
         });
 
         const preselected = window.AGAP_CFA?.preselectedCaseId;
-        if (preselected && cases.some((c) => Number(c.case_id) === Number(preselected))) {
+        if (preselected) {
+            if (!cases.some((c) => Number(c.case_id) === Number(preselected))) {
+                const extraOpt = new Option(`Case #${preselected} (Selected)`, String(preselected));
+                select.appendChild(extraOpt);
+            }
             select.value = String(preselected);
             loadCasePreview(preselected);
         }
@@ -93,8 +97,29 @@ async function loadCasePreview(caseId) {
 
         const item = res.data.case;
         const timer = item.mediation_timer || {};
-        const cfaElig = cfaStatusRes.cfa_eligibility || null;
+        const cfaElig = cfaStatusRes.cfa_eligibility || res.data.cfa_eligibility || null;
+        const existingCfa = cfaStatusRes.data || res.data.cfa || null;
         window.currentCaseCfaEligibility = cfaElig;
+
+        let existingCfaHtml = '';
+        if (existingCfa && existingCfa.cfa_id) {
+            const missingPdf = Boolean(existingCfa.needs_pdf_recovery || !existingCfa.pdf_available);
+            existingCfaHtml = `
+                <div style="margin-top: 0.75rem; padding: 12px 16px; background: ${missingPdf ? '#fffbeb' : '#eff6ff'}; border: 1px solid ${missingPdf ? '#f59e0b' : '#bfdbfe'}; border-radius: 8px; color: ${missingPdf ? '#92400e' : '#1e3a8a'}; font-size: 0.88rem; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div>
+                        <strong>Existing Issuance Recorded (${escapeHtml(existingCfa.cfa_type || 'KP Form 20')}):</strong>
+                        Issued on <strong>${escapeHtml(existingCfa.issuance_date || '—')}</strong> · Reason preserved: ${escapeHtml(existingCfa.reason || '—')}
+                        ${missingPdf ? '<div style="margin-top: 4px; font-weight: 600;">PDF file or generated document record is missing and needs recovery.</div>' : ''}
+                    </div>
+                    <div>
+                        ${missingPdf
+                            ? `<button type="button" class="btn-create" onclick="handleRecoverCfaPdf(${Number(existingCfa.cfa_id)}, this)" style="background: #d97706; border-color: #d97706; font-size: 0.82rem; padding: 6px 12px;">Recover Missing PDF</button>`
+                            : `<a href="${escapeHtml(existingCfa.pdf_url || '#')}" target="_blank" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none;">Download PDF</a>`
+                        }
+                    </div>
+                </div>
+            `;
+        }
 
         if (cfaTypeSelect && cfaElig) {
             const avail = (Array.isArray(cfaElig.available_forms) && cfaElig.available_forms.length)
@@ -209,6 +234,7 @@ async function loadCasePreview(caseId) {
             <div><strong>Stage / Status:</strong> ${escapeHtml(item.case_status)}</div>
             <div><strong>Docket Date:</strong> ${escapeHtml(item.docket_date)}</div>
             ${timerHtml}
+            ${existingCfaHtml}
             ${statusBannerHtml}
         `;
     } catch (err) {
@@ -312,28 +338,71 @@ async function loadCfaRecords() {
         const records = res.data || [];
 
         if (!records.length) {
-            table.innerHTML = '<tr><td colspan="6" class="empty-state">No Certificate to File Action (CFA) or Bar records found.</td></tr>';
+            table.innerHTML = '<tr><td colspan="7" class="empty-state">No Certificate to File Action (CFA) or Bar records found.</td></tr>';
             return;
         }
 
         table.innerHTML = records.map((r) => {
             const formType = r.cfa_type || 'KP Form 20';
             const badgeClass = formType === 'KP Form 20-A' ? 'status-barred' : (formType === 'KP Form 20-B' ? 'status-default' : 'status-cfa-issued');
+            const missingPdf = Boolean(r.needs_pdf_recovery || !r.pdf_available);
+            const statusHtml = missingPdf
+                ? '<span class="status status-default" style="background:#fef3c7;color:#92400e;">PDF Missing</span>'
+                : '<span class="status status-cfa-issued">Issued</span>';
+            const actionHtml = missingPdf
+                ? `<button type="button" class="btn-secondary cfa-recover-btn" data-cfa-id="${Number(r.cfa_id)}" onclick="handleRecoverCfaPdf(${Number(r.cfa_id)}, this)" style="font-size: 0.78rem; padding: 4px 10px; border-color: #f59e0b; color: #92400e; background: #fffbeb; cursor: pointer;">Recover PDF</button>`
+                : (r.pdf_url
+                    ? `<a href="${escapeHtml(r.pdf_url)}" target="_blank" class="btn-secondary" style="font-size: 0.78rem; padding: 4px 10px; text-decoration: none;">Download PDF</a>`
+                    : '—');
             return `
-                <tr>
+                <tr data-cfa-id="${Number(r.cfa_id)}">
                     <td><strong>${escapeHtml(r.case_number)}</strong></td>
                     <td>${escapeHtml(r.complaint_title || 'Case ' + r.case_number)}</td>
                     <td><span class="badge ${badgeClass}" style="font-weight: 700; font-size: 0.8rem;">${escapeHtml(formType)}</span></td>
                     <td>${escapeHtml(r.issuance_date)}</td>
                     <td style="max-width: 320px; white-space: normal; font-size: 0.875rem;">${escapeHtml(r.reason)}</td>
-                    <td><span class="status status-cfa-issued">Issued</span></td>
+                    <td>${statusHtml}</td>
+                    <td>${actionHtml}</td>
                 </tr>
             `;
         }).join('');
     } catch (err) {
-        table.innerHTML = `<tr><td colspan="6" class="empty-state text-danger">${escapeHtml(err.message)}</td></tr>`;
+        table.innerHTML = `<tr><td colspan="7" class="empty-state text-danger">${escapeHtml(err.message)}</td></tr>`;
     }
 }
+
+async function handleRecoverCfaPdf(cfaId, btn) {
+    if (!cfaId) return;
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.origLabel = btn.textContent;
+        btn.textContent = 'Recovering…';
+    }
+    setMessage('', false);
+    try {
+        const res = await cfaApi('../../../backend/api/documents/cfa.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'recover_pdf', cfa_id: Number(cfaId) })
+        });
+        setMessage(res.message || 'CFA PDF recovered.', true);
+        window.agapNotify?.(res.message || 'CFA PDF recovered cleanly.', 'success', 'PDF Recovered');
+        await loadCfaRecords();
+        const selectedCaseId = document.getElementById('cfaCaseId')?.value || window.AGAP_CFA?.preselectedCaseId;
+        if (selectedCaseId) {
+            await loadCasePreview(selectedCaseId);
+        }
+    } catch (err) {
+        setMessage(err.message || 'CFA PDF recovery failed.', false);
+        window.agapNotify?.(err.message || 'CFA PDF recovery failed.', 'error', 'Recovery Failed');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            if (btn.dataset.origLabel) btn.textContent = btn.dataset.origLabel;
+        }
+    }
+}
+window.handleRecoverCfaPdf = handleRecoverCfaPdf;
 
 function setMessage(msg, isSuccess = false) {
     if (window.agapNotify && msg) {

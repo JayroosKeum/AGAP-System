@@ -257,6 +257,21 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                     </div>
                 </div>
 
+                <!-- Section 2B: Show-Cause Notices & Determinations -->
+                <div class="stage-section-card" id="showCauseSection" style="display: none;">
+                    <div class="stage-section-header">
+                        <div>
+                            <h3>Show-Cause Notices &amp; Determinations (KP Form 18 / 19)</h3>
+                            <p>Linked original Conciliation hearing, operative show-cause notice service verification, and per-recipient determination status</p>
+                        </div>
+                    </div>
+                    <div id="wsShowCauseContainer">
+                        <div class="empty-detail-state">Checking show-cause notices...</div>
+                    </div>
+                </div>
+
+                <div id="wsDeterminationsOutcome"></div>
+
                 <!-- Section 3: Hearing Session Minutes & Proceedings -->
                 <div class="stage-section-card" id="minutesSection">
                     <div class="stage-section-header">
@@ -420,7 +435,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 <label for="stageOutcomeSelect">Procedural Outcome <span class="required-mark">*</span></label>
                 <select id="stageOutcomeSelect" required onchange="handleEmbeddedStageOutcomeChange(this.value)" style="padding: 9px;">
                     <option value="Settled">Settled — Parties Reached Amicable Settlement</option>
-                    <option value="Unsuccessful">Unsuccessful — Conciliation Failed (Eligible for CFA)</option>
+                    <option value="Unsuccessful">Unsuccessful — Conciliation Impasse (Requires Finalized Conciliation Minutes)</option>
                     <option value="Arbitration">Submit to Voluntary Arbitration (KP Form 14)</option>
                     <option value="Dismissed">Dismissed — Complainant Wilfully Failed to Appear</option>
                 </select>

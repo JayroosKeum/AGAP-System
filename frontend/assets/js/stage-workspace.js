@@ -1,4 +1,4 @@
-﻿
+
 
 function getMinutesField(baseId, hearingId = null) {
 
@@ -476,8 +476,8 @@ function applyWorkspaceReadOnlyState(stage) {
     content.querySelectorAll('input, select, textarea, button').forEach((el) => {
         if (
             el.matches('.ws-session-page-tab, .session-minutes-tab, [data-readonly-exempt="true"]') ||
-            el.dataset.readonlyExempt === 'true' ||
-            /print|preview|download|close|cancel|view/i.test(`${el.id} ${el.textContent}`)
+            el.dataset.readonlyExempt === 'true' || el.closest('.sc-decision-form') ||
+            /print|preview|download|close|cancel|view|recover/i.test(`${el.id} ${el.textContent}`)
         ) return;
         el.disabled = true;
         el.setAttribute('aria-disabled', 'true');
@@ -1565,9 +1565,12 @@ function renderWorkspaceUI() {
 
     renderAttendanceSection(data, stage);
 
+    renderShowCauseSection(data, stage);
+
     renderMinutesSection(data, stage);
 
     renderOutcomeAndReferralSection(data, stage);
+    renderWorkspaceOutcomesSummary(data);
     applyWorkspaceReadOnlyState(stage);
 
 }
@@ -5228,7 +5231,13 @@ function renderOutcomeAndReferralSection(data, stage) {
 
     } else if (mode === 'Conciliation') {
 
-        const canCfa = stage.documents_and_actions?.can_issue_cfa;
+        const canCfa = Boolean(stage.documents_and_actions?.can_issue_cfa);
+        const cfaElig = stage.cfa_eligibility || stage.documents_and_actions?.cfa_eligibility || data.cfa_eligibility || null;
+        const cfaReasonText = cfaElig
+            ? (cfaElig.eligible
+                ? `Eligible (${cfaElig.reason || cfaElig.eligible_ground || 'Qualified'}): ${(cfaElig.available_forms || []).join(', ') || 'KP Form 20'}`
+                : (cfaElig.blocking_reason || 'CFA issuance locked until finalized Conciliation impasse minutes, repudiation, or show-cause default exist.'))
+            : '';
         const isBookingPending = Boolean(stage.is_booking_pending || (!stage.sessions_count && stage.booking_status === 'Pending Scheduling'));
 
         outcomeBox.innerHTML = `
@@ -5263,7 +5272,7 @@ function renderOutcomeAndReferralSection(data, stage) {
 
                         </button>
 
-                        <a href="../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-secondary" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; ${!canCfa ? 'opacity: 0.5; pointer-events: none;' : ''}">
+                        <a href="../documents/cfa.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-secondary" data-readonly-exempt="true" style="font-size: 0.82rem; padding: 6px 12px; text-decoration: none; ${!canCfa ? 'opacity: 0.5; pointer-events: none;' : ''}">
 
                             Issue CFA (KP Form 20) &rarr;
 
@@ -5272,6 +5281,12 @@ function renderOutcomeAndReferralSection(data, stage) {
                     </div>
 
                 </div>
+
+                ${cfaReasonText ? `
+                    <div style="font-size: 0.78rem; color: ${cfaElig?.eligible ? '#166534' : '#64748b'}; margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 8px;">
+                        <strong>${cfaElig?.eligible ? 'CFA Ready:' : 'CFA Status:'}</strong> ${escapeHtml(cfaReasonText)}
+                    </div>
+                ` : ''}
 
             </div>
 
@@ -12529,3 +12544,395 @@ function enforceAllowedMediationDate(inputEl) {
 }
 window.enforceAllowedMediationDate = enforceAllowedMediationDate;
 
+/**
+ * -----------------------------------------------------------------------------
+ * ORDER 3A: SHOW-CAUSE NOTICES, PER-RECIPIENT READINESS & DETERMINATIONS
+ * -----------------------------------------------------------------------------
+ */
+function renderShowCauseSection(data, stage) {
+    const section = document.getElementById('showCauseSection');
+    const container = document.getElementById('wsShowCauseContainer');
+    if (!section || !container) return;
+
+    const mode = stageWorkspaceState.mode === 'Conciliation' ? 'Conciliation' : 'Mediation';
+    const items = mode === 'Conciliation'
+        ? (data.conciliation_show_cause_hearings || [])
+        : (data.mediation_show_cause_hearings || []);
+
+    if (!items.length) {
+        section.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+
+    section.style.display = 'block';
+    const caseId = Number(stageWorkspaceState.caseId || data.case?.case_id || 0);
+    const complaintId = Number(stageWorkspaceState.complaintId || data.case?.complaint_id || 0);
+    const feedback = window.__wsShowCauseFeedback || null;
+
+    const feedbackHtml = feedback
+        ? `<div id="wsShowCauseGlobalFeedback" role="alert" style="margin-bottom: 14px; padding: 11px 14px; border-radius: 8px; border: 1px solid ${feedback.type === 'error' ? '#fca5a5' : '#86efac'}; background: ${feedback.type === 'error' ? '#fef2f2' : '#f0fdf4'}; color: ${feedback.type === 'error' ? '#991b1b' : '#166534'}; font-size: 0.84rem; font-weight: 600;">${escapeHtml(feedback.message)}</div>`
+        : '';
+
+    const cardsHtml = items.map((sc) => {
+        const scId = Number(sc.hearing_id);
+        const recipients = Array.isArray(sc.recipient_items) ? sc.recipient_items : [];
+        const legacyHistory = (sc.legacy_evaluations || []).map((entry) => `
+            <li>${escapeHtml(entry.party_type)} · ${escapeHtml(entry.action_taken)} · ${escapeHtml(entry.justification_category)}
+                ${entry.justification_notes ? ` · ${escapeHtml(entry.justification_notes)}` : ''}</li>`).join('');
+        const categories = Object.entries(sc.excused_categories || {}).map(([value, label]) =>
+            `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`).join('');
+        const certDocs = (sc.documents || []).filter((d) => /20|21|22/i.test(String(d.template_name || '')));
+
+        const recipientCards = recipients.map((r) => {
+            const rId = Number(r.resident_id);
+            const key = `${scId}_${rId}`;
+            const origNotice = r.original_notice || {};
+            const opNotice = r.operative_notice || {};
+            const previewId = Number(r.preview_document_id);
+            const evalRec = r.evaluation || null;
+            const statusKey = String(r.readiness_status || 'awaiting_service');
+
+            let badgeBg = '#fef3c7';
+            let badgeColor = '#92400e';
+            let badgeText = 'Awaiting Service';
+            if (statusKey === 'ready') {
+                badgeBg = '#dcfce7';
+                badgeColor = '#166534';
+                badgeText = 'Ready for Decision';
+            } else if (statusKey === 'decided') {
+                badgeBg = evalRec && Number(evalRec.is_justified) === 1 ? '#dbeafe' : '#fee2e2';
+                badgeColor = evalRec && Number(evalRec.is_justified) === 1 ? '#1e40af' : '#991b1b';
+                badgeText = evalRec && Number(evalRec.is_justified) === 1 ? 'Decided: Justified' : 'Decided: Unjustified';
+            } else if (statusKey === 'closed' || statusKey === 'invalid_recipient' || statusKey === 'no_unexcused_absence') {
+                badgeBg = '#f1f5f9';
+                badgeColor = '#475569';
+                badgeText = statusKey === 'closed' ? 'Closed' : 'Held';
+            }
+
+            let actionArea = '';
+            if (statusKey === 'decided' && evalRec) {
+                actionArea = `
+                    <div class="sc-saved-determination" style="margin-top: 10px; padding: 10px 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.81rem; color: #1e293b;">
+                        <div style="font-weight: 700; margin-bottom: 4px;">
+                            Saved Determination: ${escapeHtml(evalRec.action_taken || (Number(evalRec.is_justified) === 1 ? 'Justified' : 'Unjustified'))}
+                        </div>
+                        ${evalRec.justification_category ? `<div><strong>Category:</strong> ${escapeHtml(evalRec.justification_category)}</div>` : ''}
+                        ${evalRec.justification_notes ? `<div><strong>Notes:</strong> ${escapeHtml(evalRec.justification_notes)}</div>` : ''}
+                        <div style="color: #64748b; font-size: 0.75rem; margin-top: 4px;">
+                            Evaluated${evalRec.evaluator_name ? ` by ${escapeHtml(evalRec.evaluator_name)}` : ''}${evalRec.evaluated_at ? ` on ${escapeHtml(formatDateTimeReadable(evalRec.evaluated_at))}` : ''}
+                            ${evalRec.rescheduled_hearing_id ? ` · Rescheduled Hearing #${escapeHtml(evalRec.rescheduled_hearing_id)}` : ''}
+                        </div>
+                    </div>
+                `;
+            } else if (r.ready_for_decision && statusKey === 'ready') {
+                const defaultOutcome = '0';
+                actionArea = `
+                    <div class="sc-decision-form" data-sc-hearing-id="${scId}" data-sc-resident-id="${rId}" style="margin-top: 12px; padding: 12px; background: #f8fafc; border: 1px solid #bfdbfe; border-radius: 8px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                            <div>
+                                <label for="scDecisionSelect_${key}" style="display: block; font-size: 0.76rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Determination</label>
+                                <select id="scDecisionSelect_${key}" onchange="toggleShowCauseFields('${key}', this.value)" style="width: 100%; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; background: #fff;">
+                                    <option value="0" ${defaultOutcome === '0' ? 'selected' : ''}>Unjustified Absence — Enforce Consequence (${r.party_type === 'Complainant' ? 'KP Form 21 Dismiss/Bar' : 'KP Form 22 / CFA 20-B'})</option>
+                                    <option value="1">${r.can_reschedule_if_excused ? 'Justified Absence — Excuse and reschedule' : 'Justified Absence — Record excuse'}</option>
+                                </select>
+                            </div>
+                            <div id="scCategoryWrap_${key}" style="display: none;">
+                                <label for="scCategorySelect_${key}" style="display: block; font-size: 0.76rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Justification Category</label>
+                                <select id="scCategorySelect_${key}" style="width: 100%; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; background: #fff;">
+                                    <option value="">-- Select Justification --</option>
+                                    ${categories}
+                                </select>
+                            </div>
+                            ${r.can_reschedule_if_excused ? `<div id="scReschedWrap_${key}" style="display: none;">
+                                <label for="scReschedDate_${key}" style="display: block; font-size: 0.76rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Replacement hearing date and time</label>
+                                <input id="scReschedDate_${key}" type="datetime-local" style="width: 100%; padding: 6px 9px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; background: #fff;">
+                            </div>` : ''}
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label for="scNotes_${key}" style="display: block; font-size: 0.76rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Evaluation Notes / Findings</label>
+                            <textarea id="scNotes_${key}" rows="2" placeholder="Enter factual findings from the show-cause hearing..." style="width: 100%; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.82rem; resize: vertical;"></textarea>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <span style="font-size: 0.74rem; color: #475569;">
+                                Submits for <strong>${escapeHtml(r.full_name)}</strong> · Operative ${escapeHtml(r.operative_form)} Delivery #${escapeHtml(r.expected_notice_delivery_id || '—')}
+                            </span>
+                            <button type="button"
+                                class="btn-create sc-submit-btn"
+                                data-hearing-id="${scId}"
+                                data-resident-id="${rId}"
+                                onclick="submitShowCauseDecision(${scId}, ${rId}, '${escapeHtml(r.party_type)}', ${Number(r.expected_notice_delivery_id || 0)}, ${Number(r.expected_notice_document_id || 0)}, ${Number(r.expected_original_delivery_id || 0)}, this)"
+                                style="padding: 7px 14px; font-size: 0.82rem; background: #1d4ed8; border-color: #1d4ed8; cursor: pointer;">
+                                Submit Show-Cause Decision &rarr;
+                            </button>
+                        </div>
+                        <div id="scRecipientFeedback_${key}" style="margin-top: 8px; display: none; font-size: 0.8rem;"></div>
+                    </div>
+                `;
+            } else {
+                const reasonText = r.blocking_reason || 'Awaiting verified service of operative notice before a decision can be recorded.';
+                const proofLink = `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}`;
+                actionArea = `
+                    <div class="sc-held-reason" style="margin-top: 10px; padding: 10px 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; font-size: 0.8rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <div>
+                            <strong>Held / Blocked:</strong> ${escapeHtml(reasonText)}
+                        </div>
+                        ${statusKey === 'awaiting_service' ? `
+                            <a href="${proofLink}" data-readonly-exempt="true" class="btn-secondary" style="font-size: 0.75rem; padding: 4px 10px; text-decoration: none; white-space: nowrap;">
+                                Update Proof of Service &rarr;
+                            </a>
+                        ` : ''}
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="sc-recipient-card" data-resident-id="${rId}" data-readiness="${escapeHtml(statusKey)}" style="border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px; background: #fff; margin-top: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <strong style="font-size: 0.92rem; color: #0f172a;">${escapeHtml(r.full_name)}</strong>
+                                <span style="font-size: 0.74rem; font-weight: 700; color: #475569; background: #f1f5f9; padding: 2px 8px; border-radius: 999px;">${escapeHtml(r.party_type)}</span>
+                                <span class="sc-readiness-badge" style="font-size: 0.74rem; font-weight: 700; background: ${badgeBg}; color: ${badgeColor}; padding: 2px 9px; border-radius: 999px;">${escapeHtml(badgeText)}</span>
+                            </div>
+                            <div style="font-size: 0.78rem; color: #475569; margin-top: 6px; display: flex; gap: 14px; flex-wrap: wrap;">
+                                <span><strong>Operative Notice:</strong> ${escapeHtml(r.operative_form)} (Attempt #${escapeHtml(opNotice.attempt_number || 1)} · Delivery #${escapeHtml(opNotice.delivery_id || '—')}) — <strong>${escapeHtml(opNotice.delivery_status || 'Pending')}</strong>${opNotice.verified ? ' ✓ Verified' : ''}</span>
+                                <span><strong>Original Notice:</strong> ${escapeHtml(origNotice.form_type || 'Notice')} (Delivery #${escapeHtml(origNotice.delivery_id || '—')}) — <strong>${escapeHtml(origNotice.status || 'Pending')}</strong>${origNotice.verified ? ' ✓ Verified' : ''}</span>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                            ${previewId ? `<a class="btn-secondary" href="${getStageApiUrl(`documents/download.php?id=${previewId}&stored=1`)}" target="_blank" rel="noopener" style="font-size: 0.75rem; padding: 4px 10px;">
+                                Preview ${escapeHtml(r.operative_form)}</a>` : '<span>No recipient-specific PDF available</span>'}
+                        </div>
+                    </div>
+                    ${actionArea}
+                </div>
+            `;
+        }).join('');
+
+        const certsHtml = certDocs.length
+            ? `<div style="margin-top: 10px; font-size: 0.78rem; color: #334155; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                <strong>Generated Certificates:</strong>
+                ${certDocs.map((d) => `<span style="background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 2px 8px; border-radius: 6px; font-weight: 600;">${escapeHtml(d.template_name || 'Document')} (#${escapeHtml(d.document_id)})</span>`).join('')}
+               </div>`
+            : '';
+
+        return `
+            <div class="sc-hearing-block" data-sc-hearing-id="${scId}" style="border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; background: #f8fafc; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0;">
+                    <div>
+                        <div style="font-size: 0.94rem; font-weight: 800; color: #0f172a;">
+                            ${escapeHtml(sc.hearing_type)} (#${scId}) · ${escapeHtml(sc.form_code || '')}
+                        </div>
+                        <div style="font-size: 0.79rem; color: #475569; margin-top: 3px;">
+                            <strong>Show-Cause Schedule:</strong> ${escapeHtml(formatDateTimeReadable(sc.hearing_date))} · ${escapeHtml(sc.venue || 'Lupon Session Hall')} · Status: <strong>${escapeHtml(sc.status)}</strong>
+                        </div>
+                        <div style="font-size: 0.79rem; color: #475569; margin-top: 2px;">
+                            <strong>Linked Original Hearing:</strong> ${escapeHtml(sc.original_hearing_type || 'Hearing')} (#${escapeHtml(sc.original_hearing_id || '—')}) on ${escapeHtml(formatDateTimeReadable(sc.original_hearing_date))} · Status: <strong>${escapeHtml(sc.original_hearing_status || '—')}</strong>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; font-size: 0.74rem; font-weight: 700;">
+                        <span style="background: #dcfce7; color: #166534; padding: 3px 9px; border-radius: 999px;">Ready: ${Number(sc.ready_count || 0)}</span>
+                        <span style="background: #fef3c7; color: #92400e; padding: 3px 9px; border-radius: 999px;">Awaiting Service: ${Number(sc.awaiting_service_count || 0)}</span>
+                        <span style="background: #e0e7ff; color: #3730a3; padding: 3px 9px; border-radius: 999px;">Decided: ${Number(sc.decided_count || 0)}</span>
+                    </div>
+                </div>
+                ${legacyHistory ? `<div><strong>Historical determinations without a named recipient</strong><ul>${legacyHistory}</ul></div>` : ''}
+                ${recipientCards || '<div style="padding: 10px 0; font-size: 0.82rem; color: #64748b;">No absent show-cause recipients found for this hearing.</div>'}
+                ${certsHtml}
+            </div>
+        `;
+    }).join('');
+
+    container.innerHTML = feedbackHtml + cardsHtml;
+}
+window.renderShowCauseSection = renderShowCauseSection;
+
+function toggleShowCauseFields(key, val) {
+    const isJustified = String(val) === '1';
+    const catWrap = document.getElementById(`scCategoryWrap_${key}`);
+    const resWrap = document.getElementById(`scReschedWrap_${key}`);
+    if (catWrap) catWrap.style.display = isJustified ? 'block' : 'none';
+    if (resWrap) resWrap.style.display = isJustified ? 'block' : 'none';
+}
+window.toggleShowCauseFields = toggleShowCauseFields;
+
+async function submitShowCauseDecision(
+    hearingId,
+    residentId,
+    partyType,
+    expectedNoticeDeliveryId,
+    expectedNoticeDocumentId,
+    expectedOriginalDeliveryId,
+    btn
+) {
+    const key = `${Number(hearingId)}_${Number(residentId)}`;
+    const isJustified = Number(document.getElementById(`scDecisionSelect_${key}`)?.value ?? 0);
+    const justificationCategory = document.getElementById(`scCategorySelect_${key}`)?.value || '';
+    const justificationNotes = (document.getElementById(`scNotes_${key}`)?.value || '').trim();
+    const rescheduleField = document.getElementById(`scReschedDate_${key}`);
+    const rescheduleDateRaw = (rescheduleField?.value || '').trim();
+    const feedbackEl = document.getElementById(`scRecipientFeedback_${key}`);
+
+    if (isJustified === 1 && (!justificationCategory || (rescheduleField && !rescheduleDateRaw))) {
+        const msg = justificationCategory
+            ? 'Choose a replacement hearing date and time.'
+            : 'Select a justification category before excusing this absence.';
+        if (feedbackEl) {
+            feedbackEl.style.display = 'block';
+            feedbackEl.style.color = '#991b1b';
+            feedbackEl.textContent = msg;
+        }
+        if (typeof notifyUser === 'function') notifyUser(msg, 'error');
+        return;
+    }
+
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Submitting…');
+
+    const csrfToken = window.agapCsrfToken
+        || document.querySelector('meta[name="agap-csrf-token"]')?.content
+        || document.querySelector('meta[name="csrf-token"]')?.content
+        || '';
+
+    const payload = {
+        hearing_id: Number(hearingId),
+        resident_id: Number(residentId),
+        party_type: partyType,
+        is_justified: isJustified,
+        justification_category: isJustified === 1 ? justificationCategory : null,
+        justification_notes: justificationNotes,
+        reschedule_date: isJustified === 1 && rescheduleDateRaw ? rescheduleDateRaw.replace('T', ' ') + (rescheduleDateRaw.length === 16 ? ':00' : '') : null,
+        expected_notice_delivery_id: Number(expectedNoticeDeliveryId) || null,
+        expected_notice_document_id: Number(expectedNoticeDocumentId) || null,
+        expected_original_delivery_id: Number(expectedOriginalDeliveryId) || null
+    };
+
+    try {
+        const res = await fetch(getStageApiUrl('hearings/show-cause.php'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {})
+            },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            const errMsg = json.message || 'Unable to submit show-cause determination.';
+            window.__wsShowCauseFeedback = { type: 'error', message: errMsg };
+            if (feedbackEl) {
+                feedbackEl.style.display = 'block';
+                feedbackEl.style.color = '#991b1b';
+                feedbackEl.textContent = errMsg;
+            }
+            if (typeof notifyUser === 'function') notifyUser(errMsg, 'error');
+            return;
+        }
+
+        const okMsg = json.message || 'Show-cause determination saved.';
+        window.__wsShowCauseFeedback = { type: 'success', message: okMsg };
+        if (typeof notifyUser === 'function') notifyUser(okMsg, 'success');
+        await loadStageData();
+        if (typeof window.opener?.loadComplaintDetails === 'function') {
+            try { window.opener.loadComplaintDetails(); } catch (_) {}
+        }
+    } catch (err) {
+        const netMsg = 'Network error while submitting show-cause determination.';
+        window.__wsShowCauseFeedback = { type: 'error', message: netMsg };
+        if (feedbackEl) {
+            feedbackEl.style.display = 'block';
+            feedbackEl.style.color = '#991b1b';
+            feedbackEl.textContent = netMsg;
+        }
+        if (typeof notifyUser === 'function') notifyUser(netMsg, 'error');
+    } finally {
+        setAsyncButtonState(btn, false);
+    }
+}
+window.submitShowCauseDecision = submitShowCauseDecision;
+
+function renderWorkspaceOutcomesSummary(data) {
+    const outcomeBox = document.getElementById('wsDeterminationsOutcome');
+    if (!outcomeBox || !data) return;
+    outcomeBox.replaceChildren();
+    const caseData = data.case || {};
+    const caseStatus = String(caseData.case_status || '');
+    const complaintId = Number(stageWorkspaceState.complaintId || caseData.complaint_id || 0);
+    const cfaRecords = data.cfa_records || [];
+    const showCauseList = [
+        ...(data.mediation_show_cause_hearings || []),
+        ...(data.conciliation_show_cause_hearings || [])
+    ];
+    const decidedItems = [];
+    showCauseList.forEach((sc) => {
+        (sc.recipient_items || []).forEach((r) => {
+            if (r.evaluation) {
+                decidedItems.push({ sc, r, evalRec: r.evaluation });
+            }
+        });
+    });
+
+    if (!decidedItems.length && !cfaRecords.length && !['Dismissed', 'DISMISSED_BARRED', 'CFA Issued', 'RESPONDENT_DEFAULT'].includes(caseStatus)) {
+        return;
+    }
+
+    const cfaActionHtml = cfaRecords.map((cfa) => cfa.needs_pdf_recovery
+            ? `<button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="recoverWorkspaceCfaPdf(${Number(cfa.cfa_id)}, this)" style="font-size: 0.78rem; padding: 5px 11px; border-color: #f59e0b; color: #92400e; background: #fffbeb; cursor: pointer;">Recover CFA PDF (${escapeHtml(cfa.cfa_type)})</button>`
+            : (cfa.pdf_url ? `<a href="${escapeHtml(cfa.pdf_url)}" target="_blank" rel="noopener" data-readonly-exempt="true" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 11px; text-decoration: none;">Download ${escapeHtml(cfa.cfa_type)} PDF</a>` : '')).join('');
+
+    const outcomesLink = complaintId
+        ? `<a href="../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection" data-readonly-exempt="true" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 11px; text-decoration: none;">Open Case Outcomes &rarr;</a>`
+        : '';
+
+    const detRows = decidedItems.map(({ r, evalRec }) => `
+        <li style="margin-bottom: 4px;">
+            <strong>${escapeHtml(r.full_name)}</strong> (${escapeHtml(r.party_type)}): ${escapeHtml(evalRec.action_taken || (Number(evalRec.is_justified) === 1 ? 'Justified' : 'Unjustified'))}
+        </li>
+    `).join('');
+
+    const summaryEl = document.createElement('div');
+    summaryEl.id = 'wsOutcomesSummaryPanel';
+    summaryEl.style.cssText = 'margin-top: 12px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px 16px;';
+    summaryEl.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <div>
+                <div style="font-size: 0.88rem; font-weight: 700; color: #0f172a;">
+                    Outcomes &amp; Recorded Determinations · Case Status: <span>${escapeHtml(caseStatus || 'Pending')}</span>
+                </div>
+                ${cfaRecords.map((cfa) => `<div style="font-size: 0.79rem; color: #475569; margin-top: 3px;"><strong>${escapeHtml(cfa.cfa_type)}</strong> issued on ${escapeHtml(cfa.issuance_date || '—')} — ${escapeHtml(cfa.reason || '')}</div>`).join('')}
+            </div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                ${cfaActionHtml}
+                ${outcomesLink}
+            </div>
+        </div>
+        ${detRows ? `<ul style="margin: 8px 0 0 18px; padding: 0; font-size: 0.8rem; color: #334155;">${detRows}</ul>` : ''}
+    `;
+    outcomeBox.appendChild(summaryEl);
+}
+
+async function recoverWorkspaceCfaPdf(cfaId, btn) {
+    if (btn?.dataset.agapBusy === '1') return;
+    setAsyncButtonState(btn, true, 'Recovering PDF…');
+    try {
+        const res = await fetch(getStageApiUrl('documents/cfa.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'recover_pdf', cfa_id: Number(cfaId) })
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            if (typeof notifyUser === 'function') notifyUser(json.message || 'CFA PDF recovery failed.', 'error');
+            else alert(json.message || 'CFA PDF recovery failed.');
+            return;
+        }
+        if (typeof notifyUser === 'function') notifyUser(json.message || 'CFA PDF recovered.', 'success');
+        await loadStageData();
+    } catch (err) {
+        if (typeof notifyUser === 'function') notifyUser('Network error during CFA PDF recovery.', 'error');
+    } finally {
+        setAsyncButtonState(btn, false);
+    }
+}
+window.recoverWorkspaceCfaPdf = recoverWorkspaceCfaPdf;

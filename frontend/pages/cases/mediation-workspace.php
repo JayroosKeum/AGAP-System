@@ -460,6 +460,32 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
 
 
+                <div class="stage-section-card" id="showCauseSection" style="display: none;">
+
+                    <div class="stage-section-header">
+
+                        <div>
+
+                            <h3>Show-Cause Notices &amp; Determinations (KP Form 18 / 19)</h3>
+
+                            <p>Linked original Mediation hearing, operative show-cause notice service verification, and per-recipient determination status</p>
+
+                        </div>
+
+                    </div>
+
+                    <div id="wsShowCauseContainer">
+
+                        <div class="empty-detail-state">Checking show-cause notices...</div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div id="wsDeterminationsOutcome"></div>
+
 <!-- Section 3: Hearing Session Minutes & Proceedings -->
 
                 <div class="stage-section-card" id="minutesSection">

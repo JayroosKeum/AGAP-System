@@ -50,6 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    $action = trim((string) ($input['action'] ?? 'issue'));
+    if ($action === 'recover_pdf') {
+        $result = $controller->recoverPdf($input);
+        http_response_code(!empty($result['success']) ? 200 : 422);
+        echo json_encode($result);
+        exit;
+    }
+
     $result = $controller->create($input);
     http_response_code(!empty($result['success']) ? 200 : 422);
     echo json_encode($result);

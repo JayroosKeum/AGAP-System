@@ -209,12 +209,24 @@ $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_ty
 $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, 'E2E-CFA-003', 'Conciliation', CURDATE(), NOW())")->execute([$comp3]);
 $case3 = (int) $db->lastInsertId();
 
-// Record Conciliation Stage as Unsuccessful
+// Bare stage outcome 'Unsuccessful' WITHOUT finalized operative Conciliation minutes MUST be rejected and NOT eligible
+$stageModel3 = new CaseStage($db);
+$prematureOutcome3 = $stageModel3->recordOutcome($case3, 'Conciliation', 'Unsuccessful', 'Premature bare outcome attempt', 1);
+assertCondition(empty($prematureOutcome3['success']), "Direct Unsuccessful Conciliation outcome without finalized impasse minutes is blocked");
+
 $db->prepare("INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
-VALUES (?, 'Conciliation', 'Completed', 'Unsuccessful', 'Pangkat proceedings failed to produce settlement.', NOW())")->execute([$case3]);
+VALUES (?, 'Conciliation', 'Completed', 'Unsuccessful', 'Legacy stage row without minutes.', NOW())")->execute([$case3]);
+$elig3BeforeMinutes = $cfaModel->determineCfaEligibility($case3);
+assertCondition($elig3BeforeMinutes['eligible'] === false, "Case 3 is NOT eligible from bare case_stages Unsuccessful row alone");
+
+// Insert and finalize operative Conciliation hearing minutes establishing impasse
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Conciliation', NOW(), 'Lupon Hall', 'Completed')")->execute([$case3]);
+$h3Conc = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO hearing_minutes (hearing_id, case_id, session_type, session_outcome, status, outcome_remarks, recorded_by, finalized_by, finalized_at)
+VALUES (?, ?, 'Conciliation', 'Failed', 'Finalized', 'Pangkat proceedings failed to produce settlement.', 1, 1, NOW())")->execute([$h3Conc, $case3]);
 
 $elig3 = $cfaModel->determineCfaEligibility($case3);
-assertCondition($elig3['eligible'] === true, "Case 3 is eligible for CFA");
+assertCondition($elig3['eligible'] === true, "Case 3 becomes eligible for CFA once operative Conciliation minutes are finalized as Failed");
 assertCondition($elig3['ground'] === 'CONCILIATION_IMPASSE', "Ground correctly identified as CONCILIATION_IMPASSE");
 assertCondition($elig3['recommended_form'] === 'KP Form 20', "Recommended form is KP Form 20");
 

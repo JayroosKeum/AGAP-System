@@ -2324,6 +2324,15 @@ function renderOfficialKpForms(workspace, complaint) {
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        ${workspace?.cfa?.cfa_id && (workspace.cfa.needs_pdf_recovery || !workspace.cfa.pdf_available) ? `
+                            <button type="button" class="btn-small-link" onclick="recoverComplaintCfaPdf(${Number(workspace.cfa.cfa_id)}, this)" style="color: #92400e; border-color: #f59e0b; background: #fffbeb; font-weight: 700;">
+                                Recover PDF
+                            </button>
+                        ` : `
+                            <a href="../documents/cfa.php?case_id=${encodeURIComponent(activeCaseId)}" class="btn-small-link" style="color: #991b1b; border-color: #fca5a5; font-weight: 700; text-decoration: none;">
+                                Issue CFA &rarr;
+                            </a>
+                        `}
                         <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 20')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;" title="Preview / Print KP Form 20">
                             Preview / Print
                         </button>
@@ -2462,6 +2471,15 @@ function renderOfficialKpForms(workspace, complaint) {
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        ${workspace?.cfa?.cfa_id && (workspace.cfa.needs_pdf_recovery || !workspace.cfa.pdf_available) ? `
+                            <button type="button" class="btn-small-link" onclick="recoverComplaintCfaPdf(${Number(workspace.cfa.cfa_id)}, this)" style="color: #92400e; border-color: #f59e0b; background: #fffbeb; font-weight: 700;">
+                                Recover PDF
+                            </button>
+                        ` : `
+                            <a href="../documents/cfa.php?case_id=${encodeURIComponent(activeCaseId)}" class="btn-small-link" style="color: #991b1b; border-color: #fca5a5; font-weight: 700; text-decoration: none;">
+                                Issue CFA &rarr;
+                            </a>
+                        `}
                         <button type="button" class="btn-small-link" onclick="openKpFormModal(${Number(activeCaseId)}, 'KP Form 20')" style="color: #991b1b; border-color: #fca5a5; font-weight: 600;" title="Preview / Print KP Form 20">
                             Preview / Print
                         </button>
@@ -10370,13 +10388,35 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     // 5. Repudiation Callout
     const repCallout = document.getElementById('calloutRepudiatedAlert');
     const repNotes = document.getElementById('calloutRepudiatedNotes');
+    const repIssueBtn = document.getElementById('btnCalloutIssueRepudiatedCfa');
     if (repCallout) {
         if (isRepudiated) {
             repCallout.style.display = 'block';
+            const existingCfa = ws.cfa || null;
             if (repNotes) {
                 const reason = settlement.repudiation_reason || 'Consent was vitiated by fraud, violence, or intimidation.';
                 const dt = settlement.repudiation_date ? ` (${formatDateReadable(settlement.repudiation_date)})` : '';
-                repNotes.textContent = `${reason}${dt} — Amicable settlement is invalidated. Case is routed to issue KP Form 20 (CFA).`;
+                if (existingCfa && existingCfa.cfa_id) {
+                    repNotes.textContent = `${reason}${dt} — ${existingCfa.cfa_type || 'KP Form 20'} already issued on ${existingCfa.issuance_date || 'record'}.`;
+                } else {
+                    repNotes.textContent = `${reason}${dt} — Amicable settlement is invalidated and eligible for standard KP Form 20 (CFA) issuance.`;
+                }
+            }
+            if (repIssueBtn) {
+                if (existingCfa && existingCfa.cfa_id) {
+                    if (existingCfa.needs_pdf_recovery || !existingCfa.pdf_available) {
+                        repIssueBtn.textContent = 'Recover KP Form 20 PDF';
+                        repIssueBtn.onclick = function() { recoverComplaintCfaPdf(Number(existingCfa.cfa_id), this); };
+                    } else if (existingCfa.pdf_url) {
+                        repIssueBtn.textContent = 'Download KP Form 20 PDF';
+                        repIssueBtn.onclick = function() { window.open(existingCfa.pdf_url, '_blank'); };
+                    }
+                } else {
+                    repIssueBtn.textContent = 'Issue KP Form 20 (CFA) →';
+                    repIssueBtn.onclick = function() {
+                        window.location.href = `../documents/cfa.php?case_id=${encodeURIComponent(caseId)}`;
+                    };
+                }
             }
         } else {
             repCallout.style.display = 'none';
@@ -10639,6 +10679,40 @@ async function handleRepudiationSubmit(e) {
     }
 }
 window.handleRepudiationSubmit = handleRepudiationSubmit;
+
+async function recoverComplaintCfaPdf(cfaId, btn) {
+    if (!cfaId) return;
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.origText = btn.textContent;
+        btn.textContent = 'Recovering PDF…';
+    }
+    try {
+        const res = await fetch('../../../backend/api/documents/cfa.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'recover_pdf', cfa_id: Number(cfaId) })
+        });
+        const json = await res.json();
+        if (!res.ok || !json.success) {
+            alert(json.message || 'Unable to recover CFA PDF.');
+            return;
+        }
+        if (typeof showToast === 'function') showToast(json.message || 'CFA PDF recovered.', 'success');
+        const cid = window.complaintData?.complaint_id || (new URLSearchParams(window.location.search)).get('id');
+        if (cid && typeof loadComplaintDetails === 'function') {
+            await loadComplaintDetails(cid);
+        }
+    } catch (err) {
+        alert('Network error while recovering CFA PDF.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            if (btn.dataset.origText) btn.textContent = btn.dataset.origText;
+        }
+    }
+}
+window.recoverComplaintCfaPdf = recoverComplaintCfaPdf;
 
 function openEditSettlementTermsModal() {
     const data = window.complaintData || {};

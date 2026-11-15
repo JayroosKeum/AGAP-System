@@ -87,6 +87,11 @@ before deploying recipient-specific show-cause evaluation, followed by
 Existing determinations remain in history. New issuance based on a determination
 requires verified evidence for the named recipient.
 
+Apply [`20261115_003_preserve_show_cause_and_cfa_decisions.sql`](migrations/20261115_003_preserve_show_cause_and_cfa_decisions.sql)
+after `20261115_002`. It adds the `Excused` determination for cases with a saved
+disposition and lets new bar certificates retain their issued recipient for PDF
+recovery. The migration preserves existing findings and issuances and can be rerun.
+
 ## Relationship rules
 
 - A complaint can be docketed into only one case.
@@ -268,5 +273,6 @@ For an existing database, apply the missing migrations in this order. Check the 
 8. [Version rescheduled notices](migrations/20261114_002_version_rescheduled_notices.sql) adds storage for prior Paanyaya PDFs and the issued details of each formal replacement notice. Existing service attempts retain their saved versions and evidence; earlier appointment details overwritten before this migration cannot be reconstructed.
 9. [Link show-cause recipients](migrations/20261115_001_link_show_cause_recipients.sql) links show-cause evaluations cleanly to individual recipients and operative notices.
 10. [Mediation pause decisions](migrations/20261115_002_mediation_pause_decisions.sql) creates `mediation_pause_decisions` to record authorized statutory mediation holds and extensions. This migration is idempotent (`CREATE TABLE IF NOT EXISTS`) and safe to apply cleanly after `20261115_001_link_show_cause_recipients.sql`.
+11. [Show-cause and CFA decisions](migrations/20261115_003_preserve_show_cause_and_cfa_decisions.sql) adds the excused determination and records the recipient on new bar certificates.
 
 The [Barangay News migration](migrations/20261111_002_barangay_news.sql) is independent and enables the news widget.

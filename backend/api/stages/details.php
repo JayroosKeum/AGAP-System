@@ -6,6 +6,7 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
 require_once __DIR__ . '/../../models/CaseStage.php';
+require_once __DIR__ . '/../../models/CFA.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
@@ -47,7 +48,9 @@ if (!$overview) {
 $overview['mediation_sessions'] = $stageModel->getSessions($caseId, 'Mediation');
 $overview['conciliation_sessions'] = $stageModel->getSessions($caseId, 'Conciliation');
 $overview['arbitration_sessions'] = $stageModel->getSessions($caseId, 'Arbitration');
+$overview['mediation_show_cause_hearings'] = $stageModel->getShowCauseHearings($caseId, 'Mediation');
 $overview['conciliation_show_cause_hearings'] = $stageModel->getShowCauseHearings($caseId, 'Conciliation');
+$overview['cfa_records'] = (new CFA($db))->getAllByCase($caseId);
 
 echo json_encode([
     'success' => true,

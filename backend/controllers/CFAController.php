@@ -21,19 +21,13 @@ class CFAController
     public function create($data)
     {
         $userId = (int) ($_SESSION['user_id'] ?? 1);
-        $result = $this->cfa->create($data, $userId);
+        return $this->cfa->create($data, $userId);
+    }
 
-        if (!empty($result['success'])) {
-            $formType = $result['cfa_type'] ?? 'KP Form 20';
-            $this->audit->log(
-                $userId,
-                "Issued {$formType}",
-                'CFA',
-                $data['case_id']
-            );
-        }
-
-        return $result;
+    public function recoverPdf(array $data): array
+    {
+        $userId = (int) ($_SESSION['user_id'] ?? 1);
+        return $this->cfa->recoverPdf($data, $userId);
     }
 
     public function getEligibility(int $caseId): array

@@ -106,11 +106,12 @@ include '../../layouts/header.php';
                             <th>Date Issued</th>
                             <th>Reason / Findings</th>
                             <th>Status</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="cfaRecordsTable">
                         <tr>
-                            <td colspan="6" class="empty-state">Loading CFA records...</td>
+                            <td colspan="7" class="empty-state">Loading CFA records...</td>
                         </tr>
                     </tbody>
                 </table>

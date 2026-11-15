@@ -18,6 +18,8 @@ class KpFormService
 
     private PDFService $pdfService;
 
+    private ?array $activeCfaOverride = null;
+
 
 
     public function __construct(?PDO $conn = null, ?PDFService $pdfService = null)
@@ -379,11 +381,13 @@ class KpFormService
 
         // 9. CFA Record (KP Form 20, 20-A, 20-B)
 
-        $cfaStmt = $this->conn->prepare("SELECT * FROM cfa_records WHERE case_id = ? ORDER BY cfa_id DESC LIMIT 1");
+        $cfaStmt = $this->conn->prepare("SELECT * FROM cfa_records WHERE case_id = ? ORDER BY cfa_id DESC");
 
         $cfaStmt->execute([$caseId]);
 
-        $cfa = $cfaStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $cfaRecords = $cfaStmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+        $cfa = $cfaRecords[0] ?? [];
 
 
 
@@ -447,6 +451,8 @@ class KpFormService
 
             'cfa' => $cfa,
 
+            'cfa_records' => $cfaRecords,
+
             'complainant_sc' => $complainantSc,
 
             'respondent_sc' => $respondentSc
@@ -463,7 +469,7 @@ class KpFormService
 
      */
 
-    public function getFormData(string $formCode, int $caseId, ?int $hearingId = null, ?int $residentId = null): array
+    public function getFormData(string $formCode, int $caseId, ?int $hearingId = null, ?int $residentId = null, ?array $cfaOverride = null): array
 
     {
 
@@ -498,7 +504,15 @@ class KpFormService
 
         $arbitration = $d['arbitration'];
 
-        $cfa = $d['cfa'];
+        $cfa = $cfaOverride ?: $d['cfa'];
+        if (!$cfaOverride && !empty($d['cfa_records'])) {
+            foreach ($d['cfa_records'] as $cfaRec) {
+                if (strcasecmp(trim((string) ($cfaRec['cfa_type'] ?? '')), $formCode) === 0) {
+                    $cfa = $cfaRec;
+                    break;
+                }
+            }
+        }
 
         $caseStatus = $case['case_status'] ?? '';
 
@@ -512,6 +526,9 @@ class KpFormService
 
         if (in_array($formCode, ['KP Form 20-A', 'KP Form 20-B', 'KP Form 21', 'KP Form 22'], true)) {
             $role = in_array($formCode, ['KP Form 20-A', 'KP Form 21'], true) ? 'Complainant' : 'Respondent';
+            if (($cfa['cfa_type'] ?? '') === $formCode && !empty($cfa['resident_id'])) {
+                $residentId = (int) $cfa['resident_id'];
+            }
             if ($residentId === null) {
                 require_once __DIR__ . '/SummonDeliveryService.php';
                 foreach ((new SummonDeliveryService($this->conn))->getVerifiedShowCauseFindings($caseId) as $finding) {
@@ -523,8 +540,10 @@ class KpFormService
             }
             if ($residentId !== null) {
                 $parties = $role === 'Complainant' ? $complainants : $respondents;
+                $matched = false;
                 foreach ($parties as $party) {
                     if ((int) $party['resident_id'] === $residentId) {
+                        $matched = true;
                         if ($role === 'Complainant') {
                             $complainants = [$party];
                             $primaryComplainant = $party['full_name'];
@@ -538,6 +557,9 @@ class KpFormService
                         }
                         break;
                     }
+                }
+                if (!$matched && $cfaOverride !== null) {
+                    throw new RuntimeException('The saved certificate recipient is unavailable. Review the issuance record.');
                 }
             }
         }
@@ -899,6 +921,13 @@ class KpFormService
 
         }
 
+        if ($cfaOverride !== null) {
+            if (in_array($formCode, ['KP Form 20-A', 'KP Form 20-B'], true)) {
+                $formData['absence_reason'] = $cfaOverride['reason'];
+            }
+            return $formData;
+        }
+
         // Apply Live Split-Screen Editor Overrides (if provided via GET/POST)
         $req = array_merge($_GET ?? [], $_POST ?? []);
         if (!empty($req['case_number'])) {
@@ -1008,7 +1037,7 @@ class KpFormService
 
     {
 
-        $data = $this->getFormData($formCode, $caseId, $hearingId, $residentId);
+        $data = $this->getFormData($formCode, $caseId, $hearingId, $residentId, $this->activeCfaOverride);
 
         $tempPath = $outputPath ?: sys_get_temp_dir() . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $formCode) . '_' . $caseId . '_' . time() . '.pdf';
 
@@ -2002,7 +2031,12 @@ class KpFormService
 
         // 3. Generate PDF file
         try {
-            $this->generatePdf($code, $caseId, $hearingId, $absolutePath, $options['resident_id'] ?? null);
+            $this->activeCfaOverride = !empty($options['cfa_record']) && is_array($options['cfa_record']) ? $options['cfa_record'] : null;
+            try {
+                $this->generatePdf($code, $caseId, $hearingId, $absolutePath, $options['resident_id'] ?? null);
+            } finally {
+                $this->activeCfaOverride = null;
+            }
             if (!empty($options['strict_pdf']) && (!is_file($absolutePath) || filesize($absolutePath) === 0)) {
                 throw new RuntimeException("Unable to write PDF for {$code}.");
             }
@@ -2041,17 +2075,28 @@ class KpFormService
 
         $serviceStatus = $options['service_status'] ?? 'For Service';
 
-        $docStmt = $this->conn->prepare("
+        $existingDocId = filter_var($options['existing_document_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if ($existingDocId) {
+            $updDoc = $this->conn->prepare("
+                UPDATE generated_documents
+                SET file_path = ?
+                WHERE document_id = ? AND case_id = ?
+            ");
+            $updDoc->execute([$relativePath, (int) $existingDocId, $caseId]);
+            $documentId = (int) $existingDocId;
+        } else {
+            $docStmt = $this->conn->prepare("
 
-            INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, generated_at)
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, generated_at)
 
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
 
-        ");
+            ");
 
-        $docStmt->execute([$caseId, $templateId, $userId, $relativePath, $serviceStatus]);
+            $docStmt->execute([$caseId, $templateId, $userId, $relativePath, $serviceStatus]);
 
-        $documentId = (int) $this->conn->lastInsertId();
+            $documentId = (int) $this->conn->lastInsertId();
+        }
 
 
 
@@ -2064,6 +2109,22 @@ class KpFormService
         $deliveryStatus = $options['delivery_status'] ?? 'Pending';
 
         $createdDeliveries = [];
+
+        if (!empty($options['skip_delivery'])) {
+            require_once __DIR__ . '/AuditService.php';
+            $audit = new AuditService($this->conn);
+            $audit->log($userId, "Recovered PDF for {$code}", 'Documents', $documentId);
+
+            return [
+                'success' => true,
+                'message' => "{$code} PDF recovered successfully.",
+                'document_id' => $documentId,
+                'file_path' => $relativePath,
+                'full_path' => dirname(__DIR__, 2) . '/' . $relativePath,
+                'hearing_id' => $hearingId,
+                'delivery_records' => [],
+            ];
+        }
 
 
 

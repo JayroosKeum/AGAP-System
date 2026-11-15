@@ -2145,6 +2145,360 @@ assertReg(
     'log_paanyaya_outcome rejects missing dialogue_date or missing party attendance with HTTP 422 + requires_dialogue_form and leaves zero DB writes (d=' . $qaMissingDate['status'] . ':' . $qaMissingDate['body'] . ', a=' . $qaMissingAtt['status'] . ':' . $qaMissingAtt['body'] . ')'
 );
 
+// =========================================================================
+// [18] Orders 3A & 3B: Differential Co-Respondent Show-Cause, Stale Notice Rejection,
+//      Conciliation Impasse Evidence Gate, Repudiation -> CFA, and PDF Recovery
+// =========================================================================
+echo "\n[18] Testing Orders 3A & 3B (co-respondents, stale notice, repudiation-to-CFA, PDF recovery)...\n";
+
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
+    VALUES (?, 'Order 3A Co-Respondent Show-Cause', 'Mediation', ?, 'Civil', CURDATE(), 'Multi-respondent show cause test', ?, NOW())")
+    ->execute(["CMP-REG18A-{$token}", $catId, $clerkId]);
+$comp18a = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp18a);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent'), (?, ?, 'Respondent')")
+    ->execute([$comp18a, $resComp, $comp18a, $resResp1, $comp18a, $resResp2]);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Mediation', CURDATE(), NOW())")
+    ->execute([$comp18a, "REG-18A-{$token}"]);
+$case18a = (int) $db->lastInsertId();
+
+$tue18a = nextWeekdayDate($logistics, 1, 2);
+$tue18b = nextWeekdayDate($logistics, 8, 2);
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Completed')")
+    ->execute([$case18a, "{$tue18a} 09:00:00"]);
+$h18aOrig = (int) $db->lastInsertId();
+// Verified original service for both respondents
+$db->prepare("INSERT INTO summon_deliveries (case_id, hearing_id, party_type, resident_id, form_type, delivery_status, served_at)
+    VALUES (?, ?, 'Respondent', ?, 'KP Form 9', 'Served Personal', NOW()), (?, ?, 'Respondent', ?, 'KP Form 9', 'Served Personal', NOW())")
+    ->execute([$case18a, $h18aOrig, $resResp1, $case18a, $h18aOrig, $resResp2]);
+$origDel18R1 = (int) $db->query("SELECT delivery_id FROM summon_deliveries WHERE hearing_id = {$h18aOrig} AND resident_id = {$resResp1}")->fetchColumn();
+$origDel18R2 = (int) $db->query("SELECT delivery_id FROM summon_deliveries WHERE hearing_id = {$h18aOrig} AND resident_id = {$resResp2}")->fetchColumn();
+// Unexcused absence recorded for both respondents at original hearing
+$db->prepare("INSERT INTO hearing_attendance (hearing_id, resident_id, attendance_status, is_justified)
+    VALUES (?, ?, 'Absent', 0), (?, ?, 'Absent', 0)")
+    ->execute([$h18aOrig, $resResp1, $h18aOrig, $resResp2]);
+
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, rescheduled_from_id)
+    VALUES (?, 'Show Cause (Respondent)', ?, 'Lupon Hall', 'Scheduled', ?)")
+    ->execute([$case18a, "{$tue18b} 10:00:00", $h18aOrig]);
+$h18aSc = (int) $db->lastInsertId();
+// Co-respondent 1 has verified KP Form 19; Co-respondent 2 is still Pending Service
+$db->prepare("INSERT INTO summon_deliveries (case_id, hearing_id, party_type, resident_id, form_type, attempt_number, delivery_status, served_at)
+    VALUES (?, ?, 'Respondent', ?, 'KP Form 19', 1, 'Served Personal', NOW())")
+    ->execute([$case18a, $h18aSc, $resResp1]);
+$scDel18R1 = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO summon_deliveries (case_id, hearing_id, party_type, resident_id, form_type, attempt_number, delivery_status)
+    VALUES (?, ?, 'Respondent', ?, 'KP Form 19', 1, 'Pending')")
+    ->execute([$case18a, $h18aSc, $resResp2]);
+$scDel18R2Old = (int) $db->lastInsertId();
+
+$db->prepare("INSERT INTO show_cause_evaluations (hearing_id, case_id, party_type, form_type, is_justified, justification_category, action_taken) VALUES (?, ?, 'Respondent', 'KP Form 19', 1, 'Medical Emergency', 'Rescheduled')")
+    ->execute([$h18aSc, $case18a]);
+
+$scSvc18 = new ShowCauseService($db);
+$wsItems18 = $scSvc18->getShowCauseWorkspaceItems($case18a, 'Mediation');
+$recMap18 = [];
+foreach (($wsItems18[0]['recipient_items'] ?? []) as $ri) {
+    $recMap18[(int) $ri['resident_id']] = $ri;
+}
+assertReg(
+    count($wsItems18) === 1
+    && count($wsItems18[0]['legacy_evaluations'] ?? []) === 1
+    && ($wsItems18[0]['decided_count'] ?? -1) === 0
+    && !empty($recMap18[$resResp1]['ready_for_decision'])
+    && ($recMap18[$resResp2]['readiness_status'] ?? '') === 'awaiting_service'
+    && str_contains((string) ($recMap18[$resResp2]['blocking_reason'] ?? ''), 'Proof of Service'),
+    'Workspace keeps a role-only finding in history and shows ready and held co-respondents separately'
+);
+
+// Justified decision for Co-respondent 1 must excuse them and keep show-cause open for Co-respondent 2
+$replacementDay18 = nextWeekdayDate($logistics, 15, 2);
+$replacementDate18 = "{$replacementDay18} 14:00:00";
+$justData18 = [
+    'hearing_id' => $h18aSc,
+    'resident_id' => $resResp1,
+    'party_type' => 'Respondent',
+    'is_justified' => 1,
+    'justification_category' => 'Official Duty',
+    'justification_notes' => 'Submitted official assignment',
+    'reschedule_date' => $replacementDate18,
+    'expected_notice_delivery_id' => $scDel18R1,
+    'expected_original_delivery_id' => $origDel18R1,
+];
+foreach ([
+    ['reschedule_date' => '2028-02-30 03:00:00'],
+    ['reschedule_date' => "{$replacementDay18} 03:00:00"],
+    ['justification_category' => 'Unrecognized category'],
+] as $invalidFields) {
+    $invalid = regHttpRequest($baseUrl, $clerkSession, 'hearings/show-cause.php', array_replace($justData18, $invalidFields));
+    assertReg($invalid['status'] === 422, 'Justified determination rejects invalid appointment or category: ' . implode(', ', $invalidFields));
+}
+$invalidDecisionCount = (int) $db->query("SELECT COUNT(*) FROM show_cause_evaluations WHERE hearing_id = {$h18aSc} AND resident_id IS NOT NULL")->fetchColumn();
+$replacementCount = (int) $db->query("SELECT COUNT(*) FROM hearings WHERE rescheduled_from_id = {$h18aSc}")->fetchColumn();
+assertReg($invalidDecisionCount === 0 && $replacementCount === 0, 'Rejected justified decisions save neither a determination nor a replacement hearing');
+
+$justRes18 = regHttpRequest($baseUrl, $clerkSession, 'hearings/show-cause.php', $justData18);
+$scStatusAfterJust = (string) $db->query("SELECT status FROM hearings WHERE hearing_id = {$h18aSc}")->fetchColumn();
+$r1JustifiedCount = (int) $db->query("SELECT COUNT(*) FROM show_cause_evaluations e JOIN hearings h ON h.hearing_id = e.rescheduled_hearing_id WHERE e.hearing_id = {$h18aSc} AND e.resident_id = {$resResp1} AND e.is_justified = 1 AND e.justification_category = 'Official Duty' AND h.hearing_date = '{$replacementDate18}' AND h.venue = 'Lupon Hall' AND h.end_time > h.hearing_date")->fetchColumn();
+assertReg(
+    $justRes18['status'] === 200 && !empty($justRes18['json']['success']) && $r1JustifiedCount === 1 && $scStatusAfterJust !== 'Completed',
+    'Justified decision preserves the selected category, books the validated appointment, and leaves the co-respondent pending'
+);
+
+// Supersede R2 KP Form 19 with Attempt 2 and submit stale Attempt 1 delivery ID -> must be rejected cleanly
+$db->prepare("UPDATE summon_deliveries SET delivery_status = 'Failed Attempt' WHERE delivery_id = ?")->execute([$scDel18R2Old]);
+$db->prepare("INSERT INTO summon_deliveries (case_id, hearing_id, party_type, resident_id, form_type, attempt_number, delivery_status, served_at)
+    VALUES (?, ?, 'Respondent', ?, 'KP Form 19', 2, 'Served Personal', NOW())")
+    ->execute([$case18a, $h18aSc, $resResp2]);
+$scDel18R2New = (int) $db->lastInsertId();
+
+$staleRes18 = regHttpRequest($baseUrl, $clerkSession, 'hearings/show-cause.php', [
+    'hearing_id' => $h18aSc,
+    'resident_id' => $resResp2,
+    'party_type' => 'Respondent',
+    'is_justified' => 0,
+    'justification_notes' => 'Stale attempt test',
+    'expected_notice_delivery_id' => $scDel18R2Old,
+    'expected_original_delivery_id' => $origDel18R2,
+]);
+$r2EvalAfterStale = (int) $db->query("SELECT COUNT(*) FROM show_cause_evaluations WHERE hearing_id = {$h18aSc} AND resident_id = {$resResp2}")->fetchColumn();
+$cfaAfterStale = (int) $db->query("SELECT COUNT(*) FROM cfa_records WHERE case_id = {$case18a}")->fetchColumn();
+assertReg(
+    $staleRes18['status'] === 422 && empty($staleRes18['json']['success']) && $r2EvalAfterStale === 0 && $cfaAfterStale === 0,
+    'Stale expected_notice_delivery_id submission is rejected (HTTP 422) with zero determinations or certificates written'
+);
+
+// Submit Co-respondent 2 Unjustified with current operative notice -> issues KP Form 20 & KP Form 20-B atomically
+$unjustRes18 = regHttpRequest($baseUrl, $clerkSession, 'hearings/show-cause.php', [
+    'hearing_id' => $h18aSc,
+    'resident_id' => $resResp2,
+    'party_type' => 'Respondent',
+    'is_justified' => 0,
+    'justification_notes' => 'Willful unexcused absence after personal service',
+    'expected_notice_delivery_id' => $scDel18R2New,
+    'expected_original_delivery_id' => $origDel18R2,
+]);
+$cfaTypes18 = $db->query("SELECT cfa_type FROM cfa_records WHERE case_id = {$case18a} ORDER BY cfa_type")->fetchAll(PDO::FETCH_COLUMN);
+foreach ($db->query("SELECT file_path FROM generated_documents WHERE case_id = {$case18a}")->fetchAll(PDO::FETCH_COLUMN) as $fp18a) {
+    $createdFiles[] = dirname(__DIR__, 2) . '/' . ltrim((string) $fp18a, '/');
+}
+assertReg(
+    $unjustRes18['status'] === 200 && !empty($unjustRes18['json']['success']) && $cfaTypes18 === ['KP Form 20', 'KP Form 20-B'],
+    'Valid unjustified decision for Co-respondent 2 commits KP Form 20 and KP Form 20-B atomically'
+);
+
+// Order 3B: Cancelled/Superseded Conciliation minutes exclusion, Repudiation -> CFA, and PDF Recovery
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
+    VALUES (?, 'Order 3B Repudiation and PDF Recovery', 'Settled', ?, 'Civil', CURDATE(), '3B full test', ?, NOW())")
+    ->execute(["CMP-REG18B-{$token}", $catId, $clerkId]);
+$comp18b = (int) $db->lastInsertId();
+$cleanup->trackComplaint($comp18b);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+    ->execute([$comp18b, $resComp, $comp18b, $resResp1]);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Settled', CURDATE(), NOW())")
+    ->execute([$comp18b, "REG-18B-{$token}"]);
+$case18b = (int) $db->lastInsertId();
+
+// Finalized minutes on Cancelled and Superseded Conciliation hearings MUST NOT unlock impasse eligibility
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Conciliation', ?, 'Lupon Hall', 'Rescheduled')")
+    ->execute([$case18b, "{$tue18a} 11:00:00"]);
+$h18bOrig = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, rescheduled_from_id) VALUES (?, 'Conciliation', ?, 'Lupon Hall', 'Cancelled', ?)")
+    ->execute([$case18b, "{$tue18b} 11:00:00", $h18bOrig]);
+$h18bCanc = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO hearing_minutes (hearing_id, case_id, session_type, session_outcome, status, recorded_by, finalized_by, finalized_at)
+    VALUES (?, ?, 'Conciliation', 'Failed', 'Finalized', ?, ?, NOW()), (?, ?, 'Conciliation', 'Failed', 'Finalized', ?, ?, NOW())")
+    ->execute([$h18bOrig, $case18b, $clerkId, $clerkId, $h18bCanc, $case18b, $clerkId, $clerkId]);
+$eligCancelledOnly = $cfaModel->determineCfaEligibility($case18b);
+assertReg(
+    empty($eligCancelledOnly['eligible']),
+    'Finalized Failed minutes on Cancelled or superseded Conciliation hearings do NOT unlock CFA eligibility'
+);
+
+// File repudiation -> must NOT insert into cfa_records, and MUST unlock KP Form 20 via REPUDIATED_SETTLEMENT
+$db->prepare("INSERT INTO settlements (case_id, settlement_date, agreement_details, repudiation_deadline, repudiation_status, compliance_status)
+    VALUES (?, CURDATE(), 'Pay amount within 5 days', DATE_ADD(CURDATE(), INTERVAL 10 DAY), 'Within Repudiation Period', 'Pending')")
+    ->execute([$case18b]);
+$sett18bId = (int) $db->lastInsertId();
+$repRes18b = regHttpRequest($baseUrl, $clerkSession, 'settlements/repudiate.php', [
+    'settlement_id' => $sett18bId,
+    'repudiated_by' => $resResp1,
+    'repudiation_reason' => 'Fraud and intimidation',
+    'supporting_document_path' => 'uploads/repudiations/test_reg18b.pdf',
+], true);
+$cfaCountAfterRep = (int) $db->query("SELECT COUNT(*) FROM cfa_records WHERE case_id = {$case18b}")->fetchColumn();
+$eligAfterRep = $cfaModel->determineCfaEligibility($case18b);
+assertReg(
+    $repRes18b['status'] === 200
+    && !empty($repRes18b['json']['success'])
+    && $cfaCountAfterRep === 0
+    && !empty($eligAfterRep['eligible'])
+    && ($eligAfterRep['ground'] ?? '') === 'REPUDIATED_SETTLEMENT',
+    'Valid settlement repudiation inserts zero cfa_records rows and establishes REPUDIATED_SETTLEMENT eligibility'
+);
+
+// Simulated render failure leaves repudiation available for retry, then standard CFA issuance succeeds atomically
+$failRepIssue = $failingCfaModel->create([
+    'case_id' => $case18b,
+    'cfa_type' => 'KP Form 20',
+    'reason' => 'Repudiation render failure retry check',
+], $clerkId);
+$eligStillRep = $cfaModel->determineCfaEligibility($case18b);
+assertReg(
+    empty($failRepIssue['success'])
+    && (int) $db->query("SELECT COUNT(*) FROM cfa_records WHERE case_id = {$case18b}")->fetchColumn() === 0
+    && !empty($eligStillRep['eligible'])
+    && ($eligStillRep['ground'] ?? '') === 'REPUDIATED_SETTLEMENT',
+    'Render failure on repudiated settlement rolls back issuance and keeps recorded repudiation eligible for retry'
+);
+
+$repIssueHttp = regHttpRequest($baseUrl, $clerkSession, 'documents/cfa.php', [
+    'case_id' => $case18b,
+    'cfa_type' => 'KP Form 20',
+    'reason' => 'Settlement formally repudiated within statutory period.',
+]);
+$cfa18bRow = $db->query("SELECT cfa_id, cfa_type, issuance_date, reason FROM cfa_records WHERE case_id = {$case18b} LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+$doc18bRow = $db->query("SELECT gd.document_id, gd.file_path FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = {$case18b} AND dt.template_name = 'KP Form 20' ORDER BY gd.document_id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+$hist18bBeforeRec = (int) $db->query("SELECT COUNT(*) FROM case_history WHERE case_id = {$case18b}")->fetchColumn();
+assertReg(
+    $repIssueHttp['status'] === 200 && !empty($repIssueHttp['json']['success']) && !empty($cfa18bRow['cfa_id']) && !empty($doc18bRow['document_id']),
+    'Standard CFA issuance commits KP Form 20, generated PDF, and history for repudiated settlement'
+);
+
+// PDF Recovery: set distinct historical date, delete PDF on disk AND remove generated_documents row, test recovery failure rollback, then recover twice
+$cfa18bId = (int) $cfa18bRow['cfa_id'];
+$origDate18b = '2026-01-15';
+$origReason18b = 'Settlement formally repudiated within statutory period.';
+$db->prepare("UPDATE cfa_records SET issuance_date = ? WHERE cfa_id = ?")->execute([$origDate18b, $cfa18bId]);
+$origPdfDiskPath = dirname(__DIR__, 2) . '/' . ltrim((string) $doc18bRow['file_path'], '/');
+if (is_file($origPdfDiskPath)) {
+    @unlink($origPdfDiskPath);
+}
+$db->prepare("DELETE FROM generated_documents WHERE document_id = ?")->execute([(int) $doc18bRow['document_id']]);
+
+// Failure on recovery must return actionable error and keep original cfa_records row untouched
+$failRecRes = $failingCfaModel->recoverPdf(['cfa_id' => $cfa18bId], $clerkId);
+$cfaCheckFailRec = $db->query("SELECT cfa_type, issuance_date, reason FROM cfa_records WHERE cfa_id = {$cfa18bId}")->fetch(PDO::FETCH_ASSOC);
+assertReg(
+    empty($failRecRes['success'])
+    && ($cfaCheckFailRec['issuance_date'] ?? '') === $origDate18b
+    && ($cfaCheckFailRec['reason'] ?? '') === $origReason18b,
+    'Failed PDF recovery returns actionable error and preserves original CFA issuance_date and reason'
+);
+
+// Actual recovery via HTTP POST action=recover_pdf + immediate second recovery (concurrency/idempotency reuse)
+$recHttp1 = regHttpRequest($baseUrl, $clerkSession, 'documents/cfa.php', [
+    'action' => 'recover_pdf',
+    'cfa_id' => $cfa18bId,
+]);
+$recHttp2 = regHttpRequest($baseUrl, $clerkSession, 'documents/cfa.php', [
+    'action' => 'recover_pdf',
+    'cfa_id' => $cfa18bId,
+]);
+$cfaAfterRec = $db->query("SELECT cfa_type, issuance_date, reason FROM cfa_records WHERE cfa_id = {$cfa18bId}")->fetch(PDO::FETCH_ASSOC);
+$docsAfterRec = $db->query("SELECT gd.document_id, gd.file_path FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = {$case18b} AND dt.template_name = 'KP Form 20'")->fetchAll(PDO::FETCH_ASSOC);
+$hist18bAfterRec = (int) $db->query("SELECT COUNT(*) FROM case_history WHERE case_id = {$case18b}")->fetchColumn();
+$recoveredPath = !empty($docsAfterRec[0]['file_path']) ? dirname(__DIR__, 2) . '/' . ltrim((string) $docsAfterRec[0]['file_path'], '/') : '';
+if ($recoveredPath) {
+    $createdFiles[] = $recoveredPath;
+}
+assertReg(
+    $recHttp1['status'] === 200 && !empty($recHttp1['json']['success'])
+    && $recHttp2['status'] === 200 && !empty($recHttp2['json']['reused'])
+    && count($docsAfterRec) === 1
+    && $recoveredPath !== '' && is_file($recoveredPath)
+    && ($cfaAfterRec['cfa_type'] ?? '') === 'KP Form 20'
+    && ($cfaAfterRec['issuance_date'] ?? '') === $origDate18b
+    && ($cfaAfterRec['reason'] ?? '') === $origReason18b
+    && $hist18bAfterRec === $hist18bBeforeRec,
+    'PDF recovery and repeat recovery produce one valid PDF while preserving original form, date, reason, and case_history'
+);
+
+$historicalCfa = $db->query("SELECT * FROM cfa_records WHERE cfa_id = {$cfa18bId}")->fetch(PDO::FETCH_ASSOC);
+$priorRequestParams = $_GET;
+$_GET = ['notice_date' => '2028-06-21', 'primary_body_text' => 'An editor override'];
+try {
+    $renderData = (new KpFormService($db))->getFormData('KP Form 20', $case18b, null, null, $historicalCfa);
+} finally {
+    $_GET = $priorRequestParams;
+}
+assertReg($renderData['issuance_date'] === $origDate18b && $renderData['cfa_reason'] === $origReason18b,
+    'CFA issuance and recovery render the original date and reason even with live editor fields in the request');
+$downloadPath = $recHttp1['json']['pdf_url'] ?? '';
+$download = str_starts_with($downloadPath, '../../../')
+    ? regHttpRequest($baseUrl, $clerkSession, '/' . substr($downloadPath, strlen('../../../')))
+    : [];
+assertReg(($download['status'] ?? 0) === 200 && str_starts_with($download['body'] ?? '', '%PDF'),
+    'Recovered CFA download URL resolves from the staff pages and returns the saved PDF');
+
+// A first unjustified decision can issue the case-level certificates while another recipient still awaits service.
+$db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
+    VALUES (?, 'Order 3A Pending Co-Respondent', 'Conciliation', ?, 'Civil', CURDATE(), 'Recipient-specific notices', ?, NOW())")
+    ->execute(["REG-C19-{$token}", $catId, $clerkId]);
+$complaint19 = (int) $db->lastInsertId();
+$cleanup->trackComplaint($complaint19);
+$db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent'), (?, ?, 'Respondent')")
+    ->execute([$complaint19, $resComp, $complaint19, $resResp1, $complaint19, $resResp2]);
+$db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date) VALUES (?, ?, 'Conciliation', CURDATE())")
+    ->execute([$complaint19, "REG-19-{$token}"]);
+$case19 = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO case_stages (case_id, stage_type, stage_status, records_transmitted) VALUES (?, 'Conciliation', 'In Progress', 1)")->execute([$case19]);
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Conciliation', DATE_SUB(NOW(), INTERVAL 1 DAY), 'Lupon Hall', 'Scheduled')")
+    ->execute([$case19]);
+$origin19 = (int) $db->lastInsertId();
+$originalDelivery = $db->prepare("INSERT INTO summon_deliveries (case_id, hearing_id, party_type, resident_id, form_type, delivery_status, served_at) VALUES (?, ?, ?, ?, ?, 'Served Personal', NOW())");
+foreach ([$resComp => 'Complainant', $resResp1 => 'Respondent', $resResp2 => 'Respondent'] as $partyId => $role) {
+    $originalDelivery->execute([$case19, $origin19, $role, $partyId, 'KP Form 12']);
+}
+$attendance19 = regHttpRequest($baseUrl, $clerkSession, 'hearings/attendance.php', [
+    'hearing_id' => $origin19,
+    'parties' => [
+        ['resident_id' => $resComp, 'party_type' => 'Complainant', 'attendance_status' => 'Present'],
+        ['resident_id' => $resResp1, 'party_type' => 'Respondent', 'attendance_status' => 'Absent'],
+        ['resident_id' => $resResp2, 'party_type' => 'Respondent', 'attendance_status' => 'Absent'],
+    ],
+]);
+$show19 = (int) $db->query("SELECT hearing_id FROM hearings WHERE rescheduled_from_id = {$origin19} AND hearing_type = 'Show Cause (Respondent)'")->fetchColumn();
+$newOriginalAttempts = (int) $db->query("SELECT COUNT(*) FROM summon_deliveries WHERE hearing_id = {$origin19} AND delivery_status = 'Pending'")->fetchColumn();
+assertReg($newOriginalAttempts === 0, 'Show-cause issuance preserves the served original Conciliation notices and queues only the show-cause notices');
+$notices19 = $db->query("SELECT resident_id, delivery_id, document_id FROM summon_deliveries WHERE hearing_id = {$show19} AND form_type = 'KP Form 19' ORDER BY delivery_id")->fetchAll(PDO::FETCH_UNIQUE | PDO::FETCH_ASSOC);
+$preview19 = [];
+foreach ($notices19 as $recipientId => $notice) {
+    $preview19[$recipientId] = regHttpRequest($baseUrl, $clerkSession, 'documents/download.php?stored=1&id=' . $notice['document_id']);
+}
+assertReg(!empty($attendance19['json']['success']) && count($notices19) === 2
+    && (int) ($notices19[$resResp1]['document_id'] ?? 0) > 0
+    && ($notices19[$resResp1]['document_id'] ?? null) !== ($notices19[$resResp2]['document_id'] ?? null)
+    && str_starts_with($preview19[$resResp1]['body'] ?? '', '%PDF') && str_starts_with($preview19[$resResp2]['body'] ?? '', '%PDF'),
+    'Attendance issues distinct printable KP Form 19 documents to both absent recipients (' . ($attendance19['json']['message'] ?? $attendance19['status']) . ')');
+
+if (isset($notices19[$resResp1], $notices19[$resResp2])) {
+    $serve19 = $db->prepare("UPDATE summon_deliveries SET delivery_status = 'Served Personal', served_at = NOW() WHERE delivery_id = ?");
+    $serve19->execute([$notices19[$resResp1]['delivery_id']]);
+    $first19 = regHttpRequest($baseUrl, $clerkSession, 'hearings/show-cause.php', [
+        'hearing_id' => $show19, 'resident_id' => $resResp1, 'party_type' => 'Respondent', 'is_justified' => 0,
+    ]);
+    $bar19 = $db->query("SELECT cfa_id, resident_id FROM cfa_records WHERE case_id = {$case19} AND cfa_type = 'KP Form 20-B'")->fetch(PDO::FETCH_ASSOC);
+    $held19 = $scSvc18->getShowCauseWorkspaceItems($case19, 'Conciliation')[0];
+    assertReg($first19['status'] === 200 && $held19['awaiting_service_count'] === 1 && $held19['status'] !== 'Completed'
+        && (int) ($bar19['resident_id'] ?? 0) === $resResp1,
+        'First unjustified decision preserves the CFA recipient and keeps the co-respondent awaiting service');
+    $serve19->execute([$notices19[$resResp2]['delivery_id']]);
+    $second19 = regHttpRequest($baseUrl, $clerkSession, 'hearings/show-cause.php', [
+        'hearing_id' => $show19, 'resident_id' => $resResp2, 'party_type' => 'Respondent', 'is_justified' => 1,
+        'justification_category' => 'Force Majeure', 'expected_notice_document_id' => $notices19[$resResp2]['document_id'],
+    ]);
+    $finished19 = $scSvc18->getShowCauseWorkspaceItems($case19, 'Conciliation')[0];
+    assertReg($second19['status'] === 200 && ($second19['json']['action_taken'] ?? null) === 'Excused'
+        && empty($second19['json']['rescheduled_hearing_id']) && ($second19['json']['case_status'] ?? null) === 'CFA Issued'
+        && $finished19['decided_count'] === 2 && $finished19['status'] === 'Completed',
+        'Co-respondent can be excused after service and the saved CFA disposition is retained');
+}
+
+foreach ($db->query("SELECT file_path FROM generated_documents WHERE case_id = {$case19}")->fetchAll(PDO::FETCH_COLUMN) as $file19) {
+    $createdFiles[] = dirname(__DIR__, 2) . '/' . ltrim((string) $file19, '/');
+}
+
 echo "\n====================================================================\n";
 echo "   TOTAL REGRESSIONS: " . ($passCount + $failCount) . " | PASSED: {$passCount} | FAILED: {$failCount}\n";
 echo "====================================================================\n";

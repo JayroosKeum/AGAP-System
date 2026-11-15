@@ -1095,7 +1095,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                     <button type="button" class="btn-secondary" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id || window.currentComplaintId || window.complaintData?.complaint_id, 'KP Form 17', null, window.currentComplaintId || window.complaintData?.complaint_id)" style="font-size: 0.8rem; padding: 5px 12px; border-color: #fca5a5; color: #991b1b;">
                                         View KP Form 17 &rarr;
                                     </button>
-                                    <button type="button" class="btn-create" onclick="openKpFormModal(window.currentCaseId || window.complaintData?.case_id || window.currentComplaintId || window.complaintData?.complaint_id, 'KP Form 20', null, window.currentComplaintId || window.complaintData?.complaint_id)" style="font-size: 0.8rem; padding: 5px 14px; background: #dc2626; border-color: #dc2626;">
+                                    <button type="button" id="btnCalloutIssueRepudiatedCfa" class="btn-create" onclick="window.location.href = '../documents/cfa.php?case_id=' + encodeURIComponent(window.currentCaseId || window.complaintData?.case_id || '')" style="font-size: 0.8rem; padding: 5px 14px; background: #dc2626; border-color: #dc2626;">
                                         Issue KP Form 20 (CFA) &rarr;
                                     </button>
                                 </div>

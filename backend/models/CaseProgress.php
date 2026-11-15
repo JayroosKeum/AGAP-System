@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/CFA.php';
 
 class CaseProgress
 {
@@ -506,10 +507,8 @@ class CaseProgress
                 'details' => 'Certificate to File Action issued.',
             ];
         } elseif (
-            empty($settlement) && (
-                count($mediationHearings) >= 2 ||
-                count($conciliationHearings) >= 3
-            )
+            empty($settlement)
+            && !empty((new CFA($this->conn))->determineCfaEligibility($caseId)['eligible'])
         ) {
             $stages[] = [
                 'id' => 'cfa',
@@ -518,7 +517,7 @@ class CaseProgress
                 'subtitle' => 'Eligible for CFA',
                 'state' => 'current',
                 'date' => null,
-                'details' => 'Mediation or conciliation sessions exhausted without settlement; eligible for Certificate to File Action.',
+                'details' => 'Case satisfies statutory grounds for Certificate to File Action issuance.',
             ];
         } else {
             $stages[] = [

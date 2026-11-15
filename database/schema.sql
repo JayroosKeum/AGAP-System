@@ -1057,7 +1057,7 @@ CREATE TABLE IF NOT EXISTS show_cause_evaluations (
     justification_category ENUM('Medical Emergency', 'Force Majeure', 'Official Duty', 'Unjustified Absence', 'Willful Refusal', 'Other') NOT NULL,
     justification_notes TEXT NULL,
     rescheduled_hearing_id INT UNSIGNED NULL,
-    action_taken ENUM('Rescheduled', 'Barred Action', 'Respondent Default', 'CFA Issued') NOT NULL,
+    action_taken ENUM('Rescheduled', 'Barred Action', 'Respondent Default', 'CFA Issued', 'Excused') NOT NULL,
     evaluated_by INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_show_cause_hearing (hearing_id),
@@ -1276,9 +1276,11 @@ CREATE TABLE IF NOT EXISTS cfa_records (
     cfa_type ENUM('KP Form 20', 'KP Form 20-A', 'KP Form 20-B') NOT NULL DEFAULT 'KP Form 20',
     issuance_date DATE NOT NULL,
     reason TEXT NOT NULL,
+    resident_id INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_cfa_records_case_type (case_id, cfa_type),
+    CONSTRAINT fk_cfa_records_resident FOREIGN KEY (resident_id) REFERENCES residents (resident_id) ON DELETE SET NULL,
     CONSTRAINT fk_cfa_records_case
         FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

@@ -914,7 +914,7 @@ class Hearing
      * their corresponding insert to commit. MySQL range checks cannot be made
      * unique with an ordinary index, so the named locks close that race.
      */
-    private function acquireScheduleLocks(array $data): array|false
+    public function acquireScheduleLocks(array $data): array|false
     {
         $date = (new DateTimeImmutable((string) $data['hearing_date']))->format('Ymd');
         $venue = strtolower(trim((string) ($data['venue'] ?? '')));
@@ -939,7 +939,7 @@ class Hearing
         return $acquired;
     }
 
-    private function releaseScheduleLocks(array $keys): void
+    public function releaseScheduleLocks(array $keys): void
     {
         foreach ($keys as $key) {
             try {
