@@ -6,7 +6,7 @@
 2. Use PHP 8.2+ with the PDO MySQL, cURL, mbstring, fileinfo, OpenSSL, and ZIP extensions enabled.
 3. Set `APP_ENV=production`, disable `display_errors`, and enable server-side error logging.
 4. Configure HTTPS and redirect all HTTP traffic to HTTPS. Mark PHP session cookies `Secure`, `HttpOnly`, and `SameSite=Lax` (or stricter where compatible).
-5. Apply `database/schema.sql` for a new installation. For an existing installation, back up the database and use the [database guide](database/README.md) to select migrations for the installed schema.
+5. Apply `database/schema.sql` for a new installation. For an existing installation, back up the database and use the [database guide](database/README.md) to select migrations for the installed schema. **Production migration prerequisite**: ensure `20261115_002_mediation_pause_decisions.sql`, `20261115_003_preserve_show_cause_and_cfa_decisions.sql`, and `20261115_004_order4_settlement_arbitration_transmittal.sql` are applied through the authorized production migration procedure before deploying Order 4/5 code.
 6. Give the web-service account write permission only to the necessary `storage/` subdirectories; keep application source read-only.
 
 ## Secrets
@@ -36,13 +36,21 @@ Gemini must have an enabled project with available API quota. For production wor
 
 The application prioritizes `GEMINI_API_KEY` from the server environment. The database setting remains only as a legacy fallback.
 
-## Release verification
+## Release verification & Azure CI gate
 
 ```powershell
 php -l backend/config/database.php
 php -l backend/services/GeminiService.php
 npm test
+php tests/verify_release_package.php <release-dir>
 ```
+
+The GitHub Actions workflow (`.github/workflows/azure-webapp.yml`) gates Azure App Service deployment (`deploy` depends on `test-and-package`) on:
+1. Installing production PHP dependencies (`composer install --no-dev --optimize-autoloader`) and running PHP/JS syntax checks.
+2. Importing `database/schema.sql` into disposable MySQL 8.0 (`agap_test`) and verifying upgrade migrations through `20261115_004_order4_settlement_arbitration_transmittal.sql`.
+3. Running `npm test` on PHP 8.3 against disposable MySQL (including `tests/run_tests.js` preflight checks for `SELECT DATABASE()` and Order 4 schema columns).
+4. Assembling `release/` with runtime code, `vendor/`, `backend/libs/dompdf/`, `frontend/assets/images/` document assets, and `database/schema.sql` + `database/migrations/`, while excluding `storage/` (preserving the Azure Files mount at `/home/site/wwwroot/storage`), `database/backups/`, `database/seeds/`, `database/seeders/`, `.env` / `.env.local` / `.env.*.local`, `logs/`, `output/`, `scratch/`, `tests/`, `node_modules/`, `*.pdf`, `*.xlsx`, `*.log`, `*.bak`, `*.tmp`, and `*.gz`.
+5. Running `php tests/verify_release_package.php release`, which fails the workflow before deployment if any required runtime file is missing or any prohibited file is present.
 
 Run the integration suite against an isolated local database using the [automated test setup](README.md#automated-tests).
 

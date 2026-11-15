@@ -33,6 +33,16 @@ if (empty($input)) {
 }
 
 $controller = new SettlementController();
-$result = $controller->save($input, (int) $_SESSION['user_id']);
+if (($input['action'] ?? '') === 'confirm_legacy_review') {
+    $settlementId = filter_var($input['settlement_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if (!$settlementId) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Valid settlement_id is required.']);
+        exit;
+    }
+    $result = $controller->confirmLegacyReview((int) $settlementId, $input, (int) $_SESSION['user_id']);
+} else {
+    $result = $controller->save($input, (int) $_SESSION['user_id']);
+}
 http_response_code($result['success'] ? 200 : 422);
 echo json_encode($result);

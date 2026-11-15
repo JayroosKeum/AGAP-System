@@ -752,7 +752,7 @@ $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_ty
 $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, 'Settled', CURDATE(), NOW())")
     ->execute([$comp4, "REG-004-{$token}"]);
 $case4 = (int) $db->lastInsertId();
-$db->prepare("INSERT INTO settlements (case_id, settlement_date, agreement_details, repudiation_status, compliance_status) VALUES (?, CURDATE(), 'Pay 5000', 'Enforceable', 'Pending')")
+$db->prepare("INSERT INTO settlements (case_id, settlement_date, agreement_details, complainant_signed, respondent_signed, pb_attested, settlement_status, repudiation_status, compliance_status) VALUES (?, DATE_SUB(CURDATE(), INTERVAL 20 DAY), 'Pay 5000', 1, 1, 1, 'Signed and Attested', 'Enforceable', 'Pending')")
     ->execute([$case4]);
 $reopenOk = regHttpRequest($baseUrl, $clerkSession, 'cases/reopen.php', [
     'case_id' => $case4,
@@ -2316,8 +2316,8 @@ assertReg(
 );
 
 // File repudiation -> must NOT insert into cfa_records, and MUST unlock KP Form 20 via REPUDIATED_SETTLEMENT
-$db->prepare("INSERT INTO settlements (case_id, settlement_date, agreement_details, repudiation_deadline, repudiation_status, compliance_status)
-    VALUES (?, CURDATE(), 'Pay amount within 5 days', DATE_ADD(CURDATE(), INTERVAL 10 DAY), 'Within Repudiation Period', 'Pending')")
+$db->prepare("INSERT INTO settlements (case_id, settlement_date, agreement_details, complainant_signed, respondent_signed, pb_attested, settlement_status, repudiation_deadline, repudiation_status, compliance_status)
+    VALUES (?, CURDATE(), 'Pay amount within 5 days', 1, 1, 1, 'Signed and Attested', DATE_ADD(CURDATE(), INTERVAL 10 DAY), 'Within Repudiation Period', 'Pending')")
     ->execute([$case18b]);
 $sett18bId = (int) $db->lastInsertId();
 $repRes18b = regHttpRequest($baseUrl, $clerkSession, 'settlements/repudiate.php', [
@@ -2497,6 +2497,318 @@ if (isset($notices19[$resResp1], $notices19[$resResp2])) {
 
 foreach ($db->query("SELECT file_path FROM generated_documents WHERE case_id = {$case19}")->fetchAll(PDO::FETCH_COLUMN) as $file19) {
     $createdFiles[] = dirname(__DIR__, 2) . '/' . ltrim((string) $file19, '/');
+}
+
+echo "\n[19] Testing Orders 4A & 4B (minutes vs signed settlement, arbitration award & rollback, deadlines, execution, transmittal)...\n";
+
+require_once __DIR__ . '/../models/HearingMinutes.php';
+require_once __DIR__ . '/../models/Arbitration.php';
+require_once __DIR__ . '/../models/Settlement.php';
+require_once __DIR__ . '/../models/CaseTransmittal.php';
+
+$minutesModel19 = new HearingMinutes($db);
+$stageModel19 = new CaseStage($db);
+$arbModel19 = new Arbitration($db);
+$settModel19 = new Settlement($db);
+$transModel19 = new CaseTransmittal($db);
+
+$createOrder4Case = function (string $title, string $caseStatus, string $compStatus, string $suffix) use ($db, $cleanup, $catId, $clerkId, $resComp, $resResp1, $token): array {
+    $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, status, category_id, case_type, incident_date, narrative, encoded_by, created_at)
+        VALUES (?, ?, ?, ?, 'Civil', CURDATE(), 'Order 4 regression test', ?, NOW())")
+        ->execute(["CMP-{$suffix}-{$token}", $title, $compStatus, $catId, $clerkId]);
+    $compId = (int) $db->lastInsertId();
+    $cleanup->trackComplaint($compId);
+    $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
+        ->execute([$compId, $resComp, $compId, $resResp1]);
+    $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_date, created_at) VALUES (?, ?, ?, CURDATE(), NOW())")
+        ->execute([$compId, "REG-{$suffix}-{$token}", $caseStatus]);
+    $caseId = (int) $db->lastInsertId();
+    return [$compId, $caseId];
+};
+
+// 19A: Hearing minutes 'Settled' stays active until signed & attested KP Form 16
+[$comp20Id, $case20Id] = $createOrder4Case('4A Minutes vs Settlement', 'Mediation', 'In Mediation', '4A01');
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Mediation', DATE_SUB(NOW(), INTERVAL 1 HOUR), 'Lupon Hall', 'Scheduled')")->execute([$case20Id]);
+$h20Id = (int) $db->lastInsertId();
+$min20Res = $minutesModel19->save([
+    'hearing_id' => $h20Id,
+    'case_id' => $case20Id,
+    'session_type' => 'Mediation',
+    'session_notes' => 'Parties reached provisional agreement pending formal KP Form 16 signing.',
+    'session_outcome' => 'Settled',
+    'status' => 'Finalized',
+], $clerkId);
+$case20Row = $db->query("SELECT case_status FROM cases WHERE case_id = {$case20Id}")->fetch(PDO::FETCH_ASSOC);
+$stage20Row = $db->query("SELECT stage_status, outcome FROM case_stages WHERE case_id = {$case20Id} AND stage_type = 'Mediation'")->fetch(PDO::FETCH_ASSOC);
+$dl20Count = (int) $db->query("SELECT COUNT(*) FROM case_deadlines WHERE case_id = {$case20Id} AND deadline_type = 'Settlement Repudiation Period'")->fetchColumn();
+assertReg(
+    !empty($min20Res['success'])
+    && ($case20Row['case_status'] ?? '') === 'Mediation'
+    && ($stage20Row['stage_status'] ?? '') === 'Awaiting Outcome'
+    && $dl20Count === 0,
+    'Finalizing Mediation minutes as Settled keeps case active and leaves settlement deadlines pending'
+);
+
+$blockedOutcome20 = $stageModel19->recordOutcome($case20Id, 'Mediation', 'Settled', 'No KP Form 16 yet', $clerkId);
+assertReg(
+    empty($blockedOutcome20['success']),
+    'CaseStage::recordOutcome rejects Settled until a signed and attested KP Form 16 settlement is recorded'
+);
+
+// Draft settlement (missing pb_attested) keeps case active & blocks repudiation/execution/transmittal
+$draftSett20 = regHttpRequest($baseUrl, $clerkSession, 'settlements/save.php', [
+    'case_id' => $case20Id,
+    'settlement_date' => date('Y-m-d'),
+    'agreement_details' => 'Draft agreement pending attestation.',
+    'complainant_signed' => 1,
+    'respondent_signed' => 1,
+    'pb_attested' => 0,
+]);
+$draftSettId = (int) ($draftSett20['json']['settlement_id'] ?? 0);
+$case20AfterDraft = (string) $db->query("SELECT case_status FROM cases WHERE case_id = {$case20Id}")->fetchColumn();
+$repDraftBlock = regHttpRequest($baseUrl, $clerkSession, 'settlements/repudiate.php', [
+    'settlement_id' => $draftSettId,
+    'repudiated_by' => $resResp1,
+    'repudiation_reason' => 'Fraud during draft',
+]);
+$execDraftBlock = regHttpRequest($baseUrl, $clerkSession, 'settlements/execute.php', [
+    'settlement_id' => $draftSettId,
+    'motion_filed_by' => $resComp,
+    'obligation_violated' => 'Payment',
+    'amount_or_requirement' => 'PHP 5000',
+    'hearing_date' => date('Y-m-d H:i:s', strtotime('+3 days')),
+]);
+$transDraftBlock = $transModel19->createOrGetTransmittal($case20Id, $clerkId);
+assertReg(
+    $draftSett20['status'] === 200
+    && ($draftSett20['json']['settlement_status'] ?? '') === 'Draft'
+    && $case20AfterDraft === 'Mediation'
+    && $repDraftBlock['status'] === 422
+    && $execDraftBlock['status'] === 422
+    && $transDraftBlock === null,
+    'Draft settlement keeps case active and blocks repudiation, execution, and court packet creation'
+);
+
+// Signed and attested settlement transitions case to Settled, creates KP Form 16 PDF, and links court packet
+$signedSett20 = regHttpRequest($baseUrl, $clerkSession, 'settlements/save.php', [
+    'case_id' => $case20Id,
+    'settlement_id' => $draftSettId,
+    'settlement_date' => date('Y-m-d'),
+    'agreement_details' => 'Respondent will pay PHP 5,000 in full.',
+    'complainant_signed' => 1,
+    'respondent_signed' => 1,
+    'pb_attested' => 1,
+]);
+$case20AfterSigned = (string) $db->query("SELECT case_status FROM cases WHERE case_id = {$case20Id}")->fetchColumn();
+$sett20DocId = (int) ($signedSett20['json']['document_id'] ?? 0);
+$trans20 = $transModel19->createOrGetTransmittal($case20Id, $clerkId);
+$trans20SubmitLocked = $transModel19->recordSubmission($case20Id, ['target_agency' => 'Both'], null, $clerkId);
+$trans20PdfLocked = regHttpRequest($baseUrl, $clerkSession, "transmittals/preview.php?case_id={$case20Id}&pdf=1", [], false, 'GET');
+assertReg(
+    $signedSett20['status'] === 200
+    && ($signedSett20['json']['settlement_status'] ?? '') === 'Signed and Attested'
+    && $sett20DocId > 0
+    && $case20AfterSigned === 'Settled'
+    && !empty($trans20['transmittal_id'])
+    && (int) ($trans20['source_document_id'] ?? 0) === $sett20DocId
+    && !empty($trans20['is_locked'])
+    && empty($trans20SubmitLocked['success'])
+    && $trans20PdfLocked['status'] === 422,
+    'Signed settlement links KP Form 16 PDF to court packet and locks transmittal PDF/submit during 10-working-day window'
+);
+
+// 19B: Arbitration agreement prerequisites, invalid dates, rollback, & idempotency
+[$comp21Id, $case21Id] = $createOrder4Case('4A Arbitration Validation', 'Mediation', 'In Mediation', '4A02');
+
+$noAgrAward = regHttpRequest($baseUrl, $clerkSession, 'documents/arbitration.php', [
+    'case_id' => $case21Id,
+    'agreement_date' => date('Y-m-d', strtotime('-8 days')),
+    'award_date' => date('Y-m-d'),
+    'award_details' => 'Attempted award without saved agreement.',
+]);
+assertReg(
+    $noAgrAward['status'] === 422
+    && (int) $db->query("SELECT COUNT(*) FROM arbitration_records WHERE case_id = {$case21Id}")->fetchColumn() === 0,
+    'Award issuance rejects missing KP Form 14 agreement and ignores client-supplied agreement_date'
+);
+
+// Record signed KP Form 14 agreement 8 days ago (within Day 6-15 window)
+$agrDate21 = date('Y-m-d', strtotime('-8 days'));
+$futureAgr = $arbModel19->recordAgreement(['case_id' => $case21Id, 'agreement_date' => date('Y-m-d', strtotime('+2 days')), 'agreement_signed' => 1], $clerkId);
+$okAgr21 = $arbModel19->recordAgreement(['case_id' => $case21Id, 'agreement_date' => $agrDate21, 'agreement_signed' => 1], $clerkId);
+$earlyAward = regHttpRequest($baseUrl, $clerkSession, 'documents/arbitration.php', [
+    'case_id' => $case21Id,
+    'award_date' => date('Y-m-d', strtotime($agrDate21 . ' +3 days')),
+    'award_details' => 'Too early Day 3 award.',
+]);
+$lateAward = regHttpRequest($baseUrl, $clerkSession, 'documents/arbitration.php', [
+    'case_id' => $case21Id,
+    'award_date' => date('Y-m-d', strtotime($agrDate21 . ' +16 days')),
+    'award_details' => 'Too late Day 16 award.',
+]);
+assertReg(
+    empty($futureAgr['success'])
+    && !empty($okAgr21['success'])
+    && !empty($okAgr21['agreement_document_id'])
+    && $earlyAward['status'] === 422
+    && $lateAward['status'] === 422,
+    'Arbitration rejects future signing dates and Day 3 / Day 16 out-of-window award dates'
+);
+
+// Simulated PDF failure rolls back award & leaves case in Arbitration
+$failingKp21 = new class($db) extends KpFormService {
+    public function generateAndPersistForm(string $formCode, int $caseId, int $userId, array $options = []): array
+    {
+        return ['success' => false, 'message' => 'Simulated KP Form 15 PDF failure'];
+    }
+};
+$failAwardModel21 = new class($db, $failingKp21) extends Arbitration {
+    private KpFormService $kpMock;
+    public function __construct(PDO $db, KpFormService $kpMock)
+    {
+        parent::__construct($db);
+        $this->kpMock = $kpMock;
+    }
+    protected function createKpFormService(): KpFormService
+    {
+        return $this->kpMock;
+    }
+};
+$failAwardRes21 = $failAwardModel21->issueAward([
+    'case_id' => $case21Id,
+    'award_date' => date('Y-m-d'),
+    'award_details' => 'Rollback test award.',
+], $clerkId);
+$arb21Check = $db->query("SELECT award_status, award_document_id FROM arbitration_records WHERE case_id = {$case21Id}")->fetch(PDO::FETCH_ASSOC);
+$case21AfterFail = (string) $db->query("SELECT case_status FROM cases WHERE case_id = {$case21Id}")->fetchColumn();
+assertReg(
+    empty($failAwardRes21['success'])
+    && ($arb21Check['award_status'] ?? '') === 'Pending'
+    && empty($arb21Check['award_document_id'])
+    && $case21AfterFail === 'Arbitration',
+    'Arbitration award PDF failure rolls back award_status, document link, and case status'
+);
+
+// Valid award issuance + repeat submission idempotency
+$okAward21 = regHttpRequest($baseUrl, $clerkSession, 'documents/arbitration.php', [
+    'case_id' => $case21Id,
+    'award_date' => date('Y-m-d'),
+    'award_details' => 'Respondent shall return the borrowed equipment within 5 days.',
+    'arbitrator_presider' => 'Punong Barangay Test',
+]);
+$docCountBeforeDup = (int) $db->query("SELECT COUNT(*) FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = {$case21Id} AND dt.template_name = 'KP Form 15'")->fetchColumn();
+$dupAward21 = regHttpRequest($baseUrl, $clerkSession, 'documents/arbitration.php', [
+    'case_id' => $case21Id,
+    'award_date' => date('Y-m-d', strtotime('-1 day')),
+    'award_details' => 'Different terms should not overwrite finalized award.',
+]);
+$docCountAfterDup = (int) $db->query("SELECT COUNT(*) FROM generated_documents gd INNER JOIN document_templates dt ON dt.template_id = gd.template_id WHERE gd.case_id = {$case21Id} AND dt.template_name = 'KP Form 15'")->fetchColumn();
+$arb21Final = $db->query("SELECT award_status, award_date, award_document_id FROM arbitration_records WHERE case_id = {$case21Id}")->fetch(PDO::FETCH_ASSOC);
+assertReg(
+    $okAward21['status'] === 200
+    && !empty($okAward21['json']['document_id'])
+    && $dupAward21['status'] === 200
+    && !empty($dupAward21['json']['idempotent'])
+    && $docCountBeforeDup === 1
+    && $docCountAfterDup === 1
+    && ($arb21Final['award_date'] ?? '') === date('Y-m-d'),
+    'Valid arbitration award commits KP Form 15 atomically and repeat submission returns existing award without duplicating PDF'
+);
+
+// 19C: Arbitration agreement 5-day repudiation boundary & CFA eligibility
+[$comp22Id, $case22Id] = $createOrder4Case('4B Arb Agreement Repudiation', 'Mediation', 'In Mediation', '4B01');
+$agr22Ok = $arbModel19->recordAgreement(['case_id' => $case22Id, 'agreement_date' => date('Y-m-d', strtotime('-5 days')), 'agreement_signed' => 1], $clerkId);
+$repArb22 = $arbModel19->repudiateAgreement([
+    'case_id' => $case22Id,
+    'repudiated_by' => $resResp1,
+    'repudiation_ground' => 'Intimidation',
+    'repudiation_reason' => 'Signed under threat.',
+], $clerkId);
+$awardAfterRep22 = regHttpRequest($baseUrl, $clerkSession, 'documents/arbitration.php', [
+    'case_id' => $case22Id,
+    'award_date' => date('Y-m-d'),
+    'award_details' => 'Should be blocked after repudiation.',
+]);
+$eligArbRep22 = $cfaModel->determineCfaEligibility($case22Id);
+assertReg(
+    !empty($agr22Ok['success'])
+    && !empty($repArb22['success'])
+    && $awardAfterRep22['status'] === 422
+    && !empty($eligArbRep22['eligible'])
+    && ($eligArbRep22['ground'] ?? '') === 'REPUDIATED_SETTLEMENT',
+    'Arbitration agreement repudiation on Day 5 blocks award issuance and unlocks standard CFA'
+);
+
+// 19D: Expired settlement -> noncompliance reopen vs execution & 6-month MTC lapse + superseded court packet
+[$comp23Id, $case23Id] = $createOrder4Case('4B Noncompliance & Transmittal', 'Mediation', 'In Mediation', '4B02');
+$pastSettDate23 = date('Y-m-d', strtotime('-25 days'));
+$savePast23 = regHttpRequest($baseUrl, $clerkSession, 'settlements/save.php', [
+    'case_id' => $case23Id,
+    'settlement_date' => $pastSettDate23,
+    'agreement_details' => 'Pay PHP 10,000 within 15 days.',
+    'complainant_signed' => 1,
+    'respondent_signed' => 1,
+    'pb_attested' => 1,
+]);
+$sett23Id = (int) ($savePast23['json']['settlement_id'] ?? 0);
+$transSett23 = $transModel19->createOrGetTransmittal($case23Id, $clerkId);
+$subSett23 = $transModel19->recordSubmission($case23Id, ['target_agency' => 'Both'], null, $clerkId);
+$dupSub23 = $transModel19->recordSubmission($case23Id, ['target_agency' => 'Both'], null, $clerkId);
+
+// Reopen for noncompliance -> cancels settlement packet, unlocks SETTLEMENT_NONCOMPLIANCE CFA, and CFA creates new packet
+$reopen23 = regHttpRequest($baseUrl, $clerkSession, 'cases/reopen.php', [
+    'case_id' => $case23Id,
+    'reason' => 'Respondent failed to pay after finality.',
+]);
+$eligNoncomp23 = $cfaModel->determineCfaEligibility($case23Id);
+$cfa23Http = regHttpRequest($baseUrl, $clerkSession, 'documents/cfa.php', [
+    'case_id' => $case23Id,
+    'cfa_type' => 'KP Form 20',
+    'reason' => 'Non-compliance with Amicable Settlement.',
+]);
+$transCfa23 = $transModel19->createOrGetTransmittal($case23Id, $clerkId);
+$histPackets23 = (int) $db->query("SELECT COUNT(*) FROM case_transmittals WHERE case_id = {$case23Id}")->fetchColumn();
+assertReg(
+    $savePast23['status'] === 200
+    && !empty($transSett23['is_ready_for_transmittal'])
+    && !empty($subSett23['success'])
+    && !empty($dupSub23['already_submitted'])
+    && $reopen23['status'] === 200
+    && ($eligNoncomp23['ground'] ?? '') === 'SETTLEMENT_NONCOMPLIANCE'
+    && $cfa23Http['status'] === 200
+    && ($transCfa23['source_type'] ?? '') === 'CFA'
+    && empty($transCfa23['is_locked'])
+    && $histPackets23 === 2,
+    'Finalized settlement transmits once idempotently, reopen unlocks noncompliance CFA, and CFA packet supersedes settlement packet while preserving history'
+);
+
+// 6-month MTC lapse check on execution
+[$comp24Id, $case24Id] = $createOrder4Case('4B 6-Month MTC Lapse', 'Mediation', 'In Mediation', '4B03');
+$lapsedDate24 = date('Y-m-d', strtotime('-7 months'));
+$saveLapsed24 = regHttpRequest($baseUrl, $clerkSession, 'settlements/save.php', [
+    'case_id' => $case24Id,
+    'settlement_date' => $lapsedDate24,
+    'agreement_details' => 'Older than 6 months settlement.',
+    'complainant_signed' => 1,
+    'respondent_signed' => 1,
+    'pb_attested' => 1,
+]);
+$lapsedSett24Id = (int) ($saveLapsed24['json']['settlement_id'] ?? 0);
+$execLapsed24 = $settModel19->fileExecutionMotion($lapsedSett24Id, [
+    'motion_filed_by' => $resComp,
+    'obligation_violated' => 'Payment',
+    'amount_or_requirement' => 'PHP 2000',
+    'hearing_date' => date('Y-m-d H:i:s', strtotime('+3 days')),
+], $clerkId);
+assertReg(
+    empty($execLapsed24['success']) && !empty($execLapsed24['lapsed_to_mtc']),
+    'Execution motion past 6 months returns MTC referral lapse'
+);
+
+foreach ([$case20Id, $case21Id, $case22Id, $case23Id, $case24Id] as $c4CleanupId) {
+    foreach ($db->query("SELECT file_path FROM generated_documents WHERE case_id = {$c4CleanupId}")->fetchAll(PDO::FETCH_COLUMN) as $f4) {
+        $createdFiles[] = dirname(__DIR__, 2) . '/' . ltrim((string) $f4, '/');
+    }
 }
 
 echo "\n====================================================================\n";

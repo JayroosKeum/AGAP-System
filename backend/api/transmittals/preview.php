@@ -54,8 +54,33 @@ try {
     $tData = $details['transmittal'] ?? [];
     $isLocked = !empty($tData['is_locked']);
     $isRepudiated = !empty($tData['is_repudiated']);
+    $hasSourceDocument = !empty($tData['has_source_document']);
     $daysRemaining = (int) ($tData['working_days_remaining'] ?? 0);
     $unlockDate = $tData['unlock_date_formatted'] ?? ($tData['ten_day_expiry_date_formatted'] ?? 'N/A');
+
+    if (!$hasSourceDocument) {
+        if ($returnHtml) {
+            header('Content-Type: text/html; charset=UTF-8');
+            echo '<!DOCTYPE html><html><body style="font-family:sans-serif; text-align:center; padding:50px; color:#991b1b;"><h3>Missing Certified Instrument Document</h3><p>Court transmittal preview and printing are blocked until the signed settlement, finalized arbitration award, or issued CFA PDF is saved on record.</p></body></html>';
+            exit;
+        }
+        http_response_code(422);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Cannot preview or print transmittal packet without a saved certified instrument PDF.']);
+        exit;
+    }
+
+    if (!$returnHtml && ($isRepudiated || $isLocked)) {
+        http_response_code(422);
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => false,
+            'message' => $isRepudiated
+                ? 'Court transmittal PDF is blocked because the underlying instrument was repudiated.'
+                : sprintf('Court transmittal PDF is locked during the 10-working-day finality window (unlocks %s).', $unlockDate)
+        ]);
+        exit;
+    }
 
     $pdfService = new PDFService();
     $output = $pdfService->generateTransmittalLetter($caseId, [

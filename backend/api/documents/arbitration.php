@@ -41,6 +41,12 @@ if (!$caseId) {
     exit;
 }
 
-$result = (new ArbitrationController())->create($input);
+$action = trim((string) ($input['action'] ?? 'issue_award'));
+$controller = new ArbitrationController();
+$result = match ($action) {
+    'record_agreement', 'save_agreement' => $controller->recordAgreement($input),
+    'repudiate_agreement' => $controller->repudiateAgreement($input),
+    default => $controller->create($input),
+};
 http_response_code(!empty($result['success']) ? 200 : 422);
 echo json_encode($result);

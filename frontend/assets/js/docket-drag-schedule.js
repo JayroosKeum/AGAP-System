@@ -298,12 +298,38 @@
             venue: card.dataset.venue || '',
             presiding_officer_id: card.dataset.presidingOfficerId ? parseInt(card.dataset.presidingOfficerId, 10) : null,
             presiding_officer_name: card.dataset.presidingOfficerName || '',
-            updated_at: card.dataset.updatedAt || '',
+            updated_at: card.dataset.updatedAt ?? '',
             title: card.dataset.title || '',
             order: parseInt(card.dataset.order || '1', 10),
+            queue_order: card.dataset.queueOrder !== undefined && card.dataset.queueOrder !== ''
+                ? parseInt(card.dataset.queueOrder, 10)
+                : parseInt(card.dataset.order || '0', 10),
             is_locked: card.dataset.locked === '1',
             lock_reason: card.dataset.lockReason || ''
         };
+    };
+
+    const buildExpectedSnapshotFields = (type, queueDate, officialTime, queueOrder, updatedAt) => {
+        const cleanDate = String(queueDate || '').slice(0, 10);
+        const rawTime = String(officialTime || '').trim();
+        const fields = {
+            expected_updated_at: updatedAt ?? '',
+            expected_queue_order: Number.isFinite(Number(queueOrder)) ? Number(queueOrder) : 0
+        };
+        if (type === 'paanyaya') {
+            const timeMatch = rawTime.match(/(\d{2}:\d{2}(?::\d{2})?)/);
+            fields.expected_scheduled_date = cleanDate;
+            fields.expected_scheduled_time = timeMatch ? timeMatch[1] : rawTime;
+        } else {
+            if (/^\d{4}-\d{2}-\d{2}/.test(rawTime)) {
+                fields.expected_hearing_date = rawTime;
+            } else if (cleanDate && rawTime) {
+                fields.expected_hearing_date = `${cleanDate} ${rawTime}`;
+            } else {
+                fields.expected_hearing_date = cleanDate;
+            }
+        }
+        return fields;
     };
 
     const captureContainerSnapshot = (container, itemSelector) => {
@@ -316,7 +342,13 @@
                 key: `${card.dataset.type || 'hearing'}:${card.dataset.id || ''}:${card.dataset.sessionId || '0'}`,
                 index,
                 seqText: seqBadge ? seqBadge.textContent : `#${index + 1}`,
-                timeText: timePill ? timePill.textContent : ''
+                timeText: timePill ? timePill.textContent : '',
+                queueDate: card.dataset.queueDate || '',
+                officialTime: card.dataset.officialTime || '',
+                updatedAt: card.dataset.updatedAt ?? '',
+                queueOrder: card.dataset.queueOrder !== undefined && card.dataset.queueOrder !== ''
+                    ? parseInt(card.dataset.queueOrder, 10)
+                    : parseInt(card.dataset.order || '0', 10)
             };
         });
     };
@@ -362,11 +394,23 @@
         return bar;
     };
 
-    const showStatusBar = (container, stateClass, message, autoHideMs = 0) => {
+    const showStatusBar = (container, stateClass, message, autoHideMs = 0, actionOptions = null) => {
         const bar = getOrCreateStatusBar(container);
         if (!bar) return;
         bar.className = `docket-dnd-status-bar is-visible ${stateClass}`;
-        bar.textContent = message;
+        bar.replaceChildren();
+        const msgSpan = document.createElement('span');
+        msgSpan.textContent = message;
+        bar.appendChild(msgSpan);
+        if (actionOptions && typeof actionOptions.onReload === 'function') {
+            const reloadBtn = document.createElement('button');
+            reloadBtn.type = 'button';
+            reloadBtn.className = 'btn btn-xs btn-outline-danger ms-2 docket-dnd-reload-btn';
+            reloadBtn.style.cssText = 'margin-left: 10px; padding: 2px 10px; border-radius: 6px; border: 1px solid currentColor; background: #ffffff; color: #991b1b; font-weight: 700; font-size: 0.75rem; cursor: pointer;';
+            reloadBtn.textContent = actionOptions.reloadLabel || 'Reload docket';
+            reloadBtn.addEventListener('click', () => actionOptions.onReload());
+            bar.appendChild(reloadBtn);
+        }
         if (bar._hideTimer) clearTimeout(bar._hideTimer);
         if (autoHideMs > 0) {
             bar._hideTimer = setTimeout(() => {
@@ -408,15 +452,27 @@
         // Update sequence badges only (never overwrite official time pills)
         refreshSequenceBadgesOnly(container, itemSelector);
 
+        const snapshotByCard = new Map((preDragSnapshot || []).map((entry) => [entry.card, entry]));
         const queueDate = options.selectedDate || unlockedCards[0]?.dataset.queueDate || '';
-        const itemsPayload = unlockedCards.map((card, idx) => ({
-            type: card.dataset.type || 'hearing',
-            id: parseInt(card.dataset.id || '0', 10),
-            session_id: card.dataset.sessionId ? parseInt(card.dataset.sessionId, 10) : null,
-            complaint_id: card.dataset.complaintId ? parseInt(card.dataset.complaintId, 10) : null,
-            order: idx + 1,
-            expected_updated_at: card.dataset.updatedAt || null
-        }));
+        const itemsPayload = unlockedCards.map((card, idx) => {
+            const snap = snapshotByCard.get(card);
+            const itemType = card.dataset.type || 'hearing';
+            const expectedFields = buildExpectedSnapshotFields(
+                itemType,
+                snap ? snap.queueDate : (card.dataset.queueDate || queueDate),
+                snap ? snap.officialTime : (card.dataset.officialTime || ''),
+                snap ? snap.queueOrder : (card.dataset.queueOrder !== undefined && card.dataset.queueOrder !== '' ? parseInt(card.dataset.queueOrder, 10) : 0),
+                snap ? snap.updatedAt : (card.dataset.updatedAt ?? '')
+            );
+            return {
+                type: itemType,
+                id: parseInt(card.dataset.id || '0', 10),
+                session_id: card.dataset.sessionId ? parseInt(card.dataset.sessionId, 10) : null,
+                complaint_id: card.dataset.complaintId ? parseInt(card.dataset.complaintId, 10) : null,
+                order: idx + 1,
+                ...expectedFields
+            };
+        });
 
         showStatusBar(container, 'is-saving', `Saving call order for ${formatDateReadable(queueDate)}...`);
         allCards.forEach((c) => { c.draggable = false; });
@@ -436,13 +492,18 @@
                     is_filtered: Boolean(options.isFiltered),
                     is_paginated: Boolean(options.isPaginated),
                     full_day_loaded: options.fullDayLoaded !== false,
+                    require_concurrency_snapshot: true,
                     items: itemsPayload
                 })
             });
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
-                throw new Error(data.message || `Unable to save call order (HTTP ${res.status}).`);
+                const err = new Error(data.message || `Unable to save call order (HTTP ${res.status}).`);
+                err.httpStatus = res.status;
+                err.code = data.code || '';
+                err.data = data;
+                throw err;
             }
 
             // Update card order attributes only — official appointment times remain untouched
@@ -452,9 +513,14 @@
                         (c) => (c.dataset.type || 'hearing') === up.type && Number(c.dataset.id) === Number(up.id)
                     );
                     if (match) {
-                        match.dataset.order = String(up.order);
+                        const newOrder = up.queue_order ?? up.order ?? match.dataset.order;
+                        match.dataset.order = String(newOrder);
+                        match.dataset.queueOrder = String(newOrder);
+                        if (Object.prototype.hasOwnProperty.call(up, 'updated_at')) {
+                            match.dataset.updatedAt = String(up.updated_at ?? '');
+                        }
                         const seq = match.querySelector('.queue-seq-badge');
-                        if (seq) seq.textContent = `#${up.order}`;
+                        if (seq) seq.textContent = `#${newOrder}`;
                     }
                 });
             }
@@ -475,12 +541,32 @@
         } catch (err) {
             restoreContainerSnapshot(container, preDragSnapshot);
             refreshSequenceBadgesOnly(container, itemSelector);
-            const errMsg = err.message || 'Failed to save call order. Original order restored.';
-            showStatusBar(container, 'is-error', errMsg, 6000);
+            const isStale = err.httpStatus === 409 || err.code === 'STALE_PAYLOAD';
+            const errMsg = isStale
+                ? (err.message || 'This docket changed in another session. Original order restored. Reload the docket to see the latest schedule.')
+                : (err.message || 'Failed to save call order. Original order restored.');
+            showStatusBar(
+                container,
+                'is-error',
+                errMsg,
+                isStale ? 0 : 6000,
+                isStale
+                    ? {
+                        reloadLabel: 'Reload docket',
+                        onReload: () => {
+                            if (typeof options.onRefresh === 'function') {
+                                options.onRefresh(err.data || {});
+                            } else {
+                                window.location.reload();
+                            }
+                        }
+                    }
+                    : null
+            );
             if (typeof options.onToast === 'function') {
                 options.onToast(errMsg, true);
             }
-            return { success: false, message: errMsg };
+            return { success: false, code: err.code || '', http_status: err.httpStatus || 0, message: errMsg };
         } finally {
             allCards.forEach((c) => {
                 c.draggable = Boolean(options.canReorder) && c.dataset.locked !== '1';
@@ -591,6 +677,11 @@
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeModal();
         });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('is-open')) {
+                closeModal();
+            }
+        });
 
         modal.querySelector('#agapRescheduleDateInput')?.addEventListener('change', (e) => {
             modalState.targetDate = e.target.value;
@@ -651,19 +742,31 @@
         }
     };
 
-    const setModalAlert = (message, isError = true) => {
+    const setModalAlert = (message, isError = true, actionOptions = null) => {
         const alertBox = document.getElementById('agapRescheduleAlertBox');
         if (!alertBox) return;
         if (!message) {
             alertBox.style.display = 'none';
-            alertBox.textContent = '';
+            alertBox.replaceChildren();
             return;
         }
         alertBox.style.display = 'block';
         alertBox.style.background = isError ? '#fef2f2' : '#f0fdf4';
         alertBox.style.color = isError ? '#b91c1c' : '#15803d';
         alertBox.style.border = `1px solid ${isError ? '#fecaca' : '#bbf7d0'}`;
-        alertBox.textContent = message;
+        alertBox.replaceChildren();
+        const textNode = document.createElement('span');
+        textNode.textContent = message;
+        alertBox.appendChild(textNode);
+        if (actionOptions && typeof actionOptions.onReload === 'function') {
+            const reloadBtn = document.createElement('button');
+            reloadBtn.type = 'button';
+            reloadBtn.className = 'agap-reschedule-reload-btn';
+            reloadBtn.style.cssText = 'margin-left: 10px; padding: 3px 10px; border-radius: 6px; border: 1px solid #b91c1c; background: #ffffff; color: #991b1b; font-weight: 700; font-size: 0.78rem; cursor: pointer;';
+            reloadBtn.textContent = actionOptions.reloadLabel || 'Reload docket';
+            reloadBtn.addEventListener('click', () => actionOptions.onReload());
+            alertBox.appendChild(reloadBtn);
+        }
     };
 
     const loadRescheduleSlots = async () => {
@@ -783,6 +886,13 @@
         const modal = getOrCreateRescheduleModal();
         modalState = {
             item: itemMeta,
+            originalSnapshot: {
+                type: itemMeta.type || 'hearing',
+                queue_date: itemMeta.queue_date || '',
+                official_time: itemMeta.official_time || '',
+                queue_order: Number.isFinite(Number(itemMeta.queue_order)) ? Number(itemMeta.queue_order) : (itemMeta.order || 0),
+                updated_at: itemMeta.updated_at ?? ''
+            },
             targetDate: targetDate || itemMeta.queue_date || '',
             selectedTime: '',
             selectedVenue: itemMeta.venue || '',
@@ -844,6 +954,21 @@
         setModalAlert('');
 
         try {
+            const snap = modalState.originalSnapshot || {
+                type: modalState.item.type || 'hearing',
+                queue_date: modalState.item.queue_date || '',
+                official_time: modalState.item.official_time || '',
+                queue_order: modalState.item.queue_order ?? modalState.item.order ?? 0,
+                updated_at: modalState.item.updated_at ?? ''
+            };
+            const expectedFields = buildExpectedSnapshotFields(
+                snap.type,
+                snap.queue_date,
+                snap.official_time,
+                snap.queue_order,
+                snap.updated_at
+            );
+
             const res = await fetch(modalState.apiUrl, {
                 method: 'POST',
                 headers: {
@@ -863,13 +988,18 @@
                     presiding_officer_id: modalState.selectedOfficerId,
                     reschedule_reason: reason,
                     confirmed: true,
-                    expected_updated_at: modalState.slotsData?.current_item?.updated_at || modalState.item.updated_at || null
+                    require_concurrency_snapshot: true,
+                    ...expectedFields
                 })
             });
 
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data.success) {
-                throw new Error(data.message || `Reschedule failed (HTTP ${res.status}).`);
+                const err = new Error(data.message || `Reschedule failed (HTTP ${res.status}).`);
+                err.httpStatus = res.status;
+                err.code = data.code || '';
+                err.data = data;
+                throw err;
             }
 
             const modal = document.getElementById('agapDocketRescheduleModal');
@@ -884,7 +1014,28 @@
                 modalState.onRefresh(data);
             }
         } catch (err) {
-            setModalAlert(err.message || 'Unable to reschedule appointment.', true);
+            const isStale = err.httpStatus === 409 || err.code === 'STALE_PAYLOAD';
+            const errMsg = isStale
+                ? (err.message || 'This record changed in another session. Reload the docket before rescheduling.')
+                : (err.message || 'Unable to reschedule appointment.');
+            setModalAlert(
+                errMsg,
+                true,
+                isStale
+                    ? {
+                        reloadLabel: 'Reload docket',
+                        onReload: () => {
+                            const modal = document.getElementById('agapDocketRescheduleModal');
+                            modal?.classList.remove('is-open');
+                            if (typeof modalState.onRefresh === 'function') {
+                                modalState.onRefresh(err.data || {});
+                            } else {
+                                window.location.reload();
+                            }
+                        }
+                    }
+                    : null
+            );
         } finally {
             if (submitBtn) {
                 submitBtn.disabled = false;

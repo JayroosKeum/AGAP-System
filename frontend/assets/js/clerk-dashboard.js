@@ -442,6 +442,7 @@
             const card = document.createElement('article');
             card.className = `clerk-agenda-item item-${item.type}`;
             card.dataset.index = String(index);
+            card.dataset.queueOrder = String(raw.queue_order ?? 0);
             card.dataset.id = String(item.id || '');
             card.dataset.type = item.type;
             card.dataset.sessionId = String(item.session_id || '');

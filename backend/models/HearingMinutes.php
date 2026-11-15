@@ -342,27 +342,28 @@ class HearingMinutes
 
             // Outcome workflow triggers
             if ($outcome === 'Settled') {
-                $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Settled', updated_at = NOW() WHERE case_id = ?");
-                $updCase->execute([$caseId]);
-
-                $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Settled', co.updated_at = NOW() WHERE c.case_id = ?");
-                $updComp->execute([$caseId]);
-
+                // Separate hearing minutes from formal signed settlement (Order 4A):
+                // recording an agreement in minutes leaves case disposition and deadlines pending
+                // until staff record the signed and attested KP Form 16 settlement.
                 $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
                 $updStage = $this->conn->prepare("
                     INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
-                    VALUES (?, ?, 'Completed', 'Settled', ?, NOW())
+                    VALUES (?, ?, 'Awaiting Outcome', 'Settled', ?, NULL)
                     ON DUPLICATE KEY UPDATE
-                        stage_status = 'Completed',
+                        stage_status = 'Awaiting Outcome',
                         outcome = 'Settled',
                         outcome_remarks = VALUES(outcome_remarks),
-                        completed_at = NOW(),
+                        completed_at = NULL,
                         updated_at = CURRENT_TIMESTAMP
                 ");
-                $updStage->execute([$caseId, $stageType, $remarks ?: 'Amicable settlement reached']);
+                $updStage->execute([
+                    $caseId,
+                    $stageType,
+                    $remarks ?: 'Agreement reached in hearing minutes; pending signed and attested Amicable Settlement (KP Form 16).'
+                ]);
 
-                $histMsg = sprintf('%s session concluded: Settlement reached. Proceed to prepare Amicable Settlement.', $sessionType);
-                $this->logCaseHistory($caseId, 'Settled', $histMsg, $userId);
+                $histMsg = sprintf('%s session concluded: Parties reached an agreement in minutes. Case disposition remains pending until the Amicable Settlement (KP Form 16) is signed and attested.', $sessionType);
+                $this->logCaseHistory($caseId, $hearing['case_status'] ?? $stageType, $histMsg, $userId);
             } elseif ($outcome === 'Dismissed') {
                 $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Dismissed', updated_at = NOW() WHERE case_id = ?");
                 $updCase->execute([$caseId]);
@@ -408,8 +409,11 @@ class HearingMinutes
                 $arbId = $chkArb->fetchColumn();
                 if (!$arbId) {
                     $insArb = $this->conn->prepare("
-                        INSERT INTO arbitration_records (case_id, agreement_date, award_details)
-                        VALUES (?, CURDATE(), ?)
+                        INSERT INTO arbitration_records (
+                            case_id, agreement_date, agreement_signed, agreement_repudiation_status,
+                            repudiation_deadline, award_deadline, award_details
+                        )
+                        VALUES (?, CURDATE(), 1, 'Within Repudiation Period', DATE_ADD(CURDATE(), INTERVAL 5 DAY), DATE_ADD(CURDATE(), INTERVAL 15 DAY), ?)
                     ");
                     $insArb->execute([
                         $caseId,

@@ -1163,6 +1163,106 @@ runAssertion(
     'Resident received notification with old and new Paanyaya schedule and reschedule reason'
 );
 
+echo "\n[TEST 15] Order 5A concurrency: null timestamps, same-second competing saves, and required dashboard snapshot...\n";
+
+// 15a. Require full snapshot when require_concurrency_snapshot is set
+$missingSnapReorder = httpJsonRequest($baseUrl, $actors['admin'], 'hearings/queue.php', [
+    'action' => 'reorder_queue',
+    'queue_date' => $docketTue,
+    'view_mode' => 'day',
+    'full_day_loaded' => true,
+    'require_concurrency_snapshot' => true,
+    'items' => [
+        ['id' => $hearingBId, 'type' => 'hearing', 'order' => 1],
+    ],
+]);
+runAssertion(
+    $missingSnapReorder['status'] === 422 && ($missingSnapReorder['json']['code'] ?? '') === 'MISSING_CONCURRENCY_SNAPSHOT',
+    'Dashboard reorder_queue rejects missing original snapshot with HTTP 422 MISSING_CONCURRENCY_SNAPSHOT'
+);
+
+$missingSnapResched = httpJsonRequest($baseUrl, $actors['clerk'], 'hearings/queue.php', [
+    'action' => 'reschedule_item',
+    'item_type' => 'paanyaya',
+    'item_id' => $paanyayaPId,
+    'session_id' => $sessionPId,
+    'complaint_id' => $compPId,
+    'target_date' => $docketTue,
+    'target_time' => '15:00',
+    'venue' => 'Barangay Conference Room',
+    'presiding_officer_id' => $luponId,
+    'reschedule_reason' => 'Missing snapshot test',
+    'confirmed' => true,
+    'require_concurrency_snapshot' => true,
+]);
+runAssertion(
+    $missingSnapResched['status'] === 422 && ($missingSnapResched['json']['code'] ?? '') === 'MISSING_CONCURRENCY_SNAPSHOT',
+    'Dashboard reschedule_item rejects missing original snapshot with HTTP 422 MISSING_CONCURRENCY_SNAPSHOT'
+);
+
+// 15b. Empty/null expected_updated_at against a populated record is rejected with HTTP 409 STALE_PAYLOAD
+$hbState = $db->query("SELECT hearing_date, queue_order, updated_at FROM hearings WHERE hearing_id = {$hearingBId}")->fetch(PDO::FETCH_ASSOC);
+$reschedNullStale = httpJsonRequest($baseUrl, $actors['clerk'], 'hearings/queue.php', [
+    'action' => 'reschedule_item',
+    'item_type' => 'hearing',
+    'item_id' => $hearingBId,
+    'target_date' => $nextDocketTue,
+    'target_time' => '15:00',
+    'venue' => 'Lupon Court Room',
+    'presiding_officer_id' => $luponId,
+    'reschedule_reason' => 'Null timestamp competing edit',
+    'confirmed' => true,
+    'require_concurrency_snapshot' => true,
+    'expected_updated_at' => null,
+    'expected_queue_order' => (int) $hbState['queue_order'],
+    'expected_hearing_date' => (string) $hbState['hearing_date'],
+]);
+runAssertion(
+    $reschedNullStale['status'] === 409 && ($reschedNullStale['json']['code'] ?? '') === 'STALE_PAYLOAD',
+    'Client sending NULL expected_updated_at against populated record is rejected with HTTP 409 STALE_PAYLOAD'
+);
+
+// 15c. Same-second competing edit (updated_at kept identical, appointment/queue_order changed) is still caught with 409
+$sameSecondStale = httpJsonRequest($baseUrl, $actors['clerk'], 'hearings/queue.php', [
+    'action' => 'reschedule_item',
+    'item_type' => 'hearing',
+    'item_id' => $hearingBId,
+    'target_date' => $nextDocketTue,
+    'target_time' => '16:00',
+    'venue' => 'Lupon Court Room',
+    'presiding_officer_id' => $luponId,
+    'reschedule_reason' => 'Same-second competing reschedule',
+    'confirmed' => true,
+    'require_concurrency_snapshot' => true,
+    'expected_updated_at' => (string) $hbState['updated_at'],
+    'expected_queue_order' => ((int) $hbState['queue_order']) + 1,
+    'expected_hearing_date' => (string) $hbState['hearing_date'],
+]);
+runAssertion(
+    $sameSecondStale['status'] === 409 && ($sameSecondStale['json']['code'] ?? '') === 'STALE_PAYLOAD',
+    'Same-second competing reschedule with matching updated_at but changed queue_order is rejected with HTTP 409 STALE_PAYLOAD'
+);
+
+$sameSecondApptStale = httpJsonRequest($baseUrl, $actors['clerk'], 'hearings/queue.php', [
+    'action' => 'reschedule_item',
+    'item_type' => 'hearing',
+    'item_id' => $hearingBId,
+    'target_date' => $nextDocketTue,
+    'target_time' => '16:00',
+    'venue' => 'Lupon Court Room',
+    'presiding_officer_id' => $luponId,
+    'reschedule_reason' => 'Same-second competing appointment reschedule',
+    'confirmed' => true,
+    'require_concurrency_snapshot' => true,
+    'expected_updated_at' => (string) $hbState['updated_at'],
+    'expected_queue_order' => (int) $hbState['queue_order'],
+    'expected_hearing_date' => '2026-12-01 08:00:00',
+]);
+runAssertion(
+    $sameSecondApptStale['status'] === 409 && ($sameSecondApptStale['json']['code'] ?? '') === 'STALE_PAYLOAD',
+    'Same-second competing reschedule with matching updated_at but changed appointment is rejected with HTTP 409 STALE_PAYLOAD'
+);
+
 // Clean up all test data
 $cleanup->cleanup();
 

@@ -150,4 +150,28 @@ class SettlementController
         if ($result['success']) $this->audit->log($actorUserId, 'Issued KP Form 25 Notice of Execution', 'Execution Proceedings', $executionId);
         return $result;
     }
+
+    public function fileArbitrationExecution(int $arbitrationId, array $data, int $actorUserId): array
+    {
+        if ($arbitrationId < 1) {
+            return ['success' => false, 'message' => 'Invalid arbitration ID.'];
+        }
+        $result = $this->settlement->fileArbitrationExecutionMotion($arbitrationId, $data, $actorUserId);
+        if ($result['success']) {
+            $this->audit->log($actorUserId, 'Filed Motion for Execution (Arbitration Award)', 'Execution Proceedings', $result['execution_id'] ?? $arbitrationId);
+        }
+        return $result;
+    }
+
+    public function confirmLegacyReview(int $settlementId, array $data, int $actorUserId): array
+    {
+        if ($settlementId < 1) {
+            return ['success' => false, 'message' => 'Invalid settlement ID.'];
+        }
+        $result = $this->settlement->confirmLegacySettlementReview($settlementId, $data, $actorUserId);
+        if ($result['success']) {
+            $this->audit->log($actorUserId, 'Confirmed Legacy Settlement Review', 'Settlements', $settlementId);
+        }
+        return $result;
+    }
 }

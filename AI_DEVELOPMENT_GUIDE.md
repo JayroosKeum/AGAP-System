@@ -63,7 +63,7 @@ The Administrator dashboard (`frontend/assets/js/dashboard.js`) and Clerk Agenda
   - Only active Administrators and Lupon Clerks (verified against `users` and `roles`) may reorder or reschedule; Lupon Members and unauthenticated/CSRF-invalid requests are rejected (`401`/`403`).
   - Records that are `In_Session`, attendance-recorded (`Attendance Recorded`, `attendance_recorded_at IS NOT NULL`, or party attendance recorded), minutes-recorded, `Concluded`, `Completed`, `Cancelled`, `Office Cancelled`, `Resolved`, `Unresolved`, `Escalated`, `Settled`, or superseded are locked (`422`).
   - Every submitted `paanyaya_sessions.session_id` is verified against the submitted `complaint_id` and `paanyayas.paanyaya_id`.
-  - The server checks the submitted expected timestamp, appointment, and queue order inside row-locked transactions. It rejects stale, duplicate, cross-date, incomplete, and filtered or paginated payloads. The shared dashboard currently sends the timestamp. Sending the full original state and verifying both dashboards in a browser are open in Order 5.
+  - The server checks the submitted expected timestamp, appointment, and queue order inside row-locked transactions (`DocketScheduleService::validateStaleSnapshot()`). It rejects stale, duplicate, cross-date, incomplete, and filtered or paginated payloads. Both dashboards (`docket-drag-schedule.js` + `dashboard.js` + `clerk-dashboard.js`) capture and preserve the pre-drag / modal-open snapshot across slot refreshes, require `require_concurrency_snapshot: true`, restore original order/state on HTTP 409 rejection, and offer a **Reload docket** action.
 
 ## Implemented attendance, show cause, and CFA
 
@@ -103,20 +103,33 @@ Follow the order below when planning the work. Changes to session limits, summon
 
 - Keep an agreement recorded in minutes distinct from a signed and attested settlement. Require a recorded written arbitration agreement and its actual signing date before issuing an award. Commit the award, document, stage outcome, and disposition together.
 
-### Order 4B — Finality, execution, and court transmittal
+### Order 4A — Signed settlement and arbitration award (Implemented)
 
-- Use the operative signed settlement or finalized award for the applicable finality and execution checks. Confirm the separate rules for finality, repudiation, execution, and transmittal before replacing the shared working-day calculation. Keep repudiation, documented noncompliance, and execution as distinct recorded actions. Build the court packet from the current eligible settlement, finalized award, or issued CFA and its document.
+- **Minutes vs. formal settlement**: Saving or finalizing Mediation/Conciliation `hearing_minutes` with `Settled` keeps `cases.case_status` active and sets `case_stages.stage_status = 'Awaiting Outcome'` without creating settlement deadlines. `CaseStage::recordOutcome()` blocks `Settled` until a `Signed and Attested` `settlements` row exists.
+- **Draft vs. signed & attested settlement (`Settlement::saveSettlement`)**: Settlements without `complainant_signed`, `respondent_signed`, and `pb_attested` are saved as `Draft` (leaving case status active and deadlines `NULL`). Once all three are recorded, `saveSettlement()` atomically renders KP Form 16, stores `settlements.document_id`, transitions the case/stage to `Settled`, and records `case_deadlines`. Older incomplete records backfilled by migration `20261115_004` are marked `Legacy Review Required` and require explicit staff review (`confirmLegacySettlementReview`).
+- **Arbitration agreement & atomic award (`Arbitration`)**: `recordAgreement()` records the signed KP Form 14 `agreement_date` and PDF (`agreement_document_id`), computing the 5-calendar-day repudiation deadline and Day 15 award deadline. `issueAward()` (`POST backend/api/documents/arbitration.php`) locks `cases` + `arbitration_records`, rejects missing/unsigned/repudiated agreements or out-of-window dates (Day 6–15 calendar days) with no request/clock fallback, renders KP Form 15 atomically, rolls back and unlinks the PDF on failure, and returns existing finalized awards idempotently.
 
-### Order 5 — Dashboard concurrency and deployment
+### Order 4B — Finality, execution, and court transmittal (Implemented)
 
-- Send the original appointment and call order with the dashboard save payload. Exercise drag cancellation, rejected-save rollback, keyboard rescheduling, and competing edits in both the Administrator dashboard and Clerk Agenda.
-- Gate Azure deployment on the PHP 8.3 integration suite with disposable MySQL. Exclude database backups from release artifacts and verify the package contents.
+- **Confirmed deadline rules**:
+  - **Settlement repudiation (KP Form 16, RA 7160 Sec. 416/418)**: 10 working days (`MediationDeadlineService::calculateBusinessDays($settlementDate, 10)`), allowed while `$today <= $repudiation_deadline` for `Signed and Attested` settlements.
+  - **Arbitration agreement repudiation & award issuance (KP Form 14/15, RA 7160 Sec. 413)**: 5 calendar days from `agreement_date` for repudiation; Day 6–15 calendar days from `agreement_date` for award issuance.
+  - **Finality & court transmittal (RA 7160 Sec. 416)**: 10 working days from `settlement_date` or `award_date`; issued CFAs unlock transmittal immediately (0-day hold) when backed by a saved PDF.
+  - **Barangay execution (KP Form 23/24/25, RA 7160 Sec. 417)**: Allowed after finality (past 10 working days) and within 6 months (`+6 months`) for both signed settlements and finalized arbitration awards (`execution_proceedings.arbitration_id`), after which it lapses to MTC (`mtcLapseResult()`).
+- **Repudiation vs. noncompliance vs. execution**: `CFA::determineCfaEligibility()` keeps `REPUDIATED_SETTLEMENT` (covering both signed settlement and KP Form 14 agreement repudiation) distinct from `SETTLEMENT_NONCOMPLIANCE` (requiring `Signed and Attested` settlement or `Violated` award + documented breach). `backend/api/cases/reopen.php` locks records, rejects draft/legacy/repudiated/active-window instruments, marks the operative instrument `Violated`, and cancels active `case_transmittals` packets.
+- **Court packet (`CaseTransmittal`)**: Packets link strictly to `source_type` (`Settlement`, `Arbitration Award`, `CFA`), `source_record_id`, and `source_document_id`. `preview.php` and `recordSubmission()` block missing-document, repudiated, or locked packets under `FOR UPDATE` locks, preserve superseded packets (`superseded_at`), and handle repeat submissions idempotently.
+- **Remaining policy/UI notes**: Confirm whether legacy `Legacy Review Required` settlements should also expose a dedicated inline button on `settlements.php` (currently handled via `save.php?action=confirm_legacy_review` and workspace badges). Order 5 remains outside this change.
+
+### Order 5 — Dashboard concurrency and deployment (Implemented)
+
+- **5A — Stale docket save prevention**: `frontend/assets/js/docket-drag-schedule.js` captures the pre-drag / modal-open snapshot (`expected_updated_at`, `expected_queue_order`, and `expected_hearing_date` or `expected_scheduled_date` + `expected_scheduled_time`) from `dashboard.js` and `clerk-dashboard.js` (`data-queue-order`, `data-updated-at`, `data-official-time`) and preserves `originalSnapshot` across `loadRescheduleSlots()` refreshes. `DocketScheduleService::validateStaleSnapshot()` validates the full snapshot under `FOR UPDATE` row locks (including null/empty timestamps and same-second competing edits), returning HTTP 409 `STALE_PAYLOAD` (or HTTP 422 `MISSING_CONCURRENCY_SNAPSHOT` when `require_concurrency_snapshot` is set). On rejection, the UI restores the pre-drag order/display and exposes a **Reload docket** button.
+- **5B — Gated Azure deployment & release package verification**: `.github/workflows/azure-webapp.yml` runs a `test-and-package` job before `deploy` (`needs: test-and-package`) using PHP 8.3, Node 20, `composer install --no-dev --optimize-autoloader`, disposable MySQL 8.0 (`agap_test` fresh schema + `agap_upgrade_test` upgrade through `20261115_004`), `npm test` (with `tests/run_tests.js` preflight verifying `SELECT DATABASE()` and Order 4 columns), and `php tests/verify_release_package.php release` (blocking deployment if required runtime/template/dependency files are missing or prohibited backups/seeds/`.env`/logs/uploads/PDFs/test output/scratch files are present, while preserving `/home/site/wwwroot/storage`).
 
 ## Implementation and verification
 
 ### Local integration test baseline
 
-Use a disposable MySQL database for `npm test`. The canonical `database/schema.sql` creates and selects `agap_db`. To provision `agap_test`, use the local `output/agap_test.sql` export if available, or copy the canonical schema and change both `CREATE DATABASE` and `USE` to `agap_test` before importing. The fresh import includes all seven staff users. `DB_NAME` selects an existing database. For an older test database, follow the [database guide](database/README.md) and confirm it includes migration `20261115_003`.
+Use a disposable MySQL database for `npm test`. The canonical `database/schema.sql` creates and selects `agap_db`. To provision `agap_test`, use the local `output/agap_test.sql` export if available, or copy the canonical schema and change both `CREATE DATABASE` and `USE` to `agap_test` before importing. The fresh import includes all seven staff users. `DB_NAME` selects an existing database. For an older test database, follow the [database guide](database/README.md) and confirm it includes migrations `20261115_003` and `20261115_004`.
 
 The verified Laragon setup uses PHP 8.3.36 and MySQL on `127.0.0.1:3306`. Use a dedicated PowerShell session so the app keeps using its usual database settings. Adjust the PHP path and port for your installation, and ensure the runner and its PHP HTTP subprocesses use the same database credentials.
 
@@ -128,7 +141,7 @@ $env:PHP_BINARY = 'C:\laragon\bin\php\php-8.3.36-Win32-vs16-x64\php.exe'
 npm test
 ```
 
-On the freshly imported `agap_test`, all seven suites passed, including 143 regression assertions. After cleanup, the database held seven staff users and zero complaints, cases, or active LISO duty sessions. Staff acceptance testing remains the next step before Order 4.
+On the freshly imported `agap_test`, all seven suites passed (`7 passed, 0 failed`), including 154 regression assertions covering Orders 3A, 3B, 4A, and 4B. Upgrade-path verification with synthetic historical fixtures also confirmed `20261115_004` preserves existing finalized awards and marks incomplete legacy settlements as `Legacy Review Required`.
 
 ### Implementation checks
 

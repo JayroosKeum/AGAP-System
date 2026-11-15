@@ -79,16 +79,28 @@ class CFA
         $minOutcomeStmt->execute([$caseId]);
         $lastConOutcome = (string) ($minOutcomeStmt->fetchColumn() ?: '');
 
-        // 4. Check Saved Settlement (Repudiation or Non-Compliance under RA 7160 Sec. 417)
+        // 4. Check Saved Settlement & Arbitration Agreement (Repudiation or Non-Compliance under RA 7160 Sec. 413/417)
         $repudStmt = $this->conn->prepare("
-            SELECT settlement_id, repudiation_status, repudiation_date, repudiation_reason, compliance_status
+            SELECT settlement_id, settlement_status, repudiation_status, repudiation_date, repudiation_reason, compliance_status
             FROM settlements
             WHERE case_id = ? ORDER BY settlement_id DESC LIMIT 1
         ");
         $repudStmt->execute([$caseId]);
         $settlement = $repudStmt->fetch(PDO::FETCH_ASSOC) ?: null;
-        $isRepudiated = !empty($settlement)
+        $isSignedSettlement = !empty($settlement) && (($settlement['settlement_status'] ?? '') === 'Signed and Attested');
+        $isSettlementRepudiated = $isSignedSettlement
             && (($settlement['repudiation_status'] ?? '') === 'Repudiated' || !empty($settlement['repudiation_date']));
+
+        $arbStmt = $this->conn->prepare("
+            SELECT arbitration_id, agreement_repudiation_status, award_status
+            FROM arbitration_records
+            WHERE case_id = ? ORDER BY arbitration_id DESC LIMIT 1
+        ");
+        $arbStmt->execute([$caseId]);
+        $arbitration = $arbStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $isArbitrationRepudiated = !empty($arbitration)
+            && (($arbitration['agreement_repudiation_status'] ?? '') === 'Repudiated');
+        $isRepudiated = $isSettlementRepudiated || $isArbitrationRepudiated;
 
         // 5. Check Summons Delivery
         $summonElig = $summonService->getCfaEligibility($caseId);
@@ -182,15 +194,21 @@ class CFA
             ];
         }
 
-        // Priority F: Documented Settlement Non-Compliance / Breach (RA 7160 Sec. 417)
-        if (!empty($settlement) && in_array($settlement['compliance_status'] ?? '', ['Violated', 'Breached'], true)) {
+        // Priority F: Documented Settlement or Arbitration Award Non-Compliance / Breach (RA 7160 Sec. 417)
+        $hasBreachedSettlement = $isSignedSettlement
+            && !$isSettlementRepudiated
+            && in_array($settlement['compliance_status'] ?? '', ['Violated', 'Breached'], true);
+        $hasBreachedAward = !empty($arbitration)
+            && ($arbitration['award_status'] ?? '') === 'Violated'
+            && !$isArbitrationRepudiated;
+        if ($hasBreachedSettlement || $hasBreachedAward) {
             $noncompHistStmt = $this->conn->prepare("
                 SELECT COUNT(*) FROM case_history
                 WHERE case_id = ?
                   AND (remarks LIKE '%Non-compliance%' OR remarks LIKE '%breach%' OR remarks LIKE '%Violated%' OR remarks LIKE '%reopened for CFA%')
             ");
             $noncompHistStmt->execute([$caseId]);
-            $hasDocumentedBreach = ((int) $noncompHistStmt->fetchColumn() > 0) || !empty($settlement['repudiation_reason']);
+            $hasDocumentedBreach = ((int) $noncompHistStmt->fetchColumn() > 0);
 
             if ($hasDocumentedBreach) {
                 return [
@@ -200,7 +218,9 @@ class CFA
                     'barred_complainant' => false,
                     'defaulted_respondent' => false,
                     'ground' => 'SETTLEMENT_NONCOMPLIANCE',
-                    'reason' => 'Amicable Settlement was breached / marked non-compliant with documented grounds on record (RA 7160 Sec. 417).',
+                    'reason' => ($hasBreachedAward
+                        ? 'Arbitration Award'
+                        : 'Amicable Settlement') . ' was breached / marked non-compliant with documented grounds on record (RA 7160 Sec. 417).',
                     'responsible_party' => 'Settlement Non-Compliance',
                     'existing_forms' => $existingTypes
                 ];

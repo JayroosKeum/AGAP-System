@@ -47,12 +47,16 @@ if (in_array($action, ['update_status', 'record_hearing', 'issue_notice'], true)
     };
 } else {
     $settlementId = filter_var($input['settlement_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-    if (!$settlementId) {
+    $arbitrationId = filter_var($input['arbitration_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($arbitrationId && !$settlementId) {
+        $result = $controller->fileArbitrationExecution((int) $arbitrationId, $input, (int) $_SESSION['user_id']);
+    } elseif ($settlementId) {
+        $result = $controller->fileExecution((int) $settlementId, $input, (int) $_SESSION['user_id']);
+    } else {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Valid settlement_id is required.']);
+        echo json_encode(['success' => false, 'message' => 'Valid settlement_id or arbitration_id is required.']);
         exit;
     }
-    $result = $controller->fileExecution((int) $settlementId, $input, (int) $_SESSION['user_id']);
 }
 
 http_response_code($result['success'] ? 200 : 422);

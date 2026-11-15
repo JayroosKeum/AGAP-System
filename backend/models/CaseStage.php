@@ -874,6 +874,25 @@ class CaseStage
             $arbitratorName = $pChairName . ' (Pangkat Chairman)';
         }
 
+        $agreementDate = !empty($arbRecord['agreement_date']) ? substr((string) $arbRecord['agreement_date'], 0, 10) : null;
+        $agreementSigned = !empty($arbRecord['agreement_signed']) || (!empty($agreementDate) && empty($arbRecord));
+        $repudiationStatus = (string) ($arbRecord['agreement_repudiation_status'] ?? 'None');
+        $earliestAwardDate = $agreementDate ? date('Y-m-d', strtotime($agreementDate . ' +6 days')) : null;
+        $latestAwardDate = $agreementDate ? date('Y-m-d', strtotime($agreementDate . ' +15 days')) : null;
+        $repudiationDeadline = $agreementDate ? date('Y-m-d', strtotime($agreementDate . ' +5 days')) : null;
+
+        $awardEligible = false;
+        $awardEligibilityReason = 'A signed written Agreement for Arbitration (KP Form 14) with its actual signing date is required before rendering an award.';
+        if (!empty($arbRecord) && !empty($arbRecord['award_date']) && ($arbRecord['award_status'] ?? '') === 'Finalized') {
+            $awardEligible = true;
+            $awardEligibilityReason = 'Arbitration Award (KP Form 15) has been rendered and finalized.';
+        } elseif (!empty($arbRecord) && $repudiationStatus === 'Repudiated') {
+            $awardEligibilityReason = 'The Arbitration Agreement was repudiated within the 5-day window; an Arbitration Award cannot be rendered.';
+        } elseif (!empty($arbRecord) && $agreementDate && !empty($arbRecord['agreement_signed'])) {
+            $awardEligible = true;
+            $awardEligibilityReason = "Eligible for Arbitration Award between {$earliestAwardDate} and {$latestAwardDate}.";
+        }
+
         return [
             'stage_name' => 'Arbitration',
             'stage_description' => 'Binding dispute arbitration pursuant to KP Form 14 / Sec 413, RA 7160',
@@ -885,6 +904,19 @@ class CaseStage
             'next_hearing' => $nextHearing,
             'latest_hearing_date' => $latestHearingDate,
             'arbitration_record' => $arbRecord ?: null,
+            'agreement_date' => $agreementDate,
+            'agreement_signed' => !empty($arbRecord['agreement_signed']),
+            'agreement_repudiation_status' => $repudiationStatus,
+            'repudiation_deadline' => $repudiationDeadline,
+            'earliest_award_date' => $earliestAwardDate,
+            'award_deadline' => $latestAwardDate,
+            'award_status' => $arbRecord['award_status'] ?? 'Pending',
+            'award_document_id' => !empty($arbRecord['award_document_id']) ? (int) $arbRecord['award_document_id'] : null,
+            'agreement_document_id' => !empty($arbRecord['agreement_document_id']) ? (int) $arbRecord['agreement_document_id'] : null,
+            'award_eligibility' => [
+                'eligible' => $awardEligible,
+                'reason' => $awardEligibilityReason,
+            ],
             'attendance_summary' => [
                 'complainant' => $complainantAtt,
                 'respondent' => $respondentAtt,
@@ -900,7 +932,7 @@ class CaseStage
                 'can_record_attendance' => ($isUnlocked && $sessionCount > 0),
                 'can_add_minutes' => ($isUnlocked && $sessionCount > 0),
                 'can_record_outcome' => ($isUnlocked && $sessionCount > 0),
-                'can_render_award' => ($isUnlocked && ($hasAwardSession || $sessionCount > 0))
+                'can_render_award' => ($isUnlocked && $awardEligible && ($hasAwardSession || $sessionCount > 0))
             ],
             'outcome' => $outcome,
             'outcome_remarks' => $stageRecord['outcome_remarks'] ?? null
@@ -1378,6 +1410,47 @@ class CaseStage
             }
         }
 
+        if ($outcome === 'Settled') {
+            $settleCheck = $this->conn->prepare("
+                SELECT settlement_id, settlement_status, complainant_signed, respondent_signed, pb_attested
+                FROM settlements
+                WHERE case_id = ?
+                ORDER BY settlement_id DESC
+                LIMIT 1
+            ");
+            $settleCheck->execute([$caseId]);
+            $sRow = $settleCheck->fetch(PDO::FETCH_ASSOC);
+            if (
+                !$sRow
+                || ($sRow['settlement_status'] ?? '') !== 'Signed and Attested'
+                || empty($sRow['complainant_signed'])
+                || empty($sRow['respondent_signed'])
+                || empty($sRow['pb_attested'])
+            ) {
+                return [
+                    'success' => false,
+                    'message' => 'Cannot mark stage Settled until a signed and Punong Barangay-attested Amicable Settlement (KP Form 16) is saved.'
+                ];
+            }
+        }
+
+        if ($outcome === 'Arbitration Award') {
+            $arbCheck = $this->conn->prepare("
+                SELECT arbitration_id, award_date, award_status
+                FROM arbitration_records
+                WHERE case_id = ?
+                LIMIT 1
+            ");
+            $arbCheck->execute([$caseId]);
+            $aRow = $arbCheck->fetch(PDO::FETCH_ASSOC);
+            if (!$aRow || empty($aRow['award_date']) || ($aRow['award_status'] ?? '') !== 'Finalized') {
+                return [
+                    'success' => false,
+                    'message' => 'Cannot mark stage Arbitration Award until the formal Arbitration Award (KP Form 15) is issued.'
+                ];
+            }
+        }
+
         if ($outcome === 'Repudiated') {
             $repStmt = $this->conn->prepare("
                 SELECT COUNT(*)
@@ -1463,8 +1536,11 @@ class CaseStage
                 $arbId = $chkArb->fetchColumn();
                 if (!$arbId) {
                     $insArb = $this->conn->prepare("
-                        INSERT INTO arbitration_records (case_id, agreement_date, award_details)
-                        VALUES (?, CURDATE(), ?)
+                        INSERT INTO arbitration_records (
+                            case_id, agreement_date, agreement_signed, agreement_repudiation_status,
+                            repudiation_deadline, award_deadline, award_details
+                        )
+                        VALUES (?, CURDATE(), 1, 'Within Repudiation Period', DATE_ADD(CURDATE(), INTERVAL 5 DAY), DATE_ADD(CURDATE(), INTERVAL 15 DAY), ?)
                     ");
                     $insArb->execute([
                         $caseId,
@@ -1473,7 +1549,14 @@ class CaseStage
                 } else {
                     $updArb = $this->conn->prepare("
                         UPDATE arbitration_records
-                        SET agreement_date = COALESCE(agreement_date, CURDATE())
+                        SET agreement_date = COALESCE(agreement_date, CURDATE()),
+                            agreement_signed = 1,
+                            agreement_repudiation_status = CASE
+                                WHEN agreement_repudiation_status = 'None' THEN 'Within Repudiation Period'
+                                ELSE agreement_repudiation_status
+                            END,
+                            repudiation_deadline = COALESCE(repudiation_deadline, DATE_ADD(COALESCE(agreement_date, CURDATE()), INTERVAL 5 DAY)),
+                            award_deadline = COALESCE(award_deadline, DATE_ADD(COALESCE(agreement_date, CURDATE()), INTERVAL 15 DAY))
                         WHERE arbitration_id = ?
                     ");
                     $updArb->execute([$arbId]);

@@ -41,10 +41,19 @@ const preflight = spawnSync(php, ['-r', [
   '}',
   'require "backend/config/database.php";',
   '$db = (new Database())->connect();',
+  '$selectedDb = (string) $db->query("SELECT DATABASE()")->fetchColumn();',
+  '$expectedDb = (string) getenv("DB_NAME");',
+  'if ($selectedDb !== $expectedDb) {',
+  '    fwrite(STDERR, "Selected database mismatch: expected {$expectedDb}, got {$selectedDb}." . PHP_EOL); exit(1);',
+  '}',
   '$db->query("SELECT invitation_number FROM paanyaya_preparations LIMIT 0");',
-  'echo "AGAP test database ready";'
+  '$db->query("SELECT settlement_status FROM settlements LIMIT 0");',
+  '$db->query("SELECT award_status FROM arbitration_records LIMIT 0");',
+  '$db->query("SELECT source_document_id FROM case_transmittals LIMIT 0");',
+  '$db->query("SELECT arbitration_id FROM execution_proceedings LIMIT 0");',
+  'echo "AGAP test database ready (" . $selectedDb . ")";'
 ].join('\n')], options);
-if (preflight.error || preflight.status !== 0 || preflight.stdout.trim() !== 'AGAP test database ready') {
+if (preflight.error || preflight.status !== 0 || !preflight.stdout.trim().startsWith('AGAP test database ready')) {
   console.error('Unable to start AGAP tests:', preflight.error?.message || preflight.stderr || preflight.stdout);
   process.exit(1);
 }

@@ -645,37 +645,11 @@ class DocketScheduleService
                         ];
                     }
 
-                    // Stale payload checks if caller provided expected snapshot values
-                    if (!empty($it['expected_hearing_date'])) {
-                        $expTime = date('Y-m-d H:i', strtotime((string) $it['expected_hearing_date']));
-                        $curTime = date('Y-m-d H:i', strtotime((string) $hRow['hearing_date']));
-                        if ($expTime !== $curTime) {
-                            $this->conn->rollBack();
-                            return [
-                                'success' => false,
-                                'http_code' => 409,
-                                'code' => 'STALE_PAYLOAD',
-                                'message' => "Hearing #{$id} schedule was modified by another user. Reload the docket before reordering."
-                            ];
-                        }
-                    }
-                    if (!empty($it['expected_updated_at']) && (string) $it['expected_updated_at'] !== (string) ($hRow['updated_at'] ?? '')) {
+                    // Stale payload checks against locked hearing row
+                    $staleError = $this->validateStaleSnapshot($it, $hRow, 'hearing', $id, 'reordering', !empty($context['require_concurrency_snapshot']));
+                    if ($staleError !== null) {
                         $this->conn->rollBack();
-                        return [
-                            'success' => false,
-                            'http_code' => 409,
-                            'code' => 'STALE_PAYLOAD',
-                            'message' => "Hearing #{$id} was modified concurrently. Reload the docket before reordering."
-                        ];
-                    }
-                    if (isset($it['expected_queue_order']) && $it['expected_queue_order'] !== '' && (int) $it['expected_queue_order'] !== (int) $hRow['queue_order']) {
-                        $this->conn->rollBack();
-                        return [
-                            'success' => false,
-                            'http_code' => 409,
-                            'code' => 'STALE_PAYLOAD',
-                            'message' => "Docket queue order changed concurrently. Reload the docket before reordering."
-                        ];
+                        return $staleError;
                     }
 
                     $elig = $this->evaluateItemEligibility($hRow, 'hearing');
@@ -789,36 +763,14 @@ class DocketScheduleService
                         ];
                     }
 
-                    if (!empty($it['expected_scheduled_time'])) {
-                        $expT = substr(trim((string) $it['expected_scheduled_time']), 0, 5);
-                        $curT = substr(trim((string) ($pRow['scheduled_time'] ?? '')), 0, 5);
-                        if ($expT !== $curT) {
-                            $this->conn->rollBack();
-                            return [
-                                'success' => false,
-                                'http_code' => 409,
-                                'code' => 'STALE_PAYLOAD',
-                                'message' => "Paanyaya #{$id} time was modified by another user. Reload the docket before reordering."
-                            ];
-                        }
+                    $paanyayaSnapshotRow = $pRow;
+                    if ((int) ($paanyayaSnapshotRow['queue_order'] ?? 0) === 0 && $linkedSession && isset($linkedSession['queue_order'])) {
+                        $paanyayaSnapshotRow['queue_order'] = (int) $linkedSession['queue_order'];
                     }
-                    if (!empty($it['expected_updated_at']) && (string) $it['expected_updated_at'] !== (string) ($pRow['updated_at'] ?? '')) {
+                    $staleError = $this->validateStaleSnapshot($it, $paanyayaSnapshotRow, 'paanyaya', $id, 'reordering', !empty($context['require_concurrency_snapshot']));
+                    if ($staleError !== null) {
                         $this->conn->rollBack();
-                        return [
-                            'success' => false,
-                            'http_code' => 409,
-                            'code' => 'STALE_PAYLOAD',
-                            'message' => "Paanyaya #{$id} was modified concurrently. Reload the docket before reordering."
-                        ];
-                    }
-                    if (isset($it['expected_queue_order']) && $it['expected_queue_order'] !== '' && (int) $it['expected_queue_order'] !== (int) $pRow['queue_order']) {
-                        $this->conn->rollBack();
-                        return [
-                            'success' => false,
-                            'http_code' => 409,
-                            'code' => 'STALE_PAYLOAD',
-                            'message' => "Docket queue order changed concurrently. Reload the docket before reordering."
-                        ];
+                        return $staleError;
                     }
 
                     $mergedPaanyaya = $pRow;
@@ -912,6 +864,8 @@ class DocketScheduleService
             $hUpdate = $this->conn->prepare("UPDATE hearings SET queue_order = ? WHERE hearing_id = ?");
             $pUpdate = $this->conn->prepare("UPDATE paanyayas SET queue_order = ? WHERE paanyaya_id = ?");
             $psUpdate = $this->conn->prepare("UPDATE paanyaya_sessions SET queue_order = ? WHERE session_id = ? AND scheduled_date = ?");
+            $hFetchUpdatedAt = $this->conn->prepare("SELECT updated_at FROM hearings WHERE hearing_id = ? LIMIT 1");
+            $pFetchUpdatedAt = $this->conn->prepare("SELECT updated_at FROM paanyayas WHERE paanyaya_id = ? LIMIT 1");
 
             $updatedItems = [];
             $orderSummaryParts = [];
@@ -924,10 +878,13 @@ class DocketScheduleService
 
                 if ($vi['type'] === 'hearing') {
                     $hUpdate->execute([$order, $id]);
+                    $hFetchUpdatedAt->execute([$id]);
+                    $newUpdatedAt = $hFetchUpdatedAt->fetchColumn();
                     $updatedItems[] = [
                         'type' => 'hearing',
                         'id' => $id,
                         'queue_order' => $order,
+                        'updated_at' => $newUpdatedAt !== false ? $newUpdatedAt : null,
                         'new_time' => $timeShort,
                         'formatted_time' => $formattedTime,
                         'hearing_date' => $vi['hearing_date']
@@ -938,11 +895,14 @@ class DocketScheduleService
                     if (!empty($vi['session_id'])) {
                         $psUpdate->execute([$order, (int) $vi['session_id'], $targetDate]);
                     }
+                    $pFetchUpdatedAt->execute([$id]);
+                    $newUpdatedAt = $pFetchUpdatedAt->fetchColumn();
                     $updatedItems[] = [
                         'type' => 'paanyaya',
                         'id' => $id,
                         'session_id' => $vi['session_id'] ?: null,
                         'queue_order' => $order,
+                        'updated_at' => $newUpdatedAt !== false ? $newUpdatedAt : null,
                         'new_time' => $timeShort,
                         'formatted_time' => $formattedTime,
                         'scheduled_date' => $vi['scheduled_date'],
@@ -1542,27 +1502,10 @@ class DocketScheduleService
             }
 
             // Concurrency / Stale payload guard
-            if (!empty($data['expected_updated_at']) && (string) $data['expected_updated_at'] !== (string) ($existing['updated_at'] ?? '')) {
+            $staleError = $this->validateStaleSnapshot($data, $existing, 'hearing', $hearingId, 'rescheduling', !empty($data['require_concurrency_snapshot']));
+            if ($staleError !== null) {
                 $this->conn->rollBack();
-                return [
-                    'success' => false,
-                    'http_code' => 409,
-                    'code' => 'STALE_PAYLOAD',
-                    'message' => 'This hearing was modified by another session. Reload the docket and try again.'
-                ];
-            }
-            if (!empty($data['expected_hearing_date'])) {
-                $expDt = date('Y-m-d H:i', strtotime((string) $data['expected_hearing_date']));
-                $curDt = date('Y-m-d H:i', strtotime((string) $existing['hearing_date']));
-                if ($expDt !== $curDt) {
-                    $this->conn->rollBack();
-                    return [
-                        'success' => false,
-                        'http_code' => 409,
-                        'code' => 'STALE_PAYLOAD',
-                        'message' => 'This hearing schedule was already changed by another user. Reload the docket.'
-                    ];
-                }
+                return $staleError;
             }
 
             $elig = $this->evaluateItemEligibility($existing, 'hearing');
@@ -2044,14 +1987,14 @@ class DocketScheduleService
             }
 
             // Concurrency / Stale payload guard
-            if (!empty($data['expected_updated_at']) && (string) $data['expected_updated_at'] !== (string) ($pRow['updated_at'] ?? '')) {
+            $paanyayaSnapshotRow = $pRow;
+            if ((int) ($paanyayaSnapshotRow['queue_order'] ?? 0) === 0 && $linkedSession && isset($linkedSession['queue_order'])) {
+                $paanyayaSnapshotRow['queue_order'] = (int) $linkedSession['queue_order'];
+            }
+            $staleError = $this->validateStaleSnapshot($data, $paanyayaSnapshotRow, 'paanyaya', $paanyayaId, 'rescheduling', !empty($data['require_concurrency_snapshot']));
+            if ($staleError !== null) {
                 $this->conn->rollBack();
-                return [
-                    'success' => false,
-                    'http_code' => 409,
-                    'code' => 'STALE_PAYLOAD',
-                    'message' => 'This Paanyaya record was modified by another session. Reload the docket and try again.'
-                ];
+                return $staleError;
             }
 
             $merged = $pRow;
@@ -2500,5 +2443,110 @@ class DocketScheduleService
                 'message' => 'Unable to reschedule Paanyaya appointment: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Validate submitted original state (timestamp, call order, and appointment) against the locked DB row.
+     */
+    private function validateStaleSnapshot(
+        array $payload,
+        array $row,
+        string $type,
+        int $id,
+        string $actionLabel,
+        bool $requireSnapshot = false
+    ): ?array {
+        $label = $type === 'paanyaya' ? "Paanyaya #{$id}" : "Hearing #{$id}";
+
+        if ($requireSnapshot) {
+            $hasUpdatedAt = array_key_exists('expected_updated_at', $payload);
+            $hasQueueOrder = array_key_exists('expected_queue_order', $payload)
+                && $payload['expected_queue_order'] !== ''
+                && $payload['expected_queue_order'] !== null;
+            $hasAppointment = $type === 'paanyaya'
+                ? (array_key_exists('expected_scheduled_date', $payload)
+                    && trim((string) $payload['expected_scheduled_date']) !== ''
+                    && array_key_exists('expected_scheduled_time', $payload)
+                    && trim((string) $payload['expected_scheduled_time']) !== '')
+                : (array_key_exists('expected_hearing_date', $payload)
+                    && trim((string) $payload['expected_hearing_date']) !== '');
+
+            if (!$hasUpdatedAt || !$hasQueueOrder || !$hasAppointment) {
+                return [
+                    'success' => false,
+                    'http_code' => 422,
+                    'code' => 'MISSING_CONCURRENCY_SNAPSHOT',
+                    'message' => "{$label} original schedule state is required before {$actionLabel}. Reload the docket and try again."
+                ];
+            }
+        }
+
+        if (array_key_exists('expected_updated_at', $payload)) {
+            $expectedUpdatedAt = trim((string) ($payload['expected_updated_at'] ?? ''));
+            $currentUpdatedAt = trim((string) ($row['updated_at'] ?? ''));
+            if ($expectedUpdatedAt !== $currentUpdatedAt) {
+                return [
+                    'success' => false,
+                    'http_code' => 409,
+                    'code' => 'STALE_PAYLOAD',
+                    'message' => "{$label} was modified by another session. Reload the docket before {$actionLabel}."
+                ];
+            }
+        }
+
+        if ($type === 'hearing') {
+            if (array_key_exists('expected_hearing_date', $payload) && trim((string) $payload['expected_hearing_date']) !== '') {
+                $expTs = strtotime((string) $payload['expected_hearing_date']);
+                $curTs = strtotime((string) ($row['hearing_date'] ?? ''));
+                if ($expTs === false || $curTs === false || date('Y-m-d H:i', $expTs) !== date('Y-m-d H:i', $curTs)) {
+                    return [
+                        'success' => false,
+                        'http_code' => 409,
+                        'code' => 'STALE_PAYLOAD',
+                        'message' => "{$label} schedule was modified by another user. Reload the docket before {$actionLabel}."
+                    ];
+                }
+            }
+        } else {
+            if (array_key_exists('expected_scheduled_date', $payload) && trim((string) $payload['expected_scheduled_date']) !== '') {
+                $expD = substr(trim((string) $payload['expected_scheduled_date']), 0, 10);
+                $curD = substr(trim((string) ($row['scheduled_date'] ?? '')), 0, 10);
+                if ($expD !== $curD) {
+                    return [
+                        'success' => false,
+                        'http_code' => 409,
+                        'code' => 'STALE_PAYLOAD',
+                        'message' => "{$label} date was modified by another user. Reload the docket before {$actionLabel}."
+                    ];
+                }
+            }
+            if (array_key_exists('expected_scheduled_time', $payload) && trim((string) $payload['expected_scheduled_time']) !== '') {
+                $expT = substr(trim((string) $payload['expected_scheduled_time']), 0, 5);
+                $curT = substr(trim((string) ($row['scheduled_time'] ?? '')), 0, 5);
+                if ($expT !== $curT) {
+                    return [
+                        'success' => false,
+                        'http_code' => 409,
+                        'code' => 'STALE_PAYLOAD',
+                        'message' => "{$label} time was modified by another user. Reload the docket before {$actionLabel}."
+                    ];
+                }
+            }
+        }
+
+        if (array_key_exists('expected_queue_order', $payload)
+            && $payload['expected_queue_order'] !== ''
+            && $payload['expected_queue_order'] !== null) {
+            if ((int) $payload['expected_queue_order'] !== (int) ($row['queue_order'] ?? 0)) {
+                return [
+                    'success' => false,
+                    'http_code' => 409,
+                    'code' => 'STALE_PAYLOAD',
+                    'message' => "Docket queue order changed concurrently. Reload the docket before {$actionLabel}."
+                ];
+            }
+        }
+
+        return null;
     }
 }

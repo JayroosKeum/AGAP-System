@@ -10297,6 +10297,11 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     const settlement = ws.settlement || {};
     const transmittal = ws.transmittal || {};
 
+    const settlementStatus = settlement.settlement_status || (settlement.complainant_signed && settlement.respondent_signed && settlement.pb_attested ? 'Signed and Attested' : (settlement.settlement_id ? 'Draft' : ''));
+    const isSignedAttested = settlementStatus === 'Signed and Attested';
+    const isLegacyReview = settlementStatus === 'Legacy Review Required';
+    const isDraftSettlement = !isSignedAttested && !isLegacyReview;
+
     const isRepudiated = settlement.repudiation_status === 'Repudiated' ||
                          transmittal.is_repudiated === true ||
                          comp.case_status === 'Repudiated' ||
@@ -10306,7 +10311,7 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
         ? Number(transmittal.working_days_remaining)
         : (typeof settlement.working_days_remaining !== 'undefined' ? Number(settlement.working_days_remaining) : 10);
 
-    const isLocked = !isRepudiated && (Boolean(transmittal.is_locked) || remainingDays > 0);
+    const isLocked = !isRepudiated && (!isSignedAttested || Boolean(transmittal.is_locked) || remainingDays > 0);
 
     // 0. Update Settlement Header Card & Badge
     const settledBadge = document.getElementById('stageSettledBadge');
@@ -10363,6 +10368,10 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     if (badgeEl) {
         if (isRepudiated) {
             badgeEl.innerHTML = '<span class="status-pill" style="background: #fee2e2; color: #b91c1c; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⚠️ Repudiated (Void)</span>';
+        } else if (isLegacyReview) {
+            badgeEl.innerHTML = '<span class="status-pill" style="background: #fef3c7; color: #92400e; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⚠️ Legacy Review Required (Confirm Signatures)</span>';
+        } else if (isDraftSettlement) {
+            badgeEl.innerHTML = '<span class="status-pill" style="background: #e0f2fe; color: #0369a1; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">📝 Draft — Pending Signatures &amp; Attestation</span>';
         } else if (isLocked) {
             badgeEl.innerHTML = `<span class="status-pill" style="background: #fef3c7; color: #b45309; font-weight: 800; font-size: 0.8rem; padding: 2px 8px; border-radius: 9999px;">⏳ ${remainingDays} Working Days Left</span>`;
         } else {
@@ -10375,6 +10384,8 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     if (enforceEl) {
         if (isRepudiated) {
             enforceEl.innerHTML = '<span style="color: #b91c1c;">Null & Void (Repudiated)</span>';
+        } else if (!isSignedAttested) {
+            enforceEl.innerHTML = '<span style="color: #92400e;">Pending Signed &amp; Attested KP Form 16</span>';
         } else if (isLocked) {
             enforceEl.innerHTML = '<span style="color: #b45309;">Conditional (Sec. 416 Window)</span>';
         } else {
@@ -10426,13 +10437,13 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     const btnRecTrans = document.getElementById('btnActionRecordTransmittal');
 
     if (btnFileRep) {
-        btnFileRep.style.display = (!isRepudiated && isLocked) ? 'inline-flex' : 'none';
+        btnFileRep.style.display = (!isRepudiated && isSignedAttested && isLocked) ? 'inline-flex' : 'none';
     }
     if (btnIssueExec) {
-        btnIssueExec.style.display = (!isRepudiated && !isLocked) ? 'inline-flex' : 'none';
+        btnIssueExec.style.display = (!isRepudiated && isSignedAttested && !isLocked) ? 'inline-flex' : 'none';
     }
     if (btnRecTrans) {
-        btnRecTrans.style.display = (!isRepudiated && !isLocked) ? 'inline-flex' : 'none';
+        btnRecTrans.style.display = (!isRepudiated && isSignedAttested && !isLocked) ? 'inline-flex' : 'none';
     }
 
     // 7. Populate KP Form 16 Live Preview
@@ -11023,27 +11034,39 @@ function renderArbitrationProgressiveWorkspace(workspace, complaint, caseId) {
     if (!container) return;
 
     const activeCaseId = Number(caseId || complaint?.case_id || workspace?.case?.case_id || window.currentCaseId || 0);
-    const arb = workspace?.arbitration || complaint?.case_workspace?.arbitration || workspace?.stages?.arbitration?.arbitration_record || {};
-    const agreementDate = arb.agreement_date || (new Date()).toISOString().slice(0, 10);
-    const awardDate = arb.award_date || null;
+    const arbOv = workspace?.stages?.arbitration || complaint?.case_workspace?.stages?.arbitration || {};
+    const arb = workspace?.arbitration || complaint?.case_workspace?.arbitration || arbOv.arbitration_record || {};
+    const agreementDate = arb.agreement_date || arbOv.agreement_date || null;
+    const isAgreementSigned = Boolean((arb.agreement_signed ?? arbOv.agreement_signed ?? (agreementDate ? 1 : 0)) && agreementDate);
+    const isAgreementRepudiated = (arb.agreement_repudiation_status || arbOv.agreement_repudiation_status || 'None') === 'Repudiated';
+    const awardDate = arb.award_date || arbOv.award_date || null;
     const awardDetails = arb.award_details || arb.award_terms || '';
-    const hasAward = Boolean(awardDate);
+    const hasAward = Boolean(awardDate && ((arb.award_status || arbOv.award_status || 'Finalized') === 'Finalized'));
+    const awardElig = arbOv.award_eligibility || {};
+    const canRenderAward = typeof arbOv.can_render_award === 'boolean'
+        ? arbOv.can_render_award
+        : Boolean(isAgreementSigned && !isAgreementRepudiated && awardElig.eligible);
+    const awardBlockedReason = awardElig.reason
+        || (isAgreementRepudiated
+            ? 'Arbitration agreement was repudiated. Award issuance is barred; proceed to CFA (KP Form 20).'
+            : (!isAgreementSigned
+                ? 'A signed KP Form 14 Agreement to Arbitrate with its signing date is required before issuing an award.'
+                : 'Award cannot be issued outside the Day 6 to Day 15 statutory window.'));
 
-    // Date calculations
-    const d0 = new Date(agreementDate + 'T00:00:00');
-    const now = new Date();
+    // Date calculations (only when a real saved agreementDate exists)
     const msPerDay = 86400000;
-    const daysElapsed = Math.floor((new Date().setHours(0,0,0,0) - d0.getTime()) / msPerDay);
+    const d0 = agreementDate ? new Date(agreementDate + 'T00:00:00') : null;
+    const daysElapsed = d0 ? Math.floor((new Date().setHours(0,0,0,0) - d0.getTime()) / msPerDay) : 0;
     const dayOf5 = Math.max(1, Math.min(5, daysElapsed + 1));
-    const isRepudiationActive = daysElapsed <= 5;
-    const repExpiryDate = new Date(d0.getTime() + 5 * msPerDay);
-    const repExpiryFormatted = formatDateReadable(repExpiryDate);
+    const isRepudiationActive = d0 ? (daysElapsed <= 5 && !isAgreementRepudiated) : false;
+    const repExpiryDate = d0 ? new Date(d0.getTime() + 5 * msPerDay) : null;
+    const repExpiryFormatted = repExpiryDate ? formatDateReadable(repExpiryDate) : 'Pending KP Form 14';
 
     // Statutory award window (Day 6 to Day 15)
-    const day6Date = new Date(d0.getTime() + 6 * msPerDay);
-    const day15Date = new Date(d0.getTime() + 15 * msPerDay);
-    const day6Formatted = formatDateReadable(day6Date);
-    const day15Formatted = formatDateReadable(day15Date);
+    const day6Date = d0 ? new Date(d0.getTime() + 6 * msPerDay) : null;
+    const day15Date = d0 ? new Date(d0.getTime() + 15 * msPerDay) : null;
+    const day6Formatted = day6Date ? formatDateReadable(day6Date) : 'Pending KP Form 14';
+    const day15Formatted = day15Date ? formatDateReadable(day15Date) : 'Pending KP Form 14';
 
     // Hearings segregated as Arbitration Hearing
     const allHearings = complaint?.case_workspace?.hearings || workspace?.hearings || [];
@@ -11173,11 +11196,13 @@ function renderArbitrationProgressiveWorkspace(workspace, complaint, caseId) {
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
                                 <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; display: block;">Date of Agreement (Day 0)</span>
-                                <strong style="font-size: 0.95rem; color: #0f172a;">${escapeHtml(formatDateReadable(agreementDate))}</strong>
+                                <strong style="font-size: 0.95rem; color: #0f172a;">${agreementDate ? escapeHtml(formatDateReadable(agreementDate)) : 'Not Yet Recorded'}</strong>
                             </div>
                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
                                 <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; display: block;">Agreement Status</span>
-                                <strong style="font-size: 0.95rem; color: #16a34a;">✓ Executed &amp; Legally Binding</strong>
+                                <strong style="font-size: 0.95rem; color: ${isAgreementRepudiated ? '#dc2626' : (isAgreementSigned ? '#16a34a' : '#d97706')};">
+                                    ${isAgreementRepudiated ? '✕ Repudiated Within 5-Day Window' : (isAgreementSigned ? '✓ Signed &amp; Legally Binding' : '⏳ Signed KP Form 14 Required')}
+                                </strong>
                             </div>
                             <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px;">
                                 <span style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase; display: block;">Arbitrating Body</span>
@@ -11310,21 +11335,31 @@ function renderArbitrationProgressiveWorkspace(workspace, complaint, caseId) {
                                         📥 PDF
                                     </a>
                                 </div>
-                                <button type="button" class="btn-secondary" onclick="openIssueArbitrationAwardModal(${activeCaseId}, '${agreementDate}', true)" style="font-size: 0.82rem; padding: 7px 14px;">
-                                    ✏️ Edit Award Terms
+                                <button type="button" class="btn-secondary" onclick="openIssueArbitrationAwardModal(${activeCaseId}, '${agreementDate || ''}', true)" style="font-size: 0.82rem; padding: 7px 14px;">
+                                    ✏️ View / Update Award Details
                                 </button>
                             </div>
-                        ` : `
+                        ` : (canRenderAward ? `
                             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px 18px;">
                                 <div>
                                     <strong style="color: #1e40af; font-size: 0.92rem; display: block;">Ready to Hand Down Arbitration Award?</strong>
                                     <span style="font-size: 0.82rem; color: #1e3a8a;">Once hearings are conducted, issue the official KP Form 15 ruling within the Day 6–15 statutory window.</span>
                                 </div>
-                                <button type="button" class="btn-create" onclick="openIssueArbitrationAwardModal(${activeCaseId}, '${agreementDate}')" style="background: #2563eb; border-color: #2563eb; font-size: 0.85rem; padding: 8px 20px; font-weight: 700;">
+                                <button type="button" class="btn-create" onclick="openIssueArbitrationAwardModal(${activeCaseId}, '${agreementDate || ''}')" style="background: #2563eb; border-color: #2563eb; font-size: 0.85rem; padding: 8px 20px; font-weight: 700;">
                                     Issue KP Form 15 (Arbitration Award) &rarr;
                                 </button>
                             </div>
-                        `}
+                        ` : `
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px 18px;">
+                                <div>
+                                    <strong style="color: #991b1b; font-size: 0.92rem; display: block;">Award Issuance Locked — Missing Prerequisite</strong>
+                                    <span style="font-size: 0.82rem; color: #7f1d1d;">${escapeHtml(awardBlockedReason)}</span>
+                                </div>
+                                <button type="button" class="btn-secondary" disabled style="opacity: 0.6; cursor: not-allowed; font-size: 0.84rem; padding: 8px 18px;">
+                                    🔒 Award Locked
+                                </button>
+                            </div>
+                        `)}
                     </div>
                 </div>
 
@@ -11347,9 +11382,14 @@ function openIssueArbitrationAwardModal(caseId, agreementDate, isEdit = false) {
     const errEl = document.getElementById('arbAwardDateError');
     if (errEl) errEl.style.display = 'none';
 
+    if (!agreementDate) {
+        alert('A signed KP Form 14 Agreement to Arbitrate with its signing date is required before issuing an Arbitration Award.');
+        return;
+    }
+
     if (caseIdInput) caseIdInput.value = caseId || '';
 
-    if (agrDateInput) agrDateInput.value = agreementDate || (new Date()).toISOString().slice(0, 10);
+    if (agrDateInput) agrDateInput.value = agreementDate;
 
     // Compute Day 6 and Day 15
     const d0 = new Date(agrDateInput.value + 'T00:00:00');

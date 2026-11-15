@@ -10,44 +10,132 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
+  test-and-package:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: 'agap_test'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=15
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up PHP
+      - name: Set up PHP 8.3
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath, gd, zip
+          extensions: mbstring, xml, ctype, iconv, intl, pdo_mysql, bcmath, gd, zip, curl
           coverage: none
 
-      - name: Verify PHP entry points
-        run: |
-          php -l index.php
-          php -l frontend/pages/landing/index.php
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      # Deploy only application code. Runtime files are kept on the mounted
-      # Azure Files share at /home/site/wwwroot/storage and must survive releases.
+      - name: Install runtime PHP dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction
+
+      - name: Verify PHP and JS syntax
+        run: |
+          find . -path ./vendor -prune -o -path ./backend/libs -prune -o -name '*.php' -print0 | xargs -0 -n1 php -l
+          node --check frontend/assets/js/docket-drag-schedule.js
+          node --check frontend/assets/js/dashboard.js
+          node --check frontend/assets/js/clerk-dashboard.js
+
+      - name: Import canonical schema and verify upgrade migrations
+        env:
+          MYSQL_PWD: ''
+        run: |
+          sed -e 's/`agap_db`/`agap_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_test/' -e 's/USE agap_db/USE agap_test/' database/schema.sql > /tmp/agap_test_schema.sql
+          mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_test_schema.sql
+          mysql -h 127.0.0.1 -P 3306 -u root -e "CREATE DATABASE IF NOT EXISTS agap_upgrade_test;"
+          sed -e 's/`agap_db`/`agap_upgrade_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_upgrade_test/' -e 's/USE agap_db/USE agap_upgrade_test/' database/schema.sql > /tmp/agap_upgrade_schema.sql
+          mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_upgrade_schema.sql
+          mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_002_mediation_pause_decisions.sql
+          mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_003_preserve_show_cause_and_cfa_decisions.sql
+          mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_004_order4_settlement_arbitration_transmittal.sql
+          mysql -h 127.0.0.1 -P 3306 -u root -e "DROP DATABASE agap_upgrade_test;"
+          rm -f /tmp/agap_test_schema.sql /tmp/agap_upgrade_schema.sql
+
+      - name: Run PHP 8.3 integration suite on disposable MySQL
+        env:
+          DB_HOST: '127.0.0.1'
+          DB_PORT: '3306'
+          DB_NAME: 'agap_test'
+          DB_USER: 'root'
+          DB_PASS: ''
+          PHP_BINARY: 'php'
+        run: npm test
+
+      - name: Production migration prerequisite notice
+        run: |
+          echo "::notice::Production Prerequisite: Ensure database/migrations/20261115_002, 20261115_003, and 20261115_004_order4_settlement_arbitration_transmittal.sql are applied via the authorized production migration procedure."
+
+      # Deploy only application code and runtime dependencies. Runtime user files
+      # are kept on the mounted Azure Files share at /home/site/wwwroot/storage.
       - name: Assemble release package
         run: |
           mkdir -p release
           rsync -a --delete \
             --exclude='.git/' \
             --exclude='.github/' \
+            --exclude='.agents/' \
+            --exclude='brain/' \
             --exclude='storage/' \
             --exclude='logs/' \
             --exclude='output/' \
             --exclude='scratch/' \
+            --exclude='node_modules/' \
+            --exclude='tests/' \
+            --exclude='backend/tests/' \
+            --exclude='database/backups/' \
+            --exclude='database/seeds/' \
+            --exclude='database/seeders/' \
+            --exclude='.env' \
+            --exclude='.env.local' \
+            --exclude='.env.*.local' \
             --exclude='*.md' \
             --exclude='*.pdf' \
             --exclude='*.xlsx' \
+            --exclude='*.log' \
+            --exclude='*.bak' \
+            --exclude='*.tmp' \
+            --exclude='*.gz' \
             --exclude='default' \
             ./ release/
+
+      - name: Verify release package contents
+        run: php tests/verify_release_package.php release
+
+      - name: Upload verified release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agap-release
+          path: release
+          retention-days: 1
+
+  deploy:
+    needs: test-and-package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Download verified release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: agap-release
+          path: release
 
       - name: Login to Azure
         uses: azure/login@v2
