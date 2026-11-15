@@ -272,10 +272,10 @@ git clone https://github.com/JayroosKeum/AGAP-System.git
 ```
 
 ### 2. Setup Database
-Create a database named `agap_db` in MySQL and import the canonical schema:
+From the project root, import the canonical schema on your clean local MySQL instance. The import creates `agap_db` and seeds the staff accounts.
 ```powershell
-mysql -u root -e "CREATE DATABASE IF NOT EXISTS agap_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql -u root agap_db < database/schema.sql
+$testPort = 3307 # Use the port of your clean test instance.
+mysql -h 127.0.0.1 -P $testPort -u root --execute="source database/schema.sql"
 ```
 
 ### 3. Verify Configuration
@@ -294,15 +294,16 @@ http://localhost/AGAP-System/
 
 ## Local Test Credentials
 
-For development and testing, `database/schema.sql` seeds the Administrator account. Import `database/seeds/local_test_users.sql` for the remaining accounts.
+For a clean local test database, import `database/schema.sql`. It creates all seven active staff accounts below. Sign in through the staff login page with the username and the shared local test password `PassTumana2026!`.
 
 | Username | Role | Description |
 | :--- | :--- | :--- |
 | `admin` | Administrator | Full administrative privileges |
 | `clerk` | Lupon Clerk | Intake, scheduling, and document generation |
-| `luponhead` | Lupon Member | Conciliation Team Head |
-| `luponsecretary` | Lupon Member | Conciliation Team Secretary |
-| `luponmember` | Lupon Member | Conciliation Team Member |
+| `pangkatchair` | Lupon Member | Chair of the seeded Wednesday Pangkat panel |
+| `luponhead` | Lupon Member | Additional member for duty assignments and panel selection |
+| `luponsecretary` | Lupon Member | Secretary of the seeded Wednesday Pangkat panel |
+| `luponmember` | Lupon Member | Member of the seeded Wednesday Pangkat panel |
 | `summonsserver` | Summons Server | Field delivery and proof-of-service recording |
 
 > **Note**: These credentials are strictly for local development and testing. Passwords must be changed before deploying to staging or production.
@@ -311,7 +312,7 @@ For development and testing, `database/schema.sql` seeds the Administrator accou
 
 ## Automated tests
 
-Import `database/schema.sql` and `database/seeds/local_test_users.sql` into an isolated local MySQL database. The tests create complaints, service attempts, hearings, and documents with the seeded accounts. Point the runner at that test database by setting `DB_NAME` and the connection variables `DB_HOST`, `DB_PORT`, `DB_USER`, and `DB_PASS` as needed. Run `npm test` from the project root.
+Import `database/schema.sql` into an isolated local MySQL database. The tests create complaints, service attempts, hearings, and documents with the seeded accounts. Point the runner at that test database by setting `DB_NAME` and the connection variables `DB_HOST`, `DB_PORT`, `DB_USER`, and `DB_PASS` as needed. Run `npm test` from the project root.
 
 The runner uses `php` from PATH by default. Set `PHP_BINARY` to select another executable with `pdo_mysql` and `mbstring` enabled. The Paanyaya suite starts a temporary PHP HTTP server on localhost. Use `npm run test:paanyaya` to run that suite on its own.
 

@@ -5,10 +5,11 @@ current migration-defined tables, columns, indexes, and reference data used by
 the PHP models; a fresh installation must import this file only, not each
 historical migration afterward.
 
-For a fresh local environment, import it with:
+From the AGAP root, import it on an isolated local MySQL instance with:
 
 ```powershell
-mysql -u root < database/schema.sql
+$testPort = 3307 # Use the port of your clean test instance.
+mysql -h 127.0.0.1 -P $testPort -u root --execute="source database/schema.sql"
 ```
 
 Do not import it over an existing populated database as a migration. The
@@ -46,11 +47,9 @@ undocketed complaints have no stored case type to recover and therefore keep
 the canonical `Civil` default. Do not run this migration if `complaints.case_type`
 already exists; fresh databases get it from `schema.sql`.
 
-## Initial administrator account & local test accounts
+## Local staff accounts
 
-`schema.sql` provisions a single canonical Administrator account (`admin`, password: `password`) with complete profile details (full name, phone number, email, and preferences). Change these credentials before deploying to a production environment.
-
-Additional local-development test accounts (`clerk`, `luponhead`, `luponsecretary`, `luponmember`, `summonsserver`) can be seeded on demand with `database/seeds/local_test_users.sql`. All test accounts use the password `password`.
+`schema.sql` creates `agap_db` and seeds seven active staff users with the local test password `PassTumana2026!`. The accounts are `admin`, `clerk`, `pangkatchair`, `luponhead`, `luponsecretary`, `luponmember`, and `summonsserver`. It also seeds the Wednesday Pangkat panel. The schema import supplies all fresh-install accounts. Use these shared credentials only on a local test instance.
 
 ## User contact-number upgrade
 
