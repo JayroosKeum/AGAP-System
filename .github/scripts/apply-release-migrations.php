@@ -60,6 +60,7 @@ try {
         '20261115_003_preserve_show_cause_and_cfa_decisions.sql' => !str_contains($columnType('show_cause_evaluations', 'action_taken'), "'Excused'") || $columnType('cfa_records', 'resident_id') === '',
         '20261115_004_order4_settlement_arbitration_transmittal.sql' => !$orderFourReady(),
         '20261115_005_link_paanyaya_threads.sql' => true,
+        '20261116_001_link_resident_google_identity.sql' => true,
     ];
     $migrationDir = $argv[1] ?? dirname(__DIR__, 2) . '/database/migrations';
     foreach ($migrations as $file => $needed) {
@@ -81,7 +82,9 @@ try {
     if (!$orderFourReady() || $columnType('paanyayas', 'parent_paanyaya_id') === ''
         || $columnType('mediation_pause_decisions', 'decision_id') === ''
         || !str_contains($columnType('show_cause_evaluations', 'action_taken'), "'Excused'")
-        || $columnType('cfa_records', 'resident_id') === '') {
+        || $columnType('cfa_records', 'resident_id') === ''
+        || $columnType('users', 'google_subject') === ''
+        || !$db->query("SHOW INDEX FROM users WHERE Key_name = 'uq_users_google_subject' AND Non_unique = 0")->fetch()) {
         throw new RuntimeException('The target schema failed the release checks.');
     }
     fwrite(STDOUT, "Release schema verified.\n");

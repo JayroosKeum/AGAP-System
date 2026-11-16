@@ -26,6 +26,15 @@ class User {
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
+    public function findResidentByGoogleSubject(string $subject): array|false
+    {
+        $stmt = $this->db->prepare("SELECT u.user_id, u.username, u.role_id, u.status, r.role_name
+            FROM users u JOIN roles r ON r.role_id = u.role_id
+            WHERE u.google_subject = ? AND r.role_name = 'Resident'");
+        $stmt->execute([$subject]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
     public function create(array $data): array
     {
         $password = (string) ($data['password'] ?? '');
@@ -79,7 +88,8 @@ class User {
         $stmt = $this->db->prepare(
             'SELECT u.user_id, u.first_name, u.username, u.email, r.role_name
              FROM users u INNER JOIN roles r ON r.role_id = u.role_id
-             WHERE u.user_id = ? AND u.status = \'Inactive\' AND u.email_verification_token IS NOT NULL LIMIT 1'
+             WHERE u.user_id = ? AND u.status = \'Inactive\' AND u.email_verification_token IS NOT NULL
+               AND u.password_hash IS NULL LIMIT 1'
         );
         $stmt->execute([$userId]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
@@ -89,7 +99,7 @@ class User {
     {
         $stmt = $this->db->prepare(
             "UPDATE users SET email_verification_token = ?, email_verification_expires_at = ?
-             WHERE user_id = ? AND status = 'Inactive'"
+             WHERE user_id = ? AND status = 'Inactive' AND password_hash IS NULL"
         );
         return $stmt->execute([$tokenHash, $expiresAt, $userId]) && $stmt->rowCount() === 1;
     }
@@ -101,7 +111,7 @@ class User {
             $stmt = $this->db->prepare(
                 "SELECT user_id FROM users
                  WHERE email_verification_token = ? AND email_verification_expires_at >= NOW()
-                   AND status = 'Inactive' FOR UPDATE"
+                   AND status = 'Inactive' AND password_hash IS NULL FOR UPDATE"
             );
             $stmt->execute([$tokenHash]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -127,10 +137,46 @@ class User {
     {
         $stmt = $this->db->prepare(
             "SELECT 1 FROM users WHERE email_verification_token = ?
-             AND email_verification_expires_at >= NOW() AND status = 'Inactive' LIMIT 1"
+             AND email_verification_expires_at >= NOW() AND status = 'Inactive' AND password_hash IS NULL LIMIT 1"
         );
         $stmt->execute([$tokenHash]);
         return (bool) $stmt->fetchColumn();
+    }
+
+    public function restoreResidentVerificationToken(array $account, string $failedTokenHash): void
+    {
+        $stmt = $this->db->prepare("UPDATE users SET email_verification_token = ?, email_verification_expires_at = ?
+            WHERE user_id = ? AND status = 'Inactive' AND email_verification_token = ?");
+        $stmt->execute([$account['email_verification_token'], $account['email_verification_expires_at'], $account['user_id'], $failedTokenHash]);
+    }
+
+    public function renewResidentVerificationToken(int $userId, string $previousHash, string $newHash): bool
+    {
+        $stmt = $this->db->prepare("UPDATE users SET email_verification_token = ?, email_verification_expires_at = DATE_ADD(NOW(), INTERVAL 24 HOUR)
+            WHERE user_id = ? AND status = 'Inactive' AND email_verification_token = ?
+              AND email_verification_expires_at <= DATE_ADD(NOW(), INTERVAL 1439 MINUTE)");
+        $stmt->execute([$newHash, $userId, $previousHash]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public function confirmResidentEmail(string $tokenHash): bool
+    {
+        $stmt = $this->db->prepare("UPDATE users u JOIN roles r ON r.role_id = u.role_id
+            SET u.status = 'Active', u.email_verification_token = NULL, u.email_verification_expires_at = NULL
+            WHERE r.role_name = 'Resident' AND u.status = 'Inactive' AND u.password_hash IS NOT NULL
+              AND u.email_verification_token = ? AND u.email_verification_expires_at >= NOW()");
+        $stmt->execute([$tokenHash]);
+        return $stmt->rowCount() === 1;
+    }
+
+    public function pendingResidentPasswordHash(string $tokenHash): ?string
+    {
+        $stmt = $this->db->prepare("SELECT u.password_hash FROM users u JOIN roles r ON r.role_id = u.role_id
+            WHERE r.role_name = 'Resident' AND u.status = 'Inactive' AND u.password_hash IS NOT NULL
+              AND u.email_verification_token = ? AND u.email_verification_expires_at >= NOW()");
+        $stmt->execute([$tokenHash]);
+        $hash = $stmt->fetchColumn();
+        return is_string($hash) ? $hash : null;
     }
 
     public function findActiveByUsernameOrEmail(string $identity): array|false
@@ -310,8 +356,8 @@ class User {
             }
 
             $user = $this->db->prepare(
-                "INSERT INTO users (first_name, last_name, username, email, contact_no, password_hash, role_id, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Active')"
+                "INSERT INTO users (first_name, last_name, username, email, contact_no, password_hash, role_id, status, google_subject)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', ?)"
             );
             $user->execute([
                 $data['first_name'],
@@ -321,6 +367,7 @@ class User {
                 $data['contact_no'] ?: null,
                 password_hash($data['password'], PASSWORD_DEFAULT),
                 $residentRoleId,
+                $data['google_subject'],
             ]);
             $userId = (int) $this->db->lastInsertId();
 

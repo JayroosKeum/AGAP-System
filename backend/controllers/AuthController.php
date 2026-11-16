@@ -3,6 +3,8 @@
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/PasswordResetService.php';
+require_once __DIR__ . '/../services/EmailVerificationMailer.php';
+require_once __DIR__ . '/../services/GoogleResidentIdentity.php';
 
 class AuthController {
 
@@ -37,10 +39,16 @@ class AuthController {
 
     public function registerResident(array $data): array
     {
+        $googleConfigured = GoogleResidentIdentity::clientId() !== '';
+        $identity = $googleConfigured ? ($_SESSION['resident_google_registration'] ?? null) : null;
+        if ($googleConfigured && (!is_array($identity) || ($identity['expires_at'] ?? 0) <= time())) {
+            return ['success' => false, 'code' => 'google_required', 'message' => 'Confirm your Gmail address with Google first.'];
+        }
+
         $firstName = trim((string) ($data['first_name'] ?? ''));
         $lastName = trim((string) ($data['last_name'] ?? ''));
         $username = trim((string) ($data['username'] ?? ''));
-        $email = strtolower(trim((string) ($data['email'] ?? '')));
+        $email = $identity['email'] ?? strtolower(trim((string) ($data['email'] ?? '')));
         $contactNo = trim((string) ($data['contact_no'] ?? ''));
         $password = (string) ($data['password'] ?? '');
         $confirmation = (string) ($data['password_confirmation'] ?? '');
@@ -75,11 +83,85 @@ class AuthController {
             'email' => $email,
             'contact_no' => $contactNo,
             'password' => $password,
+            'google_subject' => $identity['google_subject'] ?? null,
         ]);
         if ($result['success']) {
-            $this->audit->log((int) $result['user_id'], 'Registered resident portal account and accepted User Agreement', 'Resident Portal', (int) $result['resident_id']);
+            unset($_SESSION['resident_google_registration']);
+            $event = $googleConfigured ? 'Registered with a Google-verified Gmail address and accepted User Agreement'
+                : 'Registered resident portal account and accepted User Agreement';
+            $this->audit->log((int) $result['user_id'], $event, 'Resident Portal', (int) $result['resident_id']);
+            $result['google_verified'] = $googleConfigured;
         }
         return $result;
+    }
+
+    public function acceptResidentGoogleIdentity(array $identity): string
+    {
+        unset($_SESSION['resident_google_registration']);
+        $account = $this->userModel->findResidentByGoogleSubject($identity['google_subject']);
+        if ($account) {
+            return $account['status'] === 'Active' && $this->establishSession($account) ? 'signed_in' : 'disabled';
+        }
+        if ($this->userModel->emailInUse($identity['email'])) {
+            return 'email_in_use';
+        }
+        session_regenerate_id(true);
+        $_SESSION['resident_google_registration'] = $identity + ['expires_at' => time() + 900];
+        return 'register';
+    }
+
+    public function residentEmailPending(string $username, string $password): bool
+    {
+        return $this->pendingResidentAccount($username, $password) !== null;
+    }
+
+    public function resendResidentVerification(string $username, string $password): string
+    {
+        $account = $this->pendingResidentAccount($username, $password);
+        if (!$account) {
+            return 'invalid_credentials';
+        }
+        $token = bin2hex(random_bytes(32));
+        $hash = hash('sha256', $token);
+        $id = (int) $account['user_id'];
+        if (!$this->userModel->renewResidentVerificationToken($id, $account['email_verification_token'], $hash)) {
+            return 'verification_wait';
+        }
+        if (!$this->sendResidentVerification($account['email'], $account['first_name'], $token, $id)) {
+            $this->userModel->restoreResidentVerificationToken($account, $hash);
+            return 'verification_failed';
+        }
+        return 'verification_sent';
+    }
+
+    public function confirmResidentEmail(string $token, string $password): bool
+    {
+        if ($password === '' || preg_match('/^[a-f0-9]{64}$/', $token) !== 1) {
+            return false;
+        }
+        $tokenHash = hash('sha256', $token);
+        $passwordHash = $this->userModel->pendingResidentPasswordHash($tokenHash);
+        return $passwordHash !== null && password_verify($password, $passwordHash)
+            && $this->userModel->confirmResidentEmail($tokenHash);
+    }
+
+    private function pendingResidentAccount(string $username, string $password): ?array
+    {
+        $account = $this->userModel->findByUsername($username);
+        return $account && $account['role_name'] === 'Resident' && $account['status'] === 'Inactive'
+            && !empty($account['email_verification_token']) && is_string($account['password_hash'])
+            && password_verify($password, $account['password_hash']) ? $account : null;
+    }
+
+    private function sendResidentVerification(string $email, string $firstName, string $token, int $userId): bool
+    {
+        try {
+            (new EmailVerificationMailer())->sendResident($email, $firstName, $token);
+            return true;
+        } catch (Throwable $exception) {
+            error_log('AGAP resident verification email failed for user ID ' . $userId . ': ' . $exception->getMessage());
+            return false;
+        }
     }
 
     public function requestPasswordReset(array $data): array
@@ -219,6 +301,11 @@ class AuthController {
             return false;
         }
 
+        return $this->establishSession($user);
+    }
+
+    private function establishSession(array $user): bool
+    {
         if (session_status() !== PHP_SESSION_ACTIVE && !headers_sent()) {
             session_start();
         }

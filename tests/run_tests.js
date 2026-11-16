@@ -8,7 +8,8 @@ const suites = {
   lupon: 'test_lupon_dashboard.php',
   conciliation: 'test_conciliation_transition_and_timeline_e2e.php',
   show_cause: 'test_show_cause_workflow_matrix.php',
-  regressions: 'test_cfa_and_service_verification_regressions.php'
+  regressions: 'test_cfa_and_service_verification_regressions.php',
+  resident_google: 'test_resident_google_registration.php'
 };
 
 const requested = process.argv.slice(2);
@@ -52,6 +53,7 @@ const preflight = spawnSync(php, ['-r', [
   '$db->query("SELECT award_status FROM arbitration_records LIMIT 0");',
   '$db->query("SELECT source_document_id FROM case_transmittals LIMIT 0");',
   '$db->query("SELECT arbitration_id FROM execution_proceedings LIMIT 0");',
+  '$db->query("SELECT google_subject FROM users LIMIT 0");',
   'echo "AGAP test database ready (" . $selectedDb . ")";'
 ].join('\n')], options);
 if (preflight.error || preflight.status !== 0 || !preflight.stdout.trim().startsWith('AGAP test database ready')) {

@@ -2,7 +2,7 @@
 require_once __DIR__ . '/../models/User.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/ValidationService.php';
-require_once __DIR__ . '/../services/StaffVerificationMailer.php';
+require_once __DIR__ . '/../services/EmailVerificationMailer.php';
 
 class UserController {
     private User $user;
@@ -116,7 +116,7 @@ class UserController {
         try {
             $recipient = $this->user->pendingVerificationRecipient($userId);
             if (!$recipient) throw new RuntimeException('Pending verification recipient was not found.');
-            (new StaffVerificationMailer())->send($recipient['email'], $recipient['first_name'], $recipient['username'], $recipient['role_name'], $token);
+            (new EmailVerificationMailer())->send($recipient['email'], $recipient['first_name'], $recipient['username'], $recipient['role_name'], $token);
             return true;
         } catch (Throwable $exception) {
             error_log('AGAP staff verification email failed for user ID ' . $userId . ': ' . $exception->getMessage());

@@ -6,7 +6,7 @@
 2. Use PHP 8.2+ with the PDO MySQL, cURL, mbstring, fileinfo, OpenSSL, and ZIP extensions enabled.
 3. Set `APP_ENV=production`, disable `display_errors`, and enable server-side error logging.
 4. Configure HTTPS and redirect all HTTP traffic to HTTPS. Mark PHP session cookies `Secure`, `HttpOnly`, and `SameSite=Lax` (or stricter where compatible).
-5. Apply `database/schema.sql` for a new installation. For an existing installation, verify a current backup and use the [database guide](database/README.md) to select migrations for the installed schema. Apply the release migrations through `20261115_005_link_paanyaya_threads.sql` before serving the new code. The Azure workflow runs this prerequisite from the App Service container using its configured database connection.
+5. Apply `database/schema.sql` for a new installation. For an existing installation, verify a current backup and use the [database guide](database/README.md) to select migrations for the installed schema. Apply the release migrations through `20261116_001_link_resident_google_identity.sql` before serving the new code. The Azure workflow runs the release migrations from the App Service container using its configured database connection.
 6. Give the web-service account write permission only to the necessary `storage/` subdirectories; keep application source read-only.
 
 ## Secrets

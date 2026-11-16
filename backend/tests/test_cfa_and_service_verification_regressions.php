@@ -1927,8 +1927,8 @@ $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_
 $case15 = (int) $db->lastInsertId();
 
 $hearingModel15 = new Hearing($db);
-$tue15a = nextWeekdayDate($logistics, 3, 2);
-$tue15b = nextWeekdayDate($logistics, 10, 2);
+// Start at least a working week after the Show Cause fixture in Scenario 14.
+$tue15a = nextWeekdayDate($logistics, 10, 2);
 $create15 = $hearingModel15->createProgression([
     'case_id' => $case15,
     'hearing_type' => 'Mediation',

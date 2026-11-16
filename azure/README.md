@@ -32,9 +32,12 @@ In **App Service > Configuration > Application settings**, add the values in
 | `AGAP_APP_URL` | Yes | Public HTTPS address used in password-reset links |
 | `GEMINI_API_KEY` | No | Enables AI features |
 | `DB_SSL_CA` | Conditional | CA file path when your MySQL TLS policy requires it |
+| `GOOGLE_RESIDENT_CLIENT_ID` | No | OAuth Web client ID to require Google confirmation for new residents and enable their Google sign-in |
 
 Do not enter these values as GitHub variables or place them in the repository.
 They are server-side App Service settings.
+
+Before setting `GOOGLE_RESIDENT_CLIENT_ID`, add the App Service's HTTPS origin to the OAuth client's Authorized JavaScript origins. AGAP uses the existing password registration flow while the setting is empty. Password sign-in remains available to existing residents when Google sign-in is enabled.
 
 ## 3. Configure GitHub Actions
 

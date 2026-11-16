@@ -5,6 +5,7 @@ vendor/
 node_modules/
 /output/
 /storage/logs/
+/storage/certs/
 /storage/documents/
 /storage/generated-documents/
 /storage/paanyaya/

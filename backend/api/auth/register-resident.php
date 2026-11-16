@@ -1,20 +1,27 @@
 <?php
 
 require_once '../../controllers/AuthController.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header('Location: ../../../frontend/pages/resident/register.php', true, 303);
     exit;
 }
 
+if (!CsrfService::validateRequest()) {
+    http_response_code(403);
+    exit('Registration could not be verified. Reload the registration page and try again.');
+}
+
 $result = (new AuthController())->registerResident($_POST);
 if (!$result['success']) {
-    $code = in_array(($result['code'] ?? ''), ['validation', 'duplicate'], true)
+    $code = in_array(($result['code'] ?? ''), ['validation', 'duplicate', 'google_required'], true)
         ? $result['code']
         : 'unavailable';
     header('Location: ../../../frontend/pages/resident/register.php?error=' . rawurlencode($code), true, 303);
     exit;
 }
 
-header('Location: ../../../frontend/pages/resident/login.php?registered=1', true, 303);
+$notice = !empty($result['google_verified']) ? 'email_verified' : 'registered';
+header('Location: ../../../frontend/pages/resident/login.php?notice=' . $notice, true, 303);
 exit;

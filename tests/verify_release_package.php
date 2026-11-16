@@ -36,6 +36,7 @@ $requiredPaths = [
     'database/schema.sql',
     'database/migrations/20261115_004_order4_settlement_arbitration_transmittal.sql',
     'database/migrations/20261115_005_link_paanyaya_threads.sql',
+    'database/migrations/20261116_001_link_resident_google_identity.sql',
 ];
 
 $missing = [];

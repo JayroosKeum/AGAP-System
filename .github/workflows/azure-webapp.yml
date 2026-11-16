@@ -52,6 +52,7 @@ jobs:
           node --check frontend/assets/js/clerk-dashboard.js
           node --check frontend/assets/js/complaints.js
           node --check frontend/assets/js/search.js
+          node --check frontend/assets/js/resident-password-toggle.js
           bash -n .github/scripts/upgrade-azure-database.sh
 
       - name: Import canonical schema and verify upgrade migrations
@@ -66,7 +67,7 @@ jobs:
           sed -e 's/`agap_db`/`agap_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_test/' -e 's/USE agap_db/USE agap_test/' database/schema.sql > /tmp/agap_test_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_test_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root -e "CREATE DATABASE IF NOT EXISTS agap_upgrade_test;"
-          sed -e 's/`agap_db`/`agap_upgrade_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_upgrade_test/' -e 's/USE agap_db/USE agap_upgrade_test/' -e '/parent_paanyaya_id INT UNSIGNED NULL,/d' -e '/KEY idx_paanyayas_parent (parent_paanyaya_id),/d' database/schema.sql > /tmp/agap_upgrade_schema.sql
+          sed -e 's/`agap_db`/`agap_upgrade_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_upgrade_test/' -e 's/USE agap_db/USE agap_upgrade_test/' -e '/parent_paanyaya_id INT UNSIGNED NULL,/d' -e '/KEY idx_paanyayas_parent (parent_paanyaya_id),/d' -e '/google_subject VARCHAR/d' -e '/UNIQUE KEY uq_users_google_subject/d' database/schema.sql > /tmp/agap_upgrade_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_upgrade_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_002_mediation_pause_decisions.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_003_preserve_show_cause_and_cfa_decisions.sql
