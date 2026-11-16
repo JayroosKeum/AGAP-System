@@ -10,15 +10,15 @@ instance=$(az webapp list-instances -g "$resource_group" -n "$app_name" --query 
 test -n "$scm_host" && test -n "$app_host" && test -n "$instance"
 
 run_id="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-payload=$(tar -czf - .github/scripts/apply-release-migrations.php database/migrations/20261115_00{2,3,4,5}_*.sql database/migrations/20261116_001_link_resident_google_identity.sql | base64 -w0)
+payload=$(tar -czf - .github/scripts/apply-release-migrations.php | base64 -w0)
 remote_script=$(cat <<'REMOTE'
 set -eu
 workdir=$(mktemp -d)
-trap 'rm -f -- "$workdir"/apply-release-migrations.php "$workdir"/20261115_00*.sql "$workdir"/20261116_001_link_resident_google_identity.sql; rmdir "$workdir"' EXIT
+trap 'rm -f -- "$workdir"/apply-release-migrations.php; rmdir "$workdir"' EXIT
 status_path="/home/LogFiles/agap-schema-$run_id.status"
 log_path="/home/LogFiles/agap-schema-$run_id.log"
 if printf '%s' "$payload" | base64 -d | tar -xz --strip-components=2 -C "$workdir" \
-    && php "$workdir/apply-release-migrations.php" "$workdir" > "$log_path" 2>&1; then
+    && php "$workdir/apply-release-migrations.php" --check-only > "$log_path" 2>&1; then
     result=ok
 else
     result=failed
@@ -44,11 +44,11 @@ for attempt in {1..36}; do
             ;;
         failed)
             curl --silent --fail --max-time 8 --header "Authorization: Bearer $token" "${status_url%.status}.log" || true
-            echo '::error::The production database migration failed. The application release was held.'
+            echo '::error::The production database did not pass release checks. The application release was held.'
             exit 1
             ;;
     esac
     sleep 5
 done
-echo '::error::Could not verify the production database migration through Kudu. The application release was held.'
+echo '::error::Could not verify the production database through Kudu. The application release was held.'
 exit 1

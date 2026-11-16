@@ -6,7 +6,7 @@
 2. Use PHP 8.2+ with the PDO MySQL, cURL, mbstring, fileinfo, OpenSSL, and ZIP extensions enabled.
 3. Set `APP_ENV=production`, disable `display_errors`, and enable server-side error logging.
 4. Configure HTTPS and redirect all HTTP traffic to HTTPS. Mark PHP session cookies `Secure`, `HttpOnly`, and `SameSite=Lax` (or stricter where compatible).
-5. Apply `database/schema.sql` for a new installation. For an existing installation, verify a current backup and use the [database guide](database/README.md) to select migrations for the installed schema. Apply the release migrations through `20261116_001_link_resident_google_identity.sql` before serving the new code. The Azure workflow runs the release migrations from the App Service container using its configured database connection.
+5. Apply `database/schema.sql` for a new installation. For an existing installation, verify a current backup and use the [database guide](database/README.md) to select migrations for the installed schema. Apply the release migrations through `20261116_001_link_resident_google_identity.sql` before serving the new code. The Azure workflow performs a read-only schema check before deploying the application.
 6. Give the web-service account write permission only to the necessary `storage/` subdirectories; keep application source read-only.
 
 ## Secrets
@@ -51,7 +51,7 @@ The GitHub Actions workflow (`.github/workflows/azure-webapp.yml`) gates Azure A
 3. Running `npm test` on PHP 8.3 against disposable MySQL, with preflight checks for the database name and required release columns.
 4. Assembling `release/` with runtime code, `vendor/`, `backend/libs/dompdf/`, `frontend/assets/images/` document assets, and `database/schema.sql` + `database/migrations/`, while excluding `storage/` (preserving the Azure Files mount at `/home/site/wwwroot/storage`), `database/backups/`, `database/seeds/`, `database/seeders/`, `.env` / `.env.local` / `.env.*.local`, `logs/`, `output/`, `scratch/`, `tests/`, `node_modules/`, `*.pdf`, `*.xlsx`, `*.log`, `*.bak`, `*.tmp`, and `*.gz`.
 5. Running `php tests/verify_release_package.php release`, which fails the workflow before deployment if any required runtime file is missing or any prohibited file is present.
-6. Applying and verifying the production database migrations through the existing Azure identity. The workflow checks the App Service container's migration result through authenticated Kudu access before deploying, then checks the deployed login URL.
+6. Checking production database compatibility from the App Service container through authenticated Kudu access. After the schema check passes, the workflow deploys the code and checks the live login page.
 
 Run the integration suite against an isolated local database using the [automated test setup](README.md#automated-tests).
 

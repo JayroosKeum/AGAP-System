@@ -37,9 +37,6 @@ try {
     if ($columnType('paanyaya_preparations', 'invitation_number') === '') {
         throw new RuntimeException('Install the earlier Paanyaya invitation migrations first.');
     }
-    if (!(int) $db->query("SELECT GET_LOCK(CONCAT('agap-release:', SHA1(DATABASE())), 30)")->fetchColumn()) {
-        throw new RuntimeException('Could not acquire the release migration lock.');
-    }
 
     $legacyColumns = [
         ['settlements', 'settlement_status'],
@@ -55,28 +52,33 @@ try {
         }
         return true;
     };
-    $migrations = [
-        '20261115_002_mediation_pause_decisions.sql' => $columnType('mediation_pause_decisions', 'decision_id') === '',
-        '20261115_003_preserve_show_cause_and_cfa_decisions.sql' => !str_contains($columnType('show_cause_evaluations', 'action_taken'), "'Excused'") || $columnType('cfa_records', 'resident_id') === '',
-        '20261115_004_order4_settlement_arbitration_transmittal.sql' => !$orderFourReady(),
-        '20261115_005_link_paanyaya_threads.sql' => true,
-        '20261116_001_link_resident_google_identity.sql' => true,
-    ];
-    $migrationDir = $argv[1] ?? dirname(__DIR__, 2) . '/database/migrations';
-    foreach ($migrations as $file => $needed) {
-        if (!$needed) {
-            continue;
+    if (($argv[1] ?? null) !== '--check-only') {
+        if (!(int) $db->query("SELECT GET_LOCK(CONCAT('agap-release:', SHA1(DATABASE())), 30)")->fetchColumn()) {
+            throw new RuntimeException('Could not acquire the release migration lock.');
         }
-        $sql = file_get_contents($migrationDir . '/' . $file);
-        if ($sql === false) {
-            throw new RuntimeException('Could not read ' . $file);
+        $migrations = [
+            '20261115_002_mediation_pause_decisions.sql' => $columnType('mediation_pause_decisions', 'decision_id') === '',
+            '20261115_003_preserve_show_cause_and_cfa_decisions.sql' => !str_contains($columnType('show_cause_evaluations', 'action_taken'), "'Excused'") || $columnType('cfa_records', 'resident_id') === '',
+            '20261115_004_order4_settlement_arbitration_transmittal.sql' => !$orderFourReady(),
+            '20261115_005_link_paanyaya_threads.sql' => true,
+            '20261116_001_link_resident_google_identity.sql' => true,
+        ];
+        $migrationDir = $argv[1] ?? dirname(__DIR__, 2) . '/database/migrations';
+        foreach ($migrations as $file => $needed) {
+            if (!$needed) {
+                continue;
+            }
+            $sql = file_get_contents($migrationDir . '/' . $file);
+            if ($sql === false) {
+                throw new RuntimeException('Could not read ' . $file);
+            }
+            $statement = $db->query($sql);
+            while ($statement->nextRowset()) {
+                // Drain all results so PDO reports errors in any statement in the file.
+            }
+            $statement->closeCursor();
+            fwrite(STDOUT, "Applied {$file}\n");
         }
-        $statement = $db->query($sql);
-        while ($statement->nextRowset()) {
-            // Drain all results so PDO reports errors in any statement in the file.
-        }
-        $statement->closeCursor();
-        fwrite(STDOUT, "Applied {$file}\n");
     }
 
     if (!$orderFourReady() || $columnType('paanyayas', 'parent_paanyaya_id') === ''
@@ -89,6 +91,6 @@ try {
     }
     fwrite(STDOUT, "Release schema verified.\n");
 } catch (Throwable $e) {
-    fwrite(STDERR, 'Release migration failed: ' . ($e instanceof PDOException ? 'database error ' . $e->getCode() : $e->getMessage()) . PHP_EOL);
+    fwrite(STDERR, 'Release schema check failed: ' . ($e instanceof PDOException ? 'database error ' . $e->getCode() : $e->getMessage()) . PHP_EOL);
     exit(1);
 }

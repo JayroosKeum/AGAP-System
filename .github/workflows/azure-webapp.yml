@@ -53,7 +53,7 @@ jobs:
           node --check frontend/assets/js/complaints.js
           node --check frontend/assets/js/search.js
           node --check frontend/assets/js/resident-password-toggle.js
-          bash -n .github/scripts/upgrade-azure-database.sh
+          bash -n .github/scripts/verify-azure-database.sh
 
       - name: Import canonical schema and verify upgrade migrations
         env:
@@ -73,8 +73,13 @@ jobs:
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_003_preserve_show_cause_and_cfa_decisions.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_004_order4_settlement_arbitration_transmittal.sql
           php tests/verify_paanyaya_upgrade.php seed
+          if php .github/scripts/apply-release-migrations.php --check-only; then
+            echo 'The schema check accepted a database without the required release migrations.'
+            exit 1
+          fi
           php .github/scripts/apply-release-migrations.php
           php .github/scripts/apply-release-migrations.php
+          php .github/scripts/apply-release-migrations.php --check-only
           php tests/verify_paanyaya_upgrade.php verify
           mysql -h 127.0.0.1 -P 3306 -u root -e "DROP DATABASE agap_upgrade_test;"
           rm -f /tmp/agap_test_schema.sql /tmp/agap_upgrade_schema.sql
@@ -159,9 +164,9 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_DFC2C15D65784E45A8ED28731128DA80 }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_BFA18332F3314BB2B3975BC75386ABD2 }}
 
-      - name: Apply and verify production database migrations
+      - name: Verify production schema without applying migrations
         id: schema
-        run: bash .github/scripts/upgrade-azure-database.sh
+        run: bash .github/scripts/verify-azure-database.sh
 
       - name: Deploy release package to Azure Web App
         uses: azure/webapps-deploy@v3

@@ -53,13 +53,11 @@ and local scratch files. This keeps releases small and prevents a deployment
 from overwriting the mounted Azure Files share that contains user uploads and
 generated documents.
 
-Before each production deployment the workflow uses the existing Azure OIDC
-identity to run the release migration script in the App Service container.
-The app must be running, the identity must have access to the container and
-the Kudu site, and the configured database principal must have the privileges
-required by any pending migrations. Verify current MySQL backups before the
-release. The workflow deploys only after the container reports that the
-schema checks passed, and then checks the live login page.
+Before production deployment, apply the required migrations separately after
+verifying a current MySQL backup. The workflow uses the existing Azure OIDC
+identity to perform a read-only schema check in the running App Service
+container and read the result through Kudu. It deploys the code after the
+schema check passes and then checks the live login page.
 
 ## 4. Production checks
 
