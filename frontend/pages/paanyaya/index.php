@@ -1945,6 +1945,14 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                                             </a>
                                         <?php endif; ?>
+                                        <?php if (!empty($row['is_complaint_preparation']) && $cid > 0): ?>
+                                            <a href="../complaints/complaint-details.php?id=<?php echo $cid; ?>#paanyaya-preparation"
+                                               class="agap-btn-act is-primary-soft"
+                                               title="Open Paanyaya Preparation &amp; Delivery Assignment"
+                                               style="text-decoration: none;">
+                                                <span>Prepare / Track</span>
+                                            </a>
+                                        <?php endif; ?>
                                         <button type="button" class="agap-btn-act is-primary-soft btn-preview-modal"
                                                 data-paanyaya-id="<?php echo $pid; ?>"
                                                 data-complaint-id="<?php echo $cid; ?>"
@@ -2883,6 +2891,10 @@ tr[data-paanyaya-row="1"].is-expanded td {
                             <option value="schedule_second_paanyaya">Schedule 2nd Paanyaya</option>
                             <option value="resolve">Settlement</option>
                         </select>
+                        <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.78rem; color: #475569; cursor: pointer;">
+                            <input type="checkbox" id="attAllowImmediateEscalation" value="1">
+                            <span>Allow early escalation / record immediately (even if scheduled date is in the future)</span>
+                        </label>
                     </div>
 
                     <!-- Conditional Inline 2nd Paanyaya Schedule Drawer -->
@@ -4780,7 +4792,8 @@ document.addEventListener('DOMContentLoaded', function() {
             dialogue_notes: notesText,
             action: actionType,
             p2_date: p2DateInput?.value || '',
-            p2_time: p2TimeInput?.value || '14:00'
+            p2_time: p2TimeInput?.value || '14:00',
+            allow_immediate_escalation: Boolean(document.getElementById('attAllowImmediateEscalation')?.checked)
         };
 
         const activeBtn = triggerBtn || btnConfirmOutcome || btnSaveAttOnly;

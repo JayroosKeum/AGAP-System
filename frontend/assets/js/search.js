@@ -771,7 +771,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 2. Complaint (Title of complaint / short description)
         const complaintTitle = row.complaint_title ? String(row.complaint_title).trim() : '';
-        const sourceLabel = String(row.complaint_source || 'Walk-in') === 'Online' ? 'Online' : 'Walk-in';
+        const rawSource = String(row.complaint_source || row.intake_source || 'Walk-in').trim().toLowerCase();
+        const sourceLabel = rawSource === 'online' ? 'Online' : 'Walk-in';
         const sourceBadgeClass = sourceLabel === 'Online' ? 'is-blue' : 'is-emerald';
         let docBadgeHtml = '';
         if (row.document_status === 'Scan Uploaded') {

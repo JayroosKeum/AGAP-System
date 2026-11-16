@@ -4167,6 +4167,12 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
 
+                    <button type="button" class="btn-secondary" onclick="openInlineSettlementModal(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; cursor: pointer;">
+
+                        Record KP Form 16
+
+                    </button>
+
                     <button type="button" class="btn-create" onclick="issueSettledOutcome(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 5px; background: #16a34a; border-color: #16a34a; color: #ffffff; border-radius: 6px; font-weight: 700; cursor: pointer;">
 
                         Open Amicable Settlement &rarr;
@@ -5059,7 +5065,7 @@ function renderOutcomeAndReferralSection(data, stage) {
 
                         </button>
 
-                        <a href="../settlements/settlements.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
+                        <a href="../documents/settlements.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId)}" class="btn-create" style="font-size: 0.82rem; padding: 6px 14px; text-decoration: none;">
 
                             View Amicable Settlement &rarr;
 
@@ -9427,6 +9433,182 @@ window.issueArbitrationOutcome = issueArbitrationOutcome;
 
  */
 
+function ensureInlineSettlementModal() {
+    let modal = document.getElementById('inlineRecordSettlementModal');
+    if (modal) return modal;
+
+    modal = document.createElement('div');
+    modal.id = 'inlineRecordSettlementModal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.style.cssText = 'display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(3px); align-items: center; justify-content: center; padding: 16px; z-index: 99999;';
+    modal.innerHTML = `
+        <div style="background: #ffffff; max-width: 640px; width: 96vw; border-radius: 12px; padding: 0; overflow: hidden; box-shadow: 0 25px 40px -5px rgba(0,0,0,0.3);">
+            <div style="padding: 16px 22px; border-bottom: 1px solid #e2e8f0; background: #064e3b; color: #ffffff; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Record &amp; Attest Amicable Settlement (KP Form 16)</h3>
+                    <p style="margin: 2px 0 0; font-size: 0.78rem; color: #a7f3d0;">Complete the settlement terms and required signatures to mark this stage Settled.</p>
+                </div>
+                <button type="button" id="inlineSettleCloseBtn" style="color: #ffffff; background: transparent; border: none; font-size: 1.4rem; cursor: pointer;">&times;</button>
+            </div>
+            <form id="inlineRecordSettlementForm" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; max-height: 78vh; overflow-y: auto;">
+                <input type="hidden" id="inlineSettleHearingId" value="">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label for="inlineSettleDate" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Settlement Date</label>
+                        <input type="date" id="inlineSettleDate" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label for="inlineSettleObligationType" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Obligation Type</label>
+                        <select id="inlineSettleObligationType" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                            <option value="Action / Conduct">Action / Conduct</option>
+                            <option value="Monetary">Monetary</option>
+                            <option value="Mixed">Mixed</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label for="inlineSettleAmount" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Total Amount (₱, optional)</label>
+                        <input type="number" id="inlineSettleAmount" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                    </div>
+                    <div>
+                        <label for="inlineSettleDueDate" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Compliance Due Date (optional)</label>
+                        <input type="date" id="inlineSettleDueDate" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                    </div>
+                </div>
+                <div>
+                    <label for="inlineSettleTerms" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Agreement Terms / Kasunduan Details <span style="color: #dc2626;">*</span></label>
+                    <textarea id="inlineSettleTerms" rows="4" required placeholder="Enter the agreed settlement terms between Complainant and Respondent..." style="width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box; resize: vertical;"></textarea>
+                </div>
+                <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+                    <strong style="font-size: 0.82rem; color: #166534;">KP Form 16 Required Execution &amp; Attestation</strong>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                        <input type="checkbox" id="inlineSettleTermsRead" checked>
+                        <span>Terms read aloud &amp; explained to both parties</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                        <input type="checkbox" id="inlineSettleCompSigned" required>
+                        <span>Complainant Signed <span style="color: #dc2626;">*</span></span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                        <input type="checkbox" id="inlineSettleRespSigned" required>
+                        <span>Respondent Signed <span style="color: #dc2626;">*</span></span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                        <input type="checkbox" id="inlineSettlePbAttested" required>
+                        <span>Punong Barangay Attested <span style="color: #dc2626;">*</span></span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                        <input type="checkbox" id="inlineSettleSealed" checked>
+                        <span>Barangay Seal Affixed</span>
+                    </label>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px;">
+                    <button type="button" id="inlineSettleCancelBtn" class="btn-secondary">Cancel</button>
+                    <button type="submit" id="btnSubmitInlineSettlement" class="btn-create" style="background: #16a34a; border-color: #16a34a; color: #ffffff;">Save KP Form 16 &amp; Finalize Settlement</button>
+                </div>
+            </form>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    document.getElementById('inlineSettleCloseBtn')?.addEventListener('click', () => { modal.style.display = 'none'; });
+    document.getElementById('inlineSettleCancelBtn')?.addEventListener('click', () => { modal.style.display = 'none'; });
+    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+    document.getElementById('inlineRecordSettlementForm')?.addEventListener('submit', submitInlineSettlementForm);
+
+    return modal;
+}
+
+function openInlineSettlementModal(hearingId = null) {
+    const modal = ensureInlineSettlementModal();
+    if (!modal) return;
+    const hId = hearingId || stageWorkspaceState.activeSessionHearingId || '';
+    const hInput = document.getElementById('inlineSettleHearingId');
+    if (hInput) hInput.value = hId;
+
+    const dateInput = document.getElementById('inlineSettleDate');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = new Date().toISOString().slice(0, 10);
+    }
+
+    const termsInput = document.getElementById('inlineSettleTerms');
+    if (termsInput && !termsInput.value.trim()) {
+        const agreedVal = (document.getElementById(`minAgreedTerms_${hId}`) || document.getElementById('minAgreedTerms'))?.value || '';
+        const remarksVal = (document.getElementById(`minOutcomeRemarks_${hId}`) || document.getElementById('minOutcomeRemarks') || document.getElementById('stageOutcomeRemarks'))?.value || '';
+        const prefill = agreedVal.trim() || remarksVal.trim();
+        if (prefill) {
+            termsInput.value = prefill;
+        }
+    }
+
+    modal.style.display = 'flex';
+}
+
+window.openInlineSettlementModal = openInlineSettlementModal;
+
+async function submitInlineSettlementForm(event) {
+    event.preventDefault();
+    const caseId = Number(stageWorkspaceState.caseId || window.currentCaseId || window.complaintData?.case_id || 0);
+    if (!caseId) {
+        notifyUser('A valid case ID is required to save the settlement.', 'error');
+        return;
+    }
+
+    const hId = Number(document.getElementById('inlineSettleHearingId')?.value || 0) || null;
+    const submitBtn = document.getElementById('btnSubmitInlineSettlement');
+    const origText = submitBtn ? submitBtn.textContent : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving...';
+    }
+
+    const payload = {
+        case_id: caseId,
+        settlement_date: document.getElementById('inlineSettleDate')?.value || new Date().toISOString().slice(0, 10),
+        obligation_type: document.getElementById('inlineSettleObligationType')?.value || 'Action / Conduct',
+        total_amount: document.getElementById('inlineSettleAmount')?.value || null,
+        compliance_due_date: document.getElementById('inlineSettleDueDate')?.value || null,
+        agreement_details: document.getElementById('inlineSettleTerms')?.value.trim() || '',
+        award_type: 'Amicable Settlement',
+        has_installment: 0,
+        installments: [],
+        terms_read_to_parties: document.getElementById('inlineSettleTermsRead')?.checked ? 1 : 0,
+        complainant_signed: document.getElementById('inlineSettleCompSigned')?.checked ? 1 : 0,
+        respondent_signed: document.getElementById('inlineSettleRespSigned')?.checked ? 1 : 0,
+        pb_attested: document.getElementById('inlineSettlePbAttested')?.checked ? 1 : 0,
+        barangay_sealed: document.getElementById('inlineSettleSealed')?.checked ? 1 : 0,
+        original_in_case_folder: 1,
+        certified_copies_issued: 1
+    };
+
+    try {
+        const res = await fetch(getStageApiUrl('settlements/save.php'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) {
+            notifyUser(json.message || 'Unable to save Amicable Settlement (KP Form 16).', 'error');
+            return;
+        }
+
+        const modal = document.getElementById('inlineRecordSettlementModal');
+        if (modal) modal.style.display = 'none';
+        notifyUser('KP Form 16 saved and attested. Finalizing stage settlement...', 'success');
+        await issueSettledOutcome(hId);
+    } catch (err) {
+        notifyUser('Network error while saving Amicable Settlement.', 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = origText;
+        }
+    }
+}
+
 async function issueSettledOutcome(hearingId = null) {
 
     if (guardWorkspaceMutation()) return;
@@ -9470,11 +9652,12 @@ async function issueSettledOutcome(hearingId = null) {
         const json = await res.json();
 
         if (!json.success) {
-
+            if (String(json.message || '').includes('KP Form 16') && typeof openInlineSettlementModal === 'function') {
+                openInlineSettlementModal(hId);
+                return;
+            }
             notifyUser(json.message || 'Unable to record amicable settlement outcome.', 'error');
-
             return;
-
         }
 
 
@@ -9526,15 +9709,11 @@ async function issueSettledOutcome(hearingId = null) {
 
 
         // Redirect immediately to the Outcomes tab (tab-arbitration)
-
+        const targetNav = window.top || window;
         if (complaintId) {
-
-            window.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection`;
-
+            targetNav.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection`;
         } else {
-
-            window.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
-
+            targetNav.location.href = `../complaints/complaint-details.php?tab=tab-arbitration`;
         }
 
     } catch (err) {

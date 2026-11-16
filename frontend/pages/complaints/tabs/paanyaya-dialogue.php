@@ -28,7 +28,13 @@ $dialogueStatus = $preparation['complaint_status'];
                 <button type="submit" class="btn-case-primary">Create formal docket and continue to mediation</button>
             </form>
         <?php elseif ($paanyayaMinutes['complainant_choice'] === 'Escalate_Mediation' && $preparation['case_id']): ?>
-            <a class="btn-case-primary" href="?id=<?= $complaintId ?>&amp;tab=mediation">Open mediation on this complaint</a>
+            <?php
+            $caseIsClosed = in_array((string) ($dialogueStatus ?? ''), ['Settled', 'Amicable Settlement', 'Arbitration Award', 'Closed', 'Dismissed', 'Resolved at Paanyaya / Closed'], true)
+                || in_array((string) ($preparation['case_status'] ?? ''), ['Settled', 'Amicable Settlement', 'Arbitration Award', 'Closed', 'Dismissed'], true);
+            ?>
+            <?php if (!$caseIsClosed): ?>
+                <a class="btn-case-primary" href="?id=<?= $complaintId ?>&amp;tab=mediation">Open mediation on this complaint</a>
+            <?php endif; ?>
         <?php endif; ?>
     <?php elseif ($dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
         <form method="post" action="<?= $dialogueEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Saving dialogue minutes...';}">

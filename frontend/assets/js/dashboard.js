@@ -1419,7 +1419,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <td>
                             <div style="font-weight:700; color:#0f172a;">#${escapeHtml(item.complaint_number || item.complaint_id)} · ${escapeHtml(item.complaint_title || 'Complaint')}</div>
                         </td>
-                        <td>${escapeHtml(item.complaint_source || 'Walk-in')}${item.incident_purok ? ' · ' + escapeHtml(item.incident_purok) : ''}</td>
+                        <td>${escapeHtml(item.complaint_source || item.intake_source || 'Walk-in')}${item.incident_purok ? ' · ' + escapeHtml(item.incident_purok) : ''}</td>
                         <td>${formatDateOnly(item.filed_date)}</td>
                         <td style="text-align:right;"><a href="../complaints/complaint-details.php?id=${encodeURIComponent(item.complaint_id)}" class="pb-row-action-btn">Screen</a></td>
                     </tr>

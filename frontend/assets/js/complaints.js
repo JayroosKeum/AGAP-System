@@ -11621,7 +11621,7 @@ function renderLisoVerificationBanner(data) {
     }
 
     banner.style.display = 'block';
-    const src = String(data.complaint_source || 'Walk-in');
+    const src = String(data.complaint_source || data.intake_source || 'Walk-in').trim().toLowerCase() === 'online' ? 'Online' : 'Walk-in';
     const srcBadge = document.getElementById('lisoSourceBadge');
     if (srcBadge) {
         srcBadge.textContent = src === 'Online' ? '🌐 Online Portal' : '🏢 Walk-in (BPSO)';

@@ -2260,6 +2260,77 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
     </div>
 </div>
 
+<!-- MODAL: Inline Record & Attest Amicable Settlement (KP Form 16) -->
+<div id="inlineRecordSettlementModal" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 16px; z-index: 9999;">
+    <div class="modal-content" style="max-width: 640px; width: 96vw; border-radius: 12px; padding: 0; overflow: hidden; box-shadow: 0 25px 40px -5px rgba(0,0,0,0.3);">
+        <div class="modal-header" style="padding: 16px 22px; margin-bottom: 0; border-bottom: 1px solid #e2e8f0; background: #064e3b; color: #ffffff; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3 style="margin: 0; font-size: 1.05rem; font-weight: 700;">Record &amp; Attest Amicable Settlement (KP Form 16)</h3>
+                <p style="margin: 2px 0 0; font-size: 0.78rem; color: #a7f3d0;">Complete the settlement terms and required signatures to mark this stage Settled.</p>
+            </div>
+            <button type="button" class="close-btn" onclick="document.getElementById('inlineRecordSettlementModal').style.display='none'" style="color: #ffffff; background: transparent; border: none; font-size: 1.4rem; cursor: pointer;">&times;</button>
+        </div>
+        <form id="inlineRecordSettlementForm" onsubmit="submitInlineSettlementForm(event)" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; max-height: 78vh; overflow-y: auto;">
+            <input type="hidden" id="inlineSettleHearingId" value="">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <label for="inlineSettleDate" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Settlement Date</label>
+                    <input type="date" id="inlineSettleDate" required style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label for="inlineSettleObligationType" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Obligation Type</label>
+                    <select id="inlineSettleObligationType" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                        <option value="Action / Conduct">Action / Conduct</option>
+                        <option value="Monetary">Monetary</option>
+                        <option value="Mixed">Mixed</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <div>
+                    <label for="inlineSettleAmount" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Total Amount (₱, optional)</label>
+                    <input type="number" id="inlineSettleAmount" step="0.01" min="0" placeholder="0.00" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label for="inlineSettleDueDate" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Compliance Due Date (optional)</label>
+                    <input type="date" id="inlineSettleDueDate" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
+                </div>
+            </div>
+            <div>
+                <label for="inlineSettleTerms" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Agreement Terms / Kasunduan Details <span style="color: #dc2626;">*</span></label>
+                <textarea id="inlineSettleTerms" rows="4" required placeholder="Enter the agreed settlement terms between Complainant and Respondent..." style="width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box; resize: vertical;"></textarea>
+            </div>
+            <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+                <strong style="font-size: 0.82rem; color: #166534;">KP Form 16 Required Execution &amp; Attestation</strong>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                    <input type="checkbox" id="inlineSettleTermsRead" checked>
+                    <span>Terms read aloud &amp; explained to both parties</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                    <input type="checkbox" id="inlineSettleCompSigned" required>
+                    <span>Complainant Signed <span style="color: #dc2626;">*</span></span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                    <input type="checkbox" id="inlineSettleRespSigned" required>
+                    <span>Respondent Signed <span style="color: #dc2626;">*</span></span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                    <input type="checkbox" id="inlineSettlePbAttested" required>
+                    <span>Punong Barangay Attested <span style="color: #dc2626;">*</span></span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                    <input type="checkbox" id="inlineSettleSealed" checked>
+                    <span>Barangay Seal Affixed</span>
+                </label>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px;">
+                <button type="button" class="btn-secondary" onclick="document.getElementById('inlineRecordSettlementModal').style.display='none'">Cancel</button>
+                <button type="submit" id="btnSubmitInlineSettlement" class="btn-create" style="background: #16a34a; border-color: #16a34a; color: #ffffff;">Save KP Form 16 &amp; Finalize Settlement</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- MODAL: Edit Settlement Terms (KP Form 16 - 2-Panel 50/50 Split-Screen Live Editor) -->
 <div id="modalEditSettlementTerms" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 14px; z-index: 9999;">
     <div class="modal-content" style="max-width: 1380px; width: 96vw; height: 90vh; max-height: 90vh; border-radius: 12px; padding: 0; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 25px 40px -5px rgba(0,0,0,0.35);">

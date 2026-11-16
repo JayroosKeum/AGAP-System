@@ -146,6 +146,115 @@ class ServerDashboardController
         $stmt->execute($queryParams);
         $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Include Paanyaya service attempts (Stage 0) in KPIs & tasks
+        try {
+            $paPending = (int) $this->conn->query("
+                SELECT COUNT(*)
+                FROM paanyaya_service_attempts a
+                JOIN complaints c ON c.complaint_id = a.complaint_id
+                WHERE a.outcome IS NULL
+                  AND c.screening_decision = 'Eligible'
+                  AND c.status IN ('Accepted', 'Pre-Docketed (Paanyaya)')
+            ")->fetchColumn();
+            $pendingDelivery += $paPending;
+
+            $paServedTodayStmt = $this->conn->prepare("
+                SELECT COUNT(*)
+                FROM paanyaya_service_attempts
+                WHERE outcome = 'Delivered' AND DATE(recorded_at) = ?
+            ");
+            $paServedTodayStmt->execute([$today]);
+            $paServedCount = (int) $paServedTodayStmt->fetchColumn();
+            if ($paServedCount === 0) {
+                $paServedCount = (int) $this->conn->query("SELECT COUNT(*) FROM paanyaya_service_attempts WHERE outcome = 'Delivered'")->fetchColumn();
+            }
+            $servedToday += $paServedCount;
+
+            $paUnserved = (int) $this->conn->query("
+                SELECT COUNT(*)
+                FROM paanyaya_service_attempts
+                WHERE outcome = 'Not Delivered'
+            ")->fetchColumn();
+            $unservedFollowup += $paUnserved;
+
+            $paWhere = ["1=1"];
+            $paParams = [];
+            if ($statusFilter === 'served') {
+                $paWhere[] = "a.outcome = 'Delivered'";
+            } elseif ($statusFilter === 'unserved') {
+                $paWhere[] = "a.outcome = 'Not Delivered'";
+            } elseif ($statusFilter !== 'all') {
+                $paWhere[] = "a.outcome IS NULL AND c.screening_decision = 'Eligible' AND c.status IN ('Accepted', 'Pre-Docketed (Paanyaya)')";
+            }
+            if ($purokFilter !== 'all' && $purokFilter !== '') {
+                $paWhere[] = "resp.purok = ?";
+                $paParams[] = $purokFilter;
+            }
+
+            $paSql = "
+                SELECT a.attempt_id AS paanyaya_attempt_id,
+                       0 AS delivery_id,
+                       0 AS case_id,
+                       0 AS hearing_id,
+                       a.complaint_id,
+                       a.invitation_number,
+                       'paanyaya' AS task_kind,
+                       'Respondent' AS party_type,
+                       CASE
+                           WHEN a.outcome = 'Delivered' THEN 'Served Personal'
+                           WHEN a.outcome = 'Not Delivered' THEN 'Unserved'
+                           ELSE 'Pending'
+                       END AS delivery_status,
+                       NULL AS replacement_document_id,
+                       a.invitation_number AS attempt_number,
+                       NULL AS service_method,
+                       a.recorded_at AS served_at,
+                       CASE WHEN a.outcome = 'Not Delivered' THEN a.notes ELSE NULL END AS unserved_reason,
+                       NULL AS failure_notes,
+                       a.notes AS remarks,
+                       NULL AS proof_file_path,
+                       CONCAT('Paanyaya ', a.invitation_number) AS form_type,
+                       COALESCE(NULLIF(TRIM(c.intake_reference), ''), NULLIF(TRIM(c.complaint_number), ''), CONCAT('CMP-', c.complaint_id)) AS case_number,
+                       c.status AS case_status,
+                       CONCAT('Paanyaya ', a.invitation_number) AS hearing_type,
+                       a.appointment_at AS hearing_date,
+                       COALESCE(p.venue, 'Tanggapan ng Barangay Tumana') AS venue,
+                       resp.resident_id,
+                       COALESCE(NULLIF(TRIM(CONCAT_WS(' ', resp.first_name, resp.middle_name, resp.last_name, resp.suffix)), ''), 'Inanyayahan') AS full_name,
+                       resp.contact_no,
+                       COALESCE(NULLIF(TRIM(resp.purok), ''), 'Tumana') AS purok,
+                       resp.house_street,
+                       COALESCE(NULLIF(TRIM(resp.address), ''), NULLIF(TRIM(resp.purok), ''), 'Barangay Tumana') AS address,
+                       resp.gender,
+                       DATE(a.appointment_at) AS target_date,
+                       DATEDIFF(DATE(a.appointment_at), CURDATE()) AS days_until_hearing
+                FROM paanyaya_service_attempts a
+                JOIN complaints c ON c.complaint_id = a.complaint_id
+                LEFT JOIN paanyaya_preparations p ON p.complaint_id = a.complaint_id AND p.invitation_number = a.invitation_number
+                LEFT JOIN (
+                    SELECT cp.complaint_id, r.resident_id, r.first_name, r.middle_name, r.last_name, r.suffix, r.contact_no, r.purok, r.house_street, r.address, r.gender
+                    FROM complaint_parties cp
+                    JOIN residents r ON r.resident_id = cp.resident_id
+                    WHERE cp.party_id = (
+                        SELECT MIN(cp2.party_id)
+                        FROM complaint_parties cp2
+                        WHERE cp2.complaint_id = cp.complaint_id AND cp2.party_type = 'Respondent'
+                    )
+                ) resp ON resp.complaint_id = a.complaint_id
+                WHERE " . implode(' AND ', $paWhere) . "
+                ORDER BY (a.outcome IS NULL) DESC, a.appointment_at ASC, a.attempt_id DESC
+                LIMIT 50
+            ";
+            $paStmt = $this->conn->prepare($paSql);
+            $paStmt->execute($paParams);
+            $paTasks = $paStmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($paTasks)) {
+                $tasks = array_merge($paTasks, $tasks);
+            }
+        } catch (Throwable $e) {
+            error_log('ServerDashboard Paanyaya query note: ' . $e->getMessage());
+        }
+
         return [
             'kpis' => [
                 'pending_delivery' => $pendingDelivery,

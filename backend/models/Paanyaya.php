@@ -207,7 +207,9 @@ class Paanyaya
             $scheduledDateTime = DateTime::createFromFormat('Y-m-d H:i', $scheduledDate . ' ' . substr($scheduledTime, 0, 5));
         }
 
-        if ($scheduledDateTime) {
+        $allowImmediateFlow = !empty($data['allow_immediate_escalation'])
+            || in_array(strtolower((string) (getenv('AGAP_ALLOW_IMMEDIATE_FLOW_TESTING') ?: '')), ['1', 'true', 'yes'], true);
+        if ($scheduledDateTime && !$allowImmediateFlow) {
             $today = new DateTime($now->format('Y-m-d'));
             $schedDay = new DateTime($scheduledDateTime->format('Y-m-d'));
 
@@ -531,6 +533,86 @@ class Paanyaya
             $stmt->fetchAll(PDO::FETCH_ASSOC)
         );
 
+        // Include complaint-linked Paanyaya preparations / eligible complaints not yet in paanyayas table
+        try {
+            $compSql = "
+                SELECT 0 AS paanyaya_id,
+                       c.complaint_id,
+                       COALESCE(NULLIF(TRIM(c.complaint_number), ''), NULLIF(TRIM(c.intake_reference), ''), CONCAT('CMP-', c.complaint_id)) AS complaint_number,
+                       c.complaint_title,
+                       c.status AS complaint_workflow_status,
+                       cs.case_id AS linked_case_id,
+                       cs.case_status AS linked_case_status,
+                       COALESCE(
+                           (SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = c.complaint_id AND cp.party_type = 'Complainant'),
+                           'Nagpaanyaya'
+                       ) AS complainant_name,
+                       COALESCE(
+                           (SELECT GROUP_CONCAT(DISTINCT TRIM(CONCAT_WS(' ', r.first_name, r.last_name)) SEPARATOR ', ')
+                            FROM complaint_parties cp
+                            INNER JOIN residents r ON r.resident_id = cp.resident_id
+                            WHERE cp.complaint_id = c.complaint_id AND cp.party_type = 'Respondent'),
+                           'Inanyayahan'
+                       ) AS invitee_name,
+                       COALESCE(pp.invitation_number, 1) AS attempt_number,
+                       DATE(pp.appointment_at) AS scheduled_date,
+                       TIME(pp.appointment_at) AS scheduled_time,
+                       COALESCE(pp.venue, 'Tanggapan ng Barangay Tumana') AS venue,
+                       '' AS salaysay,
+                       '' AS dialogue_notes,
+                       NULL AS attendance_recorded_at,
+                       NULL AS complainant_attended,
+                       NULL AS invitee_attended,
+                       NULL AS escalated_to_complaint_id,
+                       NULL AS parent_paanyaya_id,
+                       CASE
+                           WHEN psa.outcome = 'Delivered' THEN 'Delivered'
+                           WHEN psa.attempt_id IS NOT NULL AND psa.outcome IS NULL THEN 'Assigned for Delivery'
+                           WHEN pp.ready_at IS NOT NULL THEN 'Ready for Release'
+                           WHEN pp.appointment_at IS NOT NULL THEN 'Prepared'
+                           ELSE 'Pending Preparation'
+                       END AS status,
+                       1 AS is_complaint_preparation,
+                       '' AS scheduled_by_name
+                FROM complaints c
+                LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+                LEFT JOIN paanyaya_preparations pp ON pp.complaint_id = c.complaint_id
+                    AND pp.invitation_number = (
+                        SELECT MAX(pp2.invitation_number) FROM paanyaya_preparations pp2 WHERE pp2.complaint_id = c.complaint_id
+                    )
+                LEFT JOIN paanyaya_service_attempts psa ON psa.attempt_id = (
+                    SELECT MAX(psa2.attempt_id) FROM paanyaya_service_attempts psa2
+                    WHERE psa2.complaint_id = c.complaint_id AND psa2.invitation_number = COALESCE(pp.invitation_number, 1)
+                )
+                WHERE c.is_draft = 0
+                  AND c.status IN ('Accepted', 'Pre-Docketed (Paanyaya)')
+                  AND NOT EXISTS (
+                      SELECT 1 FROM paanyayas p
+                      WHERE p.complaint_id = c.complaint_id OR p.escalated_to_complaint_id = c.complaint_id
+                  )
+            ";
+            $compParams = [];
+            if ($search !== null && trim($search) !== '') {
+                $compSql .= " AND (c.complaint_number LIKE ? OR c.intake_reference LIKE ? OR c.complaint_title LIKE ?)";
+                $term = '%' . trim($search) . '%';
+                $compParams = [$term, $term, $term];
+            }
+            $compSql .= " ORDER BY c.complaint_id DESC";
+            $compStmt = $this->conn->prepare($compSql);
+            $compStmt->execute($compParams);
+            foreach ($compStmt->fetchAll(PDO::FETCH_ASSOC) as $compRow) {
+                $compRow['current_workflow_status'] = $compRow['status'];
+                $compRow['current_workflow_stage'] = 'Stage 0 · Informal Dialogue';
+                $compRow['has_linked_case_workflow'] = !empty($compRow['linked_case_id']);
+                $records[] = $compRow;
+            }
+        } catch (Throwable $e) {
+            error_log('getAllPaanyayas complaint preparation merge note: ' . $e->getMessage());
+        }
+
         if ($status === null || $status === '' || $status === 'all') {
             return $records;
         }
@@ -546,7 +628,7 @@ class Paanyaya
             null, '', 'all' => true,
             'Resolved', 'Completed', 'Settled' => in_array($currentStatus, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true),
             'Cancelled', 'Failed', 'Escalated' => in_array($currentStatus, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true),
-            'Scheduled', 'Pending' => in_array($currentStatus, ['Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true),
+            'Scheduled', 'Pending' => in_array($currentStatus, ['Scheduled', 'Pending', 'Pending Preparation', 'Prepared', 'Ready for Release', 'Assigned for Delivery', 'Delivered', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true),
             default => $currentStatus === $status,
         };
     }
@@ -2550,7 +2632,9 @@ class Paanyaya
                 require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
                 $delivery = PaanyayaServiceDelivery::latestAttempt($this->conn, $complaintId, $number);
                 $deliveredAt = ($delivery['outcome'] ?? null) === 'Delivered' ? $delivery['recorded_at'] : null;
-                if ($status !== 'Pre-Docketed (Paanyaya)' || !$deliveredAt) {
+                $allowEarlyDialogue = !empty($data['allow_immediate_escalation'])
+                    || in_array(strtolower((string) (getenv('AGAP_ALLOW_IMMEDIATE_FLOW_TESTING') ?: '')), ['1', 'true', 'yes'], true);
+                if (!$allowEarlyDialogue && ($status !== 'Pre-Docketed (Paanyaya)' || !$deliveredAt)) {
                     throw new DomainException('Confirm delivery of this invitation before recording dialogue minutes.');
                 }
                 $submittedVersion = $data['document_version'];

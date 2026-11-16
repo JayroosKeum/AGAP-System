@@ -110,7 +110,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     $serviceGate = (new SummonServiceGate())->forHearing((int) $hearingId);
-    if (!$serviceGate['allowed']) {
+    $allowGateOverride = !empty($inputData['override_service_gate'])
+        && in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true);
+    if (!$serviceGate['allowed'] && !$allowGateOverride) {
         http_response_code(409);
         echo json_encode([
             'success' => false,
@@ -119,6 +121,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'service_gate' => $serviceGate,
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
+    }
+    if (!$serviceGate['allowed'] && $allowGateOverride) {
+        $overrideReason = trim((string) ($inputData['override_reason'] ?? 'Early attendance/escalation override'));
+        try {
+            require_once __DIR__ . '/../../services/AuditService.php';
+            (new AuditService())->logAction(
+                (int) ($_SESSION['user_id'] ?? 0),
+                'HEARING_SERVICE_GATE_OVERRIDE',
+                'hearings',
+                (int) $hearingId,
+                null,
+                ['reason' => $overrideReason, 'gate_code' => $serviceGate['code'] ?? 'UNKNOWN']
+            );
+        } catch (Throwable $auditErr) {
+            error_log('Hearing service gate override audit warning: ' . $auditErr->getMessage());
+        }
     }
 
     // 1. Enforce Presider Attendance Validation

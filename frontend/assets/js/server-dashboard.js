@@ -180,7 +180,10 @@
                 </div>
 
                 <div class="tap-actions-toolbar">
-                    ${task.replacement_document_id ? `
+                    ${task.task_kind === 'paanyaya' ? `
+                    <a class="btn-secondary" href="../../../backend/api/paanyaya/service.php?attempt_id=${Number(task.paanyaya_attempt_id)}&amp;view=invitation" target="_blank" rel="noopener">Open Invitation PDF</a>
+                    <a class="btn-secondary" href="../gps/proof-service.php#paanyaya-assignments">Open Proof of Service</a>
+                    ` : task.replacement_document_id ? `
                     <a class="btn-secondary" href="../../../backend/api/documents/kp-form.php?document_id=${Number(task.replacement_document_id)}&amp;pdf=1" target="_blank" rel="noopener">Open printable notice</a>
                     <a class="btn-secondary" href="../gps/proof-service.php?case_id=${Number(task.case_id)}&amp;hearing_id=${Number(task.hearing_id)}">Open Proof of Service</a>
                     ` : `

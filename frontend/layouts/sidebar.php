@@ -124,6 +124,12 @@ $dashboardLink = $roleName === 'Resident' ? '../resident/dashboard.php'
                         </span>
                         <span class="nav-link-label">Proof of service</span>
                     </a>
+                    <a href="../paanyaya/index.php"<?php echo $isActive(['index.php', 'stage.php'], 'paanyaya'); ?> title="Paanyaya (Invitations)">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                        </span>
+                        <span class="nav-link-label">Paanyaya</span>
+                    </a>
                 </div>
             </details>
         <?php endif; ?>

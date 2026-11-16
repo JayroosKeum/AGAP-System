@@ -81,6 +81,24 @@ final class PaanyayaServiceDelivery
                 ]);
             $this->audit($clerkId, 'Released Paanyaya invitation for service', $complaintId);
             $this->db->commit();
+
+            $refStmt = $this->db->prepare("SELECT COALESCE(NULLIF(TRIM(intake_reference), ''), NULLIF(TRIM(complaint_number), ''), CONCAT('Complaint #', complaint_id)) FROM complaints WHERE complaint_id = ?");
+            $refStmt->execute([$complaintId]);
+            $refLabel = (string) ($refStmt->fetchColumn() ?: ('Complaint #' . $complaintId));
+            $invLabel = $invitation === 2 ? '2nd Paanyaya' : '1st Paanyaya';
+            $apptLabel = !empty($preparation['appointment_at'])
+                ? date('M j, Y g:i A', strtotime((string) $preparation['appointment_at']))
+                : 'Scheduled';
+
+            require_once __DIR__ . '/NotificationService.php';
+            (new NotificationService($this->db))->notifyUser(
+                $serverId,
+                "New Paanyaya Delivery Assigned ({$invLabel})",
+                "{$invLabel} for {$refLabel} is assigned to you for delivery (Appointment: {$apptLabel}).",
+                $clerkId,
+                'info',
+                '../gps/proof-service.php#paanyaya-assignments'
+            );
         } catch (Throwable $exception) {
             $this->db->rollBack();
             throw $exception;
@@ -133,6 +151,25 @@ final class PaanyayaServiceDelivery
             $statement->execute();
             $this->audit($serverId, 'Recorded Paanyaya service result: ' . $outcome, $complaintId);
             $this->db->commit();
+
+            $refStmt = $this->db->prepare("SELECT COALESCE(NULLIF(TRIM(intake_reference), ''), NULLIF(TRIM(complaint_number), ''), CONCAT('Complaint #', complaint_id)) FROM complaints WHERE complaint_id = ?");
+            $refStmt->execute([$complaintId]);
+            $refLabel = (string) ($refStmt->fetchColumn() ?: ('Complaint #' . $complaintId));
+            $invLabel = $invitation === 2 ? '2nd Paanyaya' : '1st Paanyaya';
+            $severity = $outcome === 'Delivered' ? 'success' : 'warning';
+            $msg = $outcome === 'Delivered'
+                ? "{$invLabel} for {$refLabel} was marked Delivered. Dialogue can now be opened."
+                : "{$invLabel} for {$refLabel} was marked Not Delivered" . ($notes !== '' ? ": {$notes}" : '.');
+
+            require_once __DIR__ . '/NotificationService.php';
+            (new NotificationService($this->db))->notifyRoles(
+                ['Administrator', 'Lupon Clerk'],
+                "Paanyaya Delivery {$outcome} ({$invLabel})",
+                $msg,
+                $serverId,
+                $severity,
+                '../complaints/complaint-details.php?id=' . $complaintId . '#paanyaya-preparation'
+            );
         } catch (Throwable $exception) {
             $this->db->rollBack();
             throw $exception;
