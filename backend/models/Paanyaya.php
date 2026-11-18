@@ -60,6 +60,9 @@ class Paanyaya
                 'invitee_longitude' => 'DECIMAL(10,7) NULL',
                 'location_latitude' => 'DECIMAL(10,7) NULL',
                 'location_longitude' => 'DECIMAL(10,7) NULL',
+                'preliminary_category_id' => 'INT UNSIGNED NULL',
+                'preliminary_case_type' => "VARCHAR(20) NULL DEFAULT 'Civil'",
+                'tracking_reference' => 'VARCHAR(50) NULL',
             ];
             foreach ($needed as $col => $def) {
                 if (!in_array($col, $cols, true)) {
@@ -315,7 +318,10 @@ class Paanyaya
                         invitee_latitude = ?,
                         invitee_longitude = ?,
                         location_latitude = ?,
-                        location_longitude = ?
+                        location_longitude = ?,
+                        preliminary_category_id = ?,
+                        preliminary_case_type = ?,
+                        tracking_reference = ?
                     WHERE paanyaya_id = ?
                 ");
                 $updDetails->execute([
@@ -335,6 +341,9 @@ class Paanyaya
                     (isset($data['invitee_longitude']) && $data['invitee_longitude'] !== '' && is_numeric($data['invitee_longitude'])) ? (float) $data['invitee_longitude'] : null,
                     (isset($data['location_latitude']) && $data['location_latitude'] !== '' && is_numeric($data['location_latitude'])) ? (float) $data['location_latitude'] : null,
                     (isset($data['location_longitude']) && $data['location_longitude'] !== '' && is_numeric($data['location_longitude'])) ? (float) $data['location_longitude'] : null,
+                    (!empty($data['preliminary_category_id']) && is_numeric($data['preliminary_category_id'])) ? (int) $data['preliminary_category_id'] : null,
+                    in_array($data['preliminary_case_type'] ?? '', ['Civil', 'Criminal'], true) ? (string) $data['preliminary_case_type'] : 'Civil',
+                    trim((string) ($data['tracking_reference'] ?? '')) !== '' ? trim((string) $data['tracking_reference']) : sprintf('PA-%s-%04d', date('Y'), $paanyayaId),
                     $paanyayaId
                 ]);
             } catch (Throwable $detErr) {
@@ -2998,8 +3007,13 @@ class Paanyaya
             ? $data['complainant_attended'] : 'Present';
         $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Absent'], true)
             ? $data['invitee_attended'] : 'Present';
-        $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
-        $dialogueNotes = trim((string)($data['dialogue_notes'] ?? ($paanyaya['dialogue_notes'] ?? '')));
+        $existingSalaysay = trim((string)($paanyaya['salaysay'] ?? ''));
+        $salaysay = $existingSalaysay !== '' ? $existingSalaysay : trim((string)($data['salaysay'] ?? ''));
+        $incomingNotes = trim((string)($data['dialogue_notes'] ?? ($data['notes'] ?? '')));
+        $existingNotes = trim((string)($paanyaya['dialogue_notes'] ?? ''));
+        $dialogueNotes = ($incomingNotes !== '' && $existingNotes !== '' && $incomingNotes !== $existingNotes && !str_contains($incomingNotes, $existingNotes))
+            ? ($existingNotes . "\n[" . date('Y-m-d H:i') . '] ' . $incomingNotes)
+            : ($incomingNotes !== '' ? $incomingNotes : $existingNotes);
         $action = trim((string)($data['action'] ?? 'save_attendance'));
 
         $currentStatus = (string)($paanyaya['status'] ?? '');
@@ -3092,7 +3106,7 @@ class Paanyaya
                         updated_at = NOW()
                     WHERE complaint_id = ?
                 ")->execute([$complaintId]);
-                $docketResult = $this->escalateToFormalDocketing($complaintId, $userId, $notes);
+                $docketResult = $this->escalateToFormalDocketing($complaintId, $userId, $notes, $data);
                 if ($isEarlyAction && $userId) {
                     $this->audit->logAction($userId, 'PAANYAYA_EARLY_ESCALATION', 'paanyayas', $paanyayaId, null, [
                         'scheduled_at' => $scheduledAtStr,
@@ -3480,7 +3494,8 @@ class Paanyaya
                 return ['success' => false, 'message' => 'This Paanyaya is no longer eligible for another invitation.'];
             }
 
-            $salaysay = trim((string)($data['salaysay'] ?? ($paanyaya['salaysay'] ?? '')));
+            $existingSalaysay = trim((string)($paanyaya['salaysay'] ?? ''));
+        $salaysay = $existingSalaysay !== '' ? $existingSalaysay : trim((string)($data['salaysay'] ?? ''));
 
             // 1. Mark 1st Paanyaya as Completed
             $updFirst = $this->conn->prepare("

@@ -660,11 +660,16 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <div class="sophos-grid-left">
                     <!-- Left Card 1: Information -->
                     <div class="sophos-card">
-                        <div class="sophos-card-header">
+                        <div class="sophos-card-header" style="display:flex; justify-content:space-between; align-items:center;">
                             <h3 class="sophos-card-title">Information</h3>
+                            <span style="font-size:0.68rem; font-weight:700; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:2px 7px; border-radius:9999px;" title="Structured classification is isolated from dynamic hearing minutes">Metadata Protected</span>
                         </div>
                         <div class="sophos-card-body">
                             <div class="sophos-info-list">
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Tracking Ref</span>
+                                    <span id="infoTrackingRef" class="sophos-info-val">—</span>
+                                </div>
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Case type</span>
                                     <span id="infoCaseType" class="sophos-info-val">Civil Complaint</span>

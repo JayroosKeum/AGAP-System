@@ -308,7 +308,7 @@
                                             </tr>
                                         </thead>
                                         <tbody id="ltiaForm6TableBody">
-                                            <tr><td colspan="16" class="pb-table-empty">Loading LTIA Form 06 summary...</td></tr>
+                                            <tr><td colspan="16" class="pb-table-empty"><div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading LTIA Form 06 summary"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:82%"></span><span class="agap-skeleton-line" style="width:65%"></span></div></td></tr>
                                         </tbody>
                                         <tfoot id="ltiaForm6TableFoot"></tfoot>
                                     </table>
@@ -375,7 +375,7 @@
                             </tr>
                         </thead>
                         <tbody id="periodCasesTableBody">
-                            <tr><td colspan="5" class="pb-table-empty">Loading barangay docket...</td></tr>
+                            <tr><td colspan="5" class="pb-table-empty"><div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading barangay docket"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:85%"></span><span class="agap-skeleton-line" style="width:68%"></span></div></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -412,7 +412,7 @@
                 </div>
             </div>
             <div id="todayHearings" class="dash-hearings-stream" aria-live="polite">
-                <div class="pb-table-empty">Loading today's hearing sessions...</div>
+                <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading today's hearing sessions"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:80%"></span><span class="agap-skeleton-line" style="width:64%"></span></div>
             </div>
             <div class="dashboard-table-pagination" id="hearingsTablePagination" style="display:none; padding-top:10px;">
                 <div class="pagination-info" id="hearingsPaginationInfo" style="font-size: 11px;">Showing 1-10</div>
@@ -472,13 +472,13 @@
                 <div class="pb-subanalytics-box">
                     <h4>Most Complained Issues</h4>
                     <div id="analyticsTopCategories" class="analytics-bars-container">
-                        <div class="analytics-loading">Loading dispute statistics...</div>
+                        <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading dispute statistics"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:78%"></span><span class="agap-skeleton-line" style="width:62%"></span></div>
                     </div>
                 </div>
                 <div class="pb-subanalytics-box">
                     <h4>Purok Dispute Hotspots</h4>
                     <div id="analyticsPurokHotspots" class="analytics-bars-container">
-                        <div class="analytics-loading">Loading area hotspots...</div>
+                        <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading area hotspots"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:78%"></span><span class="agap-skeleton-line" style="width:62%"></span></div>
                     </div>
                 </div>
             </div>
@@ -502,13 +502,13 @@
                 <div>
                     <h4 class="pb-sublabel">Gender Distribution</h4>
                     <div id="analyticsGenderBreakdown" class="analytics-demographics-wrap">
-                        <div class="analytics-loading">Loading gender data...</div>
+                        <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading gender data"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:74%"></span><span class="agap-skeleton-line" style="width:58%"></span></div>
                     </div>
                 </div>
                 <div>
                     <h4 class="pb-sublabel">Age Group Brackets</h4>
                     <div id="analyticsAgeDistribution" class="analytics-demographics-wrap">
-                        <div class="analytics-loading">Loading age demographics...</div>
+                        <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading age demographics"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:74%"></span><span class="agap-skeleton-line" style="width:58%"></span></div>
                     </div>
                 </div>
             </div>
@@ -532,7 +532,7 @@
                 </div>
             </div>
             <div id="todayPaanyayas" class="dash-hearings-stream" aria-live="polite">
-                <div class="pb-table-empty">Loading Paanyaya invitations...</div>
+                <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading Paanyaya invitations"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:80%"></span><span class="agap-skeleton-line" style="width:62%"></span></div>
             </div>
         </section>
 
@@ -582,7 +582,7 @@
                 </div>
             </div>
             <div class="pb-audit-grid" id="captainAuditFeedList">
-                <div class="pb-table-empty">Loading audit activity...</div>
+                <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading audit activity"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:82%"></span><span class="agap-skeleton-line" style="width:68%"></span></div>
             </div>
         </section>
     </div>

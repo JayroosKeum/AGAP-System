@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../services/ComplaintRoutingService.php';
 require_once __DIR__ . '/../services/PiiCryptoService.php';
 require_once __DIR__ . '/../services/ValidationService.php';
+require_once __DIR__ . '/../models/Paanyaya.php';
 require_once __DIR__ . '/../config/database.php';
 
 $assert = static function (bool $cond, string $message): void {
@@ -93,5 +94,12 @@ $assert(ValidationService::pastOrTodayDate('2099-01-01') === false, 'Future date
 $assert(ValidationService::pastOrTodayDate('1850-01-01') === false, 'Pre-1900 date must fail pastOrTodayDate');
 $assert(ValidationService::workingDay('2026-11-18') === true, 'Wednesday 2026-11-18 should be a working day');
 $assert(ValidationService::workingDay('2026-11-21') === false, 'Saturday 2026-11-21 should not be a working day');
+
+// 5. Paanyaya preliminary classification columns & ensurePartyColumns check
+$paanyayaModel = new Paanyaya($db);
+$paCols = $db->query('DESCRIBE paanyayas')->fetchAll(PDO::FETCH_COLUMN);
+$assert(in_array('preliminary_category_id', $paCols, true), 'paanyayas must include preliminary_category_id');
+$assert(in_array('preliminary_case_type', $paCols, true), 'paanyayas must include preliminary_case_type');
+$assert(in_array('tracking_reference', $paCols, true), 'paanyayas must include tracking_reference');
 
 echo "test_new_features passed all assertions.\n";

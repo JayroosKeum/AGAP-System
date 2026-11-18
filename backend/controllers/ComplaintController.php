@@ -255,6 +255,12 @@ class ComplaintController
                 throw new DomainException('Record the Paanyaya attendance before docketing.');
             }
 
+            if (empty($data['category_id']) && !empty($source['preliminary_category_id'])) {
+                $data['category_id'] = (int) $source['preliminary_category_id'];
+            }
+            if (empty($data['case_type']) && !empty($source['preliminary_case_type'])) {
+                $data['case_type'] = (string) $source['preliminary_case_type'];
+            }
             $result = $this->complaint->create($data, true);
             if (empty($result['success'])) {
                 $this->conn->rollBack();
@@ -263,12 +269,16 @@ class ComplaintController
 
             $complaintId = (int) $result['complaint_id'];
             $paanyaya->linkStandaloneHandoff($sourceId, (int) ($source['parent_paanyaya_id'] ?? $sourceId), $complaintId);
+            if (!empty($source['tracking_reference'])) {
+                $this->conn->prepare("UPDATE complaints SET intake_reference = COALESCE(NULLIF(intake_reference, ''), ?) WHERE complaint_id = ?")
+                    ->execute([$source['tracking_reference'], $complaintId]);
+            }
             $this->conn->prepare("UPDATE complaints SET paanyaya_1_outcome = 'Impasse_Escalate' WHERE complaint_id = ?")
                 ->execute([$complaintId]);
             if (!$this->audit->log($actorId, 'Created Complaint from Paanyaya', 'Complaints', $complaintId)) {
                 throw new RuntimeException('Could not audit the Paanyaya handoff.');
             }
-            $docket = $paanyaya->escalateToFormalDocketing($complaintId, $actorId, "Formal complaint created from Paanyaya #{$sourceId}.");
+            $docket = $paanyaya->escalateToFormalDocketing($complaintId, $actorId, "Formal complaint created from Paanyaya #{$sourceId}.", $data);
             if (empty($docket['success']) || empty($docket['case_id'])) {
                 throw new RuntimeException($docket['message'] ?? 'Unable to create the formal Mediation docket.');
             }

@@ -74,7 +74,7 @@ include '../../layouts/header.php';
                         <span class="liso-screenings-count" id="lisoScreeningsCount">0 pending</span>
                     </div>
                     <div id="lisoScreeningsList" class="liso-screenings-list" aria-live="polite">
-                        Loading your assigned screenings…
+                        <div class="agap-skeleton agap-skeleton--compact" role="status" aria-label="Loading your assigned screenings"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:78%"></span><span class="agap-skeleton-line" style="width:60%"></span></div>
                     </div>
                 </section>
             <?php endif; ?>
@@ -148,9 +148,7 @@ include '../../layouts/header.php';
 
                     <!-- Hearings Stream -->
                     <div class="duty-hearings-stream" id="luponDutyHearingsContainer">
-                        <div style="padding: 24px; text-align: center; color: #64748b; font-size: 1rem;">
-                            Kinukuha ang talaan ng mga pagdinig sa araw ng iyong duty...
-                        </div>
+                        <div class="agap-skeleton" role="status" aria-label="Loading duty day hearings"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:82%"></span><span class="agap-skeleton-line" style="width:66%"></span></div>
                     </div>
                 </section>
 
@@ -168,9 +166,7 @@ include '../../layouts/header.php';
                     </p>
 
                     <div class="pangkat-cases-grid" id="luponAssignedCasesContainer">
-                        <div style="padding: 24px; text-align: center; color: #64748b; font-size: 1rem;">
-                            Kinukuha ang talaan ng mga kaso...
-                        </div>
+                        <div class="agap-skeleton" role="status" aria-label="Loading assigned Pangkat cases"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:80%"></span><span class="agap-skeleton-line" style="width:64%"></span></div>
                     </div>
                 </section>
 

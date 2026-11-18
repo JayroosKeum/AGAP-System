@@ -692,7 +692,14 @@ async function loadComplaintDetails() {
 
         const sophosHeroNum = document.getElementById('sophosHeroCaseNum');
         if (sophosHeroNum) {
-            sophosHeroNum.textContent = '#' + docketNum;
+            const trackRef = String(data.intake_reference || '').trim();
+            sophosHeroNum.textContent = (trackRef && trackRef !== docketNum)
+                ? `#${docketNum} · Ref: ${trackRef}`
+                : '#' + docketNum;
+        }
+        const infoTrackingRef = document.getElementById('infoTrackingRef');
+        if (infoTrackingRef) {
+            infoTrackingRef.textContent = data.intake_reference || data.complaint_number || docketNum || '—';
         }
 
         const compTitleEl = document.getElementById('complaintTitle');

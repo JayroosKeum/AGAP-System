@@ -166,6 +166,21 @@ if ($escalatePaanyayaId > 0) {
     if ($escalatePaanyaya && empty($old)) {
         $old['narrative'] = $escalatePaanyaya['salaysay'] ?? '';
         $old['escalated_from_paanyaya_id'] = $escalatePaanyaya['paanyaya_id'];
+        if (!empty($escalatePaanyaya['preliminary_category_id'])) {
+            $old['category_id'] = (int) $escalatePaanyaya['preliminary_category_id'];
+        }
+        if (!empty($escalatePaanyaya['preliminary_case_type'])) {
+            $old['case_type'] = (string) $escalatePaanyaya['preliminary_case_type'];
+        }
+        $old['tracking_reference'] = !empty($escalatePaanyaya['tracking_reference'])
+            ? (string) $escalatePaanyaya['tracking_reference']
+            : sprintf('PA-%s-%04d', date('Y'), (int) $escalatePaanyaya['paanyaya_id']);
+        $old['mediation_date'] = isset($_GET['mediation_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $_GET['mediation_date'])
+            ? (string) $_GET['mediation_date']
+            : date('Y-m-d', strtotime('next tuesday'));
+        $old['mediation_time'] = isset($_GET['mediation_time']) && preg_match('/^\d{2}:\d{2}/', (string) $_GET['mediation_time'])
+            ? substr((string) $_GET['mediation_time'], 0, 5)
+            : '13:00';
 
         // Preserve the party profiles already captured at Stage 0. The clerk
         // only needs to complete the formal complaint details on this page.
@@ -806,6 +821,45 @@ include '../../layouts/header.php';
 
                     <!-- LEFT PANEL COLUMN: Stepper Progress in Digital mode; Document Viewer in Pre-Signed Paper mode -->
                     <div class="wizard-sidebar-col" id="intakeLeftPanel">
+                        <?php if (!empty($escalatePaanyaya)): ?>
+                        <div class="wizard-stepper-card" id="paanyayaSideBySideRef" style="margin-bottom: 14px; border: 1.5px solid #93c5fd; background: #f8fafc;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:8px;">
+                                <strong style="font-size:0.84rem; color:#1e3a8a;">📋 Stage 0 Paanyaya Reference</strong>
+                                <span style="font-size:0.72rem; font-weight:700; background:#dbeafe; color:#1d4ed8; padding:2px 7px; border-radius:9999px;">
+                                    <?php echo htmlspecialchars((string)($old['tracking_reference'] ?? ('PA-' . $escalatePaanyaya['paanyaya_id']))); ?>
+                                </span>
+                            </div>
+                            <div style="font-size:0.78rem; color:#334155; display:flex; flex-direction:column; gap:6px; line-height:1.4;">
+                                <div><strong>Complainant:</strong> <?php echo htmlspecialchars($escalatePaanyaya['complainant_name'] ?? '—'); ?> <span style="color:#16a34a;">(<?php echo htmlspecialchars($escalatePaanyaya['complainant_attended'] ?? 'Present'); ?>)</span></div>
+                                <div><strong>Respondent:</strong> <?php echo htmlspecialchars($escalatePaanyaya['invitee_name'] ?? '—'); ?> <span style="color:#dc2626;">(<?php echo htmlspecialchars($escalatePaanyaya['invitee_attended'] ?? 'Absent'); ?>)</span></div>
+                                <?php if (!empty($escalatePaanyaya['salaysay'])): ?>
+                                <div style="background:#ffffff; border:1px solid #cbd5e1; border-radius:6px; padding:6px 8px;">
+                                    <div style="font-size:0.7rem; font-weight:700; color:#475569; text-transform:uppercase;">Original Salaysay (Inherited)</div>
+                                    <div style="font-size:0.76rem; color:#0f172a; margin-top:2px;"><?php echo nl2br(htmlspecialchars((string)$escalatePaanyaya['salaysay'])); ?></div>
+                                </div>
+                                <?php endif; ?>
+                                <?php if (!empty($escalatePaanyaya['dialogue_notes'])): ?>
+                                <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:6px 8px;">
+                                    <div style="font-size:0.7rem; font-weight:700; color:#92400e; text-transform:uppercase;">Session Notes (Separate History)</div>
+                                    <div style="font-size:0.76rem; color:#78350f; margin-top:2px;"><?php echo nl2br(htmlspecialchars((string)$escalatePaanyaya['dialogue_notes'])); ?></div>
+                                </div>
+                                <?php endif; ?>
+                                <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:8px; margin-top:4px;">
+                                    <div style="font-size:0.72rem; font-weight:700; color:#1e40af; margin-bottom:6px;">🗓️ 1st Formal Mediation Schedule</div>
+                                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
+                                        <div>
+                                            <label for="escSideMedDate" style="font-size:0.7rem; color:#334155; display:block;">Date (Tue)</label>
+                                            <input type="date" id="escSideMedDate" name="mediation_date" min="<?php echo date('Y-m-d'); ?>" value="<?php echo htmlspecialchars((string)($old['mediation_date'] ?? date('Y-m-d', strtotime('next tuesday')))); ?>" style="width:100%; font-size:0.76rem; padding:4px 6px; border:1px solid #93c5fd; border-radius:5px;">
+                                        </div>
+                                        <div>
+                                            <label for="escSideMedTime" style="font-size:0.7rem; color:#334155; display:block;">Time (1:00 PM+)</label>
+                                            <input type="time" id="escSideMedTime" name="mediation_time" min="08:00" max="17:00" value="<?php echo htmlspecialchars((string)($old['mediation_time'] ?? '13:00')); ?>" style="width:100%; font-size:0.76rem; padding:4px 6px; border:1px solid #93c5fd; border-radius:5px;">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
                         <!-- PROGRESS STEPPER SIDEBAR (Matching Modern Reference UI, Narrative-First Order) -->
                         <div class="wizard-stepper-card" id="intakeQuickNav">
                             <div class="wizard-stepper-header">

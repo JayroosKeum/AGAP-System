@@ -42,6 +42,15 @@ $purokOptions = [
     'Purok 8', 'Purok 9', 'Purok 10', 'Purok 11', 'Purok 12', 'Purok 13', 'Purok 14',
     'Doña Petra', 'Sitio', 'Non-Resident'
 ];
+$paanyayaCategories = [];
+try {
+    $catStmt = $dbConn->query("SELECT category_id, category_name FROM complaint_categories ORDER BY category_name ASC");
+    if ($catStmt) {
+        $paanyayaCategories = $catStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+} catch (Throwable $ce) {
+    $paanyayaCategories = [];
+}
 
 // Count summary across grouped cases
 $allList = $statusFilter === '' && $searchFilter === '' ? $paanyayas : $paanyayaModel->getGroupedPaanyayaCases();
@@ -2580,6 +2589,25 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                 <input type="text" id="schedVenue" name="venue" class="form-control" value="Tanggapan ng Barangay Tumana" required>
                             </div>
 
+                            <div class="form-row" style="margin-bottom: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedPrelimCategory">Preliminary Category (Optional — Carried on Escalation)</label>
+                                    <select id="schedPrelimCategory" name="preliminary_category_id" class="form-control">
+                                        <option value="">— Select Category (Optional) —</option>
+                                        <?php foreach ($paanyayaCategories as $catItem): ?>
+                                            <option value="<?php echo (int) $catItem['category_id']; ?>"><?php echo htmlspecialchars($catItem['category_name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="schedPrelimCaseType">Preliminary Case Type</label>
+                                    <select id="schedPrelimCaseType" name="preliminary_case_type" class="form-control">
+                                        <option value="Civil">Civil</option>
+                                        <option value="Criminal">Criminal</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="schedSalaysay">Salaysay (Statement / Reason for Invitation)</label>
                                 <textarea id="schedSalaysay" name="salaysay" class="form-control" rows="7" placeholder="Ilarawan ang buod ng sumbong, dahilan ng pag-anyaya, o salaysay ng nagpaanyaya..." required></textarea>
@@ -2913,6 +2941,24 @@ tr[data-paanyaya-row="1"].is-expanded td {
                             <div class="att-field-group">
                                 <label for="p2Time" class="att-field-label" style="font-size: 0.76rem;">Oras ng 2nd Paanyaya</label>
                                 <input type="time" id="p2Time" value="14:00" class="form-control" style="font-size: 0.84rem; padding: 7px 10px; border-radius: 8px;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Conditional Inline 1st Mediation Schedule Drawer (Upon Escalation) -->
+                    <div id="escalateMediationPanel" class="att-p2-drawer" style="display: none; background: #eff6ff; border-color: #bfdbfe;">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px;">
+                            <span style="font-size: 0.82rem; font-weight: 700; color: #1e3a8a;">1st Formal Mediation Schedule (Punong Barangay)</span>
+                            <span style="font-size: 0.72rem; color: #1d4ed8; background: #dbeafe; border: 1px solid #93c5fd; padding: 2px 8px; border-radius: 9999px; font-weight: 700;">Tue 1:00 PM+ Rule</span>
+                        </div>
+                        <div class="form-row" style="margin-bottom: 0;">
+                            <div class="att-field-group">
+                                <label for="escMedDate" class="att-field-label" style="font-size: 0.76rem;">1st Mediation Date</label>
+                                <input type="date" id="escMedDate" name="mediation_date" min="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d', strtotime('next tuesday')); ?>" class="form-control" style="font-size: 0.84rem; padding: 7px 10px; border-radius: 8px;">
+                            </div>
+                            <div class="att-field-group">
+                                <label for="escMedTime" class="att-field-label" style="font-size: 0.76rem;">Target Call Time</label>
+                                <input type="time" id="escMedTime" name="mediation_time" min="08:00" max="17:00" value="13:00" class="form-control" style="font-size: 0.84rem; padding: 7px 10px; border-radius: 8px;">
                             </div>
                         </div>
                     </div>
@@ -3851,6 +3897,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     scheduled_time: time,
                     venue: venue,
                     salaysay: salaysay,
+                    preliminary_category_id: document.getElementById('schedPrelimCategory')?.value || '',
+                    preliminary_case_type: document.getElementById('schedPrelimCaseType')?.value || 'Civil',
                     require_party_details: 1,
                     complaint_id: 0,
                     has_e_signature: 1
@@ -4431,6 +4479,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
+        const escalateMediationPanel = document.getElementById('escalateMediationPanel');
+        if (escalateMediationPanel) {
+            escalateMediationPanel.style.display = (!isLocked && outcome === 'escalate') ? 'block' : 'none';
+        }
+
         if (btnConfirmOutcome && !isLocked) {
             const labelMap = {
                 resolve: 'Save Settlement',
@@ -4813,11 +4866,12 @@ document.addEventListener('DOMContentLoaded', function() {
             complainant_attended: getRadio('complainant_attended'),
             invitee_attended: getRadio('invitee_attended'),
             notes: notesText,
-            salaysay: notesText,
             dialogue_notes: notesText,
             action: actionType,
             p2_date: p2DateInput?.value || '',
             p2_time: p2TimeInput?.value || '14:00',
+            mediation_date: document.getElementById('escMedDate')?.value || '',
+            mediation_time: document.getElementById('escMedTime')?.value || '13:00',
             allow_immediate_escalation: Boolean(document.getElementById('attAllowImmediateEscalation')?.checked)
         };
 
@@ -4942,8 +4996,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     complainant_attended: getRadio('complainant_attended'),
                     invitee_attended: getRadio('invitee_attended'),
                     notes: notesText,
-                    salaysay: notesText,
                     dialogue_notes: notesText,
+                    allow_immediate_escalation: Boolean(document.getElementById('attAllowImmediateEscalation')?.checked),
                     action: 'save_attendance'
                 })
             });
@@ -4952,7 +5006,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 throw new Error(data.message || 'Unable to save the Paanyaya attendance.');
             }
 
-            window.location.href = `../complaints/complaint-create.php?escalate_paanyaya_id=${encodeURIComponent(paanyayaId)}`;
+            const escMedDateVal = document.getElementById('escMedDate')?.value || '';
+            const escMedTimeVal = document.getElementById('escMedTime')?.value || '13:00';
+            window.location.href = `../complaints/complaint-create.php?escalate_paanyaya_id=${encodeURIComponent(paanyayaId)}&mediation_date=${encodeURIComponent(escMedDateVal)}&mediation_time=${encodeURIComponent(escMedTimeVal)}`;
         } catch (error) {
             console.error(error);
             agapAlert(error.message || 'Hindi naisave ang Paanyaya attendance.', 'error');

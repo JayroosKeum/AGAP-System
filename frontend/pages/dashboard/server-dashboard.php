@@ -96,9 +96,7 @@ include '../../layouts/header.php';
                 </div>
 
                 <div class="dispatch-tasks-stream" id="dispatchTasksContainer">
-                    <div style="padding: 30px; text-align: center; color: #64748b; font-size: 1rem;">
-                        Kinukuha ang mga summons para sa field dispatch...
-                    </div>
+                    <div class="agap-skeleton" role="status" aria-label="Loading field dispatch tasks"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:84%"></span><span class="agap-skeleton-line" style="width:68%"></span></div>
                 </div>
             </section>
 
