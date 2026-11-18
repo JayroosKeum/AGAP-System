@@ -2405,7 +2405,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                             <input type="checkbox" id="chkCompNoContact"> No contact no.
                                         </label>
                                     </div>
-                                    <input type="text" id="schedComplainantContact" name="complainant_contact_no" class="form-control" placeholder="09XX-XXX-XXXX" required>
+                                    <input type="tel" id="schedComplainantContact" name="complainant_contact_no" class="form-control" inputmode="tel" maxlength="20" data-validate="phone" placeholder="09XX-XXX-XXXX" required>
                                 </div>
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="schedComplainantEmail">Email Address <span style="font-size: 0.74rem; color: #64748b; font-weight: normal;">(Optional)</span></label>
@@ -2519,7 +2519,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                             <input type="checkbox" id="chkInvNoContact"> Unknown / None
                                         </label>
                                     </div>
-                                    <input type="text" id="schedInviteeContact" name="invitee_contact_no" class="form-control" placeholder="09XX-XXX-XXXX" required>
+                                    <input type="tel" id="schedInviteeContact" name="invitee_contact_no" class="form-control" inputmode="tel" maxlength="20" data-validate="phone" placeholder="09XX-XXX-XXXX" required>
                                 </div>
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="schedInviteeEmail">Email Address <span style="font-size: 0.74rem; color: #64748b; font-weight: normal;">(Optional)</span></label>
@@ -2908,7 +2908,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                         <div class="form-row" style="margin-bottom: 0;">
                             <div class="att-field-group">
                                 <label for="p2Date" class="att-field-label" style="font-size: 0.76rem;">Petsa ng 2nd Paanyaya</label>
-                                <input type="date" id="p2Date" class="form-control" style="font-size: 0.84rem; padding: 7px 10px; border-radius: 8px;">
+                                <input type="date" id="p2Date" min="<?php echo date('Y-m-d'); ?>" class="form-control" style="font-size: 0.84rem; padding: 7px 10px; border-radius: 8px;">
                             </div>
                             <div class="att-field-group">
                                 <label for="p2Time" class="att-field-label" style="font-size: 0.76rem;">Oras ng 2nd Paanyaya</label>
@@ -3416,6 +3416,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 agapAlert('Please enter the Contact Number of the complainant or check "No contact no.".', 'warning');
                 return false;
             }
+            if (!compNoContact && compContact && !/^\+?[0-9 .()\-]{7,20}$/.test(compContact)) {
+                agapAlert('Please enter a valid numeric contact number for the complainant.', 'warning');
+                return false;
+            }
             return true;
         }
         if (step === 2) {
@@ -3437,6 +3441,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 agapAlert('Please enter the Contact Number of the invitee or check "Unknown / None".', 'warning');
                 return false;
             }
+            if (!invNoContact && invContact && !/^\+?[0-9 .()\-]{7,20}$/.test(invContact)) {
+                agapAlert('Please enter a valid numeric contact number for the invitee.', 'warning');
+                return false;
+            }
             return true;
         }
         if (step === 3) {
@@ -3445,6 +3453,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const salaysay = document.getElementById('schedSalaysay')?.value.trim() || '';
             if (!date || !time) {
                 agapAlert('Please provide both scheduled date and time.', 'warning');
+                return false;
+            }
+            if (schedDateInput?.min && date < schedDateInput.min) {
+                agapAlert('Scheduled date cannot be in the past.', 'warning');
                 return false;
             }
             if (!salaysay) {

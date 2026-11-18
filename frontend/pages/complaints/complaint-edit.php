@@ -1187,7 +1187,7 @@ include __DIR__ . '/../../layouts/header.php';
                                     <input type="checkbox" id="modalBirthUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
                                 </label>
                             </div>
-                            <input type="date" id="modalBirthdate" max="<?php echo date('Y-m-d'); ?>">
+                            <input type="date" id="modalBirthdate" min="1900-01-01" max="<?php echo date('Y-m-d'); ?>">
                         </div>
                         <div class="party-field-col">
                             <label for="modalAge">Age</label>
@@ -1222,7 +1222,7 @@ include __DIR__ . '/../../layouts/header.php';
                                     <input type="checkbox" id="modalContactUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
                                 </label>
                             </div>
-                            <input type="tel" id="modalContactNo" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
+                            <input type="tel" id="modalContactNo" inputmode="tel" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
                         </div>
                         <div class="party-field-col">
                             <label for="modalEmail">Email Address</label>
@@ -1349,7 +1349,7 @@ include __DIR__ . '/../../layouts/header.php';
                             <div class="party-fields-grid-2" style="margin-top:8px;">
                                 <div class="party-field-col">
                                     <label for="modalGuardianContact">Guardian Contact Number</label>
-                                    <input type="tel" id="modalGuardianContact" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
+                                    <input type="tel" id="modalGuardianContact" inputmode="tel" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
                                 </div>
                                 <div class="party-field-col">
                                     <label for="modalGuardianAddress">Guardian Address</label>

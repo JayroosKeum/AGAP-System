@@ -53,6 +53,10 @@ jobs:
           node --check frontend/assets/js/complaints.js
           node --check frontend/assets/js/search.js
           node --check frontend/assets/js/resident-password-toggle.js
+          node --check frontend/assets/js/stage-workspace.js
+          node --check frontend/assets/js/server-dashboard.js
+          node --check frontend/assets/js/app.js
+          node --check public/sw.js
           bash -n .github/scripts/verify-azure-database.sh
 
       - name: Import canonical schema and verify upgrade migrations

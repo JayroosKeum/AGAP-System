@@ -379,3 +379,148 @@ document.addEventListener('DOMContentLoaded', () => {
     checkWorkflowNotifications();
     window.setInterval(checkWorkflowNotifications, 45000);
 });
+
+// Shared Form Input & Scheduling Validation Enforcer across AGAP flows
+(() => {
+    const localIsoDate = () => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    const isPhoneInput = (el) => {
+        if (!(el instanceof HTMLInputElement)) return false;
+        if (['hidden', 'checkbox', 'radio', 'file', 'submit', 'button'].includes(el.type)) return false;
+        if (el.id === 'walkinLookupQuery' || el.id === 'trackerVerifier') return false;
+        if (el.type === 'tel' || el.dataset.validate === 'phone') return true;
+        const id = (el.id || '').toLowerCase();
+        const name = (el.name || '').toLowerCase();
+        if (id.includes('preferredcontact') || id.includes('unknown') || name.includes('preferred') || name.includes('unknown')) return false;
+        return (
+            id === 'modalcontactno' ||
+            id === 'modalguardiancontact' ||
+            id === 'contactno' ||
+            id === 'contact_no' ||
+            id === 'schedcomplainantcontact' ||
+            id === 'schedinviteecontact' ||
+            name.includes('contact_no') ||
+            name === 'contact_number' ||
+            name.includes('guardian_contact')
+        );
+    };
+
+    const isValidPhPhone = (raw) => {
+        const val = String(raw || '').trim();
+        if (val === '') return true;
+        if (!/^\+?[0-9 .()\-]+$/.test(val)) return false;
+        let digits = val.replace(/\D+/g, '');
+        if (val.startsWith('+')) {
+            if (!digits.startsWith('63')) return false;
+            digits = digits.slice(2);
+        } else if (digits.startsWith('63')) {
+            digits = digits.slice(2);
+        } else if (digits.startsWith('0')) {
+            digits = digits.slice(1);
+        }
+        return /^9[0-9]{9}$/.test(digits) || /^(?:2[0-9]{8}|[3-8][0-9]{8,9})$/.test(digits);
+    };
+
+    const FUTURE_SCHED_DATE_IDS = new Set([
+        'schedDate',
+        'p2Date',
+        'summonMediationDate',
+        'modalPaanyayaDate',
+        'escalationMedDate',
+        'issueStageDate',
+        'inlineSettleDueDate'
+    ]);
+
+    const FUTURE_SCHED_DATE_NAMES = new Set([
+        'hearing_date',
+        'mediation_date',
+        'invitation_date',
+        'scheduled_date'
+    ]);
+
+    const isFutureScheduleDateInput = (el) =>
+        el instanceof HTMLInputElement &&
+        el.type === 'date' &&
+        (FUTURE_SCHED_DATE_IDS.has(el.id) || FUTURE_SCHED_DATE_NAMES.has(el.name));
+
+    const applyConstraintsToRoot = (root = document) => {
+        const today = localIsoDate();
+        root.querySelectorAll('input').forEach((el) => {
+            if (isPhoneInput(el)) {
+                if (el.type === 'text') el.type = 'tel';
+                if (!el.getAttribute('inputmode')) el.setAttribute('inputmode', 'tel');
+                if (!el.getAttribute('maxlength') || Number(el.getAttribute('maxlength')) > 20) {
+                    el.setAttribute('maxlength', '20');
+                }
+            } else if (isFutureScheduleDateInput(el)) {
+                if (!el.min || el.min < today) el.min = today;
+            } else if (el.type === 'date' && (el.id === 'modalBirthdate' || el.name === 'birth_date')) {
+                if (!el.max || el.max > today) el.max = today;
+                if (!el.min) el.min = '1900-01-01';
+            }
+        });
+    };
+
+    document.addEventListener('input', (e) => {
+        const el = e.target;
+        if (!(el instanceof HTMLInputElement)) return;
+
+        if (isPhoneInput(el)) {
+            const cleaned = el.value.replace(/[^0-9+() .-]/g, '');
+            if (cleaned !== el.value) {
+                const pos = el.selectionStart || cleaned.length;
+                el.value = cleaned;
+                try { el.setSelectionRange(pos - 1, pos - 1); } catch (_) {}
+            }
+            if (cleaned.trim() !== '' && !isValidPhPhone(cleaned)) {
+                el.setCustomValidity('Enter a valid Philippine mobile (09XXXXXXXXX / +639XXXXXXXXX) or landline number.');
+            } else {
+                el.setCustomValidity('');
+            }
+            return;
+        }
+
+        if (el.type === 'number' && (el.id === 'modalAge' || el.name === 'age')) {
+            const digitsOnly = el.value.replace(/\D+/g, '');
+            if (digitsOnly !== el.value) el.value = digitsOnly;
+            const num = Number(el.value);
+            if (el.value !== '' && (num < 0 || num > 130)) {
+                el.setCustomValidity('Age must be between 0 and 130.');
+            } else {
+                el.setCustomValidity('');
+            }
+        }
+    }, true);
+
+    document.addEventListener('change', (e) => {
+        const el = e.target;
+        if (!(el instanceof HTMLInputElement)) return;
+
+        if (isFutureScheduleDateInput(el) && el.value) {
+            const today = localIsoDate();
+            if (el.value < today) {
+                el.setCustomValidity('Scheduled date cannot be in the past.');
+                el.reportValidity();
+                return;
+            }
+            if (el.id !== 'inlineSettleDueDate') {
+                const parts = el.value.split('-').map(Number);
+                const dow = new Date(parts[0], parts[1] - 1, parts[2]).getDay();
+                if (dow === 0 || dow === 6) {
+                    el.setCustomValidity('Schedules must be set on working days (Monday to Friday).');
+                    el.reportValidity();
+                    return;
+                }
+            }
+            el.setCustomValidity('');
+        }
+    }, true);
+
+    document.addEventListener('DOMContentLoaded', () => applyConstraintsToRoot(document));
+})();

@@ -9,7 +9,8 @@ const suites = {
   conciliation: 'test_conciliation_transition_and_timeline_e2e.php',
   show_cause: 'test_show_cause_workflow_matrix.php',
   regressions: 'test_cfa_and_service_verification_regressions.php',
-  resident_google: 'test_resident_google_registration.php'
+  resident_google: 'test_resident_google_registration.php',
+  new_features: 'test_new_features.php'
 };
 
 const requested = process.argv.slice(2);

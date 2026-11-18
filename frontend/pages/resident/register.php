@@ -71,7 +71,7 @@ $messages = [
                     <?php else: ?>
                         <div class="resident-field"><label for="email">Email address <span>*</span></label><input id="email" name="email" type="email" autocomplete="email" maxlength="150" required></div>
                     <?php endif; ?>
-                    <div class="resident-field"><label for="contact_no">Mobile or contact number</label><input id="contact_no" name="contact_no" type="tel" autocomplete="tel" maxlength="20"></div>
+                    <div class="resident-field"><label for="contact_no">Mobile or contact number</label><input id="contact_no" name="contact_no" type="tel" inputmode="tel" pattern="[0-9+() .-]{10,20}" title="Enter a valid Philippine mobile or telephone number (numbers only)." autocomplete="tel" maxlength="20" oninput="this.value=this.value.replace(/[^0-9+() .-]/g,'')"></div>
                     <div class="resident-name-grid">
                         <div class="resident-field">
                             <label for="password">Password <span>*</span></label>

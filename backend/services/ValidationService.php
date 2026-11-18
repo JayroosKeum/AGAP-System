@@ -22,6 +22,23 @@ class ValidationService
             && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0));
     }
 
+    public static function futureOrTodayDate($date): bool
+    {
+        return self::date($date) && $date >= date('Y-m-d');
+    }
+
+    public static function pastOrTodayDate($date): bool
+    {
+        return self::date($date) && $date <= date('Y-m-d') && $date >= '1900-01-01';
+    }
+
+    public static function workingDay($date): bool
+    {
+        if (!self::date($date)) return false;
+        $dow = (int) (new DateTimeImmutable($date))->format('N');
+        return $dow >= 1 && $dow <= 5;
+    }
+
     public static function dateTime($value, string $format): bool
     {
         if (!is_string($value) || $value === '') return false;
@@ -102,7 +119,7 @@ class ValidationService
         if (!self::name($first)) return ['success' => false, 'message' => 'Please enter a valid first name (up to 100 characters).'];
         if (!self::name($last)) return ['success' => false, 'message' => 'Please enter a valid last name (up to 100 characters).'];
         if (!self::name($middle, 100, false)) return ['success' => false, 'message' => 'Please enter a valid middle name (up to 100 characters).'];
-        if ($birthDate !== '' && (!self::date($birthDate) || $birthDate > date('Y-m-d'))) return ['success' => false, 'message' => 'Please enter a real birth date that is not in the future.'];
+        if ($birthDate !== '' && !self::pastOrTodayDate($birthDate)) return ['success' => false, 'message' => 'Please enter a real birth date that is not in the future.'];
         if ($gender !== '' && !in_array($gender, ['Male', 'Female'], true)) return ['success' => false, 'message' => 'Please select a valid gender.'];
         if ($civilStatus !== '' && !in_array($civilStatus, ['Single', 'Married', 'Widowed', 'Separated'], true)) return ['success' => false, 'message' => 'Please select a valid civil status.'];
         if (!self::phone($contact) || mb_strlen($contact) > 20) return ['success' => false, 'message' => 'Please enter a valid Philippine telephone number (up to 20 characters).'];

@@ -1354,7 +1354,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         </span>
                     </div>
 
-                    <input type="date" id="summonMediationDate" name="mediation_date" required style="margin-bottom: 8px;">
+                    <input type="date" id="summonMediationDate" name="mediation_date" min="<?= date('Y-m-d') ?>" required style="margin-bottom: 8px;">
 
                     <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
                     <div id="summonVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
@@ -1653,11 +1653,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <div class="form-row-2" style="margin-bottom: 12px;">
                 <div class="form-group">
                     <label for="modalPaanyayaDate" style="font-weight: 600; font-size: 0.85rem;">Dialogue Date <span class="required-mark">*</span></label>
-                    <input type="date" id="modalPaanyayaDate" name="invitation_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <input type="date" id="modalPaanyayaDate" name="invitation_date" min="<?= date('Y-m-d') ?>" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
                 <div class="form-group">
                     <label for="modalPaanyayaTime" style="font-weight: 600; font-size: 0.85rem;">Dialogue Time <span class="required-mark">*</span></label>
-                    <input type="time" id="modalPaanyayaTime" name="invitation_time" value="14:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <input type="time" id="modalPaanyayaTime" name="invitation_time" min="08:00" max="17:00" value="14:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
             </div>
             <div class="form-group" style="margin-bottom: 12px;">
@@ -1719,7 +1719,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                 Checking...
                             </span>
                         </div>
-                        <input type="date" id="escalationMedDate" name="mediation_date" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                        <input type="date" id="escalationMedDate" name="mediation_date" min="<?= date('Y-m-d') ?>" style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                     </div>
                     <div class="form-group">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -1805,11 +1805,11 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <div class="form-row-2" style="margin-bottom: 12px;">
                 <div class="form-group">
                     <label for="issueStageDate" style="font-weight: 600; font-size: 0.84rem;">Dialogue Date <span class="required-mark">*</span></label>
-                    <input type="date" id="issueStageDate" name="invitation_date" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <input type="date" id="issueStageDate" name="invitation_date" min="<?= date('Y-m-d') ?>" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
                 <div class="form-group">
                     <label for="issueStageTime" style="font-weight: 600; font-size: 0.84rem;">Dialogue Time <span class="required-mark">*</span></label>
-                    <input type="time" id="issueStageTime" name="invitation_time" value="14:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
+                    <input type="time" id="issueStageTime" name="invitation_time" min="08:00" max="17:00" value="14:00" required style="padding: 8px 10px; font-size: 0.88rem; border: 1px solid #cbd5e1; border-radius: 6px; width: 100%;">
                 </div>
             </div>
 
@@ -1936,7 +1936,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         </span>
                     </div>
 
-                    <input type="date" id="schedDate" name="hearing_date" required onchange="handleSchedDateChange(this.value)" style="margin-bottom: 8px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
+                    <input type="date" id="schedDate" name="hearing_date" min="<?= date('Y-m-d') ?>" required onchange="handleSchedDateChange(this.value)" style="margin-bottom: 8px; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 10px; font-size: 0.88rem; box-sizing: border-box; background: #fff;">
 
                     <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
                     <div id="schedVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">

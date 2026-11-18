@@ -78,7 +78,10 @@ include '../../layouts/header.php';
             </div>
 
             <?php if ($isAdmin): ?>
-                <div class="users-header-actions">
+                <div class="users-header-actions" style="display:flex; gap:10px; align-items:center;">
+                    <button type="button" class="btn-secondary" id="btnImportCsvUsers" onclick="openCsvImportModal()"<?php echo $initialTab === 'staff' ? '' : ' hidden'; ?>>
+                        <span>Import CSV</span>
+                    </button>
                     <button type="button" class="btn-pill-dark" id="btnAddStaffUser" onclick="openUserModal()"<?php echo $initialTab === 'staff' ? '' : ' hidden'; ?>>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                         <span>Add Staff User</span>
@@ -409,6 +412,66 @@ include '../../layouts/header.php';
         </form>
     </div>
 </div>
+
+<div id="csvImportModal" class="modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.5); z-index:1200; align-items:center; justify-content:center;">
+    <div class="modal-card" style="background:#fff; border-radius:14px; padding:24px; max-width:480px; width:92%; box-shadow:0 20px 45px rgba(15,23,42,0.2);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <h2 style="margin:0; font-size:1.1rem;">Bulk Import Users (CSV)</h2>
+            <button type="button" onclick="closeCsvImportModal()" style="background:none; border:none; font-size:1.3rem; cursor:pointer;">&times;</button>
+        </div>
+        <p style="font-size:0.85rem; color:#475569; margin-bottom:12px;">
+            Required columns: <code>first_name,last_name,username,email,role</code>. Optional: <code>middle_name,contact_number,password</code>.
+        </p>
+        <form id="csvImportForm" enctype="multipart/form-data">
+            <input type="file" id="csvImportFile" name="csv_file" accept=".csv,text/csv" required style="margin-bottom:12px; width:100%;">
+            <div id="csvImportResult" style="display:none; font-size:0.84rem; padding:10px; border-radius:8px; margin-bottom:12px;"></div>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" class="btn-secondary" onclick="closeCsvImportModal()">Cancel</button>
+                <button type="submit" class="btn-pill-dark">Upload &amp; Import</button>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+function openCsvImportModal() {
+    var modal = document.getElementById('csvImportModal');
+    if (modal) modal.style.display = 'flex';
+}
+function closeCsvImportModal() {
+    var modal = document.getElementById('csvImportModal');
+    if (modal) modal.style.display = 'none';
+}
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.getElementById('csvImportForm');
+    if (!form) return;
+    form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var resultBox = document.getElementById('csvImportResult');
+        var fileInput = document.getElementById('csvImportFile');
+        if (!fileInput || !fileInput.files.length) return;
+        var fd = new FormData();
+        fd.append('csv_file', fileInput.files[0]);
+        resultBox.style.display = 'block';
+        resultBox.style.background = '#f1f5f9';
+        resultBox.style.color = '#334155';
+        resultBox.textContent = 'Importing CSV...';
+        try {
+            var res = await fetch('../../../backend/api/users/import.php', { method: 'POST', body: fd });
+            var data = await res.json();
+            resultBox.style.background = data.success ? '#dcfce7' : '#fee2e2';
+            resultBox.style.color = data.success ? '#166534' : '#991b1b';
+            resultBox.textContent = data.message + (Array.isArray(data.errors) && data.errors.length ? ' (' + data.errors.slice(0, 3).join('; ') + ')' : '');
+            if (data.imported > 0) {
+                setTimeout(function () { window.location.reload(); }, 1200);
+            }
+        } catch (err) {
+            resultBox.style.background = '#fee2e2';
+            resultBox.style.color = '#991b1b';
+            resultBox.textContent = 'Unable to upload CSV right now.';
+        }
+    });
+});
+</script>
 <?php endif; ?>
 
 <script src="../../assets/js/users.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/users.js'); ?>"></script>

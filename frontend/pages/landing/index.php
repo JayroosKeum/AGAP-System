@@ -410,6 +410,18 @@ declare(strict_types=1);
             </div>
         </section>
 
+        <!-- Public Complaint Status Tracker (Zero-PII) -->
+        <section id="track-complaint" style="max-width:860px; margin:48px auto; padding:28px; background:#ffffff; border:1px solid #d7e1db; border-radius:16px; box-shadow:0 8px 24px rgba(16,43,45,0.06);">
+            <h2 style="margin:0 0 8px; color:#102b2d; font-size:1.35rem;">Track Your Complaint Status</h2>
+            <p style="margin:0 0 16px; color:#475569; font-size:0.92rem;">Enter your Intake Reference or Case Number along with the complainant's last name or last 4 digits of their contact number.</p>
+            <form id="publicTrackerForm" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                <input type="text" id="trackerReference" placeholder="Reference / Case No. (e.g. CMP-2026-0001)" required style="flex:1 1 220px; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.92rem;">
+                <input type="text" id="trackerVerifier" placeholder="Last name or last 4 digits" required style="flex:1 1 180px; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.92rem;">
+                <button type="submit" style="padding:10px 20px; background:#2b6b5e; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">Check Status</button>
+            </form>
+            <div id="publicTrackerResult" hidden style="margin-top:14px; padding:12px 14px; border-radius:10px; font-size:0.9rem;"></div>
+        </section>
+
         <!-- Bottom City of Marikina Seal Strip -->
         <section class="landing-bottom">
             <div class="bottom-mark">
@@ -435,6 +447,42 @@ declare(strict_types=1);
     <script src="../../assets/js/modules/i18n.js?v=<?= file_exists(__DIR__ . '/../../assets/js/modules/i18n.js') ? filemtime(__DIR__ . '/../../assets/js/modules/i18n.js') : '1' ?>"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            const trackerForm = document.getElementById('publicTrackerForm');
+            const trackerResult = document.getElementById('publicTrackerResult');
+            if (trackerForm && trackerResult) {
+                trackerForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const reference = document.getElementById('trackerReference')?.value.trim() || '';
+                    const verifier = document.getElementById('trackerVerifier')?.value.trim() || '';
+                    trackerResult.hidden = false;
+                    trackerResult.style.background = '#f1f5f9';
+                    trackerResult.style.color = '#334155';
+                    trackerResult.textContent = 'Checking status...';
+                    try {
+                        const res = await fetch('../../../backend/api/public/track-complaint.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ reference, verifier })
+                        });
+                        const data = await res.json();
+                        if (data.success && data.record) {
+                            const r = data.record;
+                            trackerResult.style.background = '#ecfdf5';
+                            trackerResult.style.color = '#065f46';
+                            trackerResult.textContent = `Ref: ${r.reference} | Stage: ${r.current_stage} | Status: ${r.status} (Filed ${r.filed_date})`;
+                        } else {
+                            trackerResult.style.background = '#fef2f2';
+                            trackerResult.style.color = '#991b1b';
+                            trackerResult.textContent = data.message || 'No matching complaint record was found.';
+                        }
+                    } catch {
+                        trackerResult.style.background = '#fef2f2';
+                        trackerResult.style.color = '#991b1b';
+                        trackerResult.textContent = 'Unable to check status right now.';
+                    }
+                });
+            }
+
             const items = document.querySelectorAll('.faq-item');
             items.forEach((item) => {
                 const trigger = item.querySelector('.faq-trigger');
