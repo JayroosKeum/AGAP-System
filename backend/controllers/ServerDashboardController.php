@@ -146,11 +146,16 @@ class ServerDashboardController
         $stmt->execute($queryParams);
         $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Include Paanyaya service attempts (Stage 0) in KPIs & tasks
+        // Include Paanyaya service attempts (Stage 0) in KPIs & tasks (latest operative attempt per complaint & invitation)
         try {
             $paPending = (int) $this->conn->query("
                 SELECT COUNT(*)
                 FROM paanyaya_service_attempts a
+                INNER JOIN (
+                    SELECT MAX(attempt_id) AS latest_attempt_id
+                    FROM paanyaya_service_attempts
+                    GROUP BY complaint_id, invitation_number
+                ) latest_pa ON latest_pa.latest_attempt_id = a.attempt_id
                 JOIN complaints c ON c.complaint_id = a.complaint_id
                 WHERE a.outcome IS NULL
                   AND c.screening_decision = 'Eligible'
@@ -160,20 +165,27 @@ class ServerDashboardController
 
             $paServedTodayStmt = $this->conn->prepare("
                 SELECT COUNT(*)
-                FROM paanyaya_service_attempts
-                WHERE outcome = 'Delivered' AND DATE(recorded_at) = ?
+                FROM paanyaya_service_attempts a
+                INNER JOIN (
+                    SELECT MAX(attempt_id) AS latest_attempt_id
+                    FROM paanyaya_service_attempts
+                    GROUP BY complaint_id, invitation_number
+                ) latest_pa ON latest_pa.latest_attempt_id = a.attempt_id
+                WHERE a.outcome = 'Delivered' AND DATE(a.recorded_at) = ?
             ");
             $paServedTodayStmt->execute([$today]);
             $paServedCount = (int) $paServedTodayStmt->fetchColumn();
-            if ($paServedCount === 0) {
-                $paServedCount = (int) $this->conn->query("SELECT COUNT(*) FROM paanyaya_service_attempts WHERE outcome = 'Delivered'")->fetchColumn();
-            }
             $servedToday += $paServedCount;
 
             $paUnserved = (int) $this->conn->query("
                 SELECT COUNT(*)
-                FROM paanyaya_service_attempts
-                WHERE outcome = 'Not Delivered'
+                FROM paanyaya_service_attempts a
+                INNER JOIN (
+                    SELECT MAX(attempt_id) AS latest_attempt_id
+                    FROM paanyaya_service_attempts
+                    GROUP BY complaint_id, invitation_number
+                ) latest_pa ON latest_pa.latest_attempt_id = a.attempt_id
+                WHERE a.outcome = 'Not Delivered'
             ")->fetchColumn();
             $unservedFollowup += $paUnserved;
 
@@ -229,6 +241,11 @@ class ServerDashboardController
                        DATE(a.appointment_at) AS target_date,
                        DATEDIFF(DATE(a.appointment_at), CURDATE()) AS days_until_hearing
                 FROM paanyaya_service_attempts a
+                INNER JOIN (
+                    SELECT MAX(attempt_id) AS latest_attempt_id
+                    FROM paanyaya_service_attempts
+                    GROUP BY complaint_id, invitation_number
+                ) latest_pa ON latest_pa.latest_attempt_id = a.attempt_id
                 JOIN complaints c ON c.complaint_id = a.complaint_id
                 LEFT JOIN paanyaya_preparations p ON p.complaint_id = a.complaint_id AND p.invitation_number = a.invitation_number
                 LEFT JOIN (

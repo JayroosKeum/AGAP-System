@@ -2280,9 +2280,10 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <div>
                     <label for="inlineSettleObligationType" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Obligation Type</label>
                     <select id="inlineSettleObligationType" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
-                        <option value="Action / Conduct">Action / Conduct</option>
+                        <option value="Specific Performance">Action / Conduct (Specific Performance)</option>
                         <option value="Monetary">Monetary</option>
-                        <option value="Mixed">Mixed</option>
+                        <option value="Property Return">Property Return</option>
+                        <option value="Hybrid">Mixed (Hybrid)</option>
                     </select>
                 </div>
             </div>
@@ -2303,7 +2304,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
                 <strong style="font-size: 0.82rem; color: #166534;">KP Form 16 Required Execution &amp; Attestation</strong>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
-                    <input type="checkbox" id="inlineSettleTermsRead" checked>
+                    <input type="checkbox" id="inlineSettleTermsRead">
                     <span>Terms read aloud &amp; explained to both parties</span>
                 </label>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
@@ -2319,8 +2320,16 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <span>Punong Barangay Attested <span style="color: #dc2626;">*</span></span>
                 </label>
                 <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
-                    <input type="checkbox" id="inlineSettleSealed" checked>
+                    <input type="checkbox" id="inlineSettleSealed">
                     <span>Barangay Seal Affixed</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                    <input type="checkbox" id="inlineSettleOriginalFiled">
+                    <span>Original filed in the case folder</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                    <input type="checkbox" id="inlineSettleCopiesIssued">
+                    <span>Certified copies issued to parties</span>
                 </label>
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px;">

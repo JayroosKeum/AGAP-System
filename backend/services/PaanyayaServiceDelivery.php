@@ -81,7 +81,14 @@ final class PaanyayaServiceDelivery
                 ]);
             $this->audit($clerkId, 'Released Paanyaya invitation for service', $complaintId);
             $this->db->commit();
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
 
+        try {
             $refStmt = $this->db->prepare("SELECT COALESCE(NULLIF(TRIM(intake_reference), ''), NULLIF(TRIM(complaint_number), ''), CONCAT('Complaint #', complaint_id)) FROM complaints WHERE complaint_id = ?");
             $refStmt->execute([$complaintId]);
             $refLabel = (string) ($refStmt->fetchColumn() ?: ('Complaint #' . $complaintId));
@@ -99,9 +106,8 @@ final class PaanyayaServiceDelivery
                 'info',
                 '../gps/proof-service.php#paanyaya-assignments'
             );
-        } catch (Throwable $exception) {
-            $this->db->rollBack();
-            throw $exception;
+        } catch (Throwable $notifError) {
+            error_log('Paanyaya release notification warning: ' . $notifError->getMessage());
         }
     }
 
@@ -151,7 +157,14 @@ final class PaanyayaServiceDelivery
             $statement->execute();
             $this->audit($serverId, 'Recorded Paanyaya service result: ' . $outcome, $complaintId);
             $this->db->commit();
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
 
+        try {
             $refStmt = $this->db->prepare("SELECT COALESCE(NULLIF(TRIM(intake_reference), ''), NULLIF(TRIM(complaint_number), ''), CONCAT('Complaint #', complaint_id)) FROM complaints WHERE complaint_id = ?");
             $refStmt->execute([$complaintId]);
             $refLabel = (string) ($refStmt->fetchColumn() ?: ('Complaint #' . $complaintId));
@@ -170,9 +183,8 @@ final class PaanyayaServiceDelivery
                 $severity,
                 '../complaints/complaint-details.php?id=' . $complaintId . '#paanyaya-preparation'
             );
-        } catch (Throwable $exception) {
-            $this->db->rollBack();
-            throw $exception;
+        } catch (Throwable $notifError) {
+            error_log('Paanyaya delivery notification warning: ' . $notifError->getMessage());
         }
     }
 

@@ -2891,10 +2891,12 @@ tr[data-paanyaya-row="1"].is-expanded td {
                             <option value="schedule_second_paanyaya">Schedule 2nd Paanyaya</option>
                             <option value="resolve">Settlement</option>
                         </select>
+                        <?php if ($canEditPaanyaya): ?>
                         <label style="display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 0.78rem; color: #475569; cursor: pointer;">
                             <input type="checkbox" id="attAllowImmediateEscalation" value="1">
                             <span>Allow early escalation / record immediately (even if scheduled date is in the future)</span>
                         </label>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Conditional Inline 2nd Paanyaya Schedule Drawer -->
@@ -4462,6 +4464,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 btnSaveAttOnly.style.display = 'none';
             }
             if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
+            const earlyEscEl = document.getElementById('attAllowImmediateEscalation');
+            if (earlyEscEl) {
+                earlyEscEl.checked = false;
+                earlyEscEl.disabled = true;
+            }
         };
 
         if (isSettled) {
@@ -4627,6 +4634,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
             compRadios.forEach(r => { r.disabled = false; });
             invRadios.forEach(r => { r.disabled = false; });
+            const earlyEscEl = document.getElementById('attAllowImmediateEscalation');
+            if (earlyEscEl) {
+                earlyEscEl.disabled = false;
+            }
             if (attNotesInput) {
                 attNotesInput.readOnly = false;
                 attNotesInput.style.backgroundColor = '';
@@ -4706,6 +4717,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
             if (p2DateInput) p2DateInput.value = '';
             if (secondPaanyayaPanel) secondPaanyayaPanel.style.display = 'none';
+            const earlyEscReset = document.getElementById('attAllowImmediateEscalation');
+            if (earlyEscReset) earlyEscReset.checked = false;
 
             if (attNotesInput) attNotesInput.value = '';
             setRadio('complainant_attended', 'Present');

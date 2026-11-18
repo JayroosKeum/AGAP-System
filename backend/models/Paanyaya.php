@@ -207,9 +207,7 @@ class Paanyaya
             $scheduledDateTime = DateTime::createFromFormat('Y-m-d H:i', $scheduledDate . ' ' . substr($scheduledTime, 0, 5));
         }
 
-        $allowImmediateFlow = !empty($data['allow_immediate_escalation'])
-            || in_array(strtolower((string) (getenv('AGAP_ALLOW_IMMEDIATE_FLOW_TESTING') ?: '')), ['1', 'true', 'yes'], true);
-        if ($scheduledDateTime && !$allowImmediateFlow) {
+        if ($scheduledDateTime) {
             $today = new DateTime($now->format('Y-m-d'));
             $schedDay = new DateTime($scheduledDateTime->format('Y-m-d'));
 
@@ -2631,17 +2629,15 @@ class Paanyaya
                 $status = $lock->fetchColumn();
                 require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
                 $delivery = PaanyayaServiceDelivery::latestAttempt($this->conn, $complaintId, $number);
-                $deliveredAt = ($delivery['outcome'] ?? null) === 'Delivered' ? $delivery['recorded_at'] : null;
-                $allowEarlyDialogue = !empty($data['allow_immediate_escalation'])
-                    || in_array(strtolower((string) (getenv('AGAP_ALLOW_IMMEDIATE_FLOW_TESTING') ?: '')), ['1', 'true', 'yes'], true);
-                if (!$allowEarlyDialogue && ($status !== 'Pre-Docketed (Paanyaya)' || !$deliveredAt)) {
+                $deliveredAt = ($delivery && ($delivery['outcome'] ?? null) === 'Delivered') ? ($delivery['recorded_at'] ?? null) : null;
+                if ($status !== 'Pre-Docketed (Paanyaya)' || !$deliveredAt) {
                     throw new DomainException('Confirm delivery of this invitation before recording dialogue minutes.');
                 }
                 $submittedVersion = $data['document_version'];
                 if ($submittedVersion !== null && $submittedVersion !== $delivery['document_version']) {
                     throw new DomainException('This invitation changed. Reload the complaint before recording dialogue minutes.');
                 }
-                if (strtotime($dialogueDate) < strtotime(date('Y-m-d H:i:00', strtotime($deliveredAt)))) {
+                if (strtotime($dialogueDate) < strtotime(date('Y-m-d H:i:00', strtotime((string) $deliveredAt)))) {
                     throw new DomainException('The dialogue cannot be recorded as occurring before delivery.');
                 }
                 $existing = $this->getStageMinutes($complaintId, $stageType);
@@ -3076,7 +3072,11 @@ class Paanyaya
                     ")->execute([$salaysay, $complaintId]);
                 }
 
-                $notes = "Inilipat mula sa Stage 0 (Paanyaya #{$paanyayaId}). Pagdalo: Nagpaanyaya={$compAttended}, Inanyayahan={$invAttended}. " . $dialogueNotes;
+                $scheduledAtStr = trim((string) ($paanyaya['scheduled_date'] ?? '') . ' ' . (string) ($paanyaya['scheduled_time'] ?? '00:00:00'));
+                $isEarlyAction = ($scheduledAtStr !== '' && strtotime($scheduledAtStr) !== false && strtotime($scheduledAtStr) > time());
+                $earlyNote = $isEarlyAction ? " [Early escalation before scheduled appointment {$scheduledAtStr}]" : '';
+
+                $notes = "Inilipat mula sa Stage 0 (Paanyaya #{$paanyayaId}). Pagdalo: Nagpaanyaya={$compAttended}, Inanyayahan={$invAttended}. " . $dialogueNotes . $earlyNote;
                 $this->conn->prepare("
                     UPDATE paanyaya_sessions
                     SET session_outcome = 'Impasse_Escalate',
@@ -3093,6 +3093,13 @@ class Paanyaya
                     WHERE complaint_id = ?
                 ")->execute([$complaintId]);
                 $docketResult = $this->escalateToFormalDocketing($complaintId, $userId, $notes);
+                if ($isEarlyAction && $userId) {
+                    $this->audit->logAction($userId, 'PAANYAYA_EARLY_ESCALATION', 'paanyayas', $paanyayaId, null, [
+                        'scheduled_at' => $scheduledAtStr,
+                        'escalated_at' => date('Y-m-d H:i:s'),
+                        'complaint_id' => $complaintId,
+                    ]);
+                }
 
                 return [
                     'success' => true,

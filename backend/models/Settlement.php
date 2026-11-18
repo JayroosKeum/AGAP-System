@@ -275,8 +275,19 @@ class Settlement
 
         $awardType = in_array($data['award_type'] ?? '', ['Amicable Settlement', 'Arbitration Award'], true)
             ? $data['award_type'] : 'Amicable Settlement';
-        $obligationType = in_array($data['obligation_type'] ?? '', ['Monetary', 'Property Return', 'Specific Performance', 'Hybrid'], true)
-            ? $data['obligation_type'] : 'Monetary';
+        $allowedObligationTypes = ['Monetary', 'Property Return', 'Specific Performance', 'Hybrid'];
+        if (array_key_exists('obligation_type', $data) && $data['obligation_type'] !== null && $data['obligation_type'] !== '') {
+            $rawObligationType = trim((string) $data['obligation_type']);
+            if (!in_array($rawObligationType, $allowedObligationTypes, true)) {
+                return [
+                    'success' => false,
+                    'message' => 'Invalid obligation type. Allowed values are: Monetary, Property Return, Specific Performance, Hybrid.'
+                ];
+            }
+            $obligationType = $rawObligationType;
+        } else {
+            $obligationType = 'Monetary';
+        }
 
         $pbAttestedBy = $pbAttested ? (!empty($data['pb_attested_by']) ? (int) $data['pb_attested_by'] : $actorUserId) : null;
         $pbAttestedAt = $pbAttested ? date('Y-m-d H:i:s') : null;
@@ -307,12 +318,13 @@ class Settlement
                 throw new RuntimeException("Cannot record a settlement for a case in '{$caseRow['case_status']}' status.");
             }
 
-            $existingStmt = $this->conn->prepare('SELECT settlement_id, repudiation_status, repudiation_date, document_id FROM settlements WHERE case_id = ? FOR UPDATE');
+            $existingStmt = $this->conn->prepare('SELECT settlement_id, repudiation_status, repudiation_date, document_id, settlement_status, settlement_date, agreement_details, obligation_type FROM settlements WHERE case_id = ? FOR UPDATE');
             $existingStmt->execute([$caseId]);
             $existingSettle = $existingStmt->fetch(PDO::FETCH_ASSOC);
             if ($existingSettle && (($existingSettle['repudiation_status'] ?? '') === 'Repudiated' || !empty($existingSettle['repudiation_date']))) {
                 throw new RuntimeException('This settlement has already been repudiated and cannot be overwritten.');
             }
+            $alreadySettled = ((string) $caseRow['case_status'] === 'Settled');
 
             $stmt = $this->conn->prepare("
                 INSERT INTO settlements (
@@ -403,19 +415,29 @@ class Settlement
 
             // Update case status to 'Settled' and generate KP Form 16 only if signed and attested
             if ($isSignedAndAttested) {
-                $kpService = $this->createKpFormService();
-                $genDoc = $kpService->generateAndPersistForm('KP Form 16', $caseId, $actorUserId ?: 1, [
-                    'strict_pdf' => true,
-                    'settlement_date' => $settlementDate,
-                ]);
-                if (empty($genDoc['success']) || empty($genDoc['document_id']) || empty($genDoc['file_path'])) {
-                    throw new RuntimeException($genDoc['message'] ?? 'Failed to render KP Form 16 Amicable Settlement PDF.');
-                }
-                $settlementDocId = (int) $genDoc['document_id'];
-                $generatedAbsolutePath = dirname(__DIR__, 2) . '/' . ltrim((string) $genDoc['file_path'], '/');
+                $sameSignedContent = $alreadySettled
+                    && !empty($settlementDocId)
+                    && $existingSettle
+                    && ($existingSettle['settlement_status'] ?? '') === 'Signed and Attested'
+                    && (string) ($existingSettle['settlement_date'] ?? '') === $settlementDate
+                    && trim((string) ($existingSettle['agreement_details'] ?? '')) === $agreementDetails
+                    && (string) ($existingSettle['obligation_type'] ?? '') === $obligationType;
 
-                $this->conn->prepare("UPDATE settlements SET document_id = ? WHERE settlement_id = ?")
-                    ->execute([$settlementDocId, $settlementId]);
+                if (!$sameSignedContent) {
+                    $kpService = $this->createKpFormService();
+                    $genDoc = $kpService->generateAndPersistForm('KP Form 16', $caseId, $actorUserId ?: 1, [
+                        'strict_pdf' => true,
+                        'settlement_date' => $settlementDate,
+                    ]);
+                    if (empty($genDoc['success']) || empty($genDoc['document_id']) || empty($genDoc['file_path'])) {
+                        throw new RuntimeException($genDoc['message'] ?? 'Failed to render KP Form 16 Amicable Settlement PDF.');
+                    }
+                    $settlementDocId = (int) $genDoc['document_id'];
+                    $generatedAbsolutePath = dirname(__DIR__, 2) . '/' . ltrim((string) $genDoc['file_path'], '/');
+
+                    $this->conn->prepare("UPDATE settlements SET document_id = ? WHERE settlement_id = ?")
+                        ->execute([$settlementDocId, $settlementId]);
+                }
 
                 $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Settled', updated_at = NOW() WHERE case_id = ?");
                 $updCase->execute([$caseId]);
@@ -423,7 +445,23 @@ class Settlement
                 $updComp = $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Settled', co.updated_at = NOW() WHERE c.case_id = ?");
                 $updComp->execute([$caseId]);
 
-                $activeStageType = ($caseRow['case_status'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                if ($caseRow['case_status'] === 'Conciliation') {
+                    $activeStageType = 'Conciliation';
+                } elseif ($alreadySettled) {
+                    $stageLookup = $this->conn->prepare("
+                        SELECT stage_type
+                        FROM case_stages
+                        WHERE case_id = ?
+                          AND stage_type IN ('Conciliation', 'Mediation')
+                          AND (outcome = 'Settled' OR stage_status IN ('Active', 'In Progress', 'Awaiting Outcome', 'Completed'))
+                        ORDER BY CASE WHEN stage_type = 'Conciliation' THEN 1 ELSE 2 END
+                        LIMIT 1
+                    ");
+                    $stageLookup->execute([$caseId]);
+                    $activeStageType = (string) ($stageLookup->fetchColumn() ?: 'Mediation');
+                } else {
+                    $activeStageType = 'Mediation';
+                }
                 $this->conn->prepare("
                     INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
                     VALUES (?, ?, 'Completed', 'Settled', ?, NOW())
@@ -431,7 +469,7 @@ class Settlement
                         stage_status = 'Completed',
                         outcome = 'Settled',
                         outcome_remarks = VALUES(outcome_remarks),
-                        completed_at = NOW(),
+                        completed_at = COALESCE(completed_at, NOW()),
                         updated_at = CURRENT_TIMESTAMP
                 ")->execute([$caseId, $activeStageType, "Signed and attested KP Form 16 Amicable Settlement dated {$settlementDate}."]);
 
@@ -443,18 +481,20 @@ class Settlement
                 $dlStmt->execute([$caseId, 'Repudiation Window', $repudiationDeadline]);
                 $dlStmt->execute([$caseId, 'Execution Period', $sixMonthDeadline]);
 
-                $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', 'Amicable settlement reached, signed by parties, and attested by Punong Barangay. 10-working-day repudiation clock started.', ?)");
-                $hist->execute([$caseId, $actorUserId]);
+                if (!$alreadySettled) {
+                    $hist = $this->conn->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) VALUES (?, 'Settled', 'Amicable settlement reached, signed by parties, and attested by Punong Barangay. 10-working-day repudiation clock started.', ?)");
+                    $hist->execute([$caseId, $actorUserId]);
 
-                try {
-                    require_once __DIR__ . '/../services/NotificationService.php';
-                    $notif = new NotificationService();
-                    $cNumStmt = $this->conn->prepare("SELECT case_number FROM cases WHERE case_id = ?");
-                    $cNumStmt->execute([$caseId]);
-                    $cNum = $cNumStmt->fetchColumn() ?: ('Case #' . $caseId);
-                    $notif->notifySettlementApproved($caseId, (string)$cNum, $actorUserId);
-                } catch (Throwable $ne) {
-                    error_log('Failed to dispatch settlement approved notification: ' . $ne->getMessage());
+                    try {
+                        require_once __DIR__ . '/../services/NotificationService.php';
+                        $notif = new NotificationService();
+                        $cNumStmt = $this->conn->prepare("SELECT case_number FROM cases WHERE case_id = ?");
+                        $cNumStmt->execute([$caseId]);
+                        $cNum = $cNumStmt->fetchColumn() ?: ('Case #' . $caseId);
+                        $notif->notifySettlementApproved($caseId, (string)$cNum, $actorUserId);
+                    } catch (Throwable $ne) {
+                        error_log('Failed to dispatch settlement approved notification: ' . $ne->getMessage());
+                    }
                 }
             }
 

@@ -1567,9 +1567,7 @@ class DocketScheduleService
             $targetDtObj = new DateTimeImmutable($targetDateTimeStr);
             $nowObj = new DateTimeImmutable('now');
             $pastExceptionReason = trim((string) ($data['past_date_exception_reason'] ?? ''));
-            $allowImmediateFlow = !empty($payload['allow_immediate_escalation'])
-                || in_array(strtolower((string) (getenv('AGAP_ALLOW_IMMEDIATE_FLOW_TESTING') ?: '')), ['1', 'true', 'yes'], true);
-            if ($targetDtObj <= $nowObj && !$allowImmediateFlow) {
+            if ($targetDtObj <= $nowObj) {
                 if ($roleId !== 1 || mb_strlen($pastExceptionReason) < 10) {
                     $this->conn->rollBack();
                     return [
@@ -2074,9 +2072,7 @@ class DocketScheduleService
 
             // Validate future date/time, weekday, holiday, operating hours, lunch break
             $targetDtObj = new DateTimeImmutable($targetDateTimeStr);
-            $allowImmediateFlow = !empty($payload['allow_immediate_escalation'])
-                || in_array(strtolower((string) (getenv('AGAP_ALLOW_IMMEDIATE_FLOW_TESTING') ?: '')), ['1', 'true', 'yes'], true);
-            if ($targetDtObj <= new DateTimeImmutable('now') && !$allowImmediateFlow) {
+            if ($targetDtObj <= new DateTimeImmutable('now')) {
                 $this->conn->rollBack();
                 return [
                     'success' => false,

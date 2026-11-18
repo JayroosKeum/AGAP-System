@@ -9433,6 +9433,13 @@ window.issueArbitrationOutcome = issueArbitrationOutcome;
 
  */
 
+function getLocalIsoDate(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 function ensureInlineSettlementModal() {
     let modal = document.getElementById('inlineRecordSettlementModal');
     if (modal) return modal;
@@ -9461,9 +9468,10 @@ function ensureInlineSettlementModal() {
                     <div>
                         <label for="inlineSettleObligationType" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Obligation Type</label>
                         <select id="inlineSettleObligationType" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box;">
-                            <option value="Action / Conduct">Action / Conduct</option>
+                            <option value="Specific Performance">Action / Conduct (Specific Performance)</option>
                             <option value="Monetary">Monetary</option>
-                            <option value="Mixed">Mixed</option>
+                            <option value="Property Return">Property Return</option>
+                            <option value="Hybrid">Mixed (Hybrid)</option>
                         </select>
                     </div>
                 </div>
@@ -9484,7 +9492,7 @@ function ensureInlineSettlementModal() {
                 <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
                     <strong style="font-size: 0.82rem; color: #166534;">KP Form 16 Required Execution &amp; Attestation</strong>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
-                        <input type="checkbox" id="inlineSettleTermsRead" checked>
+                        <input type="checkbox" id="inlineSettleTermsRead">
                         <span>Terms read aloud &amp; explained to both parties</span>
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
@@ -9500,8 +9508,16 @@ function ensureInlineSettlementModal() {
                         <span>Punong Barangay Attested <span style="color: #dc2626;">*</span></span>
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
-                        <input type="checkbox" id="inlineSettleSealed" checked>
+                        <input type="checkbox" id="inlineSettleSealed">
                         <span>Barangay Seal Affixed</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                        <input type="checkbox" id="inlineSettleOriginalFiled">
+                        <span>Original filed in the case folder</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
+                        <input type="checkbox" id="inlineSettleCopiesIssued">
+                        <span>Certified copies issued to parties</span>
                     </label>
                 </div>
                 <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 6px;">
@@ -9530,7 +9546,7 @@ function openInlineSettlementModal(hearingId = null) {
 
     const dateInput = document.getElementById('inlineSettleDate');
     if (dateInput && !dateInput.value) {
-        dateInput.value = new Date().toISOString().slice(0, 10);
+        dateInput.value = getLocalIsoDate();
     }
 
     const termsInput = document.getElementById('inlineSettleTerms');
@@ -9564,10 +9580,15 @@ async function submitInlineSettlementForm(event) {
         submitBtn.textContent = 'Saving...';
     }
 
+    const compSigned = document.getElementById('inlineSettleCompSigned')?.checked ? 1 : 0;
+    const respSigned = document.getElementById('inlineSettleRespSigned')?.checked ? 1 : 0;
+    const pbAttested = document.getElementById('inlineSettlePbAttested')?.checked ? 1 : 0;
+    const isSignedAndAttested = Boolean(compSigned && respSigned && pbAttested);
+
     const payload = {
         case_id: caseId,
-        settlement_date: document.getElementById('inlineSettleDate')?.value || new Date().toISOString().slice(0, 10),
-        obligation_type: document.getElementById('inlineSettleObligationType')?.value || 'Action / Conduct',
+        settlement_date: document.getElementById('inlineSettleDate')?.value || getLocalIsoDate(),
+        obligation_type: document.getElementById('inlineSettleObligationType')?.value || 'Specific Performance',
         total_amount: document.getElementById('inlineSettleAmount')?.value || null,
         compliance_due_date: document.getElementById('inlineSettleDueDate')?.value || null,
         agreement_details: document.getElementById('inlineSettleTerms')?.value.trim() || '',
@@ -9575,15 +9596,28 @@ async function submitInlineSettlementForm(event) {
         has_installment: 0,
         installments: [],
         terms_read_to_parties: document.getElementById('inlineSettleTermsRead')?.checked ? 1 : 0,
-        complainant_signed: document.getElementById('inlineSettleCompSigned')?.checked ? 1 : 0,
-        respondent_signed: document.getElementById('inlineSettleRespSigned')?.checked ? 1 : 0,
-        pb_attested: document.getElementById('inlineSettlePbAttested')?.checked ? 1 : 0,
+        complainant_signed: compSigned,
+        respondent_signed: respSigned,
+        pb_attested: pbAttested,
         barangay_sealed: document.getElementById('inlineSettleSealed')?.checked ? 1 : 0,
-        original_in_case_folder: 1,
-        certified_copies_issued: 1
+        original_in_case_folder: document.getElementById('inlineSettleOriginalFiled')?.checked ? 1 : 0,
+        certified_copies_issued: document.getElementById('inlineSettleCopiesIssued')?.checked ? 1 : 0
     };
 
     try {
+        // Save/finalize hearing minutes before settlements/save.php concludes the case
+        if (isSignedAndAttested && hId && Array.isArray(stageWorkspaceState.sessions) && stageWorkspaceState.sessions.some(s => Number(s.hearing_id) === Number(hId))) {
+            const outcomeEl = typeof getMinutesField === 'function' ? getMinutesField('minOutcome', hId) : null;
+            if (outcomeEl) outcomeEl.value = 'Settled';
+            try {
+                if (typeof saveHearingMinutes === 'function') {
+                    await saveHearingMinutes('Finalized', hId, true);
+                }
+            } catch (minErr) {
+                console.warn('saveHearingMinutes note:', minErr);
+            }
+        }
+
         const res = await fetch(getStageApiUrl('settlements/save.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -9597,8 +9631,25 @@ async function submitInlineSettlementForm(event) {
 
         const modal = document.getElementById('inlineRecordSettlementModal');
         if (modal) modal.style.display = 'none';
-        notifyUser('KP Form 16 saved and attested. Finalizing stage settlement...', 'success');
-        await issueSettledOutcome(hId);
+        notifyUser(json.message || 'Amicable Settlement (KP Form 16) saved successfully.', 'success');
+
+        const complaintId = stageWorkspaceState.complaintId || new URLSearchParams(window.location.search).get('complaint_id');
+        if ((json.settlement_status === 'Signed and Attested') || isSignedAndAttested) {
+            if (typeof unlockOutcomesTab === 'function') {
+                unlockOutcomesTab(caseId);
+            }
+            if (complaintId) {
+                sessionStorage.setItem('agap_outcomes_unlocked_' + complaintId, '1');
+            }
+            const targetNav = window.top || window;
+            if (complaintId) {
+                targetNav.location.href = `../complaints/complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=tab-arbitration#caseWorkspaceSection`;
+            } else {
+                targetNav.location.reload();
+            }
+        } else if (typeof loadStageWorkspace === 'function') {
+            await loadStageWorkspace();
+        }
     } catch (err) {
         notifyUser('Network error while saving Amicable Settlement.', 'error');
     } finally {
