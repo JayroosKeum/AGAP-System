@@ -22,6 +22,7 @@ require_once __DIR__ . '/../services/PangkatService.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
 require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
 require_once __DIR__ . '/../services/SummonDeliveryService.php';
+require_once __DIR__ . '/../services/OfficeLogisticsService.php';
 require_once __DIR__ . '/../controllers/GPSController.php';
 require_once __DIR__ . '/TestDataCleanup.php';
 require_once __DIR__ . '/TestLisoDuty.php';
@@ -43,11 +44,24 @@ function testAssert(bool $condition, string $description): void {
     echo "  [PASS] {$description}\n";
 }
 
+function nextOpenWeekday(OfficeLogisticsService $logistics, string $afterDate, int $targetDow): string {
+    $ts = strtotime($afterDate . ' +1 day');
+    for ($i = 0; $i < 60; $i++) {
+        $candidate = date('Y-m-d', $ts);
+        if ((int) date('w', $ts) === $targetDow && $logistics->isPhilippineHoliday($candidate) === null) {
+            return $candidate;
+        }
+        $ts = strtotime($candidate . ' +1 day');
+    }
+    return date('Y-m-d', $ts);
+}
+
 try {
     $summonsModel = new Summons($db);
     $stageModel = new CaseStage($db);
     $hearingModel = new Hearing($db);
     $deliveryService = new SummonDeliveryService($db);
+    $logistics = new OfficeLogisticsService($db);
     $gpsController = new GPSController($db);
 
     // -------------------------------------------------------------
@@ -55,14 +69,11 @@ try {
     // -------------------------------------------------------------
     echo "[TEST 1] Testing Conciliation Schedule Rules (Tuesdays vs Mon/Wed/Thu/Fri)...\n";
 
-    // Find next Tuesday and next Wednesday
-    $nextTuesday = new DateTime('next Tuesday');
-    $nextWednesday = new DateTime('next Wednesday');
-    $nextThursday = new DateTime('next Thursday');
-
-    $tuesdayDateStr = $nextTuesday->format('Y-m-d');
-    $wednesdayDateStr = $nextWednesday->format('Y-m-d');
-    $thursdayDateStr = $nextThursday->format('Y-m-d');
+    // Find next open Tuesday, Wednesday, and Thursday (skipping official Philippine holidays)
+    $today = date('Y-m-d');
+    $tuesdayDateStr = nextOpenWeekday($logistics, $today, 2);
+    $wednesdayDateStr = nextOpenWeekday($logistics, $today, 3);
+    $thursdayDateStr = nextOpenWeekday($logistics, $today, 4);
 
     // Tuesday afternoon check for Conciliation
     $tuesdayConflict = $summonsModel->findMediationConflict("{$tuesdayDateStr} 14:00", 'Lupon Court Room', null, null, 'Conciliation');
@@ -170,9 +181,8 @@ try {
     $docketRes = $complaintModel->docket($testComplaintId, 1);
     testAssert(!empty($docketRes['success']) && !empty($docketRes['case_id']), "Complaint formally docketed before issuing 1st summons: " . ($docketRes['message'] ?? ''));
 
-    // Find open Tuesday slot
-    $targetTuesday = new DateTime('next Tuesday + 7 days');
-    $medDateStr = $targetTuesday->format('Y-m-d');
+    // Find open Tuesday slot (skipping official Philippine holidays)
+    $medDateStr = nextOpenWeekday($logistics, date('Y-m-d', strtotime('+7 days')), 2);
 
     // Issue 1st Formal Summons after formal docketing
     $issueRes = $summonsModel->issueFirstSummon($testComplaintId, 1, [
@@ -218,8 +228,8 @@ try {
         VALUES (?, ?, ?, ?, 'Finalized', 1)");
     $insertMinutes->execute([$firstHearingId, $testCaseId, '1st Mediation', 'Continue Mediation']);
 
-    // Schedule and conclude 2nd mediation
-    $med2Date = (new DateTime($medDateStr . ' +7 days'))->format('Y-m-d');
+    // Schedule and conclude 2nd mediation (next open Tuesday after 1st mediation, skipping holidays)
+    $med2Date = nextOpenWeekday($logistics, $medDateStr, 2);
     $med2Res = $hearingModel->createProgression([
         'case_id' => $testCaseId,
         'hearing_type' => 'Mediation',

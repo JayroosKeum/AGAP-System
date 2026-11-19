@@ -10,8 +10,12 @@ final class GoogleResidentIdentity
     public static function clientId(): string
     {
         new Database();
-        $value = trim((string) (getenv('GOOGLE_RESIDENT_CLIENT_ID') ?: $_SERVER['GOOGLE_RESIDENT_CLIENT_ID'] ?? ''));
-        return preg_match('/^[a-z0-9-]+\.apps\.googleusercontent\.com$/D', $value) ? $value : '';
+        $raw = getenv('GOOGLE_RESIDENT_CLIENT_ID');
+        if (!is_string($raw) || $raw === '') {
+            $raw = $_ENV['GOOGLE_RESIDENT_CLIENT_ID'] ?? ($_SERVER['GOOGLE_RESIDENT_CLIENT_ID'] ?? '');
+        }
+        $value = trim((string) $raw, " \t\n\r\0\x0B\"'");
+        return preg_match('/^[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/D', $value) ? $value : '';
     }
 
     public function confirm(string $credential, string $nonce): array
