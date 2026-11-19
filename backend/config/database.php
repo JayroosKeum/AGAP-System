@@ -16,6 +16,7 @@ if (PHP_SAPI !== 'cli' && str_contains($agapScriptPath, '/backend/api/')) {
         '/backend/api/auth/resident-login.php',
         '/backend/api/auth/register-resident.php',
         '/backend/api/auth/resident-google.php',
+        '/backend/api/public/track-complaint.php',
     ];
     $isPublicAuth = false;
     foreach ($publicAuthEndpoints as $endpoint) {
@@ -52,6 +53,9 @@ class Database {
         $this->username = $this->environment('DB_USER', 'root');
         $this->password = $this->environment('DB_PASS', '');
         $this->sslCa = $this->environment('DB_SSL_CA', '');
+        if ($this->sslCa === '' && $this->environment('WEBSITE_SITE_NAME', '') !== '' && is_readable('/etc/ssl/certs/ca-certificates.crt')) {
+            $this->sslCa = '/etc/ssl/certs/ca-certificates.crt';
+        }
     }
 
     public function connect()
@@ -70,6 +74,9 @@ class Database {
         ];
         if ($this->sslCa !== '' && is_readable($this->sslCa) && defined('PDO::MYSQL_ATTR_SSL_CA')) {
             $options[PDO::MYSQL_ATTR_SSL_CA] = $this->sslCa;
+            if (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
+                $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+            }
         }
 
         try {
@@ -80,8 +87,9 @@ class Database {
                 $options
             );
         } catch(PDOException $e) {
-            // If primary host fails and host was not 127.0.0.1/localhost, try local MySQL fallback
-            if ($this->host !== '127.0.0.1' && $this->host !== 'localhost') {
+            $isAzure = $this->environment('WEBSITE_SITE_NAME', '') !== '';
+            // If primary host fails locally and host was not 127.0.0.1/localhost, try local MySQL fallback
+            if (!$isAzure && $this->host !== '127.0.0.1' && $this->host !== 'localhost') {
                 try {
                     return new PDO(
                         "mysql:host=127.0.0.1;port=3306;dbname=agap_db;charset=utf8mb4",
@@ -92,6 +100,12 @@ class Database {
                 } catch(PDOException $localEx) {
                     // Keep original exception
                 }
+            }
+
+            if ($isAzure) {
+                error_log('AGAP Azure database connection failed: ' . $e->getMessage());
+                http_response_code(500);
+                die('Database connection error.');
             }
 
             die("Database Error: " . $e->getMessage());

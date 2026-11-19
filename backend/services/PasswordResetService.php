@@ -44,20 +44,27 @@ final class PasswordResetService
             $mail->Host = 'smtp.gmail.com';
             $mail->SMTPAuth = true;
             $mail->Username = $smtpUser;
-            $mail->Password = $smtpPassword;
+            $mail->Password = preg_replace('/\s+/', '', $smtpPassword);
             $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_STARTTLS;
             $mail->Port = 587;
             $mail->Timeout = 15;
             $mail->CharSet = 'UTF-8';
 
-            // SSL options for local Windows environments
-            $mail->SMTPOptions = [
-                'ssl' => [
-                    'verify_peer' => true,
-                    'verify_peer_name' => true,
-                    'allow_self_signed' => true,
-                ],
-            ];
+            $caBundle = $this->environment('GMAIL_SMTP_CA_FILE');
+            if ($caBundle !== '' && is_readable($caBundle)) {
+                $mail->SMTPOptions = ['ssl' => ['cafile' => $caBundle]];
+            } elseif (!ini_get('openssl.cafile') && is_readable((string) ini_get('curl.cainfo'))) {
+                $mail->SMTPOptions = ['ssl' => ['cafile' => ini_get('curl.cainfo')]];
+            } elseif (PHP_OS_FAMILY === 'Windows') {
+                // Local Windows/Laragon fallback when no CA bundle is configured
+                $mail->SMTPOptions = [
+                    'ssl' => [
+                        'verify_peer' => true,
+                        'verify_peer_name' => true,
+                        'allow_self_signed' => true,
+                    ],
+                ];
+            }
 
             $mail->setFrom($smtpUser, 'Barangay Tumana AGAP Portal');
             $mail->addAddress($email, $displayName);
@@ -232,14 +239,14 @@ HTML;
     private function environment(string $name): string
     {
         $this->loadEnv();
-        if (array_key_exists($name, self::$envValues)) {
-            return self::$envValues[$name];
-        }
         $val = getenv($name);
         if (is_string($val) && $val !== '') {
-            return $val;
+            return trim($val);
         }
         $val = $_ENV[$name] ?? ($_SERVER[$name] ?? '');
-        return is_string($val) ? trim($val) : '';
+        if (is_string($val) && $val !== '') {
+            return trim($val);
+        }
+        return isset(self::$envValues[$name]) ? trim(self::$envValues[$name]) : '';
     }
 }

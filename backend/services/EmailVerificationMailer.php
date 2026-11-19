@@ -5,7 +5,7 @@ final class EmailVerificationMailer
 {
     public function send(string $email, string $firstName, string $username, string $role, string $token): void
     {
-        $link = $this->verificationLink('/verify-email', $token);
+        $link = $this->verificationLink('/verify-email.php', $token);
         $this->sendMessage($email, $firstName, "Your {$role} staff account has been created. Your username is {$username}.",
             'Staff Account Verification', 'Verify email and set password', $link);
     }
@@ -69,9 +69,23 @@ final class EmailVerificationMailer
     private function verificationLink(string $path, string $token): string
     {
         $configured = $this->environment('AGAP_APP_URL');
-        $baseUrl = is_string($configured) && filter_var($configured, FILTER_VALIDATE_URL)
-            ? rtrim($configured, '/')
-            : 'http://localhost/AGAP';
+        if (is_string($configured) && filter_var($configured, FILTER_VALIDATE_URL)) {
+            $baseUrl = rtrim($configured, '/');
+        } elseif (!empty($_SERVER['HTTP_HOST'])) {
+            $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+                || ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443);
+            $scheme = $isHttps ? 'https' : 'http';
+            $scriptName = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '');
+            if (preg_match('#^(.*?)/(?:frontend|backend)/#', $scriptName, $matches)) {
+                $basePath = rtrim($matches[1], '/');
+            } else {
+                $basePath = (str_starts_with($scriptName, '/AGAP/') || $scriptName === '/AGAP') ? '/AGAP' : '';
+            }
+            $baseUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $basePath;
+        } else {
+            $baseUrl = 'http://localhost/AGAP';
+        }
         return $baseUrl . $path . '?token=' . rawurlencode($token);
     }
 

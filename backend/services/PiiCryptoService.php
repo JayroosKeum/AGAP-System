@@ -18,7 +18,7 @@ final class PiiCryptoService
 
     public function __construct(?string $keyOverride = null)
     {
-        $raw = $keyOverride ?? (getenv('APP_PII_KEY') ?: ($_ENV['APP_PII_KEY'] ?? ''));
+        $raw = $keyOverride ?? (getenv('APP_PII_KEY') ?: ($_ENV['APP_PII_KEY'] ?? ($_SERVER['APP_PII_KEY'] ?? '')));
         $raw = trim((string) $raw);
         if ($raw === '') {
             $this->key = null;
