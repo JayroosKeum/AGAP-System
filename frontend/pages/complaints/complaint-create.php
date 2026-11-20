@@ -815,6 +815,7 @@ include '../../layouts/header.php';
             <?php endif; ?>
 
             <form id="createComplaintForm" action="../../../backend/api/complaints/create.php" method="POST" enctype="multipart/form-data" class="complaint-intake-form" novalidate>
+                <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($headerCsrfToken ?? CsrfService::token(), ENT_QUOTES, 'UTF-8'); ?>">
                 <input type="hidden" name="is_draft" id="complaintIsDraftInput" value="0">
                 <input type="hidden" name="bypass_office_hours" value="1">
                 <input type="hidden" name="escalated_from_paanyaya_id" value="<?php echo htmlspecialchars((string)($old['escalated_from_paanyaya_id'] ?? ($escalatePaanyaya['paanyaya_id'] ?? ''))); ?>">

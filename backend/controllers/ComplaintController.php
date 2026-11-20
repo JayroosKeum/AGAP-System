@@ -399,7 +399,7 @@ class ComplaintController
         $isAssignedLisoReview = (int) ($_SESSION['role_id'] ?? 0) === 3;
         $requestMessage = is_string($data['request_message'] ?? null) ? trim($data['request_message']) : '';
         $classification = [];
-        foreach (['category_id', 'secondary_category_id', 'other_category_specification', 'secondary_other_category_specification', 'case_type', 'complaint_title'] as $field) {
+        foreach (['category_id', 'category_name', 'secondary_category_id', 'secondary_category_name', 'other_category_specification', 'secondary_other_category_specification', 'case_type', 'complaint_title'] as $field) {
             if (array_key_exists($field, $data)) {
                 $classification[$field] = $data[$field];
             }

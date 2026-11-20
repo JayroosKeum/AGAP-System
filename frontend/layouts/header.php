@@ -102,7 +102,12 @@ if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSI
         const form = event.target;
         if (!(form instanceof HTMLFormElement) || String(form.method || 'GET').toUpperCase() !== 'POST') return;
         const action = new URL(form.action || window.location.href, window.location.href);
-        if (action.origin !== window.location.origin || form.querySelector('input[name="csrf_token"]')) return;
+        if (action.origin !== window.location.origin) return;
+        const existing = form.querySelector('input[name="csrf_token"]');
+        if (existing) {
+            existing.value = token;
+            return;
+        }
         const field = document.createElement('input');
         field.type = 'hidden';
         field.name = 'csrf_token';

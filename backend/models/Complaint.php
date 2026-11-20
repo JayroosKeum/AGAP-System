@@ -626,22 +626,59 @@ class Complaint
             }
 
             $hasClassificationInput = array_intersect(
-                ['category_id', 'secondary_category_id', 'other_category_specification', 'secondary_other_category_specification', 'case_type', 'complaint_title'],
+                ['category_id', 'category_name', 'secondary_category_id', 'secondary_category_name', 'other_category_specification', 'secondary_other_category_specification', 'case_type', 'complaint_title'],
                 array_keys($classification)
             ) !== [];
 
+            $othersCatId = (int) ($this->conn->query(
+                "SELECT category_id FROM complaint_categories
+                 WHERE category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%'
+                 ORDER BY category_id ASC LIMIT 1"
+            )->fetchColumn() ?: 51);
+
             $effectiveCategoryId = (array_key_exists('category_id', $classification) && trim((string) $classification['category_id']) !== '')
                 ? (filter_var($classification['category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0)
-                : (int) ($intake['category_id'] ?? 0);
+                : (array_key_exists('category_name', $classification) ? 0 : (int) ($intake['category_id'] ?? 0));
             $effectiveOtherSpec = array_key_exists('other_category_specification', $classification)
                 ? (trim((string) $classification['other_category_specification']) ?: null)
                 : ($intake['other_category_specification'] ?: null);
+
+            $categoryNameInput = trim((string) ($classification['category_name'] ?? ''));
+            if (!$effectiveCategoryId && $categoryNameInput !== '') {
+                $catMatch = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_name = ? OR category_name LIKE ? LIMIT 1');
+                $catMatch->execute([$categoryNameInput, '%' . $categoryNameInput . '%']);
+                $matchedRow = $catMatch->fetch(PDO::FETCH_ASSOC);
+                if ($matchedRow) {
+                    $effectiveCategoryId = (int) $matchedRow['category_id'];
+                } else {
+                    $effectiveCategoryId = $othersCatId;
+                    if ($effectiveOtherSpec === null || $effectiveOtherSpec === '' || strcasecmp($effectiveOtherSpec, 'Pending Barangay LISO Classification') === 0) {
+                        $effectiveOtherSpec = $categoryNameInput;
+                    }
+                }
+            }
+
             $effectiveSecCatId = array_key_exists('secondary_category_id', $classification)
                 ? (filter_var($classification['secondary_category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null)
-                : (!empty($intake['secondary_category_id']) ? (int) $intake['secondary_category_id'] : null);
+                : (array_key_exists('secondary_category_name', $classification) ? null : (!empty($intake['secondary_category_id']) ? (int) $intake['secondary_category_id'] : null));
             $effectiveSecOtherSpec = array_key_exists('secondary_other_category_specification', $classification)
                 ? (trim((string) $classification['secondary_other_category_specification']) ?: null)
                 : ($intake['secondary_other_category_specification'] ?: null);
+
+            $secCategoryNameInput = trim((string) ($classification['secondary_category_name'] ?? ''));
+            if (!$effectiveSecCatId && $secCategoryNameInput !== '') {
+                $catMatch2 = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_name = ? OR category_name LIKE ? LIMIT 1');
+                $catMatch2->execute([$secCategoryNameInput, '%' . $secCategoryNameInput . '%']);
+                $matchedRow2 = $catMatch2->fetch(PDO::FETCH_ASSOC);
+                if ($matchedRow2) {
+                    $effectiveSecCatId = (int) $matchedRow2['category_id'];
+                } else {
+                    $effectiveSecCatId = $othersCatId;
+                    if ($effectiveSecOtherSpec === null || $effectiveSecOtherSpec === '') {
+                        $effectiveSecOtherSpec = $secCategoryNameInput;
+                    }
+                }
+            }
             $effectiveCaseType = (array_key_exists('case_type', $classification) && trim((string) $classification['case_type']) !== '')
                 ? trim((string) $classification['case_type'])
                 : (string) ($intake['case_type'] ?? 'Civil');
@@ -672,7 +709,7 @@ class Complaint
                 }
 
                 if ($effectiveSecCatId !== null) {
-                    if ($effectiveSecCatId === $effectiveCategoryId) {
+                    if ($effectiveSecCatId === $effectiveCategoryId && (!$isOtherCat || strcasecmp((string) $effectiveOtherSpec, (string) $effectiveSecOtherSpec) === 0)) {
                         throw new DomainException('Select a different 2nd complaint category or leave it blank.');
                     }
                     $catStmt->execute([$effectiveSecCatId]);
