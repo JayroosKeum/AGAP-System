@@ -4455,7 +4455,8 @@ window.applyEmbeddedBulkPangkatGroup = applyEmbeddedBulkPangkatGroup;
                 let opts = '<option value="">-- Select Lupon Member --</option>';
                 members.forEach(m => {
                     const name = `${m.last_name}, ${m.first_name} ${m.middle_name || ''}`.trim();
-                    opts += `<option value="${Number(m.member_id)}">${escapeHtml(name)}</option>`;
+                    const dutySuffix = m.duty_day ? ` — ${m.duty_day} Duty` : '';
+                    opts += `<option value="${Number(m.member_id)}">${escapeHtml(name + dutySuffix)}</option>`;
                 });
                 sel.innerHTML = opts;
             });

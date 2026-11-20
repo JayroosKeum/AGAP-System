@@ -97,18 +97,24 @@
         setText('kpiSecretaryCount', kpis.as_secretary ?? 0);
         setText('kpiMemberCount', kpis.as_member ?? 0);
         setText('kpiTodayHearings', kpis.today_hearings ?? 0);
-        setText('dutyDayDisplay', dutyDay || 'Wednesday');
-        const gName = state.data?.duty_schedule?.group_name;
-        const gStation = state.data?.duty_schedule?.station || 'Lupon Court Room';
-        const gPos = state.data?.duty_schedule?.group_position ? ` (${state.data.duty_schedule.group_position})` : '';
+        setText('dutyDayDisplay', dutyDay || 'No Duty Assigned');
+        const sched = state.data?.duty_schedule || {};
+        const gName = sched.group_name;
+        const gStation = sched.station || 'Lupon Court Room';
+        const gPos = sched.group_position ? ` (${sched.group_position})` : '';
+        const headerTag = document.getElementById('dutyDayHeaderTag');
         if (gName) {
             setText('dutyDayDisplaySub', `${gName}${gPos} · ${gStation}`);
             const bannerHeader = document.querySelector('.duty-day-info h3');
             if (bannerHeader) bannerHeader.textContent = `${gName} · ${gStation}`;
-            const headerTag = document.getElementById('dutyDayHeaderTag');
             if (headerTag) headerTag.textContent = `${gName} (${dutyDay})`;
+        } else if (!dutyDay || dutyDay === 'No Duty Assigned') {
+            setText('dutyDayDisplaySub', 'Wala pang nakatakdang araw ng duty');
+            if (headerTag) headerTag.textContent = 'No Duty Assigned';
         } else {
-            setText('dutyDayDisplaySub', `${dutyDay || 'Wednesday'} Team · Regular Pangkat Duty`);
+            const noteText = sched.notes ? ` · ${sched.notes}` : '';
+            setText('dutyDayDisplaySub', `${dutyDay} Duty Schedule${noteText}`);
+            if (headerTag) headerTag.textContent = `${dutyDay} Duty`;
         }
     };
 
@@ -161,12 +167,15 @@
         container.replaceChildren();
 
         if (items.length === 0) {
+            const emptyHeading = (!dutyDay || dutyDay === 'No Duty Assigned')
+                ? 'Walang nakatakdang araw ng duty o pagdinig sa kasalukuyan.'
+                : `Walang nakatakdang pagdinig para sa ${escapeHtml(dutyDay)} Duty sa kasalukuyan.`;
             container.innerHTML = `
                 <div style="padding: 30px; text-align: center; color: #475569; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 12px; font-size: 1.05rem;">
                     
-                    <strong>Walang nakatakdang pagdinig para sa ${escapeHtml(dutyDay)} Team sa kasalukuyan.</strong>
+                    <strong>${emptyHeading}</strong>
                     <p style="margin: 6px 0 0; font-size: 0.92rem; color: #64748b;">
-                        Awtomatikong lilitaw dito ang mga susunod na sesyon ng pagdinig at conciliation ng iyong grupo.
+                        Awtomatikong lilitaw dito ang mga susunod na sesyon ng pagdinig at conciliation sa iyong nakatakdang araw.
                     </p>
                 </div>
             `;

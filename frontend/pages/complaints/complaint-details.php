@@ -69,7 +69,10 @@ $informationRequests = [];
 require_once __DIR__ . '/../../../backend/services/ComplaintInformationService.php';
 try {
     $assignmentStatement = $preparationDb->prepare(
-        'SELECT c.liso_assigned_to, c.screening_decision, c.status, c.submitted_by, c.is_draft, cs.case_id
+        'SELECT c.liso_assigned_to, c.screening_decision, c.status, c.submitted_by, c.is_draft,
+                c.category_id, c.secondary_category_id, c.other_category_specification,
+                c.secondary_other_category_specification, c.case_type, c.complaint_title, c.intake_source,
+                cs.case_id
          FROM complaints c
          LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
          WHERE c.complaint_id = ? LIMIT 1'
@@ -288,18 +291,71 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         <?php endif; ?>
 
         <script>
+        function syncLisoScreenOtherInputs() {
+            const catSel = document.getElementById('lisoScreenCategoryId');
+            const otherWrap = document.getElementById('lisoScreenOtherWrap');
+            const otherInp = document.getElementById('lisoScreenOtherSpec');
+            if (catSel && otherWrap) {
+                const selectedText = catSel.options[catSel.selectedIndex]?.text || '';
+                const isOther = /others|iba pa/i.test(selectedText);
+                otherWrap.style.display = isOther ? 'block' : 'none';
+                if (isOther && otherInp && otherInp.value.trim() === 'Pending Barangay LISO Classification') {
+                    otherInp.value = '';
+                }
+            }
+            const secSel = document.getElementById('lisoScreenSecondaryCategoryId');
+            const secWrap = document.getElementById('lisoScreenSecondaryOtherWrap');
+            if (secSel && secWrap) {
+                const secText = secSel.options[secSel.selectedIndex]?.text || '';
+                secWrap.style.display = (secSel.value !== '' && /others|iba pa/i.test(secText)) ? 'block' : 'none';
+            }
+        }
+
         async function reviewIntake(complaintId, status) {
             if (window.__agapReviewIntakeSubmitting) return;
-            window.__agapReviewIntakeSubmitting = true;
 
+            const catEl = document.getElementById('lisoScreenCategoryId');
+            const otherEl = document.getElementById('lisoScreenOtherSpec');
+            const secCatEl = document.getElementById('lisoScreenSecondaryCategoryId');
+            const secOtherEl = document.getElementById('lisoScreenSecondaryOtherSpec');
+            const caseTypeEl = document.getElementById('lisoScreenCaseType');
+            const titleEl = document.getElementById('lisoScreenComplaintTitle');
             const notesEl = document.getElementById('lisoScreeningDecisionNotes');
             const requestEl = document.getElementById('lisoResidentRequest');
             const btnNeedsInfo = document.getElementById('btnIntakeNeedsInfo');
             const btnEligible = document.getElementById('btnMarkIntakeEligible');
+
+            if (status === 'Accepted') {
+                if (catEl && !catEl.value) {
+                    window.agapNotify?.('Select the official Complaint Category before marking this intake eligible.', 'error');
+                    catEl.focus();
+                    return;
+                }
+                const catText = catEl?.options[catEl.selectedIndex]?.text || '';
+                const isOther = /others|iba pa/i.test(catText);
+                const otherVal = (otherEl?.value || '').trim();
+                if (isOther && (!otherVal || otherVal.toLowerCase() === 'pending barangay liso classification')) {
+                    window.agapNotify?.('Specify the exact dispute category or select an official category before marking this intake eligible.', 'error');
+                    otherEl?.focus();
+                    return;
+                }
+                if (caseTypeEl && !['Civil', 'Criminal'].includes(caseTypeEl.value)) {
+                    window.agapNotify?.('Select whether this case is Civil or Criminal.', 'error');
+                    caseTypeEl.focus();
+                    return;
+                }
+                if (titleEl && !titleEl.value.trim()) {
+                    window.agapNotify?.('Enter the official Complaint Title / Specific Nature.', 'error');
+                    titleEl.focus();
+                    return;
+                }
+            }
+
+            window.__agapReviewIntakeSubmitting = true;
             const activeBtn = status === 'Accepted' ? btnEligible : btnNeedsInfo;
             const originalLabel = activeBtn ? activeBtn.textContent : '';
 
-            [btnNeedsInfo, btnEligible, notesEl, requestEl].forEach((el) => {
+            [btnNeedsInfo, btnEligible, notesEl, requestEl, catEl, otherEl, secCatEl, secOtherEl, caseTypeEl, titleEl].forEach((el) => {
                 if (el) {
                     el.disabled = true;
                     el.style.pointerEvents = 'none';
@@ -315,6 +371,12 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             form.append('complaint_id', complaintId);
             form.append('status', status);
             form.append('review_notes', reviewNotes);
+            if (catEl) form.append('category_id', catEl.value);
+            if (otherEl) form.append('other_category_specification', otherEl.value.trim());
+            if (secCatEl) form.append('secondary_category_id', secCatEl.value);
+            if (secOtherEl) form.append('secondary_other_category_specification', secOtherEl.value.trim());
+            if (caseTypeEl) form.append('case_type', caseTypeEl.value);
+            if (titleEl) form.append('complaint_title', titleEl.value.trim());
             if (status === 'Needs Information' && requestEl) {
                 form.append('request_message', requestEl.value.trim());
             }
@@ -332,7 +394,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 window.location.reload();
             } catch (error) {
                 window.__agapReviewIntakeSubmitting = false;
-                [btnNeedsInfo, btnEligible, notesEl, requestEl].forEach((el) => {
+                [btnNeedsInfo, btnEligible, notesEl, requestEl, catEl, otherEl, secCatEl, secOtherEl, caseTypeEl, titleEl].forEach((el) => {
                     if (el) {
                         el.disabled = false;
                         el.style.pointerEvents = '';
@@ -579,15 +641,97 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <?php endif; ?>
 
             <?php if ($roleId === 3 && $canScreenSelectedIntake && !$awaitingResidentReply): ?>
+                <?php
+                    $screeningCatsStmt = $preparationDb->query(
+                        "SELECT category_id, category_name
+                         FROM complaint_categories
+                         WHERE COALESCE(is_active, 1) = 1
+                         ORDER BY CASE WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 ELSE 0 END ASC, category_name ASC"
+                    );
+                    $screeningCategories = $screeningCatsStmt ? $screeningCatsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+                    $currentCatId = (int) ($intakeScreeningMeta['category_id'] ?? 0);
+                    $currentSecCatId = (int) ($intakeScreeningMeta['secondary_category_id'] ?? 0);
+                    $currentOtherSpec = (string) ($intakeScreeningMeta['other_category_specification'] ?? '');
+                    $currentSecOtherSpec = (string) ($intakeScreeningMeta['secondary_other_category_specification'] ?? '');
+                    $currentCaseType = (string) ($intakeScreeningMeta['case_type'] ?? 'Civil');
+                    $currentTitle = (string) ($intakeScreeningMeta['complaint_title'] ?? '');
+                    $needsLisoClassification = strcasecmp(trim($currentOtherSpec), 'Pending Barangay LISO Classification') === 0;
+                    $isCurrentOther = false;
+                    $isCurrentSecOther = false;
+                    foreach ($screeningCategories as $sc) {
+                        $sname = (string) ($sc['category_name'] ?? '');
+                        if ((int) $sc['category_id'] === $currentCatId && (stripos($sname, 'Others') !== false || stripos($sname, 'Iba pa') !== false)) {
+                            $isCurrentOther = true;
+                        }
+                        if ($currentSecCatId > 0 && (int) $sc['category_id'] === $currentSecCatId && (stripos($sname, 'Others') !== false || stripos($sname, 'Iba pa') !== false)) {
+                            $isCurrentSecOther = true;
+                        }
+                    }
+                ?>
                 <section id="intake-screening" class="sophos-card" aria-labelledby="intake-screening-title" style="margin-bottom: 18px; border: 1.5px solid #cde2d6; background: linear-gradient(135deg, #ffffff 0%, #f7fbf9 100%);">
                     <div class="sophos-card-header" style="border-bottom: 1px solid #e2ece7; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                         <div>
-                            <h2 id="intake-screening-title" style="margin: 0; font-size: 1rem; font-weight: 800; color: #102b2d;">LISO Preliminary Screening</h2>
-                            <p style="margin: 2px 0 0; font-size: 0.82rem; color: #475569;">Review the narrative, parties, and incident details below before recording your screening decision.</p>
+                            <h2 id="intake-screening-title" style="margin: 0; font-size: 1rem; font-weight: 800; color: #102b2d;">LISO Preliminary Screening &amp; Legal Classification</h2>
+                            <p style="margin: 2px 0 0; font-size: 0.82rem; color: #475569;">Determine the official KP category, Civil/Criminal case type, and specific nature before marking this intake eligible.</p>
                         </div>
                         <span style="background: #fef3c7; color: #b45309; border: 1px solid #fde68a; border-radius: 999px; padding: 4px 12px; font-size: 0.74rem; font-weight: 700;">Action Required</span>
                     </div>
                     <div class="sophos-card-body" style="padding: 16px 20px;">
+                        <?php if ($needsLisoClassification): ?>
+                            <div style="margin-bottom: 14px; padding: 10px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.82rem; color: #1e3a8a;">
+                                <strong>Resident Online Filing:</strong> Legal classification is pending Lupon determination. Select the official category and Civil/Criminal type below before marking Eligible.
+                            </div>
+                        <?php endif; ?>
+
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px;">
+                            <div class="form-group" style="margin: 0;">
+                                <label for="lisoScreenCategoryId" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Complaint Category <span style="color:#dc2626;">*</span></label>
+                                <select id="lisoScreenCategoryId" onchange="syncLisoScreenOtherInputs()" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
+                                    <option value="">Select official category...</option>
+                                    <?php foreach ($screeningCategories as $sc): ?>
+                                        <option value="<?= (int) $sc['category_id'] ?>" <?= ((int) $sc['category_id'] === $currentCatId && !$needsLisoClassification) ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars((string) $sc['category_name']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin: 0;">
+                                <label for="lisoScreenCaseType" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Case Type <span style="color:#dc2626;">*</span></label>
+                                <select id="lisoScreenCaseType" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
+                                    <option value="Civil" <?= $currentCaseType === 'Civil' ? 'selected' : '' ?>>Civil</option>
+                                    <option value="Criminal" <?= $currentCaseType === 'Criminal' ? 'selected' : '' ?>>Criminal</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" style="margin: 0;">
+                                <label for="lisoScreenSecondaryCategoryId" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">2nd Complaint Category <span style="font-weight:500; color:#64748b;">(Optional)</span></label>
+                                <select id="lisoScreenSecondaryCategoryId" onchange="syncLisoScreenOtherInputs()" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
+                                    <option value="">None</option>
+                                    <?php foreach ($screeningCategories as $sc): ?>
+                                        <option value="<?= (int) $sc['category_id'] ?>" <?= ((int) $sc['category_id'] === $currentSecCatId) ? 'selected' : '' ?>>
+                                            <?= htmlspecialchars((string) $sc['category_name']) ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div id="lisoScreenOtherWrap" class="form-group" style="margin-bottom: 14px; display: <?= ($isCurrentOther && !$needsLisoClassification) ? 'block' : 'none' ?>;">
+                            <label for="lisoScreenOtherSpec" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Specify Category (Others) <span style="color:#dc2626;">*</span></label>
+                            <input type="text" id="lisoScreenOtherSpec" maxlength="255" value="<?= htmlspecialchars($needsLisoClassification ? '' : $currentOtherSpec) ?>" placeholder="Specify the dispute category..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
+                        </div>
+
+                        <div id="lisoScreenSecondaryOtherWrap" class="form-group" style="margin-bottom: 14px; display: <?= $isCurrentSecOther ? 'block' : 'none' ?>;">
+                            <label for="lisoScreenSecondaryOtherSpec" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Specify 2nd Category (Others) <span style="color:#dc2626;">*</span></label>
+                            <input type="text" id="lisoScreenSecondaryOtherSpec" maxlength="255" value="<?= htmlspecialchars($currentSecOtherSpec) ?>" placeholder="Specify the 2nd dispute category..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 14px;">
+                            <label for="lisoScreenComplaintTitle" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Complaint Title / Specific Nature <span style="color:#dc2626;">*</span></label>
+                            <input type="text" id="lisoScreenComplaintTitle" maxlength="255" value="<?= htmlspecialchars($currentTitle) ?>" placeholder="e.g. Boundary dispute, Unpaid debt, Slander" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
+                        </div>
+
                         <div class="form-group" style="margin-bottom: 14px;">
                             <label for="lisoScreeningDecisionNotes" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Internal screening notes (optional)</label>
                             <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff; resize: vertical;"></textarea>

@@ -126,7 +126,7 @@ include '../../layouts/header.php';
                             <li class="settings-nav-item">
                                 <button type="button" class="settings-nav-btn <?php echo $activeTab === 'tab-duty-groups' ? 'active' : ''; ?>" data-tab="tab-duty-groups">
                                     <span class="nav-icon">👥</span>
-                                    <span>Pangkat Duty Groups</span>
+                                    <span>Lupon Duty Schedule</span>
                                 </button>
                             </li>
                             <li class="settings-nav-item">
@@ -708,50 +708,71 @@ include '../../layouts/header.php';
                             </div>
 
                             <!-- ===================================================================
-                                 TAB: PANGKAT DUTY GROUPS & ROSTER
+                                 TAB: MONDAY–FRIDAY LUPON DUTY SCHEDULE
                                  =================================================================== -->
                             <div class="settings-tab-pane <?php echo $activeTab === 'tab-duty-groups' ? 'active' : ''; ?>" id="tab-duty-groups">
                                 <div class="settings-card">
-                                    <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+                                    <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
                                         <div>
-                                            <h3 class="settings-card-title">👥 Standing Pangkat Duty Groups &amp; Stationing</h3>
+                                            <h3 class="settings-card-title">📅 Weekly Lupon Duty Schedule (Monday – Friday)</h3>
                                             <p class="settings-card-subtitle">
-                                                Organize Lupon members into named 3-person panels with official recurring duty days (e.g., Wednesday Team, Thursday Team). Stationed members report to the barangay hall for official proceedings and can be bulk-selected during conciliation referral in one click.
+                                                Select any active Lupon Member and assign them directly to a specific weekday (Monday through Friday). Changes save directly to the database and update member dashboards and duty hearing views without creating duty groups.
                                             </p>
                                         </div>
-                                        <div>
-                                            <button type="button" class="btn-primary btn-sm" onclick="openDutyGroupModal()">+ Create Duty Group</button>
-                                        </div>
+                                        <span id="weeklyDutyTotalBadge" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 999px; padding: 4px 12px; font-size: 0.78rem; font-weight: 700; white-space: nowrap;">Loading schedule…</span>
                                     </div>
-                                    <div class="settings-card-body" style="padding: 0;">
-                                        <div class="settings-table-wrapper" style="border: none; border-radius: 0;">
-                                            <table class="settings-table" id="pangkatDutyGroupsTable">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Group Name</th>
-                                                        <th>Official Duty Day</th>
-                                                        <th>Duty Hours &amp; Station</th>
-                                                        <th>Panel Composition (Chair, Sec, Member)</th>
-                                                        <th>Cases Assigned</th>
-                                                        <th>Status</th>
-                                                        <th style="text-align: right;">Actions</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody id="dutyGroupsTableTbody">
-                                                    <tr>
-                                                        <td colspan="7" style="text-align: center; color: #64748b; padding: 24px;">Loading Pangkat duty groups...</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
+                                    <div class="settings-card-body">
+                                        <!-- Direct Weekday Assignment Form -->
+                                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 20px;">
+                                            <div class="form-grid-2" style="margin-bottom: 12px;">
+                                                <div class="form-group" style="margin-bottom: 0;">
+                                                    <label class="form-label" for="dutyAssignMemberId">Lupon Member <span class="required">*</span></label>
+                                                    <select id="dutyAssignMemberId" class="form-control">
+                                                        <option value="">Loading active Lupon Members…</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group" style="margin-bottom: 0;">
+                                                    <label class="form-label" for="dutyAssignDay">Assigned Weekday (Mon–Fri) <span class="required">*</span></label>
+                                                    <select id="dutyAssignDay" class="form-control">
+                                                        <option value="Monday">Monday</option>
+                                                        <option value="Tuesday">Tuesday</option>
+                                                        <option value="Wednesday">Wednesday</option>
+                                                        <option value="Thursday">Thursday</option>
+                                                        <option value="Friday">Friday</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="form-grid-3" style="align-items: end;">
+                                                <div class="form-group" style="margin-bottom: 0;">
+                                                    <label class="form-label" for="dutyAssignStart">Duty Start Time</label>
+                                                    <input type="time" id="dutyAssignStart" class="form-control" value="08:00">
+                                                </div>
+                                                <div class="form-group" style="margin-bottom: 0;">
+                                                    <label class="form-label" for="dutyAssignEnd">Duty End Time</label>
+                                                    <input type="time" id="dutyAssignEnd" class="form-control" value="17:00">
+                                                </div>
+                                                <div class="form-group" style="margin-bottom: 0;">
+                                                    <label class="form-label" for="dutyAssignNotes">Notes / Station (Optional)</label>
+                                                    <div style="display: flex; gap: 8px;">
+                                                        <input type="text" id="dutyAssignNotes" class="form-control" maxlength="255" placeholder="e.g. Lupon Court Room">
+                                                        <button type="button" class="btn-primary" id="btnAssignLuponDay" onclick="assignLuponDutyMember()" style="white-space: nowrap;">+ Assign Member</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Monday-to-Friday Schedule Board -->
+                                        <div id="weeklyDutyScheduleBoard" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px;">
+                                            <div style="grid-column: 1 / -1; text-align: center; color: #64748b; padding: 28px;">Loading Monday–Friday Lupon duty schedule…</div>
                                         </div>
                                     </div>
                                 </div>
 
                                 <div class="settings-card" style="margin-top: 18px; background: #f8fafc; border-left: 4px solid #0284c7;">
                                     <div class="settings-card-body" style="padding: 16px 20px;">
-                                        <h4 style="margin: 0 0 6px 0; font-size: 0.92rem; color: #0369a1; font-weight: 700;">📌 Katarungang Pambarangay Compliance Note (RA 7160 Sec. 404 &amp; 410)</h4>
+                                        <h4 style="margin: 0 0 6px 0; font-size: 0.92rem; color: #0369a1; font-weight: 700;">📌 Daily Duty Roster &amp; Schedule Sync</h4>
                                         <p style="margin: 0; font-size: 0.82rem; color: #334155; line-height: 1.55;">
-                                            Each standing group consists of <strong>three (3) active Lupon Members</strong> (Chairman, Secretary, and regular Member). The Barangay Captain / Administrator cannot be stationed on a conciliation panel. Members assigned to a group inherit its recurring duty day in their personalized dashboard calendar. When referring a case from Mediation to Conciliation, clerks can select any active complete group to automatically seat all three panelists and assign the conciliation hearing schedule to the group’s duty day.
+                                            Assigning a Lupon Member to a weekday immediately updates their <strong>Araw ng Duty</strong> indicator and <strong>Duty Day Hearing Calendar</strong> on the Lupon dashboard, as well as weekday labels when clerks select Pangkat panelists. Members can be assigned to one or more weekdays and removed cleanly per weekday.
                                         </p>
                                     </div>
                                 </div>
@@ -1144,101 +1165,6 @@ include '../../layouts/header.php';
         <div class="settings-modal-footer">
             <button type="button" class="btn-secondary" onclick="closeHolidayModal()">Cancel</button>
             <button type="button" class="btn-primary" onclick="submitHolidayForm()">Add Holiday</button>
-        </div>
-    </div>
-</div>
-
-<!-- =========================================================================
-     MODAL: CREATE / EDIT PANGKAT DUTY GROUP
-     ========================================================================= -->
-<div class="settings-modal-overlay" id="modalDutyGroupForm">
-    <div class="settings-modal" style="max-width: 680px; width: 95%;">
-        <div class="settings-modal-header">
-            <h3 class="settings-modal-title" id="dutyGroupModalTitle">Create Pangkat Duty Group</h3>
-            <button type="button" class="settings-modal-close" onclick="closeDutyGroupModal()">&times;</button>
-        </div>
-        <div class="settings-modal-body">
-            <input type="hidden" id="dutyGroupId" value="">
-            
-            <div class="form-grid-2">
-                <div class="form-group">
-                    <label class="form-label">Pangkat Group Name <span class="required">*</span></label>
-                    <input type="text" id="dutyGroupName" class="form-control" placeholder="e.g. Wednesday Pangkat / Group 1" required>
-                    <div class="form-help">Distinct name used in referral and hearing records.</div>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Official Scheduled Duty Day <span class="required">*</span></label>
-                    <select id="dutyGroupDay" class="form-control" required>
-                        <option value="Monday">Monday</option>
-                        <option value="Wednesday" selected>Wednesday</option>
-                        <option value="Thursday">Thursday</option>
-                        <option value="Friday">Friday</option>
-                        <option value="Saturday">Saturday</option>
-                        <option value="Tuesday">Tuesday (Mediation Day / Exception)</option>
-                    </select>
-                    <div class="form-help">Conciliation hearings occur Mon/Wed/Thu/Fri.</div>
-                </div>
-            </div>
-
-            <div class="form-grid-3">
-                <div class="form-group">
-                    <label class="form-label">Duty Start Time</label>
-                    <input type="time" id="dutyGroupStart" class="form-control" value="08:00">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Duty End Time</label>
-                    <input type="time" id="dutyGroupEnd" class="form-control" value="17:00">
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Duty Station / Room</label>
-                    <input type="text" id="dutyGroupStation" class="form-control" value="Lupon Court Room" placeholder="e.g. Lupon Court Room">
-                </div>
-            </div>
-
-            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;">
-                <span style="font-size: 0.82rem; font-weight: 700; color: #1e293b; text-transform: uppercase; display: block; margin-bottom: 10px;">
-                    Panel Composition (3 Distinct Active Lupon Members)
-                </span>
-                <div class="form-group" style="margin-bottom: 10px;">
-                    <label class="form-label">1. Pangkat Chairman / Head <span class="required">*</span></label>
-                    <select id="dutyGroupChairman" class="form-control" required>
-                        <option value="">-- Select Active Lupon Member --</option>
-                    </select>
-                </div>
-                <div class="form-group" style="margin-bottom: 10px;">
-                    <label class="form-label">2. Pangkat Secretary <span class="required">*</span></label>
-                    <select id="dutyGroupSecretary" class="form-control" required>
-                        <option value="">-- Select Active Lupon Member --</option>
-                    </select>
-                </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label class="form-label">3. Regular Member <span class="required">*</span></label>
-                    <select id="dutyGroupMember" class="form-control" required>
-                        <option value="">-- Select Active Lupon Member --</option>
-                    </select>
-                </div>
-                <div id="dutyGroupConflictNotice" style="display: none; color: #dc2626; font-size: 0.78rem; font-weight: 600; margin-top: 8px;"></div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">Operational Notes / Specializations</label>
-                <textarea id="dutyGroupNotes" class="form-control" rows="2" placeholder="e.g. Assigned to civil disputes &amp; boundary conciliations. Stationed for Wednesday afternoon hearings."></textarea>
-            </div>
-
-            <label class="switch-label">
-                <div class="switch-info">
-                    <span class="switch-title">Active Duty Group</span>
-                    <span class="switch-desc">Active groups appear in the 1-click bulk selection dropdown during conciliation referral.</span>
-                </div>
-                <div class="switch">
-                    <input type="checkbox" id="dutyGroupActive" checked>
-                    <span class="slider"></span>
-                </div>
-            </label>
-        </div>
-        <div class="settings-modal-footer">
-            <button type="button" class="btn-secondary" onclick="closeDutyGroupModal()">Cancel</button>
-            <button type="button" class="btn-primary" id="btnSaveDutyGroup" onclick="submitDutyGroupForm()">Save Duty Group</button>
         </div>
     </div>
 </div>

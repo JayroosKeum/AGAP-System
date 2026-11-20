@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/LuponDutyScheduleService.php';
 
 class LuponDashboardController
 {
@@ -11,7 +12,7 @@ class LuponDashboardController
     public function __construct()
     {
         $this->conn = (new Database())->connect();
-        $this->conn->exec("CREATE TABLE IF NOT EXISTS lupon_duty_schedules (id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL UNIQUE, duty_day VARCHAR(20) NOT NULL DEFAULT 'Wednesday', start_time TIME DEFAULT '08:00:00', end_time TIME DEFAULT '17:00:00', notes VARCHAR(255) DEFAULT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+        LuponDutyScheduleService::ensureSchema($this->conn);
     }
 
     /**
@@ -32,13 +33,14 @@ class LuponDashboardController
     {
         // 1. Get Member Duty Day & Schedule
         $dutySchedule = $this->getMemberDutySchedule($userId);
-        $dutyDay = $dutySchedule['duty_day'] ?? 'Wednesday';
+        $dutyDay = $dutySchedule['duty_day'] ?? 'No Duty Assigned';
+        $dutyDays = $dutySchedule['duty_days'] ?? [];
 
         // 2. Member's Assigned Pangkat Cases (Active)
         $assignedCases = $this->getAssignedPangkatCases($userId);
 
         // 3. Duty Day Hearings (defaults to member's duty day or active assigned pangkat sessions)
-        $dutyHearings = $this->getDutyHearings($userId, $dutyDay);
+        $dutyHearings = $this->getDutyHearings($userId, $dutyDays);
 
         $pendingScreenings = $this->getPendingScreenings($userId);
 
@@ -141,27 +143,33 @@ class LuponDashboardController
                 SELECT id, user_id, duty_day, start_time, end_time, notes, is_active
                 FROM lupon_duty_schedules
                 WHERE user_id = ? AND is_active = 1
-                LIMIT 1
+                ORDER BY FIELD(duty_day, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'), id ASC
             ");
             $stmt->execute([$userId]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            if ($row) {
-                return $row;
+            if ($rows) {
+                $first = $rows[0];
+                $days = array_values(array_unique(array_filter(array_map(static fn($r) => (string) ($r['duty_day'] ?? ''), $rows))));
+                $first['duty_day'] = implode(', ', $days);
+                $first['duty_days'] = $days;
+                $first['schedules'] = $rows;
+                return $first;
             }
         } catch (PDOException $e) {
-            // Table lupon_duty_schedules may not exist yet; use default schedule below
+            // Table lupon_duty_schedules may not exist yet; use unassigned fallback below
         }
 
-        // Provide sensible defaults: Wednesday Team
         return [
             'id' => 0,
             'user_id' => $userId,
-            'duty_day' => 'Wednesday',
-            'start_time' => '08:00:00',
-            'end_time' => '17:00:00',
-            'notes' => 'Wednesday Conciliation Team (Regular Duty)',
-            'is_active' => 1
+            'duty_day' => 'No Duty Assigned',
+            'duty_days' => [],
+            'start_time' => null,
+            'end_time' => null,
+            'notes' => 'No weekly duty day assigned yet',
+            'is_active' => 0,
+            'schedules' => []
         ];
     }
 
@@ -275,11 +283,18 @@ class LuponDashboardController
     }
 
     /**
-     * Retrieve hearings filtered by duty day and member's assigned cases.
+     * Retrieve hearings filtered by assigned duty day(s) and member's assigned cases.
      */
-    public function getDutyHearings(int $userId, string $dutyDay): array
+    public function getDutyHearings(int $userId, string|array $dutyDay): array
     {
         $isOversight = $this->isOversightRole($userId);
+        $days = is_array($dutyDay)
+            ? array_values(array_filter(array_map('trim', $dutyDay)))
+            : array_values(array_filter(array_map('trim', explode(',', $dutyDay))));
+        $days = array_values(array_filter($days, static fn($d) => $d !== '' && $d !== 'No Duty Assigned'));
+        $dayClause = $days
+            ? 'DAYNAME(h.hearing_date) IN (' . implode(',', array_fill(0, count($days), '?')) . ') OR '
+            : '';
 
         if ($isOversight) {
             $stmt = $this->conn->prepare("
@@ -313,13 +328,13 @@ class LuponDashboardController
                 JOIN complaints co ON co.complaint_id = c.complaint_id
                 LEFT JOIN pangkat_groups pg ON pg.case_id = c.case_id
                 LEFT JOIN pangkat_members pm ON pm.pangkat_id = pg.pangkat_id AND pm.member_id = ?
-                WHERE (DAYNAME(h.hearing_date) = ? OR pg.pangkat_id IS NOT NULL)
+                WHERE ({$dayClause}pg.pangkat_id IS NOT NULL)
                   AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
                   AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
                 ORDER BY h.hearing_date ASC
                 LIMIT 40
             ");
-            $stmt->execute([$userId, $dutyDay]);
+            $stmt->execute(array_merge([$userId], $days));
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
@@ -348,13 +363,13 @@ class LuponDashboardController
             JOIN complaints co ON co.complaint_id = c.complaint_id
             LEFT JOIN pangkat_groups pg ON pg.case_id = c.case_id
             LEFT JOIN pangkat_members pm ON pm.pangkat_id = pg.pangkat_id AND pm.member_id = ?
-            WHERE (DAYNAME(h.hearing_date) = ? OR pm.member_id IS NOT NULL)
+            WHERE ({$dayClause}pm.member_id IS NOT NULL)
               AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
               AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
             ORDER BY h.hearing_date ASC
             LIMIT 40
         ");
-        $stmt->execute([$userId, $dutyDay]);
+        $stmt->execute(array_merge([$userId], $days));
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 

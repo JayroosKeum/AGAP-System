@@ -3,7 +3,9 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const csrfToken = document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
+        || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || '';
     let formDirty = false;
     let leafletMiniMap = null;
     let mapMarker = null;
@@ -660,280 +662,203 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // =========================================================================
-    // PANGKAT DUTY GROUPS & ROSTER MANAGEMENT
+    // MONDAY–FRIDAY WEEKLY LUPON DUTY SCHEDULE MANAGEMENT
     // =========================================================================
-    let pangkatDutyGroupsList = [];
-    let cachedLuponMembers = [];
+    const WEEKDAYS_MON_FRI = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    let weeklyDutyRoster = { weekdays: WEEKDAYS_MON_FRI, members: [], assignments: [], by_day: {} };
 
-    async function fetchLuponMembersForDuty() {
-        if (cachedLuponMembers.length > 0) return cachedLuponMembers;
-        try {
-            const res = await fetch('../../../backend/api/assignments/lupon-members.php');
-            const data = await res.json();
-            cachedLuponMembers = Array.isArray(data) ? data : (data.data || []);
-        } catch (e) {
-            console.error('Failed to load Lupon members:', e);
-            cachedLuponMembers = [];
-        }
-        return cachedLuponMembers;
+    function formatTime12h(hhmm) {
+        if (!hhmm || !hhmm.includes(':')) return hhmm || '8:00 AM';
+        const [hRaw, mRaw] = hhmm.split(':');
+        let h = parseInt(hRaw, 10);
+        const m = mRaw || '00';
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        return `${h}:${m} ${ampm}`;
     }
 
-    window.loadDutyGroups = async function() {
-        const tbody = document.getElementById('dutyGroupsTableTbody');
-        if (!tbody) return;
-        try {
-            const res = await fetch('../../../backend/api/pangkat/duty-groups.php');
-            const data = await res.json();
-            pangkatDutyGroupsList = data.data || [];
-            renderDutyGroupsTable();
-        } catch (e) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626; padding:20px;">Failed to load duty groups: ${escapeHtml(e.message)}</td></tr>`;
-        }
-    };
-
-    function renderDutyGroupsTable() {
-        const tbody = document.getElementById('dutyGroupsTableTbody');
-        if (!tbody) return;
-        if (!pangkatDutyGroupsList || pangkatDutyGroupsList.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="7" style="text-align: center; color: #64748b; padding: 32px 16px;">
-                        <div style="font-size: 1.5rem; margin-bottom: 6px;">👥</div>
-                        <strong>No Pangkat duty groups created yet.</strong>
-                        <p style="margin: 4px 0 12px 0; font-size: 0.82rem; color: #94a3b8;">
-                            Create named groups (e.g., Wednesday Team) with official scheduled duty days to enable 1-click bulk conciliation panel selection.
-                        </p>
-                        <button type="button" class="btn-primary btn-sm" onclick="openDutyGroupModal()">+ Create First Duty Group</button>
-                    </td>
-                </tr>
-            `;
+    function populateMemberDropdown() {
+        const sel = document.getElementById('dutyAssignMemberId');
+        if (!sel) return;
+        const prev = sel.value;
+        const members = weeklyDutyRoster.members || [];
+        if (members.length === 0) {
+            sel.innerHTML = '<option value="">No active Lupon Members found</option>';
             return;
         }
+        let opts = '<option value="">-- Select Lupon Member --</option>';
+        members.forEach((m) => {
+            const days = Array.isArray(m.assigned_days) && m.assigned_days.length > 0
+                ? ` (${m.assigned_days.map((d) => d.slice(0, 3)).join(', ')})`
+                : '';
+            opts += `<option value="${Number(m.member_id)}">${escapeHtml(m.full_name || `${m.last_name}, ${m.first_name}`)}${escapeHtml(days)}</option>`;
+        });
+        sel.innerHTML = opts;
+        if (prev) sel.value = prev;
+    }
 
-        const dayColors = {
-            'Monday': '#0284c7',
-            'Tuesday': '#d97706',
-            'Wednesday': '#16a34a',
-            'Thursday': '#7c3aed',
-            'Friday': '#059669',
-            'Saturday': '#475569'
+    function renderWeeklyDutyBoard() {
+        const board = document.getElementById('weeklyDutyScheduleBoard');
+        const totalBadge = document.getElementById('weeklyDutyTotalBadge');
+        if (!board) return;
+
+        const assignments = weeklyDutyRoster.assignments || [];
+        if (totalBadge) {
+            totalBadge.textContent = `${assignments.length} assignment${assignments.length === 1 ? '' : 's'} (Mon–Fri)`;
+        }
+
+        const dayStyles = {
+            Monday: { accent: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', tag: 'Conciliation / Duty' },
+            Tuesday: { accent: '#b45309', bg: '#fffbeb', border: '#fde68a', tag: 'Mediation Day' },
+            Wednesday: { accent: '#15803d', bg: '#f0fdf4', border: '#bbf7d0', tag: 'Conciliation / Duty' },
+            Thursday: { accent: '#6d28d9', bg: '#f5f3ff', border: '#ddd6fe', tag: 'Conciliation / Duty' },
+            Friday: { accent: '#047857', bg: '#ecfdf5', border: '#a7f3d0', tag: 'Conciliation / Duty' }
         };
 
-        tbody.innerHTML = pangkatDutyGroupsList.map(g => {
-            const dayColor = dayColors[g.duty_day] || '#0284c7';
-            const chair = g.members?.find(m => m.position === 'Chairman');
-            const sec = g.members?.find(m => m.position === 'Secretary');
-            const mem = g.members?.find(m => m.position === 'Member');
-
-            const chairLabel = chair ? `<strong>${escapeHtml(chair.member_name)}</strong> <small style="color:#0369a1; font-weight:600;">(Chair)</small>` : '<em style="color:#dc2626;">Missing Chair</em>';
-            const secLabel = sec ? `<strong>${escapeHtml(sec.member_name)}</strong> <small style="color:#047857; font-weight:600;">(Sec)</small>` : '<em style="color:#dc2626;">Missing Sec</em>';
-            const memLabel = mem ? `<strong>${escapeHtml(mem.member_name)}</strong> <small style="color:#64748b; font-weight:600;">(Member)</small>` : '<em style="color:#dc2626;">Missing Member</em>';
-
-            const statusBadge = g.is_active === 1
-                ? (g.is_complete ? '<span class="badge-active">Active</span>' : '<span class="badge-inactive" style="background:#fef3c7; color:#92400e;">Incomplete</span>')
-                : '<span class="badge-inactive">Inactive</span>';
-
-            const payloadAttr = JSON.stringify(g).replace(/"/g, '&quot;');
+        board.innerHTML = WEEKDAYS_MON_FRI.map((day) => {
+            const st = dayStyles[day] || dayStyles.Monday;
+            const dayItems = (weeklyDutyRoster.by_day && weeklyDutyRoster.by_day[day]) ? weeklyDutyRoster.by_day[day] : [];
+            const rowsHtml = dayItems.length === 0
+                ? `<div style="padding: 18px 12px; text-align: center; color: #94a3b8; font-size: 0.8rem; border: 1.5px dashed #cbd5e1; border-radius: 8px; background: #ffffff;">No Lupon member assigned</div>`
+                : dayItems.map((item) => `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; padding: 10px 12px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <div style="min-width: 0;">
+                            <div style="font-weight: 700; color: #0f172a; font-size: 0.86rem; word-break: break-word;">${escapeHtml(item.full_name)}</div>
+                            <div style="font-size: 0.76rem; color: #475569; margin-top: 2px;">${escapeHtml(formatTime12h(item.start_time))} – ${escapeHtml(formatTime12h(item.end_time))}</div>
+                            ${item.notes ? `<div style="font-size: 0.74rem; color: #64748b; margin-top: 2px; word-break: break-word;">${escapeHtml(item.notes)}</div>` : ''}
+                        </div>
+                        <button type="button"
+                                class="btn-danger btn-sm"
+                                style="padding: 3px 8px; font-size: 0.74rem; flex-shrink: 0;"
+                                title="Remove ${escapeHtml(item.full_name)} from ${escapeHtml(day)}"
+                                onclick="removeLuponDutyMember(${Number(item.id)}, '${escapeHtml(item.full_name).replace(/'/g, "\\'")}', '${escapeHtml(day)}')">
+                            Remove
+                        </button>
+                    </div>
+                `).join('');
 
             return `
-                <tr>
-                    <td>
-                        <strong style="color: #0f172a; font-size: 0.92rem;">${escapeHtml(g.group_name)}</strong>
-                        ${g.notes ? `<div style="font-size: 0.78rem; color: #64748b; margin-top: 2px;">${escapeHtml(g.notes)}</div>` : ''}
-                    </td>
-                    <td>
-                        <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 9999px; font-size: 0.78rem; font-weight: 700; background: ${dayColor}15; color: ${dayColor}; border: 1px solid ${dayColor}40;">
-                            📅 ${escapeHtml(g.duty_day)}
-                        </span>
-                    </td>
-                    <td>
-                        <div style="font-weight: 600; color: #1e293b; font-size: 0.84rem;">⏰ ${escapeHtml(g.start_time)} – ${escapeHtml(g.end_time)}</div>
-                        <div style="font-size: 0.78rem; color: #64748b;">📍 ${escapeHtml(g.station || 'Lupon Court Room')}</div>
-                    </td>
-                    <td style="font-size: 0.82rem; line-height: 1.55;">
-                        <div>${chairLabel}</div>
-                        <div>${secLabel}</div>
-                        <div>${memLabel}</div>
-                    </td>
-                    <td>
-                        <span style="font-weight: 700; color: #0f172a; font-size: 0.88rem;">${g.cases_assigned}</span>
-                        <div style="font-size: 0.74rem; color: #64748b;">case panels</div>
-                    </td>
-                    <td>${statusBadge}</td>
-                    <td style="text-align: right; white-space: nowrap;">
-                        <button type="button" class="btn-secondary btn-sm" onclick="editDutyGroup(${payloadAttr})">✏️ Edit</button>
-                        <button type="button" class="btn-danger btn-sm" onclick="deleteDutyGroup(${g.duty_group_id}, '${escapeHtml(g.group_name).replace(/'/g, "\\'")}')">🗑️</button>
-                    </td>
-                </tr>
+                <section style="background: ${st.bg}; border: 1px solid ${st.border}; border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
+                        <div>
+                            <div style="font-weight: 800; font-size: 0.96rem; color: ${st.accent};">${escapeHtml(day)}</div>
+                            <div style="font-size: 0.72rem; font-weight: 600; color: #64748b;">${escapeHtml(st.tag)} · ${dayItems.length} assigned</div>
+                        </div>
+                        <button type="button" class="btn-secondary btn-sm" style="padding: 3px 9px; font-size: 0.74rem;" onclick="focusAssignDay('${escapeHtml(day)}')">+ Add</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${rowsHtml}
+                    </div>
+                </section>
             `;
         }).join('');
     }
 
-    window.openDutyGroupModal = async function(data = null) {
-        const modal = document.getElementById('modalDutyGroupForm');
-        if (!modal) return;
-
-        const members = await fetchLuponMembersForDuty();
-        const populateSelect = (id, selectedVal) => {
-            const sel = document.getElementById(id);
-            if (!sel) return;
-            let opts = '<option value="">-- Select Active Lupon Member --</option>';
-            members.forEach(m => {
-                const name = `${m.last_name}, ${m.first_name} ${m.middle_name || ''}`.trim();
-                opts += `<option value="${m.member_id}">${escapeHtml(name)}</option>`;
-            });
-            sel.innerHTML = opts;
-            if (selectedVal) sel.value = String(selectedVal);
-        };
-
-        const title = document.getElementById('dutyGroupModalTitle');
-        const idInput = document.getElementById('dutyGroupId');
-        const nameInput = document.getElementById('dutyGroupName');
-        const daySelect = document.getElementById('dutyGroupDay');
-        const startInput = document.getElementById('dutyGroupStart');
-        const endInput = document.getElementById('dutyGroupEnd');
-        const stationInput = document.getElementById('dutyGroupStation');
-        const notesInput = document.getElementById('dutyGroupNotes');
-        const activeInput = document.getElementById('dutyGroupActive');
-        const conflictNotice = document.getElementById('dutyGroupConflictNotice');
-        if (conflictNotice) conflictNotice.style.display = 'none';
-
-        if (data) {
-            title.textContent = 'Edit Pangkat Duty Group';
-            idInput.value = data.duty_group_id || '';
-            nameInput.value = data.group_name || '';
-            daySelect.value = data.duty_day || 'Wednesday';
-            startInput.value = data.start_time || '08:00';
-            endInput.value = data.end_time || '17:00';
-            stationInput.value = data.station || 'Lupon Court Room';
-            notesInput.value = data.notes || '';
-            activeInput.checked = (data.is_active === 1);
-
-            const chair = data.members?.find(m => m.position === 'Chairman');
-            const sec = data.members?.find(m => m.position === 'Secretary');
-            const mem = data.members?.find(m => m.position === 'Member');
-
-            populateSelect('dutyGroupChairman', chair?.member_id);
-            populateSelect('dutyGroupSecretary', sec?.member_id);
-            populateSelect('dutyGroupMember', mem?.member_id);
-        } else {
-            title.textContent = 'Create Pangkat Duty Group';
-            idInput.value = '';
-            nameInput.value = '';
-            daySelect.value = 'Wednesday';
-            startInput.value = '08:00';
-            endInput.value = '17:00';
-            stationInput.value = 'Lupon Court Room';
-            notesInput.value = '';
-            activeInput.checked = true;
-
-            populateSelect('dutyGroupChairman', null);
-            populateSelect('dutyGroupSecretary', null);
-            populateSelect('dutyGroupMember', null);
+    window.focusAssignDay = function(day) {
+        const daySel = document.getElementById('dutyAssignDay');
+        const memSel = document.getElementById('dutyAssignMemberId');
+        if (daySel && WEEKDAYS_MON_FRI.includes(day)) {
+            daySel.value = day;
         }
-
-        modal.classList.add('active');
+        memSel?.focus();
     };
 
-    window.closeDutyGroupModal = function() {
-        document.getElementById('modalDutyGroupForm')?.classList.remove('active');
+    window.loadDutyGroups = async function() {
+        const board = document.getElementById('weeklyDutyScheduleBoard');
+        if (!board) return;
+        try {
+            const res = await fetch('../../../backend/api/assignments/lupon-duty-schedules.php');
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                throw new Error(json.message || 'Unable to load duty schedule.');
+            }
+            weeklyDutyRoster = json.data || weeklyDutyRoster;
+            populateMemberDropdown();
+            renderWeeklyDutyBoard();
+        } catch (e) {
+            board.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: #dc2626; padding: 20px;">Failed to load Lupon duty schedule: ${escapeHtml(e.message)}</div>`;
+        }
     };
 
-    window.editDutyGroup = function(group) {
-        openDutyGroupModal(group);
-    };
+    window.assignLuponDutyMember = async function() {
+        const memberId = Number(document.getElementById('dutyAssignMemberId')?.value || 0);
+        const dutyDay = document.getElementById('dutyAssignDay')?.value || '';
+        const startTime = document.getElementById('dutyAssignStart')?.value || '08:00';
+        const endTime = document.getElementById('dutyAssignEnd')?.value || '17:00';
+        const notes = document.getElementById('dutyAssignNotes')?.value?.trim() || '';
 
-    window.submitDutyGroupForm = async function() {
-        const id = document.getElementById('dutyGroupId')?.value;
-        const name = document.getElementById('dutyGroupName')?.value.trim();
-        const day = document.getElementById('dutyGroupDay')?.value;
-        const start = document.getElementById('dutyGroupStart')?.value;
-        const end = document.getElementById('dutyGroupEnd')?.value;
-        const station = document.getElementById('dutyGroupStation')?.value.trim();
-        const notes = document.getElementById('dutyGroupNotes')?.value.trim();
-        const isActive = document.getElementById('dutyGroupActive')?.checked ? 1 : 0;
-
-        const chairId = Number(document.getElementById('dutyGroupChairman')?.value);
-        const secId = Number(document.getElementById('dutyGroupSecretary')?.value);
-        const memId = Number(document.getElementById('dutyGroupMember')?.value);
-
-        if (!name) {
-            showToast('Please provide a name for the Pangkat duty group.', 'error');
+        if (!memberId) {
+            showToast('Select an existing Lupon Member first.', 'error');
+            document.getElementById('dutyAssignMemberId')?.focus();
             return;
         }
-        if (!chairId || !secId || !memId) {
-            showToast('Please assign all three positions: Chairman, Secretary, and regular Member.', 'error');
-            return;
-        }
-        if (new Set([chairId, secId, memId]).size !== 3) {
-            showToast('Chairman, Secretary, and Member must be three different Lupon Members.', 'error');
+        if (!WEEKDAYS_MON_FRI.includes(dutyDay)) {
+            showToast('Select a weekday from Monday to Friday.', 'error');
             return;
         }
 
-        const btn = document.getElementById('btnSaveDutyGroup');
+        const btn = document.getElementById('btnAssignLuponDay');
         if (btn) btn.disabled = true;
 
-        const payload = {
-            action: 'save',
-            duty_group_id: id ? Number(id) : null,
-            group_name: name,
-            duty_day: day,
-            start_time: start,
-            end_time: end,
-            station: station || 'Lupon Court Room',
-            notes: notes,
-            is_active: isActive,
-            chairman_id: chairId,
-            secretary_id: secId,
-            member_id: memId
-        };
-
         try {
-            const res = await fetch('../../../backend/api/pangkat/duty-groups.php', {
+            const res = await fetch('../../../backend/api/assignments/lupon-duty-schedules.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken
                 },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                    action: 'assign',
+                    user_id: memberId,
+                    duty_day: dutyDay,
+                    start_time: startTime,
+                    end_time: endTime,
+                    notes: notes
+                })
             });
-            const data = await res.json();
-            if (data.success) {
-                showToast(data.message, 'success');
-                closeDutyGroupModal();
-                loadDutyGroups();
-            } else {
-                showToast(data.message || 'Unable to save duty group.', 'error');
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                throw new Error(json.message || 'Unable to assign Lupon Member.');
             }
+            weeklyDutyRoster = json.data || weeklyDutyRoster;
+            populateMemberDropdown();
+            renderWeeklyDutyBoard();
+            const notesInput = document.getElementById('dutyAssignNotes');
+            if (notesInput) notesInput.value = '';
+            showToast(json.message || 'Lupon duty assignment saved.', 'success');
         } catch (e) {
-            showToast('Failed to save duty group: ' + e.message, 'error');
+            showToast(e.message || 'Failed to save duty assignment.', 'error');
         } finally {
             if (btn) btn.disabled = false;
         }
     };
 
-    window.deleteDutyGroup = async function(groupId, groupName) {
-        if (!confirm(`Are you sure you want to delete "${groupName}"?\n\nMembers will no longer have this group stationed on their official duty calendar.`)) {
+    window.removeLuponDutyMember = async function(scheduleId, memberName, dutyDay) {
+        if (!confirm(`Remove ${memberName} from ${dutyDay} duty?`)) {
             return;
         }
         try {
-            const res = await fetch('../../../backend/api/pangkat/duty-groups.php', {
+            const res = await fetch('../../../backend/api/assignments/lupon-duty-schedules.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': csrfToken
                 },
-                body: JSON.stringify({ action: 'delete', duty_group_id: groupId })
+                body: JSON.stringify({
+                    action: 'remove',
+                    id: scheduleId
+                })
             });
-            const data = await res.json();
-            if (data.success) {
-                showToast(data.message, 'success');
-                loadDutyGroups();
-            } else {
-                showToast(data.message || 'Unable to delete duty group.', 'error');
+            const json = await res.json();
+            if (!res.ok || !json.success) {
+                throw new Error(json.message || 'Unable to remove duty assignment.');
             }
+            weeklyDutyRoster = json.data || weeklyDutyRoster;
+            populateMemberDropdown();
+            renderWeeklyDutyBoard();
+            showToast(json.message || 'Duty assignment removed.', 'success');
         } catch (e) {
-            showToast('Failed to delete duty group: ' + e.message, 'error');
+            showToast(e.message || 'Failed to remove duty assignment.', 'error');
         }
     };
 

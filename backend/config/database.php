@@ -80,23 +80,27 @@ class Database {
         }
 
         try {
-            return new PDO(
+            $pdo = new PDO(
                 "mysql:host={$this->host};port={$port};dbname={$this->dbname};charset=utf8mb4",
                 $this->username,
                 $this->password,
                 $options
             );
+            $pdo->exec("SET time_zone = '+08:00'");
+            return $pdo;
         } catch(PDOException $e) {
             $isAzure = $this->environment('WEBSITE_SITE_NAME', '') !== '';
             // If primary host fails locally and host was not 127.0.0.1/localhost, try local MySQL fallback
             if (!$isAzure && $this->host !== '127.0.0.1' && $this->host !== 'localhost') {
                 try {
-                    return new PDO(
+                    $localPdo = new PDO(
                         "mysql:host=127.0.0.1;port=3306;dbname=agap_db;charset=utf8mb4",
                         'root',
                         '',
                         $options
                     );
+                    $localPdo->exec("SET time_zone = '+08:00'");
+                    return $localPdo;
                 } catch(PDOException $localEx) {
                     // Keep original exception
                 }

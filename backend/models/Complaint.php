@@ -170,6 +170,28 @@ class Complaint
                         $data['party_resident_ids'][$index] = $residentId;
                     }
                 }
+
+                // Online residents describe their concern in plain language; LISO
+                // determines the formal KP category and Civil/Criminal type at screening.
+                if (empty($data['category_id']) && trim((string)($data['category_name'] ?? '')) === '') {
+                    $fallbackCatId = (int) ($this->conn->query(
+                        "SELECT category_id FROM complaint_categories
+                         WHERE category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%'
+                         ORDER BY category_id ASC LIMIT 1"
+                    )->fetchColumn() ?: 0);
+                    if ($fallbackCatId < 1) {
+                        $fallbackCatId = (int) ($this->conn->query(
+                            'SELECT category_id FROM complaint_categories ORDER BY category_id ASC LIMIT 1'
+                        )->fetchColumn() ?: 0);
+                    }
+                    if ($fallbackCatId > 0) {
+                        $data['category_id'] = $fallbackCatId;
+                        $data['other_category_specification'] = 'Pending Barangay LISO Classification';
+                    }
+                }
+                if (empty($data['case_type'])) {
+                    $data['case_type'] = 'Civil';
+                }
             }
 
             $assignedLisoId = null;
@@ -564,7 +586,7 @@ class Complaint
         }
     }
 
-    public function review(int $id, string $status, ?string $notes, ?int $reviewerId = null, bool $mustBeAssignedLiso = false, string $requestMessage = ''): array
+    public function review(int $id, string $status, ?string $notes, ?int $reviewerId = null, bool $mustBeAssignedLiso = false, string $requestMessage = '', array $classification = []): array
     {
         if (strcasecmp($status, 'Approved') === 0) {
             $status = 'Accepted';
@@ -584,8 +606,10 @@ class Complaint
         $this->conn->beginTransaction();
         try {
             $lock = $this->conn->prepare(
-                "SELECT c.submitted_by, c.liso_assigned_to, c.status, c.screening_decision, c.is_draft, cs.case_id,
-                        assigned.role_id AS assigned_role, assigned.status AS assigned_status
+                "SELECT c.submitted_by, c.liso_assigned_to, c.status, c.screening_decision, c.is_draft,
+                        c.category_id, c.secondary_category_id, c.other_category_specification,
+                        c.secondary_other_category_specification, c.case_type, c.complaint_title,
+                        cs.case_id, assigned.role_id AS assigned_role, assigned.status AS assigned_status
                  FROM complaints c
                  LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
                  LEFT JOIN users assigned ON assigned.user_id = c.liso_assigned_to
@@ -599,6 +623,84 @@ class Complaint
                 || (($mustBeAssignedLiso || $intake['submitted_by']) && $assignedId && ($assignedId !== $reviewerId
                     || (int) $intake['assigned_role'] !== 3 || $intake['assigned_status'] !== 'Active'))) {
                 throw new DomainException('This intake has already been screened or can no longer be updated by your account.');
+            }
+
+            $hasClassificationInput = array_intersect(
+                ['category_id', 'secondary_category_id', 'other_category_specification', 'secondary_other_category_specification', 'case_type', 'complaint_title'],
+                array_keys($classification)
+            ) !== [];
+
+            $effectiveCategoryId = (array_key_exists('category_id', $classification) && trim((string) $classification['category_id']) !== '')
+                ? (filter_var($classification['category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0)
+                : (int) ($intake['category_id'] ?? 0);
+            $effectiveOtherSpec = array_key_exists('other_category_specification', $classification)
+                ? (trim((string) $classification['other_category_specification']) ?: null)
+                : ($intake['other_category_specification'] ?: null);
+            $effectiveSecCatId = array_key_exists('secondary_category_id', $classification)
+                ? (filter_var($classification['secondary_category_id'], FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null)
+                : (!empty($intake['secondary_category_id']) ? (int) $intake['secondary_category_id'] : null);
+            $effectiveSecOtherSpec = array_key_exists('secondary_other_category_specification', $classification)
+                ? (trim((string) $classification['secondary_other_category_specification']) ?: null)
+                : ($intake['secondary_other_category_specification'] ?: null);
+            $effectiveCaseType = (array_key_exists('case_type', $classification) && trim((string) $classification['case_type']) !== '')
+                ? trim((string) $classification['case_type'])
+                : (string) ($intake['case_type'] ?? 'Civil');
+            $effectiveTitle = array_key_exists('complaint_title', $classification)
+                ? trim((string) $classification['complaint_title'])
+                : trim((string) ($intake['complaint_title'] ?? ''));
+
+            if ($status === 'Accepted' || $hasClassificationInput) {
+                $catStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_id = ? LIMIT 1');
+                $catStmt->execute([$effectiveCategoryId]);
+                $catRow = $catStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$catRow) {
+                    throw new DomainException('Select a valid complaint category before saving the screening decision.');
+                }
+                $isOtherCat = stripos($catRow['category_name'], 'Others') !== false || stripos($catRow['category_name'], 'Iba pa') !== false;
+                if ($isOtherCat) {
+                    if ($status === 'Accepted' && strcasecmp((string) $effectiveOtherSpec, 'Pending Barangay LISO Classification') === 0) {
+                        throw new DomainException('Determine the official complaint category or specify the exact dispute type before marking this intake eligible.');
+                    }
+                    if ($status === 'Accepted' && ($effectiveOtherSpec === null || $effectiveOtherSpec === '')) {
+                        throw new DomainException('Specify the custom complaint category under "Others" before marking this intake eligible.');
+                    }
+                    if ($effectiveOtherSpec !== null && (mb_strlen($effectiveOtherSpec) > 255 || !ValidationService::text($effectiveOtherSpec))) {
+                        throw new DomainException('Provide a valid custom category specification of 255 characters or fewer.');
+                    }
+                } else {
+                    $effectiveOtherSpec = null;
+                }
+
+                if ($effectiveSecCatId !== null) {
+                    if ($effectiveSecCatId === $effectiveCategoryId) {
+                        throw new DomainException('Select a different 2nd complaint category or leave it blank.');
+                    }
+                    $catStmt->execute([$effectiveSecCatId]);
+                    $secCatRow = $catStmt->fetch(PDO::FETCH_ASSOC);
+                    if (!$secCatRow) {
+                        throw new DomainException('Select a valid 2nd complaint category.');
+                    }
+                    $isSecOther = stripos($secCatRow['category_name'], 'Others') !== false || stripos($secCatRow['category_name'], 'Iba pa') !== false;
+                    if ($isSecOther) {
+                        if ($effectiveSecOtherSpec === null || $effectiveSecOtherSpec === '') {
+                            throw new DomainException('Specify the custom 2nd complaint category under "Others".');
+                        }
+                        if (mb_strlen($effectiveSecOtherSpec) > 255 || !ValidationService::text($effectiveSecOtherSpec)) {
+                            throw new DomainException('Provide a valid 2nd category specification of 255 characters or fewer.');
+                        }
+                    } else {
+                        $effectiveSecOtherSpec = null;
+                    }
+                } else {
+                    $effectiveSecOtherSpec = null;
+                }
+
+                if (!in_array($effectiveCaseType, ['Civil', 'Criminal'], true)) {
+                    throw new DomainException('Select a valid case type (Civil or Criminal).');
+                }
+                if ($effectiveTitle === '' || mb_strlen($effectiveTitle) > 255 || !ValidationService::text($effectiveTitle)) {
+                    throw new DomainException('Provide a valid complaint title / specific nature of 255 characters or fewer.');
+                }
             }
 
             $assignReviewer = false;
@@ -631,9 +733,26 @@ class Complaint
                 }
             }
 
-            $this->conn->prepare('UPDATE complaints SET status = ?, screening_decision = ?, review_notes = ?,
-                liso_reviewed_by = ?, liso_reviewed_at = NOW() WHERE complaint_id = ?')
-                ->execute([$status, $decision, $notes, $reviewerId ?: null, $id]);
+            $this->conn->prepare(
+                'UPDATE complaints
+                 SET status = ?, screening_decision = ?, review_notes = ?,
+                     category_id = ?, secondary_category_id = ?, other_category_specification = ?,
+                     secondary_other_category_specification = ?, case_type = ?, complaint_title = ?,
+                     liso_reviewed_by = ?, liso_reviewed_at = NOW()
+                 WHERE complaint_id = ?'
+            )->execute([
+                $status,
+                $decision,
+                $notes,
+                $effectiveCategoryId,
+                $effectiveSecCatId,
+                $effectiveOtherSpec,
+                $effectiveSecOtherSpec,
+                $effectiveCaseType,
+                $effectiveTitle,
+                $reviewerId ?: null,
+                $id
+            ]);
             if ($assignReviewer) {
                 $this->conn->prepare('UPDATE complaints SET liso_assigned_to = ?, liso_assigned_at = NOW() WHERE complaint_id = ?')
                     ->execute([$reviewerId, $id]);

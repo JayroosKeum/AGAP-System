@@ -486,7 +486,30 @@ class Assignment
         );
         $stmt->execute();
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $members = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $dayMap = [];
+        try {
+            $schedStmt = $this->conn->query(
+                "SELECT user_id, duty_day
+                 FROM lupon_duty_schedules
+                 WHERE is_active = 1
+                 ORDER BY FIELD(duty_day, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')"
+            );
+            foreach ($schedStmt ? $schedStmt->fetchAll(PDO::FETCH_ASSOC) : [] as $sRow) {
+                $uid = (int) $sRow['user_id'];
+                $dayMap[$uid][] = (string) $sRow['duty_day'];
+            }
+        } catch (Throwable) {
+            // Optional table before first Settings visit
+        }
+        foreach ($members as &$m) {
+            $days = array_values(array_unique($dayMap[(int) $m['member_id']] ?? []));
+            $m['duty_days'] = $days;
+            $m['duty_day'] = implode(', ', $days);
+        }
+        unset($m);
+
+        return $members;
     }
 
     /**

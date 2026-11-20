@@ -398,7 +398,13 @@ class ComplaintController
         $reviewerId = (int) ($_SESSION['user_id'] ?? 0);
         $isAssignedLisoReview = (int) ($_SESSION['role_id'] ?? 0) === 3;
         $requestMessage = is_string($data['request_message'] ?? null) ? trim($data['request_message']) : '';
-        return $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $reviewerId, $isAssignedLisoReview, $requestMessage);
+        $classification = [];
+        foreach (['category_id', 'secondary_category_id', 'other_category_specification', 'secondary_other_category_specification', 'case_type', 'complaint_title'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $classification[$field] = $data[$field];
+            }
+        }
+        return $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $reviewerId, $isAssignedLisoReview, $requestMessage, $classification);
     }
 
     public function docket(int $id, int $userId): array

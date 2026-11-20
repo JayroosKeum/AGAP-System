@@ -1466,7 +1466,7 @@ include '../../layouts/header.php';
                                     </div>
                                     <div class="review-summary-grid">
                                         <div class="review-summary-item">
-                                            <span class="review-label">Category &amp; Case Type</span>
+                                            <span class="review-label"><?= $isResidentPortal ? 'Concern Subject' : 'Category &amp; Case Type' ?></span>
                                             <span class="review-value" id="revCategoryTitle">—</span>
                                         </div>
                                         <div class="review-summary-item">
@@ -1491,7 +1491,7 @@ include '../../layouts/header.php';
                                     <span class="section-badge-num">5</span>
                                     <div class="section-title-wrap">
                                         <h3>Review and submit</h3>
-                                        <p>Check the details and select the complaint classification.</p>
+                                        <p><?= $isResidentPortal ? 'Check your details and enter a brief subject for your concern.' : 'Check the details and record a provisional classification (final category &amp; Civil/Criminal type are confirmed by LISO).' ?></p>
                                     </div>
                                 </div>
                                 <span class="section-step-indicator">Section 5 of 5</span>
@@ -1510,6 +1510,24 @@ include '../../layouts/header.php';
                             <!-- Filing Method Hidden: Default to Digital Intake -->
                             <input type="hidden" name="filing_method" id="filingMethod" value="digital">
 
+                            <?php if ($isResidentPortal): ?>
+                                <?php
+                                    $residentFallbackCatId = (int) ($categories[0]['category_id'] ?? 51);
+                                    foreach ($categories as $cat) {
+                                        $cname = (string) ($cat['category_name'] ?? '');
+                                        if (stripos($cname, 'Others') !== false || stripos($cname, 'Iba pa') !== false) {
+                                            $residentFallbackCatId = (int) $cat['category_id'];
+                                            break;
+                                        }
+                                    }
+                                ?>
+                                <input type="hidden" id="categoryId" name="category_id" value="<?= $residentFallbackCatId ?>">
+                                <input type="hidden" id="otherCategorySpecification" name="other_category_specification" value="Pending Barangay LISO Classification">
+                                <input type="hidden" id="caseType" name="case_type" value="Civil">
+                                <div style="margin: 10px 0 14px; padding: 12px 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.84rem; color: #1e3a8a; line-height: 1.5;">
+                                    <strong>Legal Classification by Barangay Lupon (LISO):</strong> You do not need to decide whether your concern is Civil or Criminal or pick a legal category. Add a short title below—the assigned Lupon Member (LISO) will classify it and verify Barangay Tumana jurisdiction during screening.
+                                </div>
+                            <?php else: ?>
                             <!-- Dispute Classification Grid -->
                             <div class="form-row-2" style="margin-top: 10px;">
                                 <div class="form-group">
@@ -1550,7 +1568,7 @@ include '../../layouts/header.php';
                                             <?php endforeach; ?>
                                         </select>
                                     </div>
-                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Pumili sa listahan o i-type ang kategorya ng reklamo.</small>
+                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Provisional category at intake (final classification confirmed by LISO).</small>
                                 </div>
 
                                 <div class="form-group">
@@ -1563,6 +1581,7 @@ include '../../layouts/header.php';
                                         <option value="Civil" <?php echo (($old['case_type'] ?? 'Civil') === 'Civil') ? 'selected' : ''; ?>>Civil</option>
                                         <option value="Criminal" <?php echo (($old['case_type'] ?? '') === 'Criminal') ? 'selected' : ''; ?>>Criminal</option>
                                     </select>
+                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Provisional — LISO determines final Civil/Criminal classification.</small>
                                 </div>
                             </div>
 
@@ -1669,20 +1688,23 @@ include '../../layouts/header.php';
                                     </p>
                                 </div>
                             </div>
+                            <?php endif; ?>
 
                             <div class="form-group">
-                                <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
-                                <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
+                                <label for="complaintTitle"><?= $isResidentPortal ? 'Concern Subject / Brief Title' : 'Complaint Title / Specific Nature' ?> <span class="required-mark">*</span></label>
+                                <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="<?= $isResidentPortal ? 'e.g. Loud noise late at night, Unpaid loan, Property boundary issue' : 'e.g. Boundary dispute, Unpaid debt, Slander' ?>" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
                             </div>
 
+                            <?php if (!$isResidentPortal): ?>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
                                 <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
-                                <small class="field-hint">Record internal or physical blotter reference number if applicable.</small>
+                                <small class="field-hint">Record internal or physical blotter reference number if applicable (Clerk / desk entry).</small>
                                 <div id="blotterJurisdictionNotice" class="field-hint" style="display:none; color:#b45309; font-weight:600; margin-top:5px; background:#fef3c7; padding:4px 8px; border-radius:4px; border:1px solid #fde68a;">
                                     ⚠️ Required for damages > ₱5,000 (Police / Court Jurisdiction — Issue Blotter Reference Only).
                                 </div>
                             </div>
+                            <?php endif; ?>
 
                             <?php if (!$isResidentPortal && empty($escalatePaanyaya)): ?>
                                 <div class="form-group" style="margin: 10px 0 18px; padding: 14px 16px; background: #eef7f0; border: 1px solid #c7dfcd; border-radius: 8px;">
@@ -5223,11 +5245,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (step === 4) {
             return true;
         } else if (step === 5) {
-            const cat = (document.getElementById('primaryCategoryInput')?.value || '').trim();
-            if (!cat) {
-                window.agapNotify?.('Please enter or select a Complaint Category.', 'error');
-                document.getElementById('primaryCategoryInput')?.focus();
-                return false;
+            const primaryCatInputEl = document.getElementById('primaryCategoryInput');
+            if (primaryCatInputEl) {
+                const cat = (primaryCatInputEl.value || '').trim();
+                if (!cat) {
+                    window.agapNotify?.('Please enter or select a Complaint Category.', 'error');
+                    primaryCatInputEl.focus();
+                    return false;
+                }
             }
             if (window.isSafeSpacesCategorySelected && window.isSafeSpacesCategorySelected()) {
                 if (document.getElementById('chkRepeatOffenseVawc')?.checked) {
@@ -5252,12 +5277,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateStep5ReviewSummary() {
-        const cat = document.getElementById('primaryCategoryInput')?.value?.trim() || '—';
+        const primaryCatEl = document.getElementById('primaryCategoryInput');
+        const cat = primaryCatEl?.value?.trim() || '—';
         const type = document.getElementById('caseType')?.value || 'Civil';
         const title = document.getElementById('complaintTitle')?.value?.trim() || '';
         const catEl = document.getElementById('revCategoryTitle');
         if (catEl) {
-            catEl.textContent = `${cat} • ${type}${title ? ' — "' + title + '"' : ''}`;
+            catEl.textContent = primaryCatEl
+                ? `${cat} • ${type}${title ? ' — "' + title + '"' : ''}`
+                : (title || 'Pending Barangay LISO Classification');
         }
 
         const dt = document.getElementById('incidentDateTime')?.value || '';
