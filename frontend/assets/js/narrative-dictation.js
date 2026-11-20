@@ -178,8 +178,17 @@
         }
 
         const body = new FormData();
-        const mime = recording.type.split(';', 1)[0];
-        const extension = { 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/webm': 'webm' }[mime] || 'audio';
+        const mime = (recording.type || '').split(';', 1)[0].toLowerCase();
+        const extension = {
+            'audio/mp4': 'm4a',
+            'video/mp4': 'm4a',
+            'audio/ogg': 'ogg',
+            'application/ogg': 'ogg',
+            'audio/webm': 'webm',
+            'video/webm': 'webm',
+            'audio/x-matroska': 'webm',
+            'video/x-matroska': 'webm',
+        }[mime] || 'webm';
         body.append('audio', recording, `narrative.${extension}`);
         body.append('external_ai_consent', '1');
 
@@ -198,10 +207,20 @@
                 body,
                 signal: controller.signal,
             });
-            const result = await response.json().catch(() => ({}));
+            const rawBody = await response.text();
+            let result = null;
+            try {
+                result = rawBody ? JSON.parse(rawBody) : null;
+            } catch (_) {
+                result = null;
+            }
             if (request !== controller) return;
+            if (!result || typeof result !== 'object') {
+                console.error('Transcription non-JSON response', response.status, rawBody.slice(0, 300));
+                throw new Error(`Transcription failed (HTTP ${response.status}). Please try again or type the narrative.`);
+            }
             if (!response.ok || !result.success || typeof result.text !== 'string' || !result.text.trim()) {
-                throw new Error(result.message || 'Unable to transcribe this recording. Please try again.');
+                throw new Error(result.message || `Unable to transcribe this recording (HTTP ${response.status}). Please try again.`);
             }
             transcript.value = result.text.trim();
             show('transcript', 'Transcript ready for review.');

@@ -1,4 +1,7 @@
 <?php
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: private, no-store');
@@ -67,22 +70,45 @@ if (!AiRequestRateLimit::consume()) {
     exit;
 }
 
-require_once __DIR__ . '/../../controllers/AiServiceController.php';
-$controller = new AiServiceController();
-session_write_close();
-$result = $controller->transcribeAudio($audio, $mime);
+try {
+    require_once __DIR__ . '/../../controllers/AiServiceController.php';
+    $controller = new AiServiceController();
+    session_write_close();
+    $result = $controller->transcribeAudio($audio, $mime);
 
-if (!$result['success'] && array_key_exists('http_status', $result)) {
-    $rateLimited = $result['http_status'] === 429;
-    http_response_code($rateLimited ? 429 : 502);
+    if (!$result['success'] && array_key_exists('http_status', $result)) {
+        $upstreamStatus = (int) $result['http_status'];
+        error_log('AGAP transcribe-audio upstream failure (' . $upstreamStatus . '): ' . ($result['message'] ?? 'unknown'));
+        $rateLimited = $upstreamStatus === 429;
+        $message = match (true) {
+            $rateLimited => 'Gemini’s transcription limit was reached. Try again later.',
+            in_array($upstreamStatus, [401, 403], true) => 'Gemini API key was rejected or lacks permission. Check Settings or GEMINI_API_KEY.',
+            $upstreamStatus === 0 => 'Connection to Google Gemini timed out. Please try again.',
+            default => 'Gemini couldn’t process this recording. Try again or type the narrative.',
+        };
+        http_response_code($rateLimited ? 429 : 422);
+        echo json_encode([
+            'success' => false,
+            'message' => $message,
+        ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        exit;
+    }
+
+    http_response_code($result['success'] ? 200 : 422);
+    $encoded = json_encode($result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($encoded === false) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Failed to encode transcription response.']);
+        exit;
+    }
+    echo $encoded;
+    exit;
+} catch (Throwable $e) {
+    error_log('AGAP transcribe-audio exception: ' . $e->getMessage());
+    http_response_code(500);
     echo json_encode([
         'success' => false,
-        'message' => $rateLimited
-            ? 'Gemini’s transcription limit was reached. Try again later.'
-            : 'Gemini couldn’t process this recording. Try again or type the narrative.',
-    ]);
+        'message' => 'Server error while transcribing audio. Please try again.',
+    ], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     exit;
 }
-http_response_code($result['success'] ? 200 : 422);
-echo json_encode($result);
-exit;

@@ -6,7 +6,7 @@ class GeminiService
 {
     private string $apiKey = '';
     private string $model = 'gemini-3.5-flash';
-    private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3.8-flash'];
+    private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview'];
 
     public function __construct(?string $model = null, ?string $apiKey = null)
     {
@@ -158,8 +158,12 @@ class GeminiService
 
         $lastError = 'Unknown error';
         $lastStatus = 0;
+        $startedAt = microtime(true);
 
-        foreach ($modelsToTry as $candidateModel) {
+        foreach ($modelsToTry as $idx => $candidateModel) {
+            if ($idx > 0 && (microtime(true) - $startedAt) > 25.0) {
+                break;
+            }
             $payload = [
                 'contents' => $contentsPayload
             ];
