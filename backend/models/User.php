@@ -189,6 +189,21 @@ class User {
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
+    public function findActiveByGoogleSubjectOrEmail(string $googleSubject, string $email): array|false
+    {
+        $stmt = $this->db->prepare(
+            "SELECT u.user_id, u.username, u.email, u.first_name, u.last_name, u.role_id, r.role_name
+             FROM users u
+             INNER JOIN roles r ON r.role_id = u.role_id
+             WHERE u.status = 'Active'
+               AND ((? <> '' AND u.google_subject = ?) OR LOWER(u.email) = LOWER(?))
+             ORDER BY (? <> '' AND u.google_subject = ?) DESC, u.user_id ASC
+             LIMIT 1"
+        );
+        $stmt->execute([$googleSubject, $googleSubject, $email, $googleSubject, $googleSubject]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
     public function verifyPassword(int $userId, string $password): bool
     {
         $stmt = $this->db->prepare('SELECT password_hash FROM users WHERE user_id = ? AND status = \'Active\'');
@@ -231,8 +246,11 @@ class User {
             $update->execute([password_hash($password, PASSWORD_DEFAULT), $token['user_id']]);
             if ($update->rowCount() !== 1) { $this->db->rollBack(); return ['success' => false, 'message' => 'This account is no longer active.']; }
             $this->db->prepare('UPDATE password_reset_tokens SET used_at = NOW() WHERE reset_id = ?')->execute([$token['reset_id']]);
+            $roleStmt = $this->db->prepare('SELECT r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = ? LIMIT 1');
+            $roleStmt->execute([$token['user_id']]);
+            $roleName = (string) ($roleStmt->fetchColumn() ?: '');
             $this->db->commit();
-            return ['success' => true, 'user_id' => (int) $token['user_id']];
+            return ['success' => true, 'user_id' => (int) $token['user_id'], 'role_name' => $roleName];
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) $this->db->rollBack(); error_log($exception->getMessage());
             return ['success' => false, 'message' => 'Unable to reset the password.'];

@@ -33,12 +33,14 @@ final class GoogleResidentIdentity
             CURLOPT_TIMEOUT => 6,
             CURLOPT_FAILONERROR => true,
         ]);
-        $caBundle = getenv('GOOGLE_RESIDENT_CA_FILE') ?: $_SERVER['GOOGLE_RESIDENT_CA_FILE'] ?? '';
-        if ($caBundle !== '') {
-            if (!is_string($caBundle) || !is_readable($caBundle)) {
-                throw new RuntimeException('The configured Google CA bundle cannot be read.');
-            }
+        $caBundle = getenv('GOOGLE_RESIDENT_CA_FILE') ?: ($_ENV['GOOGLE_RESIDENT_CA_FILE'] ?? ($_SERVER['GOOGLE_RESIDENT_CA_FILE'] ?? ''));
+        $defaultCaBundle = dirname(__DIR__, 2) . '/storage/certs/gmail-smtp-ca.pem';
+        if (is_string($caBundle) && $caBundle !== '' && is_readable($caBundle)) {
             curl_setopt($request, CURLOPT_CAINFO, $caBundle);
+        } elseif (is_readable($defaultCaBundle)) {
+            curl_setopt($request, CURLOPT_CAINFO, $defaultCaBundle);
+        } elseif (defined('CURLSSLOPT_NATIVE_CA')) {
+            curl_setopt($request, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA);
         }
         $response = curl_exec($request);
         if (!is_string($response)) {

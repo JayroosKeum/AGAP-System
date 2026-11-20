@@ -39,9 +39,9 @@ include '../../layouts/header.php';
                 </div>
             <?php else: ?>
                 <form id="resetPasswordForm" class="login-card">
-                    <p class="login-eyebrow">CREDENTIAL UPDATE</p>
-                    <h2>Reset your password</h2>
-                    <p class="login-intro">Create a new password. Use at least 12 characters with uppercase, lowercase, and a number.</p>
+                    <p class="login-eyebrow">GMAIL RESET CONFIRMATION</p>
+                    <h2>Enter your new password</h2>
+                    <p class="login-intro">Your Gmail reset link is confirmed. Enter and confirm your new password below (at least 12 characters with uppercase, lowercase, and a number).</p>
 
                     <div id="authMessage" role="alert" aria-live="polite"></div>
 
@@ -58,11 +58,12 @@ include '../../layouts/header.php';
                     </div>
 
                     <button type="submit" id="submitBtn">
-                        <span>Reset Password</span>
+                        <span>Confirm &amp; Save New Password</span>
                     </button>
 
-                    <p class="auth-link">
-                        <a href="login.php">← Back to sign in</a>
+                    <p class="auth-link" style="display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+                        <a href="login.php">← Staff Sign In</a>
+                        <a href="../resident/login.php">Resident Sign In →</a>
                     </p>
                 </form>
             <?php endif; ?>

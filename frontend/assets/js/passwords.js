@@ -17,6 +17,12 @@ const passwordApi = async (url, body) => {
     }));
 
     if (!response.ok || data.success === false) {
+        if (data.next_nonce) {
+            const gOnload = document.getElementById('g_id_onload');
+            if (gOnload) {
+                gOnload.setAttribute('data-nonce', data.next_nonce);
+            }
+        }
         throw new Error(data.message || 'Request failed.');
     }
 
@@ -28,6 +34,36 @@ const passwordMessage = (message, success = false) => {
     if (!node) return;
     node.textContent = message;
     node.className = message ? `auth-message ${success ? 'success' : 'error'}` : '';
+};
+
+window.submitForgotPasswordGoogleCredential = async (response) => {
+    if (!response || !response.credential) {
+        passwordMessage('Google sign-in did not return a valid credential. Please try again.', false);
+        return;
+    }
+
+    passwordMessage('Verifying your Gmail account and sending confirmation email…', true);
+
+    try {
+        const result = await passwordApi('../../../backend/api/auth/request-password-reset.php', {
+            credential: response.credential
+        });
+        passwordMessage(
+            result.message || 'Gmail verified. A password reset confirmation link has been sent to your Gmail inbox.',
+            true
+        );
+
+        const googleSection = document.getElementById('forgotGoogleSection');
+        if (googleSection) {
+            googleSection.style.display = 'none';
+        }
+        const manualSection = document.getElementById('forgotManualFallback');
+        if (manualSection) {
+            manualSection.style.display = 'none';
+        }
+    } catch (error) {
+        passwordMessage(error.message || 'Could not verify your Gmail account. Please try again.', false);
+    }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -102,9 +138,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     formEl.reset();
                 }
 
-                if (item.redirect) {
+                const targetRedirect = result.redirect || item.redirect;
+                if (targetRedirect) {
                     setTimeout(() => {
-                        window.location.href = item.redirect;
+                        window.location.href = targetRedirect;
                     }, 1400);
                 }
             } catch (error) {

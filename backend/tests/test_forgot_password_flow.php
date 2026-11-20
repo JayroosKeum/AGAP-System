@@ -1,4 +1,7 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../controllers/AuthController.php';
 require_once __DIR__ . '/../models/User.php';
@@ -100,6 +103,23 @@ assertTest($auth->login('clerk', 'password') === true, "Restored default passwor
 echo "\n[9] Testing unknown username recovery request...\n";
 $unknownResult = $auth->requestPasswordReset(['identity' => 'nonexistent_test_user']);
 assertTest($unknownResult['success'] === true, "Unknown username returns standard privacy-preserving response");
+
+// 10. Google Gmail sign-in password reset flow
+echo "\n[10] Testing Google Gmail Sign-In password reset dispatch...\n";
+$googleResetResult = $auth->dispatchPasswordResetForGoogleIdentity([
+    'google_subject' => 'test_google_sub_clerk',
+    'email' => (string) $user['email'],
+]);
+assertTest($googleResetResult['success'] === true, "Google Gmail verified identity dispatches reset confirmation email");
+assertTest(($googleResetResult['email'] ?? '') === (string) $user['email'], "Confirmation email targets verified account email");
+
+// 11. Unregistered Gmail address via Google Sign-In
+echo "\n[11] Testing unregistered Gmail address via Google Sign-In...\n";
+$unregisteredGoogle = $auth->dispatchPasswordResetForGoogleIdentity([
+    'google_subject' => 'unregistered_google_sub_999',
+    'email' => 'unregistered.account.99999@gmail.com',
+]);
+assertTest($unregisteredGoogle['success'] === false, "Unregistered Gmail account returns helpful error message");
 
 echo "\n====================================================================\n";
 echo "   ALL FORGOT PASSWORD TESTS PASSED SUCCESSFULLY!\n";

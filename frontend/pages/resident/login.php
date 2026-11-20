@@ -75,6 +75,8 @@ $showResend = in_array($notice, ['verification_sent', 'verification_pending', 'v
                     <?php endif; ?>
                 </form>
 
+                <p class="resident-switch" style="margin-top: 12px; margin-bottom: 4px;"><a href="../auth/forgot-password.php?portal=resident">Forgot your password?</a></p>
+
                 <?php require __DIR__ . '/google-sign-in.php'; ?>
 
                 <p class="resident-switch">New to AGAP? <a href="register.php">Create a resident account</a></p>

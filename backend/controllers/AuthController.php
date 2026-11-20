@@ -205,6 +205,63 @@ class AuthController {
         ];
     }
 
+    public function requestPasswordResetWithGoogle(string $credential, string $nonce): array
+    {
+        try {
+            $identity = (new GoogleResidentIdentity())->confirm($credential, $nonce);
+        } catch (Throwable $exception) {
+            error_log('Google password reset verification failed: ' . $exception->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Google could not verify this Gmail sign-in. Please try signing in with your Gmail account again.',
+            ];
+        }
+
+        return $this->dispatchPasswordResetForGoogleIdentity($identity);
+    }
+
+    public function dispatchPasswordResetForGoogleIdentity(array $identity): array
+    {
+        $googleSubject = trim((string) ($identity['google_subject'] ?? ''));
+        $email = strtolower(trim((string) ($identity['email'] ?? '')));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'A valid Gmail address is required.'];
+        }
+
+        $user = $this->userModel->findActiveByGoogleSubjectOrEmail($googleSubject, $email);
+        if (!$user) {
+            return [
+                'success' => false,
+                'message' => "No active AGAP account is registered with {$email}. Please sign in with the Gmail address linked to your account.",
+            ];
+        }
+
+        $recipientEmail = !empty($user['email']) ? (string) $user['email'] : $email;
+        $token = bin2hex(random_bytes(32));
+        $expiresAt = (new DateTimeImmutable('+1 hour'))->format('Y-m-d H:i:s');
+        if (!$this->userModel->createPasswordResetToken((int) $user['user_id'], hash('sha256', $token), $expiresAt)) {
+            return ['success' => false, 'message' => 'Unable to process the reset request at this time. Please try again.'];
+        }
+
+        $this->audit->log((int) $user['user_id'], 'Requested password reset via Google Gmail sign-in', 'Authentication', (int) $user['user_id']);
+
+        $service = new PasswordResetService();
+        if (!$service->send($recipientEmail, (string) $user['username'], $token, (string) ($user['first_name'] ?? ''))) {
+            return [
+                'success' => false,
+                'message' => 'We verified your Gmail account, but could not send the confirmation email right now. Please try again shortly.',
+            ];
+        }
+
+        $maskedEmail = $this->maskEmail($recipientEmail);
+        return [
+            'success' => true,
+            'email' => $recipientEmail,
+            'masked_email' => $maskedEmail,
+            'message' => "Gmail verified ({$recipientEmail}). A password reset confirmation email has been sent to your Gmail inbox (valid for 1 hour). Open that email and click the confirmation link to enter your new password.",
+        ];
+    }
+
     public function isPasswordResetTokenValid(string $token): bool
     {
         return preg_match('/^[a-f0-9]{64}$/', $token) === 1
@@ -222,8 +279,9 @@ class AuthController {
         $result = $this->userModel->consumePasswordResetToken(hash('sha256', $token), $password);
         if ($result['success']) {
             $this->audit->log($result['user_id'], 'Reset password', 'Authentication', $result['user_id']);
+            $result['redirect'] = (($result['role_name'] ?? '') === 'Resident') ? '../resident/login.php' : 'login.php';
         }
-        return $result + ['message' => $result['success'] ? 'Password reset successfully. You can now sign in.' : $result['message']];
+        return $result + ['message' => $result['success'] ? 'Password reset successfully. Redirecting you to sign in…' : $result['message']];
     }
 
     public function verifyEmail(array $data): array

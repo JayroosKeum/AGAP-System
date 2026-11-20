@@ -51,8 +51,11 @@ final class PasswordResetService
             $mail->CharSet = 'UTF-8';
 
             $caBundle = $this->environment('GMAIL_SMTP_CA_FILE');
+            $defaultCaBundle = dirname(__DIR__, 2) . '/storage/certs/gmail-smtp-ca.pem';
             if ($caBundle !== '' && is_readable($caBundle)) {
                 $mail->SMTPOptions = ['ssl' => ['cafile' => $caBundle]];
+            } elseif (is_readable($defaultCaBundle)) {
+                $mail->SMTPOptions = ['ssl' => ['cafile' => $defaultCaBundle]];
             } elseif (!ini_get('openssl.cafile') && is_readable((string) ini_get('curl.cainfo'))) {
                 $mail->SMTPOptions = ['ssl' => ['cafile' => ini_get('curl.cainfo')]];
             } elseif (PHP_OS_FAMILY === 'Windows') {
@@ -69,7 +72,7 @@ final class PasswordResetService
             $mail->setFrom($smtpUser, 'Barangay Tumana AGAP Portal');
             $mail->addAddress($email, $displayName);
             $mail->isHTML(true);
-            $mail->Subject = 'Barangay Tumana AGAP - Password Reset Request';
+            $mail->Subject = 'Barangay Tumana AGAP - Confirm Password Reset';
 
             $safeName = htmlspecialchars($displayName, ENT_QUOTES, 'UTF-8');
             $safeUser = htmlspecialchars($username, ENT_QUOTES, 'UTF-8');
@@ -103,11 +106,11 @@ final class PasswordResetService
     </div>
     <div class="body">
       <div class="greeting">Hello, {$safeName}</div>
-      <p>We received a password reset request for your AGAP staff account (<strong>{$safeUser}</strong>).</p>
-      <p>To choose a new password, click the button below. This link is single-use and will expire in <strong>1 hour</strong>.</p>
+      <p>We received a password reset request for your AGAP account (<strong>{$safeUser}</strong>).</p>
+      <p>To confirm this password reset and enter your new password, click the button below. This confirmation link is single-use and will expire in <strong>1 hour</strong>.</p>
       
       <div class="btn-wrap">
-        <a href="{$safeLink}" class="btn" target="_blank" rel="noopener">Reset Password</a>
+        <a href="{$safeLink}" class="btn" target="_blank" rel="noopener">Confirm &amp; Enter New Password</a>
       </div>
 
       <div class="meta-box">
@@ -129,8 +132,8 @@ final class PasswordResetService
 HTML;
 
             $mail->AltBody = "Hello {$displayName},\n\n"
-                . "We received a request to reset the password for your AGAP staff account ({$username}).\n\n"
-                . "Use the following link to reset your password (valid for 1 hour):\n"
+                . "We received a request to reset the password for your AGAP account ({$username}).\n\n"
+                . "Confirm your password reset and enter your new password using the link below (valid for 1 hour):\n"
                 . "{$link}\n\n"
                 . "If you did not request this reset, please ignore this email.\n\n"
                 . "Barangay Tumana · AGAP Portal";
