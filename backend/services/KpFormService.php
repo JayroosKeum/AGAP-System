@@ -1315,6 +1315,9 @@ class KpFormService
         $hasBarredComp = !empty($cfaElig['barred_complainant']) || in_array('KP Form 20-A', $availCfaForms, true);
         $hasBarredResp = !empty($cfaElig['defaulted_respondent']) || in_array('KP Form 20-B', $availCfaForms, true);
         $canKp20 = in_array('KP Form 20', $availCfaForms, true);
+        $isFinalizedDismissed = in_array($caseStatus, ['Dismissed', 'DISMISSED_BARRED'], true)
+            && (($minutes['status'] ?? '') === 'Finalized' && ($minutes['session_outcome'] ?? '') === 'Dismissed'
+                || ($case['current_stage'] ?? '') === 'Dismissed');
 
         if ($hasBarredComp) {
             $forms[] = [
@@ -1324,6 +1327,8 @@ class KpFormService
                 'status' => 'Barred',
                 'description' => 'Certificate to Bar Action issued due to willful failure of complainant to appear.'
             ];
+        }
+        if ($hasBarredComp || $isFinalizedDismissed) {
             $forms[] = [
                 'code' => 'KP Form 21',
                 'title' => 'Pormularyo ng KP Blg. 21 (Katibayan Upang Hadlangan na Makapagsakdal)',
@@ -1785,15 +1790,36 @@ class KpFormService
 
 
 
-        // KP Form 20-A / 21: Certificate to Bar Action (Complainant unjustified non-appearance)
+        // KP Form 20-A / 21: Certificate to Bar Action (Complainant unjustified non-appearance or finalized Dismissed hearing)
         if (str_contains($code, '20-A') || str_contains($code, '20A') || str_contains($code, '21')) {
             require_once __DIR__ . '/../models/CFA.php';
             $cfaElig = (new CFA($this->conn))->determineCfaEligibility($caseId);
             $hasBarredComp = !empty($cfaElig['barred_complainant'])
                 || in_array('KP Form 20-A', $cfaElig['available_forms'] ?? [], true);
-            $label = (str_contains($code, '20-A') || str_contains($code, '20A')) ? 'KP Form 20-A' : 'KP Form 21';
+            $isKp20A = str_contains($code, '20-A') || str_contains($code, '20A');
+            $label = $isKp20A ? 'KP Form 20-A' : 'KP Form 21';
 
-            if (!$hasBarredComp) {
+            $hasDismissedMinutes = false;
+            if (!$isKp20A && in_array($caseStatus, ['Dismissed', 'DISMISSED_BARRED'], true)) {
+                $dmStmt = $this->conn->prepare(
+                    "SELECT 1 FROM hearing_minutes
+                     WHERE case_id = ? AND status = 'Finalized' AND session_outcome = 'Dismissed'
+                     LIMIT 1"
+                );
+                $dmStmt->execute([$caseId]);
+                $hasDismissedMinutes = (bool) $dmStmt->fetchColumn();
+                if (!$hasDismissedMinutes) {
+                    $dsStmt = $this->conn->prepare(
+                        "SELECT 1 FROM case_stages
+                         WHERE case_id = ? AND outcome = 'Dismissed' AND stage_status = 'Completed'
+                         LIMIT 1"
+                    );
+                    $dsStmt->execute([$caseId]);
+                    $hasDismissedMinutes = (bool) $dsStmt->fetchColumn();
+                }
+            }
+
+            if (!$hasBarredComp && !(!$isKp20A && $hasDismissedMinutes)) {
                 return [
                     'eligible' => false,
                     'reason' => $label . ' requires a documented unjustified non-appearance determination for the Complainant on a verified-served hearing.',

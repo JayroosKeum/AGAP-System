@@ -1704,8 +1704,8 @@ class Hearing
             $t9Stmt->execute();
             $kp9TemplateId = (int) ($t9Stmt->fetchColumn() ?: 3);
 
-            // KP Form records (generated on-demand for preview/download without saving physical PDF to disk)
-            $kp8FilePath = null;
+            // KP Form records (generated on-demand for preview/download; file_path is NOT NULL)
+            $kp8FilePath = '';
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)
@@ -1739,8 +1739,8 @@ class Hearing
                 "Notice of Rescheduled Hearing (KP Form 8) issued due to presider unavailability: {$reason}."
             ]);
 
-            // KP Form 9 record (on-demand streaming/preview)
-            $kp9FilePath = null;
+            // KP Form 9 record (on-demand streaming/preview; file_path is NOT NULL)
+            $kp9FilePath = '';
             $doc9Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)
@@ -2203,10 +2203,16 @@ class Hearing
             $duration,
             $hearing['hearing_type']
         );
+        if (empty($schedValidation['valid'])) {
+            return [
+                'success' => false,
+                'message' => $schedValidation['message'] ?? 'Selected reschedule date and time violate barangay hearing operating hours.'
+            ];
+        }
 
-        $startTime = $schedValidation['valid'] ? $schedValidation['start_time'] : date('Y-m-d H:i:s', strtotime($rescheduleDate));
-        $endTime = $schedValidation['valid'] ? $schedValidation['end_time'] : date('Y-m-d H:i:s', strtotime($startTime . " + {$duration} minutes"));
-        $durationMinutes = $schedValidation['valid'] ? $schedValidation['duration_minutes'] : $duration;
+        $startTime = $schedValidation['start_time'];
+        $endTime = $schedValidation['end_time'];
+        $durationMinutes = $schedValidation['duration_minutes'];
 
         $startedTrans = false;
         try {
@@ -2304,8 +2310,8 @@ class Hearing
             $t9Stmt->execute();
             $kp9TemplateId = (int) ($t9Stmt->fetchColumn() ?: 3);
 
-            // KP Form records (generated on-demand for preview/download without saving physical PDF to disk)
-            $kp8FilePath = null;
+            // KP Form records (generated on-demand for preview/download; file_path is NOT NULL)
+            $kp8FilePath = '';
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)
@@ -2339,8 +2345,8 @@ class Hearing
                 "Notice of Rescheduled Hearing (KP Form 8): {$reason}."
             ]);
 
-            // KP Form 9 record (on-demand streaming/preview)
-            $kp9FilePath = null;
+            // KP Form 9 record (on-demand streaming/preview; file_path is NOT NULL)
+            $kp9FilePath = '';
             $doc9Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)

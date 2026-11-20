@@ -3281,8 +3281,9 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
     const sessionLabel = getStageSessionOrdinalLabel(mode || stageWorkspaceState.mode || stageWorkspaceState.stageType, sessionIndex);
 
     const isFinalized = (session.minutes_status === 'Finalized');
-    const isConcludedSession = ['Concluded', 'Completed'].includes(String(session.queue_status || session.status || ''))
-        || ['Settled', 'Resolved', 'Dismissed', 'Pending CFA', 'Arbitration Award', 'Repudiated'].includes(String(session.session_outcome || ''));
+    const isDraftMinutes = (session.minutes_status === 'Draft');
+    const isConcludedSession = (!isDraftMinutes && ['Concluded', 'Completed'].includes(String(session.queue_status || session.status || '')))
+        || (isFinalized && ['Settled', 'Resolved', 'Dismissed', 'Pending CFA', 'Arbitration Award', 'Repudiated'].includes(String(session.session_outcome || '')));
     const readonlyAttr = (stageWorkspaceState.readOnly || isFinalized || isConcludedSession)
         ? 'disabled aria-disabled="true" title="Read-only concluded session"'
         : '';
@@ -3989,9 +3990,15 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             </button>
 
-                            <button type="button" class="btn-create" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 16px; background: #0284c7; border-color: #0284c7;">
+                            <button type="button" class="btn-secondary" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 14px;">
 
-                                Save
+                                Save Draft
+
+                            </button>
+
+                            <button type="button" class="btn-create" id="btnSaveMinutesFinalize_${hId}" onclick="saveHearingMinutes('Finalized', ${hId})" style="font-size: 0.84rem; padding: 7px 16px; background: #0284c7; border-color: #0284c7;">
+
+                                Save &amp; Finalize
 
                             </button>
                         `}
@@ -4449,10 +4456,68 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
     } else if (outcomeVal === 'Party Absent' || outcomeVal === 'Non-Appearance') {
         renderPartyAbsentOutcomeBanner(bannerEl, Number(caseId), Number(activeHearingId));
+    } else if (outcomeVal === 'Rescheduled') {
+        renderRescheduledOutcomeBanner(bannerEl, mode, Number(activeHearingId));
     } else {
         bannerEl.innerHTML = '';
     }
 
+}
+
+function renderRescheduledOutcomeBanner(bannerEl, mode, hearingId) {
+    if (!bannerEl) return;
+    const isMed = (mode === 'Mediation');
+    const allowedDayNumbers = isMed
+        ? (window.AGAP_SETTINGS?.mediation_day_numbers || [2])
+        : (mode === 'Conciliation' ? [1, 3, 4, 5] : [1, 2, 3, 4, 5]);
+    const dayHint = isMed
+        ? (window.AGAP_SETTINGS?.mediation_days_label || 'Tuesdays')
+        : (mode === 'Conciliation' ? 'Monday, Wednesday, Thursday, or Friday' : 'Monday to Friday');
+    const minTime = isMed
+        ? (window.AGAP_SETTINGS?.mediation_hours_start || '08:00')
+        : (window.AGAP_SETTINGS?.working_hours_start || '08:00');
+    const maxTime = isMed
+        ? (window.AGAP_SETTINGS?.mediation_hours_end || '17:00')
+        : (window.AGAP_SETTINGS?.working_hours_end || '17:00');
+    const defaultVenue = window.AGAP_SETTINGS?.mediation_venue || 'Lupon Court Room';
+
+    const probe = new Date();
+    let defaultDate = '';
+    for (let i = 1; i <= 45; i++) {
+        const d = new Date(probe.getFullYear(), probe.getMonth(), probe.getDate() + i);
+        if (allowedDayNumbers.includes(d.getDay())) {
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            defaultDate = `${y}-${m}-${day}`;
+            break;
+        }
+    }
+
+    bannerEl.innerHTML = `
+        <div style="background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 14px 18px; margin-top: 8px;">
+            <strong style="font-size: 0.92rem; display: block; color: #0f172a; margin-bottom: 4px;">
+                📅 Schedule Replacement / Rescheduled Hearing (${escapeHtml(dayHint)})
+            </strong>
+            <p style="margin: 0 0 12px; font-size: 0.82rem; color: #475569;">
+                Finalizing as <strong>Rescheduled</strong> marks this session as reset and auto-issues KP Form 8 / KP Form 9 for the replacement date below.
+            </p>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;">
+                <div>
+                    <label for="minReschedDate_${hearingId}" style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">New Hearing Date <span style="color: #dc2626;">*</span></label>
+                    <input type="date" id="minReschedDate_${hearingId}" value="${escapeHtml(defaultDate)}" min="${escapeHtml(defaultDate)}" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box; background: #fff;">
+                </div>
+                <div>
+                    <label for="minReschedTime_${hearingId}" style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Call Time (${escapeHtml(minTime)}–${escapeHtml(maxTime)}) <span style="color: #dc2626;">*</span></label>
+                    <input type="time" id="minReschedTime_${hearingId}" value="09:00" min="${escapeHtml(minTime)}" max="${escapeHtml(maxTime)}" step="900" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box; background: #fff;">
+                </div>
+                <div>
+                    <label for="minReschedVenue_${hearingId}" style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Venue</label>
+                    <input type="text" id="minReschedVenue_${hearingId}" value="${escapeHtml(defaultVenue)}" style="width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.86rem; box-sizing: border-box; background: #fff;">
+                </div>
+            </div>
+        </div>
+    `;
 }
 
 
@@ -4592,7 +4657,7 @@ window.closeMinutesModal = function() {};
 
 
 
-async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skipConfirm = false) {
+async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skipConfirm = false, suppressAutoModal = false) {
 
     if (guardWorkspaceMutation()) return;
 
@@ -4728,11 +4793,30 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
         session_minutes: getVal('session_minutes'),
 
-        status: 'Draft',
+        status: (status === 'Finalized' ? 'Finalized' : 'Draft'),
 
         force_edit: 1
 
     };
+
+    if (outcomeVal === 'Rescheduled') {
+        const reschedDate = document.getElementById(`minReschedDate_${hearingId}`)?.value?.trim() || '';
+        const reschedTime = document.getElementById(`minReschedTime_${hearingId}`)?.value?.trim() || '';
+        const reschedVenue = document.getElementById(`minReschedVenue_${hearingId}`)?.value?.trim() || '';
+        if (payload.status === 'Finalized' && (!reschedDate || !reschedTime)) {
+            notifyUser('Please select a valid replacement date and time before finalizing as Rescheduled.', 'warning', 'Reschedule Schedule Required');
+            setAsyncButtonState(draftBtn, false);
+            setAsyncButtonState(finalizeBtn, false);
+            return;
+        }
+        if (reschedDate && reschedTime) {
+            payload.next_hearing_date = reschedDate;
+            payload.next_hearing_time = reschedTime;
+            if (reschedVenue) {
+                payload.next_hearing_venue = reschedVenue;
+            }
+        }
+    }
 
 
 
@@ -4904,11 +4988,14 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
 
 
-            if (targetKpForm) {
+            if (!suppressAutoModal && targetKpForm && payload.status === 'Finalized') {
 
-                notifyUser(`Session minutes saved successfully. Opening ${targetKpForm} printable preview...`, 'success', 'Session Minutes Saved', 2500);
+                notifyUser(`Session minutes finalized successfully. Opening ${targetKpForm} printable preview...`, 'success', 'Session Minutes Finalized', 2500);
 
-                openKpFormModal(stageWorkspaceState.caseId, targetKpForm, hearingId, true);
+                const modalHearingId = (outcomeVal === 'Rescheduled' && json.rescheduled_hearing?.hearing_id)
+                    ? Number(json.rescheduled_hearing.hearing_id)
+                    : hearingId;
+                openKpFormModal(stageWorkspaceState.caseId, targetKpForm, modalHearingId, true);
 
             } else {
 
@@ -4926,9 +5013,13 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
                     notifyUser(`Session minutes saved, but 2nd Mediation could not be booked:
 ${json.next_hearing_error}`, 'warning', 'Next Session Scheduling Notice', 8000);
 
+                } else if (payload.status === 'Finalized') {
+
+                    notifyUser('Session minutes finalized and locked successfully.', 'success');
+
                 } else {
 
-                    notifyUser('Session minutes saved successfully.', 'success');
+                    notifyUser('Draft session minutes saved. Click "Save & Finalize" when the session is complete.', 'success');
 
                 }
 
@@ -9324,6 +9415,19 @@ async function issueArbitrationOutcome(hearingId = null) {
 
 
     try {
+        // Save/finalize hearing minutes BEFORE stages/outcome.php transitions the case to read-only Arbitration
+        if (hId) {
+            const activeSess = (stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === Number(hId));
+            const outcomeEl = getMinutesField('minOutcome', hId);
+            if (outcomeEl) outcomeEl.value = 'Arbitration';
+            if (activeSess && activeSess.minutes_status !== 'Finalized' && typeof saveHearingMinutes === 'function') {
+                try {
+                    await saveHearingMinutes('Finalized', hId, true, true);
+                } catch (minErr) {
+                    console.warn('saveHearingMinutes note:', minErr);
+                }
+            }
+        }
 
         const payload = {
 
@@ -9362,32 +9466,6 @@ async function issueArbitrationOutcome(hearingId = null) {
         if (json.complaint_id) {
 
             complaintId = json.complaint_id;
-
-        }
-
-
-
-        // Also save hearing minutes if session is active
-
-        if (hId) {
-
-            const outcomeEl = getMinutesField('minOutcome', hId);
-
-            if (outcomeEl) outcomeEl.value = 'Arbitration';
-
-            try {
-
-                if (typeof saveHearingMinutes === 'function') {
-
-                    await saveHearingMinutes('Finalized', hId, true);
-
-                }
-
-            } catch (minErr) {
-
-                console.warn('saveHearingMinutes note:', minErr);
-
-            }
 
         }
 
@@ -9608,12 +9686,15 @@ async function submitInlineSettlementForm(event) {
 
     try {
         // Save/finalize hearing minutes before settlements/save.php concludes the case
-        if (isSignedAndAttested && hId && Array.isArray(stageWorkspaceState.sessions) && stageWorkspaceState.sessions.some(s => Number(s.hearing_id) === Number(hId))) {
+        const targetSess = hId && Array.isArray(stageWorkspaceState.sessions)
+            ? stageWorkspaceState.sessions.find(s => Number(s.hearing_id) === Number(hId))
+            : null;
+        if (isSignedAndAttested && targetSess && targetSess.minutes_status !== 'Finalized') {
             const outcomeEl = typeof getMinutesField === 'function' ? getMinutesField('minOutcome', hId) : null;
             if (outcomeEl) outcomeEl.value = 'Settled';
             try {
                 if (typeof saveHearingMinutes === 'function') {
-                    await saveHearingMinutes('Finalized', hId, true);
+                    await saveHearingMinutes('Finalized', hId, true, true);
                 }
             } catch (minErr) {
                 console.warn('saveHearingMinutes note:', minErr);
@@ -9679,6 +9760,19 @@ async function issueSettledOutcome(hearingId = null) {
 
 
     try {
+        // Finalize active session minutes first (leaves case open until signed KP Form 16 concludes it)
+        if (hId) {
+            const activeSess = (stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === Number(hId));
+            const outcomeEl = getMinutesField('minOutcome', hId);
+            if (outcomeEl) outcomeEl.value = 'Settled';
+            if (activeSess && activeSess.minutes_status !== 'Finalized' && typeof saveHearingMinutes === 'function') {
+                try {
+                    await saveHearingMinutes('Finalized', hId, true, true);
+                } catch (minErr) {
+                    console.warn('saveHearingMinutes note:', minErr);
+                }
+            }
+        }
 
         const payload = {
 
@@ -9718,32 +9812,6 @@ async function issueSettledOutcome(hearingId = null) {
         if (json.complaint_id) {
 
             complaintId = json.complaint_id;
-
-        }
-
-
-
-        // Also save hearing minutes if session is active
-
-        if (hId) {
-
-            const outcomeEl = getMinutesField('minOutcome', hId);
-
-            if (outcomeEl) outcomeEl.value = 'Settled';
-
-            try {
-
-                if (typeof saveHearingMinutes === 'function') {
-
-                    await saveHearingMinutes('Finalized', hId, true);
-
-                }
-
-            } catch (minErr) {
-
-                console.warn('saveHearingMinutes note:', minErr);
-
-            }
 
         }
 

@@ -197,8 +197,8 @@ class HearingWorkflow
                     $tplId = (int) $getTpl->fetchColumn();
                 }
 
-                // On-demand generation: no physical disk file created ahead of time
-                $relativePath = null;
+                // On-demand generation: generated_documents.file_path is NOT NULL
+                $relativePath = '';
 
                 // Save generated document
                 $docStmt = $this->db->prepare("INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status) VALUES (?, ?, ?, ?, 'For Service')");

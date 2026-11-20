@@ -134,7 +134,7 @@ try {
 
     $prepSvc = new PaanyayaPreparationService($db);
     $paanyayaDeliverySvc = new PaanyayaServiceDelivery($db);
-    $paanyayaApptDate = date('Y-m-d', strtotime('+2 days'));
+    $paanyayaApptDate = date('Y-m-d', strtotime('+2 weekdays'));
     $prepSvc->save($testComplaintId, 1, 'generate', [
         'appointment_date' => $paanyayaApptDate,
         'appointment_time' => '10:00',

@@ -1410,7 +1410,8 @@ class ShowCauseService
                 if ($action === 'CFA Issued') {
                     $complainants = $this->conn->prepare("
                         SELECT u.user_id FROM users u
-                        JOIN complaint_parties cp ON cp.resident_id = u.resident_id
+                        JOIN resident_user_profiles rup ON rup.user_id = u.user_id
+                        JOIN complaint_parties cp ON cp.resident_id = rup.resident_id
                         WHERE cp.complaint_id = ? AND cp.party_type = 'Complainant'
                         UNION
                         SELECT submitted_by FROM complaints WHERE complaint_id = ? AND submitted_by IS NOT NULL
