@@ -1649,7 +1649,7 @@ ON DUPLICATE KEY UPDATE description = VALUES(description);
 
 INSERT INTO system_settings (setting_key, setting_value, description) VALUES
     ('gemini_api_key', '', 'Google Gemini API Key for AI Narrative Refinement, OCR Scans, and Audio Transcription'),
-    ('gemini_model', 'gemini-3.8-flash', 'Active Gemini AI Model'),
+    ('gemini_model', 'gemini-3.5-flash', 'Active Gemini AI Model'),
     ('captain_name', 'HON. AKIKO LYNNE CENTENO', 'Official Name of Punong Barangay'),
     ('mediation_default_duration_min', '45', 'Default duration for mediation session in minutes (30-60)'),
     ('mediation_max_duration_min', '60', 'Maximum duration before logged justification is required for mediation'),

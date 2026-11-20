@@ -6,7 +6,7 @@ class GeminiService
 {
     private string $apiKey = '';
     private string $model = 'gemini-3.5-flash';
-    private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
+    private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview', 'gemini-3.8-flash'];
 
     public function __construct(?string $model = null, ?string $apiKey = null)
     {
@@ -124,6 +124,10 @@ class GeminiService
             ];
         }
 
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(90);
+        }
+
         // Standardize contents payload
         if (is_string($contents)) {
             $contentsPayload = [[
@@ -226,8 +230,8 @@ class GeminiService
                 'x-goog-api-key: ' . $this->apiKey
             ],
             CURLOPT_POSTFIELDS => $jsonPayload,
-            CURLOPT_CONNECTTIMEOUT => 12,
-            CURLOPT_TIMEOUT => 25,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 20,
             CURLOPT_SSL_VERIFYPEER => true
         ];
         if (defined('CURLSSLOPT_NATIVE_CA')) {

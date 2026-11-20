@@ -289,14 +289,13 @@ class SettingsController
             return ['success' => false, 'message' => 'PHP cURL extension is required for Gemini AI operations.'];
         }
 
-        $configuredModel = (string)$this->model->get('gemini_model', 'gemini-3.8-flash');
+        $configuredModel = (string)$this->model->get('gemini_model', 'gemini-3.5-flash');
         $modelsToTry = array_values(array_unique(array_filter([
             $configuredModel,
-            'gemini-3.8-flash',
             'gemini-3.5-flash',
             'gemini-3.5-flash-lite',
-            'gemini-2.5-flash',
-            'gemini-2.5-flash-lite',
+            'gemini-3-flash-preview',
+            'gemini-3.8-flash',
         ])));
 
         $payload = json_encode([

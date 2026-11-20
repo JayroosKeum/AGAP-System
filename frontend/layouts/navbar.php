@@ -1,20 +1,34 @@
 <?php
-$roleNames = [1 => 'Administrator', 2 => 'Lupon Clerk', 3 => 'Lupon Member', 4 => 'Summons Server'];
-$roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
+$roleNames = [1 => 'Administrator', 2 => 'Lupon Clerk', 3 => 'Lupon Member', 4 => 'Summons Server', 5 => 'Resident'];
+$navRoleId = (int) ($_SESSION['role_id'] ?? 0);
+$isResidentNav = (($_SESSION['role_name'] ?? '') === 'Resident' || $navRoleId === 5);
+$roleName = $roleNames[$navRoleId] ?? ($isResidentNav ? 'Resident' : 'Staff Member');
+$navSettingsHref = $isResidentNav || !in_array($navRoleId, [1, 2], true)
+    ? '../settings/index.php?tab=profile'
+    : '../settings/index.php';
 ?>
 <nav class="navbar">
-    <button class="nav-menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" data-sidebar-toggle title="Toggle navigation">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="3" y1="12" x2="21" y2="12"></line>
-            <line x1="3" y1="6" x2="21" y2="6"></line>
-            <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-    </button>
-    <div class="navbar-context"><span class="navbar-eyebrow">Barangay Tumana</span><span class="navbar-title">Katarungang Pambarangay</span></div>
-    <form class="navbar-search" id="globalNavSearchForm" action="../complaints/complaint-list.php" method="get" role="search">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
-        <input type="search" id="globalNavSearchInput" name="q" placeholder="Search Case #, Complaint, or Party..." aria-label="Search complaints and cases" autocomplete="off">
-    </form>
+    <?php if (!$isResidentNav): ?>
+        <button class="nav-menu-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" data-sidebar-toggle title="Toggle navigation">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+    <?php endif; ?>
+    <?php if ($isResidentNav): ?>
+        <a href="../resident/dashboard.php" class="navbar-context" style="text-decoration:none; color:inherit;" aria-label="Back to Resident Dashboard">
+            <span class="navbar-eyebrow">Barangay Tumana</span>
+            <span class="navbar-title">AGAP Resident Portal</span>
+        </a>
+    <?php else: ?>
+        <div class="navbar-context"><span class="navbar-eyebrow">Barangay Tumana</span><span class="navbar-title">Katarungang Pambarangay</span></div>
+        <form class="navbar-search" id="globalNavSearchForm" action="../complaints/complaint-list.php" method="get" role="search">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+            <input type="search" id="globalNavSearchInput" name="q" placeholder="Search Case #, Complaint, or Party..." aria-label="Search complaints and cases" autocomplete="off">
+        </form>
+    <?php endif; ?>
     <div class="navbar-right">
         <!-- Global UI Language Switch Toggle (English / Tagalog) -->
         <div class="lang-switch-wrapper" id="langSwitchWrapper">
@@ -27,7 +41,7 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
 
 
         <!-- Modern Notification Popover Trigger (Inspiration from Modern App Header) -->
-        <div class="nav-notification-wrapper" id="navNotificationWrapper">
+        <div class="nav-notification-wrapper" id="navNotificationWrapper"<?= $isResidentNav ? ' data-resident="1"' : '' ?>>
             <button type="button" class="nav-bell-btn" id="navBellBtn" aria-label="Open notifications" aria-expanded="false" title="Notifications" onclick="toggleNotificationPopover(event)">
                 <svg class="nav-bell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
@@ -53,11 +67,13 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
                             Urgent <span class="nav-tab-count" id="popoverCountUrgent">0</span>
                         </button>
                         <button type="button" class="nav-tab-btn" data-tab="warning" onclick="setPopoverTab('warning', event)">
-                            Deadlines <span class="nav-tab-count" id="popoverCountWarning">0</span>
+                            <?= $isResidentNav ? 'Updates' : 'Deadlines' ?> <span class="nav-tab-count" id="popoverCountWarning">0</span>
                         </button>
-                        <a href="../notifications/inbox.php" class="nav-tab-icon-link" title="Full Notifications Center" aria-label="Full Notifications Center">
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-                        </a>
+                        <?php if (!$isResidentNav): ?>
+                            <a href="../notifications/inbox.php" class="nav-tab-icon-link" title="Full Notifications Center" aria-label="Full Notifications Center">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            </a>
+                        <?php endif; ?>
                     </div>
                 </div>
 
@@ -67,13 +83,24 @@ $roleName = $roleNames[(int) ($_SESSION['role_id'] ?? 0)] ?? 'Staff Member';
                 </div>
 
                 <!-- Footer -->
-                <div class="nav-popover-footer">
-                    <a href="../notifications/inbox.php" class="nav-popover-viewall">
-                        View all in Notifications Inbox &rarr;
-                    </a>
-                </div>
+                <?php if (!$isResidentNav): ?>
+                    <div class="nav-popover-footer">
+                        <a href="../notifications/inbox.php" class="nav-popover-viewall">
+                            View all in Notifications Inbox &rarr;
+                        </a>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
+
+        <?php if ($isResidentNav): ?>
+            <a href="<?php echo htmlspecialchars($navSettingsHref, ENT_QUOTES, 'UTF-8'); ?>" class="nav-bell-btn" title="Account Settings" aria-label="Account Settings">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </a>
+        <?php endif; ?>
 
         <?php
             $navDisplayUser = trim((string) ($_SESSION['full_name'] ?? $_SESSION['username'] ?? 'User'));

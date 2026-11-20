@@ -16,6 +16,7 @@ if ($userId <= 0) {
 }
 
 $isAdmin = in_array($roleId, [1, 2], true);
+$isResident = (($_SESSION['role_name'] ?? '') === 'Resident' || $roleId === 5);
 $activeTab = trim((string)($_GET['tab'] ?? ''));
 if (!$activeTab) {
     $activeTab = $isAdmin ? 'tab-barangay' : 'tab-profile';
@@ -55,7 +56,9 @@ include '../../layouts/header.php';
 </script>
 
 <div class="dashboard-layout">
-    <?php include '../../layouts/sidebar.php'; ?>
+    <?php if (!$isResident): ?>
+        <?php include '../../layouts/sidebar.php'; ?>
+    <?php endif; ?>
 
     <div class="main-content">
         <?php include '../../layouts/navbar.php'; ?>
@@ -78,6 +81,12 @@ include '../../layouts/header.php';
                     <div>
                         <a href="../../../backend/api/settings/backup-db.php" class="btn-secondary" title="Export complete database backup">
                             💾 Database Backup (.sql)
+                        </a>
+                    </div>
+                <?php elseif ($isResident): ?>
+                    <div>
+                        <a href="../resident/dashboard.php" class="btn-secondary" title="Return to Resident Dashboard">
+                            &larr; Back to Resident Dashboard
                         </a>
                     </div>
                 <?php endif; ?>
@@ -609,8 +618,8 @@ include '../../layouts/header.php';
                                             <div class="form-group">
                                                 <label class="form-label">Gemini Model Identifier</label>
                                                 <select name="gemini_model" class="form-control">
-                                                    <option value="gemini-3.8-flash" <?php echo ($settings['gemini_model'] ?? 'gemini-3.8-flash') === 'gemini-3.8-flash' ? 'selected' : ''; ?>>Gemini 3.8 Flash (Recommended)</option>
-                                                    <option value="gemini-3.5-flash" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-3.5-flash' ? 'selected' : ''; ?>>Gemini 3.5 Flash</option>
+                                                    <option value="gemini-3.5-flash" <?php echo ($settings['gemini_model'] ?? 'gemini-3.5-flash') === 'gemini-3.5-flash' ? 'selected' : ''; ?>>Gemini 3.5 Flash (Recommended)</option>
+                                                    <option value="gemini-3.8-flash" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-3.8-flash' ? 'selected' : ''; ?>>Gemini 3.8 Flash</option>
                                                     <option value="gemini-3.5-flash-lite" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-3.5-flash-lite' ? 'selected' : ''; ?>>Gemini 3.5 Flash-Lite (Lower cost)</option>
                                                     <option value="gemini-2.5-flash" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-2.5-flash' ? 'selected' : ''; ?>>Gemini 2.5 Flash</option>
                                                     <option value="gemini-2.5-flash-lite" <?php echo ($settings['gemini_model'] ?? '') === 'gemini-2.5-flash-lite' ? 'selected' : ''; ?>>Gemini 2.5 Flash-Lite</option>

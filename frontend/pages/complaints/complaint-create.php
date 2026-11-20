@@ -742,7 +742,9 @@ include '../../layouts/header.php';
 </style>
 
 <div class="dashboard-layout">
-    <?php include '../../layouts/sidebar.php'; ?>
+    <?php if (!$isResidentPortal): ?>
+        <?php include '../../layouts/sidebar.php'; ?>
+    <?php endif; ?>
 
     <div class="main-content">
         <?php include '../../layouts/navbar.php'; ?>

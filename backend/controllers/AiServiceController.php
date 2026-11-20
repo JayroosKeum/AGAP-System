@@ -7,9 +7,11 @@ class AiServiceController
 {
     private GeminiService $gemini;
     private string $model;
+    private bool $explicitModel = false;
 
     public function __construct(?string $model = null)
     {
+        $this->explicitModel = $model !== null && trim($model) !== '';
         $this->gemini = new GeminiService($model);
         $this->model = $this->gemini->getModel();
     }
@@ -41,7 +43,7 @@ class AiServiceController
             $audioInput,
             $mimeType,
             25 * 1024 * 1024,
-            ['audio/webm', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/m4a', 'audio/aac'],
+            ['audio/webm', 'audio/wav', 'audio/x-wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/mp4', 'audio/m4a', 'audio/aac'],
             'Audio'
         );
         if (!$media['success']) {
@@ -69,10 +71,11 @@ class AiServiceController
             ]
         ];
 
+        $transcriptionModel = $this->explicitModel ? $this->model : 'gemini-3.5-transcribe';
         $response = $this->gemini->generate($contents, [
             'temperature' => 0.1,
             'maxOutputTokens' => 8192
-        ], $this->model);
+        ], $transcriptionModel);
 
         if (!$response['success']) {
             return $response;
@@ -100,7 +103,7 @@ class AiServiceController
         return [
             'success' => true,
             'text' => $text,
-            'model' => $response['model_used'] ?? $this->model
+            'model' => $response['model_used'] ?? $transcriptionModel
         ];
     }
 
@@ -178,13 +181,33 @@ class AiServiceController
         ];
     }
 
-    private function detectMimeType(string $filePath, string $fallback): string
+    private function detectMimeType(string $filePath, string $fallback, string $filename = ''): string
     {
         if (function_exists('mime_content_type') && file_exists($filePath)) {
             $mime = mime_content_type($filePath);
-            if ($mime) return $mime;
+            if ($mime && strtolower($mime) !== 'application/octet-stream') {
+                return $mime;
+            }
         }
-        return $fallback;
+        $cleanFallback = trim(explode(';', $fallback, 2)[0]);
+        if ($cleanFallback !== '' && strtolower($cleanFallback) !== 'application/octet-stream') {
+            return $cleanFallback;
+        }
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        return match ($ext) {
+            'webm' => 'audio/webm',
+            'ogg', 'oga', 'opus' => 'audio/ogg',
+            'm4a', 'mp4' => 'audio/mp4',
+            'wav' => 'audio/wav',
+            'mp3' => 'audio/mpeg',
+            'aac' => 'audio/aac',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
+            'gif' => 'image/gif',
+            'pdf' => 'application/pdf',
+            default => $fallback,
+        };
     }
 
     private function prepareMediaInput($input, string $mimeType, int $maxBytes, array $allowedMimes, string $label): array
@@ -207,7 +230,7 @@ class AiServiceController
                 return ['success' => false, 'message' => $label . ' file exceeds the maximum allowed size of ' . (int) ($maxBytes / 1024 / 1024) . 'MB.'];
             }
 
-            $detectedMime = $this->detectMimeType($path, (string) ($input['type'] ?? ''));
+            $detectedMime = $this->detectMimeType($path, (string) ($input['type'] ?? ''), (string) ($input['name'] ?? ''));
             $detectedMime = $this->normalizeMediaMime($detectedMime, $allowedMimes);
             if ($detectedMime === null) {
                 return ['success' => false, 'message' => 'Unsupported ' . strtolower($label) . ' MIME type.'];
@@ -261,9 +284,12 @@ class AiServiceController
         $mimeType = strtolower(trim(explode(';', $mimeType, 2)[0]));
         $mimeType = match ($mimeType) {
             'image/jpg' => 'image/jpeg',
-            'video/webm' => 'audio/webm',
-            'video/mp4', 'audio/mp4', 'audio/x-m4a' => 'audio/m4a',
-            'application/ogg' => 'audio/ogg',
+            'video/webm', 'video/x-matroska', 'audio/x-matroska' => 'audio/webm',
+            'video/mp4', 'audio/m4a', 'audio/x-m4a' => 'audio/mp4',
+            'audio/x-wav', 'audio/wave' => 'audio/wav',
+            'audio/mp3' => 'audio/mpeg',
+            'application/ogg', 'audio/opus' => 'audio/ogg',
+            'audio/x-aac' => 'audio/aac',
             default => $mimeType,
         };
         $allowedMimes = array_map(

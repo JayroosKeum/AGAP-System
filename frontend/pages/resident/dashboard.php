@@ -88,24 +88,15 @@ $concernLink = static function (array $complaint): array {
     <meta name="theme-color" content="#102b2d">
     <title>My Dashboard | AGAP Resident Portal</title>
     <link rel="icon" type="image/jpeg" href="../../assets/images/tumana_logo.jpg">
+    <link rel="stylesheet" href="../../assets/css/notifications.css?v=<?= filemtime(__DIR__ . '/../../assets/css/notifications.css') ?>">
     <link rel="stylesheet" href="../../assets/css/resident-dashboard.css?v=<?= filemtime(__DIR__ . '/../../assets/css/resident-dashboard.css') ?>">
+    <script src="../../assets/js/notifications.js?v=<?= filemtime(__DIR__ . '/../../assets/js/notifications.js') ?>" defer></script>
 </head>
 <body class="resident-dashboard-page">
-    <header class="resident-topbar">
-        <a class="resident-dashboard-brand" href="dashboard.php" aria-label="AGAP Resident Portal home">
-            <img src="../../assets/images/tumana_logo.jpg" alt="Barangay Tumana seal">
-            <span><strong>AGAP</strong><small>Resident Portal</small></span>
-        </a>
-        <div class="resident-topbar-actions">
-            <?php if (!$dashboardUnavailable): ?>
-                <span class="resident-topbar-name">Signed in as <?= htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8') ?></span>
-            <?php endif; ?>
-            <form method="post" action="../../../backend/api/auth/logout.php">
-                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8') ?>">
-                <button type="submit" class="resident-signout">Sign out</button>
-            </form>
-        </div>
-    </header>
+    <?php
+    $residentTopbarName = !$dashboardUnavailable ? $firstName : '';
+    include __DIR__ . '/../../layouts/resident-topbar.php';
+    ?>
 
     <main class="resident-dashboard-shell">
         <?php if ($dashboardUnavailable): ?>
