@@ -278,6 +278,9 @@ final class PaanyayaPreparationService
         if (!$appointment || $appointment->format('Y-m-d H:i') !== "$date $time" || $appointment <= new DateTimeImmutable()) {
             throw new DomainException('Enter a valid future appointment date and time.');
         }
+        if ((int) $appointment->format('N') >= 6) {
+            throw new DomainException('Paanyaya appointments can only be scheduled on weekdays (Monday to Friday).');
+        }
         if ($venue === '' || mb_strlen($venue) > 255) {
             throw new DomainException('Enter an appointment venue of 255 characters or fewer.');
         }

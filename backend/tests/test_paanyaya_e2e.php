@@ -97,7 +97,7 @@ function prepareInvitation(
     $params = ['complaint_id' => $id, 'invitation_number' => $number];
     $result = request($base, $clerk, 'paanyaya/preparation.php', $params + [
         'action' => 'generate',
-        'appointment_date' => date('Y-m-d', strtotime("+$number days")),
+        'appointment_date' => date('Y-m-d', strtotime("+$number weekdays")),
         'appointment_time' => '14:00',
         'venue' => 'Lupon Court Room',
         'verify_parties' => '1',

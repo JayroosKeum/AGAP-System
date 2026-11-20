@@ -11,9 +11,15 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
     <h2 id="paanyaya-prep-title-<?= $invitationNumber ?>"><?= $invitationNumber === 2 ? 'Second Paanyaya' : 'Paanyaya Preparation' ?></h2>
 
     <?php if ($preparationFlash): ?>
-        <p role="<?= $preparationFlash['type'] === 'error' ? 'alert' : 'status' ?>">
+        <p role="<?= $preparationFlash['type'] === 'error' ? 'alert' : 'status' ?>"
+           style="margin: 10px 0 14px; padding: 12px 14px; border-radius: 8px; font-weight: 600; font-size: 0.88rem; <?= $preparationFlash['type'] === 'error' ? 'background:#fef2f2; color:#991b1b; border:1px solid #fecaca;' : 'background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;' ?>">
             <?= $escapePrep($preparationFlash['message']) ?>
         </p>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                window.agapNotify?.(<?= json_encode((string) $preparationFlash['message']) ?>, <?= json_encode($preparationFlash['type'] === 'error' ? 'error' : 'success') ?>, 'Paanyaya');
+            });
+        </script>
     <?php endif; ?>
 
     <?php if ($preparation): ?>
@@ -52,10 +58,16 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
                 <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
                 <input type="hidden" name="action" value="generate">
                 <input type="hidden" name="party_version" value="<?= PaanyayaPreparationService::partyVersion($preparationParties) ?>">
+                <?php
+                $todayDow = (int) date('N');
+                $minApptDate = $todayDow === 6 ? date('Y-m-d', strtotime('+2 days')) : ($todayDow === 7 ? date('Y-m-d', strtotime('+1 day')) : date('Y-m-d'));
+                ?>
                 <div class="paanyaya-prep-fields">
-                    <label>Appointment date
-                        <input type="date" name="appointment_date" min="<?= date('Y-m-d') ?>" <?= $preparation['rescheduled'] ? 'readonly' : '' ?>
-                               value="<?= $escapePrep($formValues['appointment_date'] ?? substr($savedAppointment, 0, 10)) ?>" required>
+                    <label>Appointment date (Mon–Fri)
+                        <input type="date" name="appointment_date" min="<?= $minApptDate ?>" <?= $preparation['rescheduled'] ? 'readonly' : '' ?>
+                               value="<?= $escapePrep($formValues['appointment_date'] ?? substr($savedAppointment, 0, 10)) ?>"
+                               oninput="const d=this.value?new Date(this.value+'T00:00:00').getDay():1;if(d===0||d===6){this.setCustomValidity('Paanyaya appointments can only be scheduled on weekdays (Monday to Friday).');this.reportValidity();window.agapNotify?.('Paanyaya appointments can only be scheduled on weekdays (Monday to Friday).','warning','Paanyaya Schedule');}else{this.setCustomValidity('');}"
+                               required>
                     </label>
                     <label>Appointment time
                         <input type="time" name="appointment_time" <?= $preparation['rescheduled'] ? 'readonly' : '' ?>

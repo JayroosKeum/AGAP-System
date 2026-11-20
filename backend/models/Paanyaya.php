@@ -2462,7 +2462,7 @@ class Paanyaya
             }
             $date = is_string($data['dialogue_date'] ?? null) ? $data['dialogue_date'] : '';
             $parsed = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $date);
-            if (!$parsed || $parsed->format('Y-m-d\TH:i') !== $date || $parsed > new DateTimeImmutable()) {
+            if (!$parsed || $parsed->format('Y-m-d\TH:i') !== $date || $parsed > new DateTimeImmutable('+10 minutes')) {
                 return ['success' => false, 'message' => 'Enter the actual dialogue date and time, up to the current time.'];
             }
             $outcomeInput = $data['outcome'] ?? '';
