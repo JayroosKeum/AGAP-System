@@ -2375,7 +2375,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const respLast = document.getElementById('respondentLastName')?.value?.trim();
 
         const catSelect = document.getElementById('categoryId');
-        const categoryName = (catSelect && catSelect.selectedIndex > 0) ? catSelect.options[catSelect.selectedIndex].text : '';
+        const categoryName = (catSelect && catSelect.options && catSelect.selectedIndex > 0) ? catSelect.options[catSelect.selectedIndex].text : '';
         const otherCategorySpecVal = document.getElementById('otherCategorySpecification')?.value?.trim();
         const effectiveCategoryDisplay = (otherCategorySpecVal && (categoryName.includes('Others') || categoryName.includes('Iba pa')))
             ? `Iba pa: ${otherCategorySpecVal}`
@@ -2497,7 +2497,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Build category map: name -> id
     const categoriesMap = {};
-    if (categorySelectEl) {
+    if (categorySelectEl && categorySelectEl.options) {
         for (let i = 0; i < categorySelectEl.options.length; i++) {
             const opt = categorySelectEl.options[i];
             if (opt.value) {
@@ -2507,7 +2507,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function syncOtherCategoryVisibility() {
-        if (!categorySelectEl || !otherCategoryWrapperEl || !otherCategoryInputEl) return;
+        if (!categorySelectEl || !categorySelectEl.options || !otherCategoryWrapperEl || !otherCategoryInputEl) return;
         const selectedOption = categorySelectEl.options[categorySelectEl.selectedIndex];
         const selectedText = selectedOption ? selectedOption.text : '';
         const isOthers = selectedText.includes('Others') || selectedText.includes('Iba pa');
@@ -2616,7 +2616,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auto-select unified Neighborhood Nuisance & Animal Disturbances category on keywords
     const complaintTitleEl = document.getElementById('complaintTitle');
     function autoMatchUnifiedNuisanceCategory(text) {
-        if (categorySelectEl && categorySelectEl.value === '') {
+        if (!categorySelectEl || !categorySelectEl.options) return;
+        if (categorySelectEl.value === '') {
             const lw = (text || '').toLowerCase();
             if (/\b(catcall|catcalling|whistling|wolf-whistling|pagsipol|paninita|bawal bastos|safe spaces)\b/i.test(lw)) {
                 for (let i = 0; i < categorySelectEl.options.length; i++) {
@@ -6029,7 +6030,7 @@ document.addEventListener('DOMContentLoaded', () => {
             catSelect.value = String(data.category_id);
             catSelect.dispatchEvent(new Event('change', { bubbles: true }));
             highlightEl(catSelect);
-        } else if (catSelect && data.category_name) {
+        } else if (catSelect && catSelect.options && data.category_name) {
             for (let i = 0; i < catSelect.options.length; i++) {
                 if (catSelect.options[i].text.toLowerCase().includes(data.category_name.toLowerCase())) {
                     catSelect.selectedIndex = i;
@@ -6324,7 +6325,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const vawcRoutingBannerEl = document.getElementById('vawcPnpRoutingBanner');
 
     function isSafeSpacesCategorySelected() {
-        if (!categorySelectEl || categorySelectEl.selectedIndex <= 0) return false;
+        if (!categorySelectEl || !categorySelectEl.options || categorySelectEl.selectedIndex <= 0) return false;
         const txt = (categorySelectEl.options[categorySelectEl.selectedIndex]?.text || '').toLowerCase();
         return txt.includes('safe spaces') || txt.includes('catcalling') || txt.includes('bawal bastos') || txt.includes('11313');
     }
