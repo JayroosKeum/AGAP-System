@@ -4,9 +4,58 @@ require_once __DIR__ . '/../config/gemini.php';
 
 class GeminiService
 {
+    private const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
+
     private string $apiKey = '';
     private string $model = 'gemini-3.5-flash';
     private array $fallbackModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview'];
+
+    public static function resolveBaseUrl(): string
+    {
+        $raw = getenv('GEMINI_API_BASE_URL');
+        if (!is_string($raw) || $raw === '') {
+            $raw = $_ENV['GEMINI_API_BASE_URL'] ?? ($_SERVER['GEMINI_API_BASE_URL'] ?? '');
+        }
+        $base = rtrim(trim((string) $raw, " \t\n\r\0\x0B\"'"), '/');
+        if ($base === '' || !filter_var($base, FILTER_VALIDATE_URL)) {
+            return self::DEFAULT_BASE_URL;
+        }
+        $scheme = strtolower((string) parse_url($base, PHP_URL_SCHEME));
+        $host = strtolower((string) parse_url($base, PHP_URL_HOST));
+        if ($scheme === 'https' || ($scheme === 'http' && in_array($host, ['127.0.0.1', 'localhost'], true))) {
+            return $base;
+        }
+        return self::DEFAULT_BASE_URL;
+    }
+
+    public static function resolveProxySecret(): string
+    {
+        $raw = getenv('GEMINI_PROXY_SECRET');
+        if (!is_string($raw) || $raw === '') {
+            $raw = $_ENV['GEMINI_PROXY_SECRET'] ?? ($_SERVER['GEMINI_PROXY_SECRET'] ?? '');
+        }
+        return trim((string) $raw, " \t\n\r\0\x0B\"'");
+    }
+
+    public static function buildEndpointUrl(string $modelName): string
+    {
+        return self::resolveBaseUrl() . '/v1beta/models/' . urlencode($modelName) . ':generateContent';
+    }
+
+    public static function buildHeaders(string $apiKey): array
+    {
+        $headers = [
+            'Content-Type: application/json',
+            'x-goog-api-key: ' . $apiKey,
+        ];
+        if (self::resolveBaseUrl() !== self::DEFAULT_BASE_URL) {
+            $secret = self::resolveProxySecret();
+            if ($secret !== '') {
+                $headers[] = 'x-agap-proxy-secret: ' . $secret;
+            }
+        }
+        return $headers;
+    }
 
     public function __construct(?string $model = null, ?string $apiKey = null)
     {
@@ -211,7 +260,7 @@ class GeminiService
      */
     private function callGeminiEndpoint(string $modelName, array $payload): array
     {
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . urlencode($modelName) . ':generateContent';
+        $url = self::buildEndpointUrl($modelName);
 
         $jsonPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($jsonPayload === false) {
@@ -233,10 +282,7 @@ class GeminiService
         $curlOptions = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'x-goog-api-key: ' . $this->apiKey
-            ],
+            CURLOPT_HTTPHEADER => self::buildHeaders($this->apiKey),
             CURLOPT_POSTFIELDS => $jsonPayload,
             CURLOPT_CONNECTTIMEOUT => 8,
             CURLOPT_TIMEOUT => 20,

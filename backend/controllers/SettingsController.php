@@ -312,17 +312,15 @@ class SettingsController
         $lastLatency = 0;
 
         foreach ($modelsToTry as $candidateModel) {
-            $endpoint = "https://generativelanguage.googleapis.com/v1beta/models/" . urlencode($candidateModel) . ":generateContent";
+            require_once __DIR__ . '/../services/GeminiService.php';
+            $endpoint = GeminiService::buildEndpointUrl($candidateModel);
 
             $startTime = microtime(true);
             $ch = curl_init($endpoint);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json',
-                'x-goog-api-key: ' . $key
-            ]);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, GeminiService::buildHeaders($key));
             curl_setopt($ch, CURLOPT_TIMEOUT, 20);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
             if (defined('CURLSSLOPT_NATIVE_CA')) {

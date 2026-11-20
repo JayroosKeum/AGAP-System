@@ -35,6 +35,8 @@ add the values in [`.env.azure.example`](../.env.azure.example):
 | `GMAIL_SMTP_USERNAME` | Recommended | Gmail sender address for staff verification and password-reset emails |
 | `GMAIL_SMTP_APP_PASSWORD` | Recommended | 16-character Google App Password for `GMAIL_SMTP_USERNAME` |
 | `GEMINI_API_KEY` | No | Enables AI features (server-side only) |
+| `GEMINI_API_BASE_URL` | Conditional | Private relay URL in a Gemini-supported region (e.g. Cloud Run in `asia-southeast1` if App Service runs in `East Asia`) |
+| `GEMINI_PROXY_SECRET` | Conditional | Shared secret sent as `x-agap-proxy-secret` to `GEMINI_API_BASE_URL` |
 | `GOOGLE_RESIDENT_CLIENT_ID` | No | OAuth Web client ID to require Google confirmation for new residents and enable their Google sign-in |
 | `APP_PII_KEY` | Recommended | AES-256-GCM key (`base64:...`) for encrypting sensitive resident/party PII |
 | `DB_SSL_CA` | Conditional | Custom CA file path; defaults to `/etc/ssl/certs/ca-certificates.crt` on Azure Linux |
