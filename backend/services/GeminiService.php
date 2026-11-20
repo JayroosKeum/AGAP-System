@@ -28,8 +28,9 @@ class GeminiService
     {
         // 1. Production environment (Apache/FPM/Docker/secret manager).
         $envKey = (string) (getenv('GEMINI_API_KEY') ?: ($_ENV['GEMINI_API_KEY'] ?? ($_SERVER['GEMINI_API_KEY'] ?? '')));
-        if (trim($envKey) !== '') {
-            return trim($envKey);
+        $envKey = trim($envKey, " \t\n\r\0\x0B\"'");
+        if ($envKey !== '') {
+            return $envKey;
         }
 
         // 2. Check defined constant for hosts that load backend/config/gemini.php.
@@ -189,7 +190,10 @@ class GeminiService
             $lastStatus = $result['http_status'] ?? 0;
 
             // Retry only when the selected model is unavailable. Retrying a 429
-            // consumes no useful capacity and can delay every AI screen.
+            // or an invalid API key consumes no useful capacity and delays failure.
+            if (stripos($lastError, 'API key not valid') !== false) {
+                break;
+            }
             if (!in_array($lastStatus, [0, 400, 404, 500, 502, 503, 504], true)) {
                 break;
             }

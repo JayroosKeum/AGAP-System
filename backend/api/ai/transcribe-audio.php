@@ -78,12 +78,16 @@ try {
 
     if (!$result['success'] && array_key_exists('http_status', $result)) {
         $upstreamStatus = (int) $result['http_status'];
-        error_log('AGAP transcribe-audio upstream failure (' . $upstreamStatus . '): ' . ($result['message'] ?? 'unknown'));
+        $upstreamMsg = (string) ($result['message'] ?? '');
+        error_log('AGAP transcribe-audio upstream failure (' . $upstreamStatus . '): ' . ($upstreamMsg !== '' ? $upstreamMsg : 'unknown'));
         $rateLimited = $upstreamStatus === 429;
+        $invalidKey = in_array($upstreamStatus, [401, 403], true)
+            || stripos($upstreamMsg, 'API key not valid') !== false;
         $message = match (true) {
             $rateLimited => 'Gemini’s transcription limit was reached. Try again later.',
-            in_array($upstreamStatus, [401, 403], true) => 'Gemini API key was rejected or lacks permission. Check Settings or GEMINI_API_KEY.',
+            $invalidKey => 'Gemini API key was rejected or lacks permission. Check Settings or GEMINI_API_KEY.',
             $upstreamStatus === 0 => 'Connection to Google Gemini timed out. Please try again.',
+            $upstreamMsg !== '' => $upstreamMsg,
             default => 'Gemini couldn’t process this recording. Try again or type the narrative.',
         };
         http_response_code($rateLimited ? 429 : 422);

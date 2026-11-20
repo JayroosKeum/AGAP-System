@@ -46,6 +46,68 @@
         stream?.getTracks().forEach(track => track.stop());
     }
 
+    function encodeMonoWav(audioBuffer, targetRate) {
+        const sourceRate = audioBuffer.sampleRate || 48000;
+        const rate = Math.min(targetRate, sourceRate);
+        const channels = audioBuffer.numberOfChannels || 1;
+        const totalFrames = audioBuffer.length || 0;
+        const ratio = sourceRate / rate;
+        const outLength = Math.max(1, Math.floor(totalFrames / ratio));
+        const pcm = new Int16Array(outLength);
+
+        for (let i = 0; i < outLength; i++) {
+            const srcIndex = Math.min(totalFrames - 1, Math.floor(i * ratio));
+            let sum = 0;
+            for (let ch = 0; ch < channels; ch++) {
+                sum += audioBuffer.getChannelData(ch)[srcIndex] || 0;
+            }
+            const sample = Math.max(-1, Math.min(1, sum / channels));
+            pcm[i] = sample < 0 ? Math.round(sample * 0x8000) : Math.round(sample * 0x7fff);
+        }
+
+        const buffer = new ArrayBuffer(44 + pcm.byteLength);
+        const view = new DataView(buffer);
+        const writeStr = (offset, str) => {
+            for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+        };
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + pcm.byteLength, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, rate, true);
+        view.setUint32(28, rate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeStr(36, 'data');
+        view.setUint32(40, pcm.byteLength, true);
+        new Uint8Array(buffer, 44).set(new Uint8Array(pcm.buffer));
+        return new Blob([buffer], { type: 'audio/wav' });
+    }
+
+    async function toCleanWavBlob(blob) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx || !blob || !blob.size) return blob;
+        const ctx = new AudioCtx();
+        try {
+            const raw = await blob.arrayBuffer();
+            const decoded = await ctx.decodeAudioData(raw);
+            if (!decoded || !decoded.length || decoded.duration <= 0.05) {
+                return blob;
+            }
+            // Keep WAV under ~1.6 MB (safe for 2 MB default PHP upload_max_filesize)
+            const targetRate = decoded.duration > 48 ? 8000 : (decoded.duration > 32 ? 12000 : 16000);
+            const wavBlob = encodeMonoWav(decoded, targetRate);
+            return wavBlob.size <= maxBytes ? wavBlob : encodeMonoWav(decoded, 8000);
+        } catch (_) {
+            return blob;
+        } finally {
+            ctx.close().catch(() => {});
+        }
+    }
+
     function clearCapture() {
         const previous = capture;
         capture = null;
@@ -126,7 +188,7 @@
                     start.focus();
                 }
             });
-            recorder.addEventListener('stop', () => {
+            recorder.addEventListener('stop', async () => {
                 if (capture !== current) return;
                 clearCapture();
                 if (!current.chunks.length) {
@@ -134,14 +196,17 @@
                     start.focus();
                     return;
                 }
-                recording = new Blob(current.chunks, { type: recorder.mimeType || current.chunks[0].type });
+                const rawBlob = new Blob(current.chunks, { type: recorder.mimeType || current.chunks[0].type });
+                const converted = await toCleanWavBlob(rawBlob);
+                if (state === 'idle') return;
+                recording = converted;
                 audioUrl = URL.createObjectURL(recording);
                 audio.src = audioUrl;
                 show('review', current.stopMessage || 'Recording stopped. Listen before sending it.');
                 if (panel.open) consent.focus();
             });
 
-            recorder.start(1000);
+            recorder.start();
             const startedAt = Date.now();
             clock.textContent = `0 / ${maxSeconds} s`;
             current.timer = setInterval(() => {
@@ -180,6 +245,8 @@
         const body = new FormData();
         const mime = (recording.type || '').split(';', 1)[0].toLowerCase();
         const extension = {
+            'audio/wav': 'wav',
+            'audio/x-wav': 'wav',
             'audio/mp4': 'm4a',
             'video/mp4': 'm4a',
             'audio/ogg': 'ogg',
