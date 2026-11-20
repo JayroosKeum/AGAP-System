@@ -67,9 +67,9 @@ limits to `32M`, and ensure `storage/` subdirectories exist on boot:
 The workflow runs on pushes to `main` and can also be run manually from the
 Actions tab. It deploys to the `AGAP` App Service using Azure OIDC credentials
 stored as GitHub Actions secrets:
-`AZUREAPPSERVICE_CLIENTID_49F63E697029412686408871AA88CF9E`,
-`AZUREAPPSERVICE_TENANTID_DFC2C15D65784E45A8ED28731128DA80`, and
-`AZUREAPPSERVICE_SUBSCRIPTIONID_BFA18332F3314BB2B3975BC75386ABD2`.
+`AZUREAPPSERVICE_CLIENTID_AFFD284B6AD849CA9C04C89B66296DB0`,
+`AZUREAPPSERVICE_TENANTID_3236F735AB824ACBBE842420C6BDA10E`, and
+`AZUREAPPSERVICE_SUBSCRIPTIONID_6C0A42D6437542A2A49C03DE6EDDE208`.
 
 The release package deliberately excludes `storage/`, logs, debugging output,
 and local scratch files. This keeps releases small and prevents a deployment
