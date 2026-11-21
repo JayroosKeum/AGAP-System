@@ -3463,7 +3463,10 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                         <div style="font-size: 0.84rem; color: #475569; display: flex; gap: 14px; flex-wrap: wrap;">
                             <span>Call Time: <strong>${s.hearing_date ? formatDateTimeReadable(s.hearing_date) : 'Pending'}</strong></span>
                             <span>Venue: <strong>${escapeHtml(s.venue || 'Lupon Court Room')}</strong></span>
-                            ${s.presiding_officer_name ? `<span>Presider: <strong>${escapeHtml(s.presiding_officer_name)}</strong></span>` : ''}
+                            ${(() => {
+                                const presiderLabel = s.presiding_officer_name || (stageType === 'Conciliation' ? 'Pangkat ng Tagapagkasundo' : '');
+                                return presiderLabel ? `<span>Presider: <strong>${escapeHtml(presiderLabel)}</strong></span>` : '';
+                            })()}
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
@@ -3517,10 +3520,10 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
                     <div>
                         <span style="color: #64748b; font-size: 0.74rem; display: block; font-weight: 600;">PROOF OF SERVICE</span>
                         <div style="margin-top: 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${s.proof_of_service_status === 'Served' ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
-                                ${s.proof_of_service_status === 'Served' ? 'Notice Served' : 'Pending / Unserved'}
+                            <span style="font-size: 0.76rem; font-weight: 700; padding: 2px 6px; border-radius: 4px; ${isServiceConfirmed ? 'background: #dcfce7; color: #15803d;' : 'background: #fef3c7; color: #b45309;'}">
+                                ${isServiceConfirmed ? 'Notice Served' : 'Pending / Unserved'}
                             </span>
-                            ${s.proof_of_service_status !== 'Served' ? `
+                            ${!isServiceConfirmed ? `
                             <a href="../gps/proof-service.php?case_id=${encodeURIComponent(caseId || '')}&hearing_id=${encodeURIComponent(s.hearing_id)}&open_return=1" style="font-size: 0.74rem; color: #0284c7; font-weight: 600; text-decoration: underline;" title="Record attempt to deliver summons">
                                 Record Attempt &rarr;
                             </a>` : ''}
@@ -3578,6 +3581,8 @@ function applyOutcomeReadOnlyLock(isLocked) {
             pane.querySelectorAll(
                 'button[onclick*="openEmbeddedScheduleModal"], ' +
                 'button[onclick*="openEmbeddedStageOutcomeModal"], ' +
+                'button[onclick*="openEmbeddedRecordOutcomeModal"], ' +
+                'button[onclick*="openEmbeddedAttendanceModal"], ' +
                 'button[onclick*="openScheduleModal"], ' +
                 'button[onclick*="openRecordOutcomeModal"], ' +
                 'button[onclick*="openReferPangkatModal"], ' +
@@ -3939,6 +3944,10 @@ function openEmbeddedScheduleModal(stageType = 'Mediation', hearingId = null) {
     }
 
     window.embeddedHearingsState.activeStageType = stageType;
+
+    document.getElementById('wsScheduleForm')?.reset();
+    const remarksInputReset = document.getElementById('schedRemarks');
+    if (remarksInputReset) remarksInputReset.value = '';
 
     const data = window.complaintData || {};
     const comp = data.complaint || data;
@@ -6144,7 +6153,13 @@ function renderStatusTracker(progress) {
         : ['Paanyaya', 'Mediation', 'Conciliation', 'CFA', 'Resolution / Closed'];
     let currentStatus = progress.lifecycle_status;
     if (!currentStatus || currentStatus === 'Pre-Docketed (Paanyaya)' || currentStatus === 'Pending' || currentStatus === 'Accepted' || currentStatus === 'Under Review') {
-        currentStatus = 'Paanyaya';
+        const compStatus = window.complaintData?.status || '';
+        const screeningDecision = window.complaintData?.screening_decision || '';
+        if (!progress.case_id && (compStatus === 'Submitted' || compStatus === 'Under Review' || screeningDecision === 'Pending')) {
+            currentStatus = 'Preliminary Screening';
+        } else {
+            currentStatus = 'Paanyaya';
+        }
     } else if (currentStatus === 'Settled' || currentStatus === 'Resolved at Paanyaya / Closed') {
         currentStatus = 'Resolution / Closed';
     }

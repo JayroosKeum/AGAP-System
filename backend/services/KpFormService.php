@@ -870,11 +870,13 @@ class KpFormService
                 : (!empty($settlement['repudiating_party']) ? $settlement['repudiating_party'] : $primaryRespondent);
 
             $formData['is_repudiated'] = $isRepudiated;
-            $formData['repudiating_party'] = $repudiatingName;
-            $formData['repudiating_party_name'] = $repudiatingName;
-            $formData['repudiation_grounds'] = !empty($settlement['repudiation_reason'])
-                ? $settlement['repudiation_reason']
-                : 'Pandaraya, Karahasan, o Pananakot (vitiated consent under RA 7160 Sec. 416)';
+            $formData['repudiating_party'] = $isRepudiated ? $repudiatingName : '';
+            $formData['repudiating_party_name'] = $isRepudiated ? $repudiatingName : '';
+            $formData['repudiation_grounds'] = $isRepudiated
+                ? (!empty($settlement['repudiation_reason'])
+                    ? $settlement['repudiation_reason']
+                    : 'Pandaraya, Karahasan, o Pananakot (vitiated consent under RA 7160 Sec. 416)')
+                : '';
             $formData['grounds'] = $formData['repudiation_grounds'];
 
             if (!empty($cfa['reasons_notes'])) {

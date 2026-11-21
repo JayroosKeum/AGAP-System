@@ -540,12 +540,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
-            const reviewCount = rows.filter(r => r.lifecycle_status === 'Under Review').length;
+            const reviewCount = rows.filter(r => r.lifecycle_status === 'Verification' || r.lifecycle_status === 'Under Review').length;
             const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
             const closedCount = rows.filter(r => r.lifecycle_status === 'Resolution / Closed').length;
-            const paanyayaCount = rows.filter(r => r.lifecycle_status !== 'Resolution / Closed' && (r.lifecycle_status === 'Paanyaya' || (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya')) || (r.complaint_status && r.complaint_status.includes('Paanyaya')) || (!r.case_id && String(r.complaint_number || r.case_number || '').startsWith('P-')))).length;
+            const paanyayaCount = rows.filter(r => r.lifecycle_status !== 'Resolution / Closed' && (r.lifecycle_status === 'Paanyaya' || (r.lifecycle_status && r.lifecycle_status.includes('Paanyaya')) || (r.status && r.status.includes('Paanyaya')) || (r.complaint_status && (r.complaint_status.includes('Paanyaya') || r.complaint_status === 'Accepted')) || (!r.case_id && String(r.complaint_number || r.case_number || '').startsWith('P-')))).length;
 
             cachedGlobalCounts = {
                 all: allCount,

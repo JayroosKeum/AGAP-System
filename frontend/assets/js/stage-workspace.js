@@ -2090,7 +2090,14 @@ function openSessionCloseout(hearingId) {
 
     }
 
-    document.getElementById('minutesSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const minSec = document.getElementById('minutesSection');
+    minSec?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => {
+        const focusEl = document.getElementById(`minDisputeSummary_${hearingId}`)
+            || document.getElementById(`minDiscussion_${hearingId}`)
+            || document.getElementById(`minOutcome_${hearingId}`);
+        focusEl?.focus({ preventScroll: true });
+    }, 300);
 
 }
 
@@ -3916,7 +3923,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
 
 
-                    <div style="display: grid; grid-template-columns: 1.2fr 1.1fr 1.3fr; gap: 14px; margin-bottom: 14px;">
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 14px;">
 
                         <div class="form-group" style="margin-bottom: 0;">
 
@@ -3926,7 +3933,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             </label>
 
-                            <select id="minOutcome_${hId}" name="minOutcome" onchange="handleMinutesOutcomeChange(this.value, true, ${hId})" ${readonlyAttr} required style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1.5px solid #2563eb; border-radius: 6px; background: #fff; font-weight: 600; color: #0f172a;">
+                            <select id="minOutcome_${hId}" name="minOutcome" onchange="handleMinutesOutcomeChange(this.value, true, ${hId})" ${readonlyAttr} required style="width: 100%; padding: 8px 30px 8px 12px; font-size: 0.85rem; border: 1.5px solid #2563eb; border-radius: 6px; background: #fff; font-weight: 600; color: #0f172a;">
 
                                 ${outcomeOptions}
 
@@ -4427,8 +4434,11 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
         `;
 
     } else if (outcomeVal === 'Pending CFA') {
-        const wsCfaElig = stageWorkspaceState?.data?.cfa_eligibility || stageWorkspaceState?.data?.stages?.conciliation?.documents_and_actions?.cfa_eligibility || null;
-        const canIssueCfaBanner = wsCfaElig ? Boolean(wsCfaElig.eligible) : Boolean(stageWorkspaceState?.data?.stages?.conciliation?.documents_and_actions?.can_issue_cfa);
+        const wsConcil = stageWorkspaceState.stageData?.conciliation || null;
+        const wsCfaElig = stageWorkspaceState.stageData?.cfa_eligibility || wsConcil?.documents_and_actions?.cfa_eligibility || null;
+        const canIssueCfaBanner = wsCfaElig
+            ? Boolean(wsCfaElig.eligible)
+            : Boolean(wsConcil?.documents_and_actions?.can_issue_cfa);
         const recCfaForm = wsCfaElig?.recommended_form || 'KP Form 20';
 
         unlockOutcomesTab();
@@ -4863,9 +4873,7 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
         .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id)
         .some(s => Number(s.session_index) === nextSessionIndex);
 
-    const isConcludedSession = (session.minutes_status === 'Finalized')
-        || session.queue_status === 'Concluded'
-        || session.status === 'Concluded';
+    const isConcludedSession = (session.minutes_status === 'Finalized');
     let bookingOnly = false;
 
 
@@ -6434,18 +6442,22 @@ async function checkWorkspaceScheduleConflict() {
             slotsCount.style.background = availSlots > 2 ? '#dcfce7' : (availSlots > 0 ? '#fef3c7' : '#fee2e2');
             slotsCount.style.color = availSlots > 2 ? '#15803d' : (availSlots > 0 ? '#92400e' : '#b91c1c');
 
+            const isConcilMode = (typeVal === 'Conciliation') || (stageWorkspaceState.mode === 'Conciliation');
+            const isArbMode = (typeVal === 'Arbitration') || (stageWorkspaceState.mode === 'Arbitration');
+            const docketLabel = isArbMode ? 'Arbitration Docket Call' : (isConcilMode ? 'Conciliation Docket Call' : 'Mediation Docket Call');
+            const emptyModeWord = isArbMode ? 'arbitrations' : (isConcilMode ? 'conciliations' : 'mediations');
             const schedDayTitle = document.getElementById('schedDaySchedulesTitle');
             if (schedDayTitle) {
                 const venueName = window.AGAP_SETTINGS?.mediation_venue || 'Lupon Court Room';
-                schedDayTitle.textContent = `📋 Mediation Docket Call (${venueName}):`;
+                schedDayTitle.textContent = `📋 ${docketLabel} (${venueName}):`;
             }
 
             const scheduled = result.scheduled_mediations || [];
             if (scheduled.length === 0) {
-                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ No other mediations scheduled on this day. All ${maxSlots} slots available.</span>`;
+                slotsList.innerHTML = `<span style="color: #166534; font-weight: 500;">✓ No other ${emptyModeWord} scheduled on this day. All ${maxSlots} slots available.</span>`;
             } else {
                 slotsList.innerHTML = `
-                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">Mediation Docket Call (${bookedCount} of ${maxSlots} booked):</div>
+                    <div style="margin-bottom: 6px; font-weight: 600; color: #475569;">${docketLabel} (${bookedCount} of ${maxSlots} booked):</div>
                 ` + scheduled.map(s => {
                     const qStatus = s.queue_status || s.status || 'Waiting';
                     let pillBg = '#eff6ff', pillColor = '#1e40af', pillBorder = '#bfdbfe';
@@ -6963,7 +6975,11 @@ async function openAttendanceModal(hearingId, shouldScroll = true) {
 
         if (titleEl) {
 
-            titleEl.textContent = 'Hearing Session Attendance';
+            const ordLabel = session
+                ? getStageSessionOrdinalLabel(stageWorkspaceState.mode || 'Mediation', session.session_index || 1)
+                : '';
+
+            titleEl.textContent = ordLabel ? `Hearing Session Attendance — ${ordLabel}` : 'Hearing Session Attendance';
 
         }
 
@@ -7721,12 +7737,8 @@ function syncOutcomeWithAttendance() {
     } else if (respAtt === 'Absent') {
         targetOutcome = 'Party Absent';
     } else {
-        if (['Party Absent', 'Dismissed', 'Pending', ''].includes(curVal)) {
-            if (mode === 'Mediation') {
-                targetOutcome = (sessionIndex === 1) ? 'Continue Mediation' : 'Elevate to Pangkat';
-            } else if (mode === 'Conciliation') {
-                targetOutcome = (sessionIndex === 1) ? 'Continue Conciliation' : 'Pending CFA';
-            }
+        if (['Party Absent', 'Dismissed'].includes(curVal)) {
+            targetOutcome = 'Pending';
         }
     }
 
@@ -9708,9 +9720,13 @@ function ensureInlineSettlementModal() {
     `;
     document.body.appendChild(modal);
 
-    document.getElementById('inlineSettleCloseBtn')?.addEventListener('click', () => { modal.style.display = 'none'; });
-    document.getElementById('inlineSettleCancelBtn')?.addEventListener('click', () => { modal.style.display = 'none'; });
-    modal.addEventListener('click', (e) => { if (e.target === modal) modal.style.display = 'none'; });
+    const closeInlineSettleModal = () => {
+        modal.style.display = 'none';
+        document.getElementById('inlineRecordSettlementForm')?.reset();
+    };
+    document.getElementById('inlineSettleCloseBtn')?.addEventListener('click', closeInlineSettleModal);
+    document.getElementById('inlineSettleCancelBtn')?.addEventListener('click', closeInlineSettleModal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeInlineSettleModal(); });
     document.getElementById('inlineRecordSettlementForm')?.addEventListener('submit', submitInlineSettlementForm);
 
     return modal;
@@ -9719,17 +9735,18 @@ function ensureInlineSettlementModal() {
 function openInlineSettlementModal(hearingId = null) {
     const modal = ensureInlineSettlementModal();
     if (!modal) return;
+    document.getElementById('inlineRecordSettlementForm')?.reset();
     const hId = hearingId || stageWorkspaceState.activeSessionHearingId || '';
     const hInput = document.getElementById('inlineSettleHearingId');
     if (hInput) hInput.value = hId;
 
     const dateInput = document.getElementById('inlineSettleDate');
-    if (dateInput && !dateInput.value) {
+    if (dateInput) {
         dateInput.value = getLocalIsoDate();
     }
 
     const termsInput = document.getElementById('inlineSettleTerms');
-    if (termsInput && !termsInput.value.trim()) {
+    if (termsInput) {
         const agreedVal = (document.getElementById(`minAgreedTerms_${hId}`) || document.getElementById('minAgreedTerms'))?.value || '';
         const remarksVal = (document.getElementById(`minOutcomeRemarks_${hId}`) || document.getElementById('minOutcomeRemarks') || document.getElementById('stageOutcomeRemarks'))?.value || '';
         const prefill = agreedVal.trim() || remarksVal.trim();
@@ -11358,7 +11375,11 @@ function openPangkatExtensionModal() {
 
     if (!modal) return;
 
-
+    modal.querySelector('form')?.reset();
+    const justEl = document.getElementById('extJustification');
+    if (justEl) justEl.value = '';
+    const discRadio = modal.querySelector('input[type="radio"][value="Discretionary"]');
+    if (discRadio) discRadio.checked = true;
 
     const stage = stageWorkspaceState.stageData?.conciliation || {};
 
@@ -11558,7 +11579,11 @@ function openChallengeMemberModal(memberId, memberName) {
 
     if (!modal) return;
 
-
+    modal.querySelector('form')?.reset();
+    const basisEl = document.getElementById('chalFactualBasis');
+    if (basisEl) basisEl.value = '';
+    const challengerEl = document.getElementById('chalPartyName');
+    if (challengerEl) challengerEl.value = '';
 
     const select = document.getElementById('chalMemberId');
 

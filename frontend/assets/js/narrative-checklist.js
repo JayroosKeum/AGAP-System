@@ -136,33 +136,57 @@
 
         const metCount = ALL_KEYS.reduce((acc, k) => acc + (covered[k] ? 1 : 0), 0);
 
-        let feedback = 'Maglagay ng malinaw na salaysay gamit ang 5 W\'s + How at ACCOC standards.';
+        const isTl = (typeof window !== 'undefined' && typeof window.getAppLanguage === 'function')
+            ? window.getAppLanguage() === 'tl'
+            : (typeof document !== 'undefined' && document.documentElement.getAttribute('data-agap-lang') === 'tl');
+
+        const LABELS_EN = {
+            who: 'Who', what: 'What', where: 'Where', when: 'When', why: 'Why', how: 'How',
+            accuracy: 'Accuracy', clarity: 'Clarity', conciseness: 'Conciseness',
+            objectivity: 'Objectivity', completeness: 'Completeness',
+        };
+
+        let feedback = isTl
+            ? 'Maglagay ng malinaw na salaysay gamit ang 5 W\'s + How at ACCOC standards.'
+            : 'Provide a clear narrative following the 5 W\'s + How and ACCOC standards.';
         let feedbackState = 'neutral';
 
         if (warnings.objectivity) {
-            feedback = 'Paalala sa Objectivity: Iwasan ang pagmumura o pang-iinsulto; ilahad lamang ang totoong pangyayari.';
+            feedback = isTl
+                ? 'Paalala sa Objectivity: Iwasan ang pagmumura o pang-iinsulto; ilahad lamang ang totoong pangyayari.'
+                : 'Objectivity reminder: Avoid profanity or insults; state only the factual events.';
             feedbackState = 'warning';
         } else if (warnings.accuracy) {
-            feedback = 'Paalala sa Accuracy: Gumamit ng malinaw at totoong salita (iwasan ang random o dummy characters).';
+            feedback = isTl
+                ? 'Paalala sa Accuracy: Gumamit ng malinaw at totoong salita (iwasan ang random o dummy characters).'
+                : 'Accuracy reminder: Use real, clear words (avoid random or placeholder characters).';
             feedbackState = 'warning';
         } else if (warnings.clarity) {
             feedback = isAllCaps
-                ? 'Paalala sa Clarity: Iwasan ang pagsulat nang puro ALL CAPS.'
-                : 'Paalala sa Clarity: Hatiin ang mahabang salaysay gamit ang tuldok (.) o kuwit (,).';
+                ? (isTl ? 'Paalala sa Clarity: Iwasan ang pagsulat nang puro ALL CAPS.' : 'Clarity reminder: Avoid typing in all caps.')
+                : (isTl ? 'Paalala sa Clarity: Hatiin ang mahabang salaysay gamit ang tuldok (.) o kuwit (,).' : 'Clarity reminder: Break long sentences with periods (.) or commas (,).');
             feedbackState = 'warning';
         } else if (warnings.conciseness) {
-            feedback = 'Paalala sa Conciseness: Panatilihing direkta sa punto at huwag paulit-ulit ang salaysay.';
+            feedback = isTl
+                ? 'Paalala sa Conciseness: Panatilihing direkta sa punto at huwag paulit-ulit ang salaysay.'
+                : 'Conciseness reminder: Keep the narrative direct and avoid unnecessary repetition.';
             feedbackState = 'warning';
         } else if (val.length > 0) {
             const missingWh = ['who', 'what', 'where', 'when', 'why', 'how'].filter((k) => !covered[k]);
             if (missingWh.length === 0 && metCount === ALL_KEYS.length) {
-                feedback = 'Kumpleto at malinaw: Pasado ang salaysay sa lahat ng 5 W\'s + How at ACCOC standards.';
+                feedback = isTl
+                    ? 'Kumpleto at malinaw: Pasado ang salaysay sa lahat ng 5 W\'s + How at ACCOC standards.'
+                    : 'Complete & clear: Narrative satisfies all 5 W\'s + How and ACCOC standards.';
                 feedbackState = 'complete';
             } else if (missingWh.length > 0) {
-                const missingLabels = missingWh.map((k) => LABEL_MAP[k]).join(', ');
-                feedback = `Kulayan ng berde ang natitira — idagdag sa kuwento ang: ${missingLabels}.`;
+                const missingLabels = missingWh.map((k) => (isTl ? LABEL_MAP[k] : LABELS_EN[k])).join(', ');
+                feedback = isTl
+                    ? `Kulayan ng berde ang natitira — idagdag sa kuwento ang: ${missingLabels}.`
+                    : `Turn the remaining items green — add details for: ${missingLabels}.`;
             } else {
-                feedback = 'Magdagdag pa ng kaunting detalye upang makumpleto ang 11 / 11 checklist.';
+                feedback = isTl
+                    ? 'Magdagdag pa ng kaunting detalye upang makumpleto ang 11 / 11 checklist.'
+                    : 'Add a bit more detail to complete the 11 / 11 checklist.';
             }
         }
 

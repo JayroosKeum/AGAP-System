@@ -476,6 +476,13 @@ class CaseStage
                 'action_type' => 'show_cause',
                 'badge' => 'badge-danger'
             ];
+        } elseif ($latestHearing && (($latestHearing['minutes_status'] ?? 'Not Recorded') !== 'Finalized')) {
+            $nextPermittedAction = [
+                'action' => 'Record Hearing Minutes & Outcome',
+                'description' => 'Party attendance is recorded. Complete and finalize the hearing minutes and outcome.',
+                'action_type' => 'record_minutes',
+                'badge' => 'badge-warning'
+            ];
         } elseif ($completedMediationCount === 1) {
             $nextPermittedAction = [
                 'action' => 'Schedule Mediation 2',
@@ -569,8 +576,7 @@ class CaseStage
         // 2. Mediation stage is 'Referred to Pangkat', OR
         // 3. stageRecord status is not 'Locked'
         $isUnlocked = (
-            $case['case_status'] === 'Conciliation' ||
-            $case['case_status'] === 'Settled' ||
+            in_array($case['case_status'], ['Conciliation', 'Settled', 'CFA Issued'], true) ||
             $medStage['stage_status'] === 'Referred to Pangkat' ||
             ($stageRecord && in_array($stageRecord['stage_status'], ['Not Started', 'In Progress', 'Awaiting Outcome', 'Completed'], true))
         );
@@ -584,7 +590,7 @@ class CaseStage
         } elseif ($stageRecord && !empty($stageRecord['stage_status']) && !in_array($stageRecord['stage_status'], ['Locked', 'In Progress', 'Not Started'], true)) {
             $stageStatus = $stageRecord['stage_status'];
         } else {
-            if ($case['case_status'] === 'Settled') {
+            if (in_array($case['case_status'], ['Settled', 'CFA Issued'], true)) {
                 $stageStatus = 'Completed';
             } elseif ($case['case_status'] === 'Conciliation') {
                 $stageStatus = ($stageRecord && ($stageRecord['stage_status'] ?? '') === 'In Progress') ? 'In Progress' : 'Not Started';
@@ -705,6 +711,11 @@ class CaseStage
         $outcome = $stageRecord['outcome'] ?? 'Pending';
         if ($case['case_status'] === 'Settled' || $hasSettledSession) {
             $outcome = 'Settled';
+            $stageStatus = 'Completed';
+        } elseif ($case['case_status'] === 'CFA Issued') {
+            if ($outcome === 'Pending' || empty($outcome)) {
+                $outcome = 'Pending CFA';
+            }
             $stageStatus = 'Completed';
         }
 
@@ -1294,7 +1305,7 @@ class CaseStage
                 'complainant_attendance' => $h['complainant_attendance'] ?: 'Pending',
                 'respondent_attendance' => $h['respondent_attendance'] ?: 'Pending',
                 'presiding_officer_id' => $h['presiding_officer_id'] ? (int) $h['presiding_officer_id'] : null,
-                'presiding_officer_name' => $h['presiding_officer_name'] ?: 'Punong Barangay / Lupon Chairman',
+                'presiding_officer_name' => $h['presiding_officer_name'] ?: ($h['hearing_type'] === 'Conciliation' ? 'Pangkat ng Tagapagkasundo' : 'Punong Barangay / Lupon Chairman'),
                 'substitute_presider_id' => $h['substitute_presider_id'] ? (int) $h['substitute_presider_id'] : null,
                 'substitute_presider_name' => $h['substitute_presider_name'],
                 'substitute_reason' => $h['substitute_reason'],

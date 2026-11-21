@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+setcookie('agap_portal', 'resident', ['expires' => time() + 86400, 'path' => '/', 'samesite' => 'Lax']);
+
 session_start();
 if (!isset($_SESSION['user_id']) || ($_SESSION['role_name'] ?? '') !== 'Resident') {
     header('Location: login.php?error=login_required', true, 303);

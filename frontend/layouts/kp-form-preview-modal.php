@@ -689,6 +689,34 @@ window.closeKpDocumentPreviewModal = closeKpDocumentPreviewModal;
         grid-template-columns: 1fr;
         overflow-y: auto;
     }
+    .pangkat-tri-grid {
+        grid-template-columns: 1fr !important;
+        overflow-y: auto;
+    }
+}
+
+@media (max-width: 640px) {
+    .fit-document-modal,
+    .pangkat-modal-content {
+        width: 100vw !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        border-radius: 0 !important;
+    }
+    .fit-document-toolbar,
+    .pangkat-modal-content .modal-header {
+        padding: 10px 12px !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+    .kp-live-grid-2,
+    .kp-live-grid-3 {
+        grid-template-columns: 1fr !important;
+    }
+    .kp-live-editor-banner {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
 .kp-doc-live-editor-panel {

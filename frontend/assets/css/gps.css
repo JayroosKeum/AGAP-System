@@ -689,6 +689,7 @@
     display: inline-flex;
     flex-direction: column;
     gap: 4px;
+    max-width: 100%;
 }
 .service-status-pill {
     font-size: 0.74rem;
@@ -698,8 +699,10 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
     width: fit-content;
+    max-width: 100%;
 }
 .service-status-pill.badge-served-mini {
     background: #dcfce7;

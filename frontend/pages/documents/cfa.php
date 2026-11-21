@@ -126,6 +126,6 @@ window.AGAP_CFA = Object.freeze({
     canIssue: <?php echo $canIssueCfa ? 'true' : 'false'; ?>
 });
 </script>
-<script src="../../assets/js/cfa.js?v=<?php echo filemtime(__DIR__ . '/../../layouts/header.php'); ?>"></script>
+<script src="../../assets/js/cfa.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/cfa.js'); ?>"></script>
 
 <?php include '../../layouts/footer.php'; ?>

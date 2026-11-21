@@ -10,8 +10,11 @@ if (($_SESSION['role_name'] ?? '') === 'Resident') {
     exit;
 }
 
-$notice = (string) ($_GET['notice'] ?? $_GET['error'] ?? '');
+$loggedOut = !empty($_GET['logged_out']);
+$notice = (string) ($_GET['notice'] ?? $_GET['error'] ?? ($loggedOut ? 'logged_out' : ''));
 $messages = [
+    'logged_out' => 'You have been signed out of the Resident Portal.',
+    'login_required' => 'Please sign in to your Resident account to continue.',
     'email_verified' => 'Your email is verified. Sign in with the password you chose when you registered.',
     'registered' => 'Your resident account is ready. Sign in to continue.',
     'verification_sent' => 'Check your inbox for the confirmation link. It expires in 24 hours.',
@@ -56,7 +59,7 @@ $showResend = in_array($notice, ['verification_sent', 'verification_pending', 'v
                 <p class="resident-auth-lead">Sign in with the username and password you created.</p>
 
                 <?php if (isset($messages[$notice])): ?>
-                    <?php $isSuccess = in_array($notice, ['email_verified', 'registered', 'verification_sent'], true); ?>
+                    <?php $isSuccess = in_array($notice, ['email_verified', 'registered', 'verification_sent', 'logged_out'], true); ?>
                     <div class="resident-message <?= $isSuccess ? 'success' : 'error' ?>" role="<?= $isSuccess ? 'status' : 'alert' ?>"><?= htmlspecialchars($messages[$notice], ENT_QUOTES, 'UTF-8') ?></div>
                 <?php endif; ?>
 

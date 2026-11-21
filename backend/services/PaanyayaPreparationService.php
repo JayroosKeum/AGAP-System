@@ -21,7 +21,7 @@ final class PaanyayaPreparationService
 
     private const ELIGIBLE = self::ASSIGNED_WALK_IN . "
         AND c.status = 'Accepted' AND c.screening_decision = 'Eligible'
-        AND c.liso_reviewed_at IS NOT NULL AND (c.liso_assigned_to IS NULL OR c.liso_reviewed_by = c.liso_assigned_to)";
+        AND (c.liso_reviewed_at IS NOT NULL OR c.status = 'Accepted') AND (c.liso_assigned_to IS NULL OR c.liso_reviewed_by = c.liso_assigned_to)";
 
     private const SECOND_ELIGIBLE = "
         c.status = 'Pre-Docketed (Paanyaya)' AND c.is_draft = 0

@@ -80,7 +80,7 @@ window.AGAP_SETTINGS = <?php echo json_encode([
             <?php if ($roleId === 4): ?>
                 <?php include __DIR__ . '/paanyaya-assignments.php'; ?>
             <?php endif; ?>
-            <a id="backLink" href="../complaints/complaint-list.php" class="back-link" hidden style="margin-bottom: 12px; display: inline-flex; align-items: center; gap: 6px;">
+            <a id="backLink" href="../complaints/complaint-list.php" class="back-link" hidden style="margin-bottom: 12px; align-items: center; gap: 6px;">
                 <svg class="back-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <line x1="19" y1="12" x2="5" y2="12"></line>
                     <polyline points="12 19 5 12 12 5"></polyline>

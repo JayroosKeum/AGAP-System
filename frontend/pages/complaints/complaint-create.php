@@ -1,18 +1,25 @@
 <?php
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 session_start();
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
 $isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
 if (!in_array($roleId, [1, 2], true) && !$isResidentPortal) {
+    $isFromResidentPortal = (($_GET['portal'] ?? '') === 'resident')
+        || str_contains((string) ($_SERVER['HTTP_REFERER'] ?? ''), '/resident/')
+        || (($_COOKIE['agap_portal'] ?? '') === 'resident');
     $redirect = match ($roleId) {
         3 => '../dashboard/lupon-dashboard.php',
         4 => '../dashboard/server-dashboard.php',
-        default => '../auth/login.php',
+        default => ($isFromResidentPortal ? '../resident/login.php?error=login_required' : '../auth/login.php?error=login_required'),
     };
-    header('Location: ' . $redirect);
+    header('Location: ' . $redirect, true, 303);
     exit;
 }
+setcookie('agap_portal', $isResidentPortal ? 'resident' : 'staff', ['expires' => time() + 86400, 'path' => '/', 'samesite' => 'Lax']);
 
 require_once __DIR__ . '/../../../backend/config/database.php';
 
@@ -1037,7 +1044,7 @@ include '../../layouts/header.php';
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                     </a>
                     <div>
-                        <h1 class="wizard-title"><?= $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : $rText('Magsumite ng Sumbong', 'Record a Walk-in Complaint') ?></h1>
+                        <h1 class="wizard-title"><?= $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : $rText('Magsumite ng Sumbong', $isResidentPortal ? 'Submit a Concern' : 'Record a Walk-in Complaint') ?></h1>
                         <p class="wizard-subtitle"<?= $rEnAttr('Katarungang Pambarangay — Preliminary Intake & Screening') ?>><?= $rOut('Katarungang Pambarangay — Paunang Pagsusuri at Pagtatala', 'Katarungang Pambarangay — Preliminary Intake & Screening') ?></p>
                     </div>
                 </div>
@@ -1699,8 +1706,8 @@ include '../../layouts/header.php';
                                     <span class="threshold-pill" style="font-size:0.75rem; color:#64748b; font-weight:600; background:#f1f5f9; padding:2px 8px; border-radius:4px; border:1px solid #e2e8f0;"<?= $rEnAttr('KP Statutory Limit: ₱5,000.00') ?>><?= $rOut('Hangganan sa Batas ng KP: ₱5,000.00', 'KP Statutory Limit: ₱5,000.00') ?></span>
                                 </label>
                                 <div style="position:relative;">
-                                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-weight:700; color:#64748b; font-size:0.95rem; pointer-events:none;">₱</span>
-                                    <input type="number" step="0.01" min="0" id="offenseFineMax" name="offense_fine_max" style="padding-left:30px;" placeholder="0.00" value="<?php echo htmlspecialchars($old['offense_fine_max'] ?? ''); ?>">
+                                    <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-weight:700; color:#64748b; font-size:0.95rem; pointer-events:none; z-index:2;">₱</span>
+                                    <input type="number" step="0.01" min="0" id="offenseFineMax" name="offense_fine_max" style="padding-left: 34px !important;" placeholder="0.00" value="<?php echo htmlspecialchars($old['offense_fine_max'] ?? ''); ?>">
                                 </div>
                                 <small class="field-hint"<?= $rEnAttr('Specify total estimated value of property damaged, unpaid money/debt, or compensation claimed.') ?>><?= $rOut('Ilagay ang kabuuang tinatayang halaga ng nasirang ari-arian, hindi nabayarang utang, o hinihinging danyos.', 'Specify total estimated value of property damaged, unpaid money/debt, or compensation claimed.') ?></small>
                             </div>
@@ -2273,6 +2280,7 @@ include '../../layouts/header.php';
 
                 <!-- Modal Body -->
                 <div class="party-modal-body">
+                    <?php if (!$isResidentPortal): ?>
                     <!-- Quick-Fill from Directory Combobox -->
                     <div class="party-quickfill-bar" style="margin-bottom: 16px;">
                         <div class="quickfill-header">
@@ -2291,6 +2299,9 @@ include '../../layouts/header.php';
                             <div class="party-search-dropdown" id="modalPartySearchDropdown" style="display:none;"></div>
                         </div>
                     </div>
+                    <?php else: ?>
+                    <input type="hidden" id="modalResidentId" value="">
+                    <?php endif; ?>
 
                     <!-- In-Modal Validation Error Banner -->
                     <div id="modalPartyValidationError" class="party-validation-error-box" style="display:none;">
@@ -3444,6 +3455,10 @@ document.addEventListener('DOMContentLoaded', () => {
         createForm.addEventListener('input', updateIntakeReview);
         createForm.addEventListener('change', updateIntakeReview);
         createForm.addEventListener('submit', (e) => {
+            if (createForm.dataset.submitting === '1') {
+                e.preventDefault();
+                return;
+            }
             // Check Safe Spaces Act (RA 11313) mandatory 1st Offense toggle & VAWC/PNP routing
             if (window.isSafeSpacesCategorySelected && window.isSafeSpacesCategorySelected()) {
                 const isRepeatVawc = document.getElementById('chkRepeatOffenseVawc')?.checked;
@@ -3636,6 +3651,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            createForm.dataset.submitting = '1';
             const submitBtn = document.getElementById('btnSubmitComplaint');
             if (submitBtn) {
                 submitBtn.disabled = true;
@@ -6219,35 +6235,79 @@ document.addEventListener('DOMContentLoaded', () => {
     // ── Resident Portal Draft State Persistence Across Steps & Accidental Reloads ──
     if (IS_RESIDENT_PORTAL && window.sessionStorage) {
         const draftStorageKey = 'agap_resident_complaint_draft_<?php echo (int) ($_SESSION['user_id'] ?? 0); ?>';
-        const hasServerOldInput = <?php echo json_encode(!empty($old)); ?>;
-        const draftFieldIds = ['narrative', 'complaintTitle', 'incidentDateTime', 'incidentStreet', 'incidentPurok', 'offenseFineMax'];
+        const submittedFlagKey = `${draftStorageKey}_submitted`;
+        const hasServerFlashError = <?php echo json_encode(!empty($complaintFlash)); ?>;
+        const draftFieldIds = [
+            'narrative', 'complaintTitle', 'incidentDateTime', 'incidentStreet',
+            'incidentPurok', 'incidentLocationDetails', 'offenseFineMax',
+            'requestedResolution', 'primaryCategoryInput', 'caseType'
+        ];
+        const draftCheckboxIds = [
+            'isTimeApproximate', 'isTimeUnknown',
+            'chkMultipleComplainants', 'chkMultipleRespondents'
+        ];
 
         function saveResidentWizardDraft() {
             try {
                 const payload = {
                     step: currentWizardStep,
                     titleCustomized: Boolean(isTitleUserCustomized),
-                    titleSource: titleSuggestionSource || 'empty'
+                    titleSource: titleSuggestionSource || 'empty',
+                    respondents: Array.isArray(respondentsList) ? respondentsList : [],
+                    extraComplainants: (Array.isArray(complainantsList) && complainantsList.length > 1)
+                        ? complainantsList.slice(1)
+                        : []
                 };
                 draftFieldIds.forEach((id) => {
                     const el = document.getElementById(id);
                     if (el) payload[id] = el.value;
                 });
+                draftCheckboxIds.forEach((id) => {
+                    const el = document.getElementById(id);
+                    if (el) payload[`chk_${id}`] = Boolean(el.checked);
+                });
                 window.sessionStorage.setItem(draftStorageKey, JSON.stringify(payload));
             } catch (e) {}
         }
+        window.saveResidentWizardDraft = saveResidentWizardDraft;
 
-        if (!hasServerOldInput) {
+        const origSetWizardStep = setWizardStep;
+        setWizardStep = function(step, validateCurrent = false) {
+            origSetWizardStep(step, validateCurrent);
+            saveResidentWizardDraft();
+        };
+        window.setWizardStep = setWizardStep;
+
+        if (!hasServerFlashError) {
             try {
+                window.sessionStorage.removeItem(submittedFlagKey);
                 const rawDraft = window.sessionStorage.getItem(draftStorageKey);
                 if (rawDraft) {
                     const saved = JSON.parse(rawDraft);
+                    draftCheckboxIds.forEach((id) => {
+                        const el = document.getElementById(id);
+                        if (el && typeof saved[`chk_${id}`] === 'boolean') {
+                            el.checked = saved[`chk_${id}`];
+                            if (id === 'isTimeUnknown' || id === 'chkMultipleComplainants' || id === 'chkMultipleRespondents') {
+                                el.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }
+                    });
                     draftFieldIds.forEach((id) => {
                         const el = document.getElementById(id);
                         if (el && typeof saved[id] === 'string' && saved[id] !== '' && el.value.trim() === '') {
                             el.value = saved[id];
                         }
                     });
+                    if (Array.isArray(saved.respondents) && saved.respondents.length > 0 && typeof respondentsList !== 'undefined' && respondentsList.length === 0) {
+                        respondentsList.push(...saved.respondents);
+                    }
+                    if (Array.isArray(saved.extraComplainants) && saved.extraComplainants.length > 0 && typeof complainantsList !== 'undefined' && complainantsList.length <= 1) {
+                        complainantsList.push(...saved.extraComplainants);
+                    }
+                    if (typeof syncHiddenPartyInputs === 'function') syncHiddenPartyInputs();
+                    if (typeof renderParties === 'function') renderParties();
+
                     if (typeof saved.titleCustomized === 'boolean' && complaintTitleInputEl?.value?.trim() !== '') {
                         isTitleUserCustomized = saved.titleCustomized;
                         titleSuggestionSource = saved.titleSource || (saved.titleCustomized ? 'manual' : 'local');
@@ -6257,24 +6317,44 @@ document.addEventListener('DOMContentLoaded', () => {
                             setAiTitleStatus('manual', tr('⚡ Awtomatikong binuo mula sa salaysay', '⚡ Auto-labeled from narrative'));
                         }
                     }
+                    const restoredStep = parseInt(saved.step, 10);
+                    if (Number.isFinite(restoredStep) && restoredStep > 1 && restoredStep <= totalWizardSteps) {
+                        origSetWizardStep(restoredStep, false);
+                    }
                     setTimeout(() => {
                         checkDamagesJurisdiction?.();
                         updateStep5ReviewSummary();
+                        updateIntakeReview();
                     }, 0);
                 }
             } catch (e) {}
         }
 
-        draftFieldIds.forEach((id) => {
+        [...draftFieldIds, ...draftCheckboxIds].forEach((id) => {
             document.getElementById(id)?.addEventListener('input', saveResidentWizardDraft);
             document.getElementById(id)?.addEventListener('change', saveResidentWizardDraft);
+        });
+        document.getElementById('btnSavePartyModal')?.addEventListener('click', () => {
+            setTimeout(saveResidentWizardDraft, 40);
         });
 
         createForm?.addEventListener('submit', (e) => {
             if (!e.defaultPrevented) {
                 try {
                     window.sessionStorage.removeItem(draftStorageKey);
+                    window.sessionStorage.setItem(submittedFlagKey, '1');
                 } catch (err) {}
+            }
+        });
+
+        window.addEventListener('pageshow', (event) => {
+            let wasSubmitted = false;
+            try {
+                wasSubmitted = window.sessionStorage.getItem(submittedFlagKey) === '1';
+                if (wasSubmitted) window.sessionStorage.removeItem(submittedFlagKey);
+            } catch (err) {}
+            if (event.persisted || wasSubmitted) {
+                window.location.reload();
             }
         });
     }
@@ -7096,7 +7176,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    createForm?.addEventListener('submit', () => {
+    createForm?.addEventListener('submit', (e) => {
+        if (e.defaultPrevented) return;
         isSubmitting = true;
         isFormDirty = false;
     });
@@ -7485,8 +7566,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             purokEl.dispatchEvent(new Event('change', { bubbles: true }));
         }
-        if (party?.latitude && party?.longitude && window.complaintMaps?.addComplaintMap?.setPoint) {
-            window.complaintMaps.addComplaintMap.setPoint(Number(party.latitude), Number(party.longitude), 'selected', false);
+        const partyLat = party?.home_latitude ?? party?.latitude ?? null;
+        const partyLng = party?.home_longitude ?? party?.longitude ?? null;
+        if (partyLat !== null && partyLat !== '' && partyLng !== null && partyLng !== '' && window.complaintMaps?.addComplaintMap?.setPoint) {
+            document.getElementById('locationMapPinbox')?.classList.add('is-open');
+            window.complaintMaps.addComplaintMap.map?.invalidateSize?.();
+            window.complaintMaps.addComplaintMap.setPoint(Number(partyLat), Number(partyLng), 'selected', false);
         }
         if (statusEl) {
             statusEl.textContent = tr(
@@ -7544,10 +7629,12 @@ document.addEventListener('DOMContentLoaded', () => {
             modalAddressEl.value = comp.address;
             modalAddressEl.dispatchEvent(new Event('input', { bubbles: true }));
         }
-        if (modalLatEl && comp.latitude) modalLatEl.value = comp.latitude;
-        if (modalLngEl && comp.longitude) modalLngEl.value = comp.longitude;
-        if (comp.latitude && comp.longitude && typeof setPartyAddressMapPoint === 'function') {
-            setPartyAddressMapPoint(Number(comp.latitude), Number(comp.longitude), false);
+        const compLat = comp.home_latitude ?? comp.latitude ?? '';
+        const compLng = comp.home_longitude ?? comp.longitude ?? '';
+        if (modalLatEl && compLat) modalLatEl.value = compLat;
+        if (modalLngEl && compLng) modalLngEl.value = compLng;
+        if (compLat && compLng && typeof setPartyAddressMapPoint === 'function') {
+            setPartyAddressMapPoint(Number(compLat), Number(compLng), false);
         }
         window.agapNotify?.(tr('Kinopya ang Purok at address ng nagsusumbong.', "Copied complainant's Purok and street address."), 'success', tr('Detalye ng Partido', 'Party Details'));
     });

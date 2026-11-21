@@ -1787,6 +1787,10 @@ tr[data-paanyaya-row="1"].is-expanded td {
         max-width: calc(100vw - 52px);
         box-sizing: border-box;
     }
+    .paanyaya-vstep-box .agap-row-actions {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
 }
 </style>
 
@@ -2577,6 +2581,7 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="schedDate">Scheduled Date</label>
                                     <input type="date" id="schedDate" name="scheduled_date" class="form-control" min="<?php echo date('Y-m-d'); ?>" value="<?php echo date('Y-m-d', strtotime('+3 weekdays')); ?>" required>
+                                    <div id="schedDateHint" style="font-size: 0.74rem; margin-top: 5px; color: #64748b;"></div>
                                 </div>
                                 <div class="form-group" style="margin-bottom: 0;">
                                     <label for="schedTime">Scheduled Time</label>
@@ -3508,6 +3513,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 agapAlert('Scheduled date cannot be in the past.', 'warning');
                 return false;
             }
+            const parsedDate = new Date(`${date}T12:00:00`);
+            if (!isNaN(parsedDate.getTime())) {
+                const dow = parsedDate.getDay();
+                if (dow === 0 || dow === 6) {
+                    agapAlert('Paanyaya dialogues cannot be scheduled on Saturday or Sunday. Please select a weekday.', 'warning');
+                    return false;
+                }
+            }
             if (!salaysay) {
                 agapAlert('Please provide the Salaysay (Statement / Reason for Invitation).', 'warning');
                 return false;
@@ -3516,6 +3529,37 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         return true;
     };
+
+    const updateSchedDateHint = () => {
+        const hintEl = document.getElementById('schedDateHint');
+        if (!hintEl || !schedDateInput) return;
+        const val = (schedDateInput.value || '').trim();
+        if (!val) {
+            hintEl.textContent = 'Office dialogues are held on weekdays (Mon–Fri).';
+            hintEl.style.color = '#64748b';
+            return;
+        }
+        const d = new Date(`${val}T12:00:00`);
+        if (isNaN(d.getTime())) {
+            hintEl.textContent = '';
+            return;
+        }
+        const dow = d.getDay();
+        if (dow === 0 || dow === 6) {
+            hintEl.textContent = '⚠ Barangay Lupon office is closed on weekends. Please select a weekday.';
+            hintEl.style.color = '#dc2626';
+        } else if (dow === 2) {
+            hintEl.textContent = 'ℹ Note: Tuesdays are dedicated Formal Mediation/Hearing Session days; informal Paanyaya is still allowed.';
+            hintEl.style.color = '#0284c7';
+        } else {
+            hintEl.textContent = '✓ Valid weekday schedule.';
+            hintEl.style.color = '#15803d';
+        }
+    };
+    if (schedDateInput) {
+        schedDateInput.addEventListener('change', updateSchedDateHint);
+        updateSchedDateHint();
+    }
 
     const formatResidencyStatusLabel = (val) => {
         const s = String(val ?? '0');
@@ -3645,13 +3689,54 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     };
 
+    const resetSchedFormState = () => {
+        if (schedForm) schedForm.reset();
+        [
+            'schedComplainantResidentId',
+            'schedInviteeResidentId',
+            'compLocationLat',
+            'compLocationLng',
+            'invLocationLat',
+            'invLocationLng',
+            'paanyayaLocationLat',
+            'paanyayaLocationLng'
+        ].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+
+        [
+            { chk: 'chkCompNoContact', inp: 'schedComplainantContact', star: 'compContactReqStar' },
+            { chk: 'chkInvNoContact', inp: 'schedInviteeContact', star: 'invContactReqStar' }
+        ].forEach(cfg => {
+            const chkEl = document.getElementById(cfg.chk);
+            const inpEl = document.getElementById(cfg.inp);
+            const starEl = document.getElementById(cfg.star);
+            if (chkEl) chkEl.checked = false;
+            if (inpEl) {
+                inpEl.disabled = false;
+                inpEl.required = true;
+            }
+            if (starEl) starEl.style.display = 'inline';
+        });
+
+        document.getElementById('compClearPinBtn')?.click();
+        document.getElementById('invClearPinBtn')?.click();
+        document.getElementById('paanyayaClearPinBtn')?.click();
+        updateSchedDateHint();
+    };
+
     const openSchedModal = () => {
+        resetSchedFormState();
         updateMinDate();
         if (schedModal) schedModal.style.display = 'flex';
         setWizStep(1);
         initPaanyayaLocationMap();
     };
-    const closeSchedModal = () => { if (schedModal) schedModal.style.display = 'none'; };
+    const closeSchedModal = () => {
+        if (schedModal) schedModal.style.display = 'none';
+        resetSchedFormState();
+    };
 
     if (openSchedBtn) openSchedBtn.addEventListener('click', openSchedModal);
     if (closeSchedBtn) closeSchedBtn.addEventListener('click', closeSchedModal);
@@ -5037,9 +5122,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     btnConfirmOutcome
                 );
             } else if (outcome === 'dismiss') {
+                const compAtt = getRadio('complainant_attended');
+                const invAtt = getRadio('invitee_attended');
+                let dismissConfirmMsg = 'Sigurado ka bang idi-dismiss at isasara ang Paanyaya na ito?';
+                if (compAtt === 'Absent' && invAtt !== 'Absent') {
+                    dismissConfirmMsg = 'Sigurado ka bang idi-dismiss ang usaping ito dahil hindi nakadalo ang Nagpaanyaya?';
+                } else if (invAtt === 'Absent' && compAtt !== 'Absent') {
+                    dismissConfirmMsg = 'Sigurado ka bang idi-dismiss ang usaping ito dahil hindi nakadalo ang Inanyayahan?';
+                } else if (compAtt === 'Absent' && invAtt === 'Absent') {
+                    dismissConfirmMsg = 'Sigurado ka bang idi-dismiss ang usaping ito dahil parehong hindi nakadalo ang Nagpaanyaya at Inanyayahan?';
+                }
                 submitAttendanceAction(
                     'dismiss',
-                    'Sigurado ka bang idi-dismiss ang usaping ito dahil hindi nakadalo ang Nagpaanyaya?',
+                    dismissConfirmMsg,
                     btnConfirmOutcome
                 );
             } else if (outcome === 'schedule_second_paanyaya') {

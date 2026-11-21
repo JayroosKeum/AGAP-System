@@ -40,6 +40,20 @@ if (!$caseId) {
     exit;
 }
 
+$initialAttCardTitle = 'Hearing Session Attendance — 1st Conciliation';
+try {
+    $reqHId = filter_var($_GET['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $hOrdStmt = $db->prepare("SELECT hearing_id FROM hearings WHERE case_id = ? AND hearing_type = 'Conciliation' AND status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled') ORDER BY hearing_date ASC, hearing_id ASC");
+    $hOrdStmt->execute([$caseId]);
+    $hIds = array_map('intval', $hOrdStmt->fetchAll(PDO::FETCH_COLUMN));
+    if (!empty($hIds)) {
+        $pos = $reqHId ? array_search((int)$reqHId, $hIds, true) : 0;
+        $num = ($pos !== false) ? ($pos + 1) : 1;
+        $ordSuffix = match ($num) { 1 => '1st', 2 => '2nd', 3 => '3rd', default => $num . 'th' };
+        $initialAttCardTitle = 'Hearing Session Attendance — ' . $ordSuffix . ' Conciliation';
+    }
+} catch (Throwable) {}
+
 require_once __DIR__ . '/../../../backend/models/Setting.php';
 $sysSettings = Setting::all();
 $rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Tue';
@@ -213,7 +227,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                     <h1 id="wsStageTitle" style="margin: 0; font-size: 1.45rem; color: #0f172a; font-weight: 800;">
                         Pangkat Conciliation
                     </h1>
-                    <span id="wsStageStatusBadge" class="badge-stage" style="font-size: 0.78rem; padding: 3px 9px; border-radius: 9999px; font-weight: 700;">
+                    <span id="wsStageStatusBadge" class="badge-stage" style="display: inline-flex; align-items: center; line-height: 1.25; font-size: 0.78rem; padding: 4px 12px; border-radius: 9999px; font-weight: 700;">
                         Loading...
                     </span>
                     <span id="wsDraftIndicator" class="agap-draft-indicator state-idle">✓ Saved</span>
@@ -248,7 +262,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 <div class="stage-section-card" id="attendanceSection">
                     <div class="stage-section-header">
                         <div>
-                            <h3 id="wsAttCardTitle">Hearing Session Attendance</h3>
+                            <h3 id="wsAttCardTitle"><?php echo htmlspecialchars($initialAttCardTitle, ENT_QUOTES, 'UTF-8'); ?></h3>
                             <p id="wsAttCardSubtitle">Record presider availability, party appearance verification, and statutory attendance rules</p>
                         </div>
                     </div>
@@ -433,7 +447,7 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
             </p>
             <div class="form-group">
                 <label for="stageOutcomeSelect">Procedural Outcome <span class="required-mark">*</span></label>
-                <select id="stageOutcomeSelect" required onchange="handleEmbeddedStageOutcomeChange(this.value)" style="padding: 9px;">
+                <select id="stageOutcomeSelect" required onchange="handleEmbeddedStageOutcomeChange(this.value)" style="width: 100%; padding: 9px 32px 9px 12px;">
                     <option value="Settled">Settled — Parties Reached Amicable Settlement</option>
                     <option value="Unsuccessful">Unsuccessful — Conciliation Impasse (Requires Finalized Conciliation Minutes)</option>
                     <option value="Arbitration">Submit to Voluntary Arbitration (KP Form 14)</option>

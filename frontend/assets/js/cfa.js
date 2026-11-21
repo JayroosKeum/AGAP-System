@@ -54,12 +54,14 @@ async function loadCases() {
         const cases = res.data || [];
         select.replaceChildren(new Option('Select an eligible case', ''));
 
-        cases.forEach((item) => {
+        const preselected = window.AGAP_CFA?.preselectedCaseId;
+        const excludedStatuses = new Set(['Settled', 'CFA Issued', 'Dismissed', 'Archived', 'Closed']);
+        const filteredCases = cases.filter((item) => !excludedStatuses.has(String(item.case_status || '').trim()) || Number(item.case_id) === Number(preselected));
+
+        filteredCases.forEach((item) => {
             const opt = new Option(`${item.case_number} — ${item.complaint_title} (${item.case_status})`, item.case_id);
             select.add(opt);
         });
-
-        const preselected = window.AGAP_CFA?.preselectedCaseId;
         if (preselected) {
             if (!cases.some((c) => Number(c.case_id) === Number(preselected))) {
                 const extraOpt = new Option(`Case #${preselected} (Selected)`, String(preselected));
@@ -145,8 +147,9 @@ async function loadCasePreview(caseId) {
             }
             cfaTypeSelect.disabled = !cfaElig.eligible;
             if (submitBtn) {
-                submitBtn.disabled = !cfaElig.eligible;
-                submitBtn.textContent = `Issue ${cfaTypeSelect.value || 'CFA'}`;
+                const alreadyIssuedAll = Boolean(existingCfa && existingCfa.cfa_id && !existingCfa.needs_pdf_recovery && existingCfa.pdf_available && avail.length <= 1);
+                submitBtn.disabled = !cfaElig.eligible || alreadyIssuedAll;
+                submitBtn.textContent = alreadyIssuedAll ? 'CFA Already Issued' : `Issue ${cfaTypeSelect.value || 'CFA'}`;
             }
         } else if (submitBtn) {
             submitBtn.disabled = false;
@@ -289,6 +292,7 @@ async function handleCfaSubmit(event) {
     }
 
     if (submitBtn) submitBtn.disabled = true;
+    let issuedOk = false;
 
     try {
         const formData = new FormData(form);
@@ -296,11 +300,21 @@ async function handleCfaSubmit(event) {
             method: 'POST',
             body: formData
         });
+        issuedOk = true;
 
-        setMessage(res.message || `${cfaType} issued successfully!`, true);
         window.agapNotify?.(res.message || `${cfaType} issued successfully.`, 'success', 'Certificate Issued');
+        const msgEl = document.getElementById('cfaMessage');
+        if (msgEl) {
+            msgEl.textContent = res.message || `${cfaType} issued successfully.`;
+            msgEl.className = 'page-alert page-alert-success';
+            msgEl.style.display = 'block';
+        }
         form.reset();
         await Promise.all([loadCases(), loadCfaRecords()]);
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'CFA Already Issued';
+        }
         const preview = document.getElementById('cfaCasePreview');
         if (preview) {
             let printActionHtml = '';
@@ -325,7 +339,7 @@ async function handleCfaSubmit(event) {
         setMessage(err.message, false);
         window.agapNotify?.(err.message, 'error', 'Unable to Issue CFA');
     } finally {
-        if (submitBtn) submitBtn.disabled = false;
+        if (submitBtn && !issuedOk) submitBtn.disabled = false;
     }
 }
 

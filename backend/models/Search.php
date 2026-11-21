@@ -326,11 +326,11 @@ class Search
         if ((int) ($row['mediation_count'] ?? 0) > 0 || $caseStatus === 'Mediation' || $complaintStatus === 'Mediation') {
             return 'Mediation';
         }
-        if (str_contains($complaintStatus, 'Paanyaya') || str_contains($caseStatus, 'Paanyaya')) {
+        if (str_contains($complaintStatus, 'Paanyaya') || $complaintStatus === 'Accepted' || str_contains($caseStatus, 'Paanyaya')) {
             return 'Paanyaya';
         }
         if (empty($row['case_id'])) {
-            if (in_array($complaintStatus, ['Pending', 'Under Review', 'Submitted', 'For Verification', 'Accepted', 'Filed'], true) || $complaintStatus === '') {
+            if (in_array($complaintStatus, ['Pending', 'Under Review', 'Submitted', 'For Verification', 'Filed'], true) || $complaintStatus === '') {
                 return 'Verification';
             }
             if (str_contains($complaintStatus, 'Mediation') || str_contains($complaintStatus, 'Docketed')) {

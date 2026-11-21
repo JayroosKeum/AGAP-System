@@ -68,12 +68,13 @@ $residentCurrentScript = basename((string) ($_SERVER['SCRIPT_NAME'] ?? ''));
             <span class="resident-topbar-name"><span data-en="Signed in as">Naka-sign in bilang</span> <?= $residentTopbarEscape($residentTopbarDisplayName) ?></span>
         <?php endif; ?>
 
-        <form method="post" action="../../../backend/api/auth/logout.php">
+        <form id="globalLogoutForm" method="post" action="../../../backend/api/auth/logout.php">
             <input type="hidden" name="csrf_token" value="<?= $residentTopbarEscape($residentTopbarCsrf) ?>">
-            <button type="submit" class="resident-signout" data-en="Sign out">Mag-sign out</button>
+            <button type="button" id="globalLogoutBtn" class="resident-signout" data-en="Sign out">Mag-sign out</button>
         </form>
     </div>
 </header>
+<?php include __DIR__ . '/signout-modal.php'; ?>
 <script>
 if (!window.agapCsrfToken) {
     window.agapCsrfToken = <?= json_encode($residentTopbarCsrf) ?>;

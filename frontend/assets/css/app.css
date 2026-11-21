@@ -628,12 +628,12 @@ body,
 }
 
 @media (min-width: 1025px) {
-    html:not(.sidebar-collapsed) .navbar #langSwitchWrapper {
+    html:not(.sidebar-collapsed):not([data-resident-portal="1"]) .navbar #langSwitchWrapper {
         display: none;
     }
 }
 @media (min-width: 901px) and (max-width: 1024px) {
-    html.sidebar-expanded .navbar #langSwitchWrapper {
+    html.sidebar-expanded:not([data-resident-portal="1"]) .navbar #langSwitchWrapper {
         display: none;
     }
 }

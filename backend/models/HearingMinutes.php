@@ -255,6 +255,20 @@ class HearingMinutes
         $finalizedBy = ($status === 'Finalized') ? $userId : null;
         $finalizedAt = ($status === 'Finalized') ? date('Y-m-d H:i:s') : null;
 
+        if ($status === 'Finalized' && $outcome === 'Pending CFA') {
+            $compAtt = trim((string) ($hearing['complainant_attendance'] ?? ''));
+            $respAtt = trim((string) ($hearing['respondent_attendance'] ?? ''));
+            $noCheckIn = empty($hearing['attendance_recorded_at'])
+                && in_array($compAtt, ['', 'Pending'], true)
+                && in_array($respAtt, ['', 'Pending'], true);
+            if ($noCheckIn) {
+                return [
+                    'success' => false,
+                    'message' => 'Record party attendance check-in (after summons delivery verification) before finalizing Conciliation as Pending CFA.'
+                ];
+            }
+        }
+
         // Validate explicit reschedule date/time before persisting Rescheduled finalization
         if ($outcome === 'Rescheduled' && $status === 'Finalized') {
             $nextDate = trim((string) ($data['next_hearing_date'] ?? $data['reschedule_date'] ?? ''));
@@ -334,30 +348,32 @@ class HearingMinutes
                 $remarks ?: null, $actualEndTime, $userId
             ]);
 
-            // When minutes/outcome are submitted, conclude hearing session and track actual duration
-            $endTimestamp = $actualEndTime ?: date('Y-m-d H:i:s');
-            try {
-                $updH = $this->conn->prepare("
-                    UPDATE hearings
-                    SET actual_end_time = ?,
-                        actual_duration_minutes = CASE
-                            WHEN actual_start_time IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, actual_start_time, ?)
-                            ELSE COALESCE(actual_duration_minutes, duration_minutes, 45)
-                        END,
-                        queue_status = 'Concluded',
-                        status = IF(status IN ('Cancelled', 'Office Cancelled'), status, 'Completed')
-                    WHERE hearing_id = ?
-                ");
-                $updH->execute([$endTimestamp, $endTimestamp, $hearingId]);
-            } catch (Throwable $updEx) {
-                // Safe fallback if elastic duration / queue columns are absent
-                $updFallback = $this->conn->prepare("
-                    UPDATE hearings
-                    SET actual_end_time = ?,
-                        status = IF(status IN ('Cancelled', 'Office Cancelled'), status, 'Completed')
-                    WHERE hearing_id = ?
-                ");
-                $updFallback->execute([$endTimestamp, $hearingId]);
+            // Only conclude the hearing session when minutes are Finalized; saving a Draft leaves the session open.
+            if ($status === 'Finalized') {
+                $endTimestamp = $actualEndTime ?: date('Y-m-d H:i:s');
+                try {
+                    $updH = $this->conn->prepare("
+                        UPDATE hearings
+                        SET actual_end_time = ?,
+                            actual_duration_minutes = CASE
+                                WHEN actual_start_time IS NOT NULL THEN TIMESTAMPDIFF(MINUTE, actual_start_time, ?)
+                                ELSE COALESCE(actual_duration_minutes, duration_minutes, 45)
+                            END,
+                            queue_status = 'Concluded',
+                            status = IF(status IN ('Cancelled', 'Office Cancelled'), status, 'Completed')
+                        WHERE hearing_id = ?
+                    ");
+                    $updH->execute([$endTimestamp, $endTimestamp, $hearingId]);
+                } catch (Throwable $updEx) {
+                    // Safe fallback if elastic duration / queue columns are absent
+                    $updFallback = $this->conn->prepare("
+                        UPDATE hearings
+                        SET actual_end_time = ?,
+                            status = IF(status IN ('Cancelled', 'Office Cancelled'), status, 'Completed')
+                        WHERE hearing_id = ?
+                    ");
+                    $updFallback->execute([$endTimestamp, $hearingId]);
+                }
             }
 
             // Outcome workflow triggers

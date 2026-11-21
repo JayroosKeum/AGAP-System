@@ -8,7 +8,9 @@ if (empty($_SESSION['user_id']) || ($_SESSION['role_name'] ?? '') !== 'Resident'
     header('Location: login.php?error=login_required', true, 303);
     exit;
 }
-header('Cache-Control: private, no-store');
+header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+setcookie('agap_portal', 'resident', ['expires' => time() + 86400, 'path' => '/', 'samesite' => 'Lax']);
 
 require_once __DIR__ . '/../../../backend/services/ResidentComplaintTimeline.php';
 require_once __DIR__ . '/../../../backend/services/CsrfService.php';
@@ -57,16 +59,17 @@ $complaint = $timeline['complaint'] ?? null;
 $request = $timeline['request'] ?? null;
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="tl" data-agap-lang="tl" data-default-lang="tl" data-resident-portal="1">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#102b2d">
-    <title>Concern details | AGAP Resident Portal</title>
+    <title data-en="Concern details | AGAP Resident Portal">Detalye ng Sumbong | AGAP Portal ng Residente</title>
     <link rel="icon" type="image/jpeg" href="../../assets/images/tumana_logo.jpg">
     <link rel="stylesheet" href="../../assets/css/notifications.css?v=<?= filemtime(__DIR__ . '/../../assets/css/notifications.css') ?>">
     <link rel="stylesheet" href="../../assets/css/resident-dashboard.css?v=<?= filemtime(__DIR__ . '/../../assets/css/resident-dashboard.css') ?>">
     <script src="../../assets/js/notifications.js?v=<?= filemtime(__DIR__ . '/../../assets/js/notifications.js') ?>" defer></script>
+    <script src="../../assets/js/i18n.js?v=<?= filemtime(__DIR__ . '/../../assets/js/i18n.js') ?>" defer></script>
 </head>
 <body class="resident-dashboard-page">
     <?php include __DIR__ . '/../../layouts/resident-topbar.php'; ?>

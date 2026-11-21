@@ -845,7 +845,7 @@ class PDFService
                 <td style="width: 4%;"></td>
                 <td style="width: 48%; vertical-align: top;">
                     ' . $respLines . '
-                    <div style="text-align: center; font-size: 10pt;">Mga) Inirereklamo</div>
+                    <div style="text-align: center; font-size: 10pt;">(Mga) Inirereklamo</div>
                 </td>
             </tr>
         </table>

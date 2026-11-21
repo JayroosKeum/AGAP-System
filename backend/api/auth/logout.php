@@ -46,5 +46,6 @@ if (ini_get('session.use_cookies')) {
 }
 
 session_destroy();
+setcookie('agap_portal', $logoutPortal, ['expires' => time() + 3600, 'path' => '/', 'samesite' => 'Lax']);
 header('Location: ../../../frontend/pages/' . $logoutPortal . '/login.php?logged_out=1', true, 303);
 exit;
