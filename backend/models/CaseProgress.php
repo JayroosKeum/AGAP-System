@@ -536,8 +536,12 @@ class CaseProgress
         // STAGE 9: Resolution / Closure
         // -------------------------------------------------------------
         $caseStatus = $case['case_status'] ?? $complaint['status'] ?? 'Filed';
+        $isSignedSettlement = !empty($settlement) && (
+            ($settlement['settlement_status'] ?? '') === 'Signed and Attested'
+            || (empty($settlement['settlement_status']) && !empty($settlement['complainant_signed']) && !empty($settlement['respondent_signed']) && !empty($settlement['pb_attested']))
+        );
         $finalStatus = null;
-        if (!empty($settlement) || $caseStatus === 'Settled') {
+        if ($isSignedSettlement || $caseStatus === 'Settled') {
             $finalStatus = 'Amicable Settlement';
         } elseif (!empty($cfa) || $caseStatus === 'CFA Issued') {
             $finalStatus = 'CFA Issued';

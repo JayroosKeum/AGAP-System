@@ -524,7 +524,7 @@ class CaseModel
         $settlement = $settlementModel->getByCase($id);
 
         // If case is marked Settled but no settlement record exists yet, auto-populate from latest hearing minutes
-        if (!$settlement && (($case['case_status'] ?? '') === 'Settled' || ($stageOverview['mediation']['outcome'] ?? '') === 'Settled' || ($stageOverview['conciliation']['outcome'] ?? '') === 'Settled')) {
+        if (!$settlement && ($case['case_status'] ?? '') === 'Settled') {
             $minStmt = $this->conn->prepare("
                 SELECT hm.* FROM hearing_minutes hm
                 INNER JOIN hearings h ON h.hearing_id = hm.hearing_id
@@ -548,7 +548,7 @@ class CaseModel
         require_once __DIR__ . '/CaseTransmittal.php';
         $transmittalModel = new CaseTransmittal($this->conn);
         $transmittal = $transmittalModel->getByCaseId($id);
-        if (!$transmittal && ($settlement || ($case['case_status'] ?? '') === 'Settled')) {
+        if (!$transmittal && (($settlement && ($settlement['settlement_status'] ?? '') === 'Signed and Attested') || ($case['case_status'] ?? '') === 'Settled')) {
             $transmittal = $transmittalModel->createOrGetTransmittal($id);
         }
 

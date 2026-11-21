@@ -33,7 +33,8 @@ if (empty($input)) {
 }
 
 $controller = new SettlementController();
-if (($input['action'] ?? '') === 'confirm_legacy_review') {
+$action = (string) ($input['action'] ?? '');
+if ($action === 'confirm_legacy_review') {
     $settlementId = filter_var($input['settlement_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if (!$settlementId) {
         http_response_code(400);
@@ -41,6 +42,8 @@ if (($input['action'] ?? '') === 'confirm_legacy_review') {
         exit;
     }
     $result = $controller->confirmLegacyReview((int) $settlementId, $input, (int) $_SESSION['user_id']);
+} elseif ($action === 'update_settlement_terms') {
+    $result = $controller->updateTerms($input, (int) $_SESSION['user_id']);
 } else {
     $result = $controller->save($input, (int) $_SESSION['user_id']);
 }

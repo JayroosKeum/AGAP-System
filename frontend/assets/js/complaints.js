@@ -743,11 +743,17 @@ async function loadComplaintDetails() {
             data.case_workspace?.case?.case_status === 'For CFA' ||
             data.status === 'CFA Issued'
         );
+        const isSignedSettlement = Boolean(
+            settlement && (
+                settlement.settlement_status === 'Signed and Attested' ||
+                (!settlement.settlement_status && Boolean(Number(settlement.complainant_signed) && Number(settlement.respondent_signed) && Number(settlement.pb_attested)))
+            )
+        );
         const isSettled = !isRepudiated && Boolean(
             data.case_status === 'Settled' ||
             data.status === 'Settled' ||
             data.case_workspace?.case?.case_status === 'Settled' ||
-            settlement
+            isSignedSettlement
         );
 
         const caseStage = data.case_workspace?.case?.case_status
@@ -4001,6 +4007,12 @@ function openEmbeddedScheduleModal(stageType = 'Mediation', hearingId = null) {
         if (venueInput && !venueInput.value) venueInput.value = 'Lupon Court Room';
     }
 
+    const timeInput = document.getElementById('schedTime');
+    if (timeInput) {
+        delete timeInput.dataset.userSelected;
+        delete timeInput.dataset.selectedSlotValue;
+    }
+
     // Initialize date constraints (min today)
     const dateInput = document.getElementById('schedDate');
     initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId);
@@ -4028,7 +4040,10 @@ function renderTimeSlotsPillGrid(gridElId, timeInputId, scheduledItems = [], hea
     const slotDur = Math.max(15, isMed ? Number(cfg.mediation_default_duration_min || 45) : Number(cfg.conciliation_default_duration_min || 60));
     timeInput.min = winStart;
     timeInput.max = winEnd;
-    if (!timeInput.value || timeInput.value.slice(0, 5) < winStart || timeInput.value.slice(0, 5) > winEnd) {
+    if (timeInput.dataset.userSelected === '1' && timeInput.dataset.selectedSlotValue
+        && timeInput.dataset.selectedSlotValue >= winStart && timeInput.dataset.selectedSlotValue <= winEnd) {
+        timeInput.value = timeInput.dataset.selectedSlotValue;
+    } else if (!timeInput.value || timeInput.value.slice(0, 5) < winStart || timeInput.value.slice(0, 5) > winEnd) {
         timeInput.value = winStart;
     }
     const curVal = (timeInput.value || winStart).slice(0, 5);
@@ -4147,6 +4162,9 @@ function selectTimeSlotPill(gridElId, timeInputId, timeValue) {
     const gridEl = document.getElementById(gridElId);
     if (!timeInput) return;
     timeInput.value = timeValue;
+    timeInput.dataset.userSelected = '1';
+    timeInput.dataset.selectedSlotValue = timeValue;
+    timeInput.dispatchEvent(new Event('input', { bubbles: true }));
     if (gridEl) {
         renderTimeSlotsPillGrid(
             gridElId,
@@ -4785,6 +4803,10 @@ async function checkWorkspaceScheduleConflict() {
     params.set('get_window', '1');
 
     try {
+        const conflictSeq = (window._wsConflictCheckSeq = (window._wsConflictCheckSeq || 0) + 1);
+        const capturedUserSlot = (timeInput && timeInput.dataset.userSelected === '1')
+            ? (timeInput.dataset.selectedSlotValue || timeInput.value || '')
+            : '';
         const response = await fetch(`../../../backend/api/summons/check-schedule.php?${params.toString()}`);
         const result = await response.json();
 
@@ -4797,6 +4819,15 @@ async function checkWorkspaceScheduleConflict() {
             : Number(window.AGAP_SETTINGS?.mediation_default_duration_min || 45)));
         const availabilityResponse = await fetch(`../../../backend/api/hearings/check-availability.php?${availabilityParams.toString()}`);
         const availability = await availabilityResponse.json().catch(() => null);
+
+        if (conflictSeq !== window._wsConflictCheckSeq) {
+            return;
+        }
+        if (timeInput && timeInput.dataset.userSelected === '1' && timeInput.dataset.selectedSlotValue) {
+            timeInput.value = timeInput.dataset.selectedSlotValue;
+        } else if (timeInput && capturedUserSlot && !timeInput.value) {
+            timeInput.value = capturedUserSlot;
+        }
 
         if (result.window) {
             window.currentWsWindowMeta = result.window;
@@ -4864,9 +4895,15 @@ async function checkWorkspaceScheduleConflict() {
             }
         }
 
-        if (result.has_conflict || availability?.valid === false || availability?.conflict) {
+        const availConflict = (availability?.valid === false || Boolean(availability?.conflict));
+        if (result.has_conflict || availConflict) {
             if (conflictAlert) {
-                conflictAlert.textContent = `Conflict Warning: ${availability?.message || result.conflict_reason || 'Selected time overlaps with another hearing.'}`;
+                const detailMsg = availConflict
+                    ? availability.message
+                    : (result.conflict?.message || result.conflict_reason || result.message || 'Selected time overlaps with another hearing.');
+                conflictAlert.textContent = detailMsg.startsWith('Conflict') || detailMsg.startsWith('⚠️')
+                    ? detailMsg
+                    : `Conflict Warning: ${detailMsg}`;
                 conflictAlert.style.display = 'block';
             }
             if (submitBtn) submitBtn.disabled = true;
@@ -4899,6 +4936,11 @@ function handleSchedDateChange(val) {
 window.handleSchedDateChange = handleSchedDateChange;
 
 function handleSchedTimeChange() {
+    const timeInput = document.getElementById('schedTime');
+    if (timeInput && timeInput.value) {
+        timeInput.dataset.userSelected = '1';
+        timeInput.dataset.selectedSlotValue = timeInput.value.slice(0, 5);
+    }
     const dateVal = document.getElementById('schedDate')?.value || '';
     const stageType = document.getElementById('schedHearingType')?.value || 'Mediation';
     const gridEl = document.getElementById('schedTimeSlotsGrid');

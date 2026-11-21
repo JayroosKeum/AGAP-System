@@ -457,8 +457,8 @@ class CaseTransmittal
             $badgeLabel = '🔓 Ready for MTC / DILG Transmittal';
         }
 
-        // Automatic in-app notification when 10 working days elapse
-        if ($daysRemaining <= 0 && empty($row['transmittal_notified'])) {
+        // Automatic in-app notification when the 10-working-day repudiation period elapses (Settlement / Arbitration Award only; CFA packets have no repudiation countdown)
+        if (!$isCfaPacket && $isReady && $caseId > 0 && (int) ($row['transmittal_id'] ?? 0) > 0 && empty($row['transmittal_notified'])) {
             $this->dispatchTransmittalNotification((int)$row['transmittal_id'], (int)$row['case_id']);
             $row['transmittal_notified'] = 1;
         }

@@ -524,6 +524,126 @@ class Settlement
     }
 
     /**
+     * Updates edited KP Form 16 settlement terms from the live document editor without clearing
+     * existing signature/attestation milestones, or initializes a Draft settlement if none exists yet.
+     */
+    public function updateSettlementTerms(array $data, int $actorUserId): array
+    {
+        $caseId = filter_var($data['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$caseId) {
+            return ['success' => false, 'message' => 'Valid case ID is required.'];
+        }
+
+        $agreementDetails = trim((string) ($data['agreement_details'] ?? ''));
+        if ($agreementDetails === '') {
+            return ['success' => false, 'message' => 'Detailed settlement agreement terms are required.'];
+        }
+
+        $rawDate = trim((string) ($data['settlement_date'] ?? ''));
+        $settlementDate = null;
+        if ($rawDate !== '') {
+            if (!self::isValidIsoDate($rawDate) && strtotime($rawDate) === false) {
+                return ['success' => false, 'message' => 'Invalid settlement signing date.'];
+            }
+            $settlementDate = date('Y-m-d', strtotime($rawDate));
+            if ($settlementDate > date('Y-m-d')) {
+                return ['success' => false, 'message' => 'Settlement signing date cannot be in the future.'];
+            }
+        }
+
+        $isNested = $this->conn->inTransaction();
+        $generatedAbsolutePath = null;
+        try {
+            if (!$isNested) {
+                $this->conn->beginTransaction();
+            }
+
+            $caseLock = $this->conn->prepare('SELECT case_id, case_status FROM cases WHERE case_id = ? FOR UPDATE');
+            $caseLock->execute([$caseId]);
+            $caseRow = $caseLock->fetch(PDO::FETCH_ASSOC);
+            if (!$caseRow) {
+                throw new RuntimeException('Case not found.');
+            }
+            if (in_array((string) $caseRow['case_status'], ['CFA Issued', 'Dismissed', 'DISMISSED_BARRED', 'Repudiated', 'Archived'], true)) {
+                throw new RuntimeException("Cannot update settlement terms for a case in '{$caseRow['case_status']}' status.");
+            }
+
+            $existingStmt = $this->conn->prepare('SELECT settlement_id, settlement_date, settlement_status, repudiation_status, repudiation_date, document_id FROM settlements WHERE case_id = ? FOR UPDATE');
+            $existingStmt->execute([$caseId]);
+            $existing = $existingStmt->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing && (($existing['repudiation_status'] ?? '') === 'Repudiated' || !empty($existing['repudiation_date']))) {
+                throw new RuntimeException('This settlement has already been repudiated and cannot be modified.');
+            }
+
+            if ($existing) {
+                $settlementId = (int) $existing['settlement_id'];
+                $effectiveDate = $existing['settlement_date'] ?: ($settlementDate ?: date('Y-m-d'));
+                if ($settlementDate !== null && ($existing['settlement_status'] ?? 'Draft') !== 'Signed and Attested') {
+                    $effectiveDate = $settlementDate;
+                }
+
+                $upd = $this->conn->prepare('UPDATE settlements SET agreement_details = ?, settlement_date = ?, updated_at = NOW() WHERE settlement_id = ?');
+                $upd->execute([$agreementDetails, $effectiveDate, $settlementId]);
+
+                $settlementDocId = !empty($existing['document_id']) ? (int) $existing['document_id'] : null;
+                $settlementStatus = (string) ($existing['settlement_status'] ?? 'Draft');
+                if ($settlementStatus === 'Signed and Attested') {
+                    $kpService = $this->createKpFormService();
+                    $genDoc = $kpService->generateAndPersistForm('KP Form 16', $caseId, $actorUserId ?: 1, [
+                        'strict_pdf' => true,
+                        'settlement_date' => $effectiveDate,
+                    ]);
+                    if (empty($genDoc['success']) || empty($genDoc['document_id']) || empty($genDoc['file_path'])) {
+                        throw new RuntimeException($genDoc['message'] ?? 'Failed to render KP Form 16 Amicable Settlement PDF.');
+                    }
+                    $settlementDocId = (int) $genDoc['document_id'];
+                    $generatedAbsolutePath = dirname(__DIR__, 2) . '/' . ltrim((string) $genDoc['file_path'], '/');
+                    $this->conn->prepare('UPDATE settlements SET document_id = ? WHERE settlement_id = ?')
+                        ->execute([$settlementDocId, $settlementId]);
+                }
+
+                if (!$isNested) {
+                    $this->conn->commit();
+                }
+
+                return [
+                    'success' => true,
+                    'message' => $settlementStatus === 'Signed and Attested'
+                        ? 'Settlement terms updated and KP Form 16 regenerated.'
+                        : 'Draft settlement terms saved to case record.',
+                    'settlement_id' => $settlementId,
+                    'settlement_status' => $settlementStatus,
+                    'document_id' => $settlementDocId,
+                ];
+            }
+
+            // Initialize a Draft settlement using saveSettlement when no row exists yet.
+            $draftResult = $this->saveSettlement([
+                'case_id' => $caseId,
+                'settlement_date' => $settlementDate ?: date('Y-m-d'),
+                'agreement_details' => $agreementDetails,
+                'compliance_status' => 'Pending',
+            ], $actorUserId);
+            if (empty($draftResult['success'])) {
+                throw new RuntimeException($draftResult['message'] ?? 'Unable to save draft settlement terms.');
+            }
+            if (!$isNested && $this->conn->inTransaction()) {
+                $this->conn->commit();
+            }
+            return $draftResult;
+        } catch (Throwable $e) {
+            if (!$isNested && $this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            if ($generatedAbsolutePath && is_file($generatedAbsolutePath)) {
+                @unlink($generatedAbsolutePath);
+            }
+            return ['success' => false, 'message' => 'Failed to save settlement terms: ' . $e->getMessage()];
+        }
+    }
+
+    /**
      * Records an installment payment with receipt details.
      */
     public function recordInstallmentPayment(int $installmentId, array $data, int $actorUserId): array

@@ -50,6 +50,13 @@
             openLogoutModal();
         });
 
+        document.addEventListener('click', (e) => {
+            const targetBtn = e.target instanceof Element ? e.target.closest('#globalLogoutBtn') : null;
+            if (!targetBtn) return;
+            e.preventDefault();
+            openLogoutModal();
+        });
+
         cancelLogoutBtn?.addEventListener('click', closeLogoutModal);
 
         confirmLogoutBtn?.addEventListener('click', () => {

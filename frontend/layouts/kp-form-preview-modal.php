@@ -561,6 +561,8 @@ async function saveKpLiveTermsToDatabase() {
         fd.append('action', 'update_settlement_terms');
         fd.append('case_id', String(currentKpLiveMeta.case_id));
         if (currentKpLiveMeta.complaint_id) fd.append('complaint_id', String(currentKpLiveMeta.complaint_id));
+        const noticeDateVal = document.getElementById('kpLiveInput_notice_date')?.value?.trim() || '';
+        if (noticeDateVal) fd.append('settlement_date', noticeDateVal);
         fd.append('agreement_details', terms);
 
         const res = await fetch('../../../backend/api/settlements/save.php', {
@@ -570,10 +572,12 @@ async function saveKpLiveTermsToDatabase() {
         });
         const data = await res.json();
         if (data.success) {
-            if (window.agapNotify) window.agapNotify('Settlement terms saved to case record!', 'success');
+            if (window.agapNotify) window.agapNotify(data.message || 'Settlement terms saved to case record!', 'success');
             applyKpLiveFullServerRefresh();
         } else {
-            alert(data.message || 'Unable to save terms.');
+            const errMsg = data.message || 'Unable to save terms.';
+            if (window.agapNotify) window.agapNotify(errMsg, 'error');
+            else alert(errMsg);
         }
     } catch (err) {
         console.error(err);

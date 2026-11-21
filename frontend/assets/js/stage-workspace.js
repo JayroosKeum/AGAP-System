@@ -394,15 +394,24 @@ function isWorkspaceReadOnly(stage = null) {
     const stageOutcome = String(stage?.outcome || stage?.stage_outcome || '').trim();
     const currentMode = String(stageWorkspaceState.mode || '').trim();
 
-    if (WORKSPACE_FINAL_CASE_STATUSES.has(caseStatus) || WORKSPACE_FINAL_STAGE_STATUSES.has(stageStatus)) {
+    const settlement = stageWorkspaceState.stageData?.settlement;
+    const isSignedSettlement = Boolean(
+        settlement && (
+            settlement.settlement_status === 'Signed and Attested' ||
+            (!settlement.settlement_status && Boolean(Number(settlement.complainant_signed) && Number(settlement.respondent_signed) && Number(settlement.pb_attested)))
+        )
+    );
+    const isPendingSettlementAttestation = (stageOutcome === 'Settled' && caseStatus !== 'Settled' && !isSignedSettlement);
+
+    if (WORKSPACE_FINAL_CASE_STATUSES.has(caseStatus) || (!isPendingSettlementAttestation && WORKSPACE_FINAL_STAGE_STATUSES.has(stageStatus))) {
         return true;
     }
 
-    if (stageWorkspaceState.stageData?.settlement || stageWorkspaceState.stageData?.cfa) {
+    if (isSignedSettlement || stageWorkspaceState.stageData?.cfa) {
         return true;
     }
 
-    if (['Settled', 'Dismissed', 'Arbitration Award', 'Repudiated'].includes(stageOutcome)) {
+    if (['Dismissed', 'Arbitration Award', 'Repudiated'].includes(stageOutcome) || (stageOutcome === 'Settled' && !isPendingSettlementAttestation)) {
         return true;
     }
 
@@ -1737,6 +1746,14 @@ function switchActiveSession(hearingId) {
 
     stageWorkspaceState.currentHearingId = hId;
 
+    try {
+        const url = new URL(window.location.href);
+        if (hId > 0) {
+            url.searchParams.set('hearing_id', String(hId));
+            window.history.replaceState({}, '', url.toString());
+        }
+    } catch (_) {}
+
 
 
     const data = stageWorkspaceState.stageData || {};
@@ -1970,11 +1987,25 @@ function renderWorkspaceActions(stage) {
 
 
 
+    const stageData = stageWorkspaceState.stageData || {};
+    const stageOutcomeVal = String(stage.outcome || stage.stage_outcome || '').trim();
+    const caseStatusVal = String(stageData.case?.case_status || '').trim();
+    const settlementRec = stageData.settlement;
+    const isSignedSettled = (caseStatusVal === 'Settled')
+        || Boolean(settlementRec && settlementRec.settlement_status === 'Signed and Attested');
+    const isPendingSettlementAttestation = (stageOutcomeVal === 'Settled' && !isSignedSettled);
+
     if (unfinished) {
 
         label = 'Complete session closeout';
 
         handler = `openSessionCloseout(${Number(unfinished.hearing_id)})`;
+
+    } else if (isPendingSettlementAttestation) {
+
+        label = 'Record & Attest KP Form 16';
+
+        handler = `openInlineSettlementModal(${hId})`;
 
     } else if (mode === 'Mediation' && actions.can_proceed_to_pangkat) {
 
@@ -4178,19 +4209,19 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
 
-                    <button type="button" class="btn-secondary" onclick="openInlineSettlementModal(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; cursor: pointer;">
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openInlineSettlementModal(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; font-weight: 700; cursor: pointer;">
 
                         Record KP Form 16
 
                     </button>
 
-                    <button type="button" class="btn-create" onclick="issueSettledOutcome(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 5px; background: #16a34a; border-color: #16a34a; color: #ffffff; border-radius: 6px; font-weight: 700; cursor: pointer;">
+                    <button type="button" class="btn-create" data-readonly-exempt="true" onclick="issueSettledOutcome(${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 16px; display: inline-flex; align-items: center; gap: 5px; background: #16a34a; border-color: #16a34a; color: #ffffff; border-radius: 6px; font-weight: 700; cursor: pointer;">
 
                         Open Amicable Settlement &rarr;
 
                     </button>
 
-                    <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 16', ${Number(activeHearingId || 0)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #86efac; color: #166534; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
 
                         Preview / Print KP Form 16
 
@@ -4993,12 +5024,19 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
             if (!suppressAutoModal && targetKpForm && payload.status === 'Finalized') {
 
-                notifyUser(`Session minutes finalized successfully. Opening ${targetKpForm} printable preview...`, 'success', 'Session Minutes Finalized', 2500);
+                const isSettledAlready = (stageWorkspaceState.stageData?.case?.case_status === 'Settled')
+                    || (stageWorkspaceState.stageData?.settlement?.settlement_status === 'Signed and Attested');
+                if ((outcomeVal === 'Settled' || outcomeVal === 'Amicably Settled') && !isSettledAlready && typeof openInlineSettlementModal === 'function') {
+                    notifyUser('Session minutes finalized. Complete signatures and Punong Barangay attestation on KP Form 16 to conclude the case as Settled.', 'success', 'Record & Attest KP Form 16', 4500);
+                    openInlineSettlementModal(hearingId);
+                } else {
+                    notifyUser(`Session minutes finalized successfully. Opening ${targetKpForm} printable preview...`, 'success', 'Session Minutes Finalized', 2500);
 
-                const modalHearingId = (outcomeVal === 'Rescheduled' && json.rescheduled_hearing?.hearing_id)
-                    ? Number(json.rescheduled_hearing.hearing_id)
-                    : hearingId;
-                openKpFormModal(stageWorkspaceState.caseId, targetKpForm, modalHearingId, true);
+                    const modalHearingId = (outcomeVal === 'Rescheduled' && json.rescheduled_hearing?.hearing_id)
+                        ? Number(json.rescheduled_hearing.hearing_id)
+                        : hearingId;
+                    openKpFormModal(stageWorkspaceState.caseId, targetKpForm, modalHearingId, true);
+                }
 
             } else {
 
@@ -5131,7 +5169,11 @@ function renderOutcomeAndReferralSection(data, stage) {
 
     if (outcome === 'Settled' || stage.outcome === 'Settled' || stage.stage_status === 'Settled') {
 
-        outcomeBox.innerHTML = `
+        const isSignedSettled = (data.case?.case_status === 'Settled')
+            || (data.settlement?.settlement_status === 'Signed and Attested');
+        const activeHId = Number(stageWorkspaceState.activeSessionHearingId || 0);
+
+        outcomeBox.innerHTML = (isSignedSettled ? `
 
             <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 18px; color: #166534; margin-bottom: 12px;">
 
@@ -5173,7 +5215,49 @@ function renderOutcomeAndReferralSection(data, stage) {
 
             </div>
 
+        ` : `
 
+            <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 18px; color: #92400e; margin-bottom: 12px;">
+
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+
+                    <div>
+
+                        <h4 style="margin: 0 0 4px; font-size: 1rem; color: #78350f; font-weight: 700;">
+
+                            Agreement Recorded in Minutes — Pending KP Form 16 Signatures
+
+                        </h4>
+
+                        <p style="margin: 0; font-size: 0.85rem; color: #92400e;">
+
+                            Parties agreed in session minutes. Case status stays in ${escapeHtml(mode)} until both parties sign and the Punong Barangay attests KP Form 16.
+
+                        </p>
+
+                    </div>
+
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+
+                        <button type="button" class="btn-secondary" onclick="openKPFormPreview(${Number(stageWorkspaceState.caseId)}, 'KP Form 16')" style="font-size: 0.82rem; padding: 6px 14px; background: #fff; border-color: #fcd34d; color: #92400e; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;">
+
+                            Preview KP Form 16
+
+                        </button>
+
+                        <button type="button" class="btn-create" onclick="openInlineSettlementModal(${activeHId})" style="font-size: 0.82rem; padding: 6px 14px; background: #16a34a; border-color: #16a34a; color: #ffffff; cursor: pointer;">
+
+                            Record &amp; Attest KP Form 16 &rarr;
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        `) + `
 
             <!-- Court & DILG Transmittal Module (RA 7160 Sec. 411) -->
 
@@ -13187,6 +13271,46 @@ function renderWorkspaceOutcomesSummary(data) {
             }
         });
     });
+
+    const mode = stageWorkspaceState.mode || 'Mediation';
+    const activeStage = mode === 'Conciliation' ? data.conciliation : (mode === 'Arbitration' ? data.arbitration : data.mediation);
+    const activeStageOutcome = String(activeStage?.outcome || '').trim();
+    const settlement = data.settlement;
+    const isSignedSettlement = Boolean(
+        settlement && (
+            settlement.settlement_status === 'Signed and Attested' ||
+            (!settlement.settlement_status && Boolean(Number(settlement.complainant_signed) && Number(settlement.respondent_signed) && Number(settlement.pb_attested)))
+        )
+    );
+    const pendingKp16Attestation = (activeStageOutcome === 'Settled' && caseStatus !== 'Settled' && !isSignedSettlement);
+
+    if (pendingKp16Attestation) {
+        const activeHId = Number(stageWorkspaceState.activeSessionHearingId || 0);
+        const pendingEl = document.createElement('div');
+        pendingEl.id = 'wsPendingKp16Banner';
+        pendingEl.style.cssText = 'margin-top: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 16px;';
+        pendingEl.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap;">
+                <div>
+                    <div style="font-size: 0.9rem; font-weight: 700; color: #78350f;">
+                        Agreement Recorded in Minutes — Pending KP Form 16 Signatures
+                    </div>
+                    <div style="font-size: 0.82rem; color: #92400e; margin-top: 3px;">
+                        Case status remains in ${escapeHtml(mode)} until both parties sign and the Punong Barangay attests KP Form 16.
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openKpFormModal(${Number(stageWorkspaceState.caseId)}, 'KP Form 16', ${activeHId})" style="font-size: 0.8rem; padding: 6px 12px; background: #fff; border-color: #fcd34d; color: #92400e; cursor: pointer;">
+                        Preview KP Form 16
+                    </button>
+                    <button type="button" class="btn-create" data-readonly-exempt="true" onclick="openInlineSettlementModal(${activeHId})" style="font-size: 0.8rem; padding: 6px 14px; background: #16a34a; border-color: #16a34a; color: #ffffff; cursor: pointer;">
+                        Record &amp; Attest KP Form 16 &rarr;
+                    </button>
+                </div>
+            </div>
+        `;
+        outcomeBox.appendChild(pendingEl);
+    }
 
     if (!decidedItems.length && !cfaRecords.length && !['Dismissed', 'DISMISSED_BARRED', 'CFA Issued', 'RESPONDENT_DEFAULT'].includes(caseStatus)) {
         return;

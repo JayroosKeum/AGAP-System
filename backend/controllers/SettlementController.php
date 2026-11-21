@@ -67,6 +67,20 @@ class SettlementController
         return $result;
     }
 
+    public function updateTerms(array $data, int $actorUserId): array
+    {
+        $result = $this->settlement->updateSettlementTerms($data, $actorUserId);
+        if ($result['success']) {
+            $this->audit->log(
+                $actorUserId,
+                'Updated Amicable Settlement Terms',
+                'Settlements',
+                $result['settlement_id'] ?? null
+            );
+        }
+        return $result;
+    }
+
     public function recordPayment(int $installmentId, array $data, int $actorUserId): array
     {
         if ($installmentId < 1) {
