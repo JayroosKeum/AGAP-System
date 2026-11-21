@@ -136,6 +136,15 @@ function nextWeekdayDate(OfficeLogisticsService $logistics, int $daysAhead = 1, 
     return $curr->format('Y-m-d');
 }
 
+function nextWeekdaySlot(OfficeLogisticsService $logistics, int $offsetSeconds, string $fallbackTime = '09:00'): array
+{
+    $ts = time() + $offsetSeconds;
+    if ((int) date('N', $ts) < 6) {
+        return [date('Y-m-d', $ts), date('H:i', $ts)];
+    }
+    return [nextWeekdayDate($logistics, 1), $fallbackTime];
+}
+
 function regHttpRequest(string $base, ?array $session, string $route, ?array $data = null, bool $form = false): array
 {
     $headers = [
@@ -1220,9 +1229,7 @@ $cleanup->trackComplaint($comp9);
 $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
     ->execute([$comp9, $resComp, $comp9, $resResp1]);
 
-$paaApptTs = time() + 7200;
-$paaToday = date('Y-m-d', $paaApptTs);
-$paaTime9 = date('H:i', $paaApptTs);
+[$paaToday, $paaTime9] = nextWeekdaySlot($logistics, 7200, '09:00');
 $prepSvc->save($comp9, $clerkId, 'generate', [
     'appointment_date' => $paaToday,
     'appointment_time' => $paaTime9,
@@ -1387,9 +1394,10 @@ $cleanup->trackComplaint($comp10);
 $db->prepare("INSERT INTO complaint_parties (complaint_id, resident_id, party_type) VALUES (?, ?, 'Complainant'), (?, ?, 'Respondent')")
     ->execute([$comp10, $resComp, $comp10, $resResp1]);
 
+[$paa10Date, $paa10Time] = nextWeekdaySlot($logistics, 10800, '10:00');
 $prepSvc->save($comp10, $clerkId, 'generate', [
-    'appointment_date' => date('Y-m-d', time() + 10800),
-    'appointment_time' => date('H:i', time() + 10800),
+    'appointment_date' => $paa10Date,
+    'appointment_time' => $paa10Time,
     'venue' => 'Barangay Session Hall',
     'verify_parties' => '1',
     'party_version' => PaanyayaPreparationService::partyVersion($prepSvc->parties($comp10)),
