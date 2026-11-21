@@ -3,6 +3,11 @@
  * Enforces field-level rules across all forms before submission and on blur/input.
  */
 (() => {
+    const isTl = () => (typeof window.getAppLanguage === 'function'
+        ? window.getAppLanguage() === 'tl'
+        : document.documentElement.getAttribute('data-agap-lang') === 'tl');
+    const msgTxt = (tl, en) => (isTl() ? tl : en);
+
     const NAME_REGEX = /^(?=.{1,150}$)[\p{L}\p{M}.]+(?:[ '-][\p{L}\p{M}.]+)*$/u;
     const USERNAME_REGEX = /^[A-Za-z0-9_.-]+$/;
     const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -92,7 +97,7 @@
 
         if (el.type === 'file') {
             if (el.hasAttribute('required') && (!el.files || el.files.length === 0)) {
-                return 'Please attach the required file.';
+                return msgTxt('Pakilakip ang kinakailangang file.', 'Please attach the required file.');
             }
             if (el.files && el.files.length > 0) {
                 const maxMb = Number(el.dataset.maxMb || 25);
@@ -101,7 +106,10 @@
                 const acceptTokens = acceptRaw ? acceptRaw.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean) : [];
                 for (const file of el.files) {
                     if (file.size > maxBytes) {
-                        return `"${file.name}" exceeds the ${maxMb} MB file size limit.`;
+                        return msgTxt(
+                            `Ang "${file.name}" ay lumampas sa limitasyong ${maxMb} MB.`,
+                            `"${file.name}" exceeds the ${maxMb} MB file size limit.`
+                        );
                     }
                     if (acceptTokens.length > 0) {
                         const lowerName = file.name.toLowerCase();
@@ -112,7 +120,10 @@
                             return mime === tok;
                         });
                         if (!ok) {
-                            return `Unsupported file type for "${file.name}". Allowed: ${acceptRaw}`;
+                            return msgTxt(
+                                `Hindi sinusuportahang uri ng file ang "${file.name}". Pinapayagan: ${acceptRaw}`,
+                                `Unsupported file type for "${file.name}". Allowed: ${acceptRaw}`
+                            );
                         }
                     }
                 }
@@ -133,11 +144,11 @@
         }
 
         if (el.hasAttribute('required') && trimmed === '') {
-            return 'This field is required and cannot be blank.';
+            return msgTxt('Kinakailangan ang field na ito at hindi maaaring iwanang blangko.', 'This field is required and cannot be blank.');
         }
 
         if (!isControlCharFree(raw, el.tagName === 'TEXTAREA')) {
-            return 'Unsupported control characters are not allowed.';
+            return msgTxt('Hindi pinapayagan ang mga hindi sinusuportahang control character.', 'Unsupported control characters are not allowed.');
         }
 
         if (trimmed === '') {
@@ -146,39 +157,39 @@
 
         const minLen = el.getAttribute('minlength');
         if (minLen && trimmed.length < Number(minLen)) {
-            return `Must be at least ${minLen} characters.`;
+            return msgTxt(`Dapat hindi bababa sa ${minLen} karakter.`, `Must be at least ${minLen} characters.`);
         }
         const maxLen = el.getAttribute('maxlength');
         if (maxLen && raw.length > Number(maxLen)) {
-            return `Must be ${maxLen} characters or fewer.`;
+            return msgTxt(`Dapat hindi hihigit sa ${maxLen} karakter.`, `Must be ${maxLen} characters or fewer.`);
         }
 
         if (el.type === 'number') {
             if (el.validity && el.validity.badInput) {
-                return 'Enter a valid numeric value.';
+                return msgTxt('Maglagay ng wastong numero.', 'Enter a valid numeric value.');
             }
             const num = Number(trimmed);
             if (!Number.isFinite(num)) {
-                return 'Enter a valid numeric value.';
+                return msgTxt('Maglagay ng wastong numero.', 'Enter a valid numeric value.');
             }
             if (el.min !== '' && num < Number(el.min)) {
-                return `Value must be at least ${el.min}.`;
+                return msgTxt(`Ang halaga ay dapat hindi bababa sa ${el.min}.`, `Value must be at least ${el.min}.`);
             }
             if (el.max !== '' && num > Number(el.max)) {
-                return `Value must not exceed ${el.max}.`;
+                return msgTxt(`Ang halaga ay hindi dapat lumampas sa ${el.max}.`, `Value must not exceed ${el.max}.`);
             }
         }
 
         if (el.type === 'email' || validateHint === 'email' || /(?:^|_)email$/i.test(name)) {
             if (!isValidEmail(trimmed)) {
-                return 'Enter a valid email address (e.g. name@example.com).';
+                return msgTxt('Maglagay ng wastong email address (hal. pangalan@example.com).', 'Enter a valid email address (e.g. name@example.com).');
             }
         }
 
         if (validateHint === 'phone' || el.type === 'tel'
             || (/(?:contact|phone|mobile|recipient)(?:_no)?$/i.test(name) && !/unknown/i.test(name))) {
             if (!isValidPhone(trimmed)) {
-                return 'Enter a valid Philippine mobile (09XXXXXXXXX / +639XXXXXXXXX) or landline number.';
+                return msgTxt('Maglagay ng wastong Philippine mobile (09XXXXXXXXX / +639XXXXXXXXX) o landline number.', 'Enter a valid Philippine mobile (09XXXXXXXXX / +639XXXXXXXXX) or landline number.');
             }
         }
 
@@ -186,19 +197,22 @@
             || (/^(?:complainant_|respondent_|guardian_)?(?:first_name|middle_name|last_name)$/i.test(name) && !formAllowsEntityNames(form))
             || /^(?:captain_name|barangay_secretary_name|lupon_secretary_name|legal_officer_name)$/i.test(name);
         if (isNameField && !isValidName(trimmed)) {
-            return 'Enter a valid name using letters, spaces, hyphens, apostrophes, or periods only.';
+            return msgTxt('Maglagay ng wastong pangalan gamit lamang ang mga letra, espasyo, gitling, kudlit, o tuldok.', 'Enter a valid name using letters, spaces, hyphens, apostrophes, or periods only.');
         }
 
         const isLoginForm = Boolean(form && /auth\/login\.php/i.test(form.getAttribute('action') || ''));
         if (validateHint === 'login-identity' || (name === 'username' && isLoginForm)) {
             if (trimmed.length < 3 || trimmed.length > 150 || (!USERNAME_REGEX.test(trimmed) && !isValidEmail(trimmed))) {
-                return 'Enter a valid username or email address.';
+                return msgTxt('Maglagay ng wastong username o email address.', 'Enter a valid username or email address.');
             }
         } else if (validateHint === 'username' || name === 'username') {
             const minU = Number(minLen || 3);
             const maxU = Number(maxLen || 100);
             if (trimmed.length < minU || trimmed.length > maxU || !USERNAME_REGEX.test(trimmed)) {
-                return `Username must be ${minU}–${maxU} characters (letters, numbers, dots, underscores, or hyphens).`;
+                return msgTxt(
+                    `Ang username ay dapat ${minU}–${maxU} karakter (mga letra, numero, tuldok, underscore, o gitling).`,
+                    `Username must be ${minU}–${maxU} characters (letters, numbers, dots, underscores, or hyphens).`
+                );
             }
         }
 
@@ -209,7 +223,7 @@
             || (!isLoginPassword && !isCurrentPassword && isPasswordEl && /^(?:password|new_password)$/i.test(name));
         if (isNewPassword) {
             if (!isValidPassword(raw, 12)) {
-                return 'Password must be at least 12 characters with uppercase, lowercase, and a number.';
+                return msgTxt('Ang password ay dapat hindi bababa sa 12 karakter at may malaking titik, maliit na titik, at numero.', 'Password must be at least 12 characters with uppercase, lowercase, and a number.');
             }
         }
 
@@ -220,39 +234,39 @@
                 ? document.getElementById(targetId)
                 : scope.querySelector('input[name="password"], input[name="new_password"]');
             if (pwInput && raw !== String(pwInput.value || '')) {
-                return 'Password confirmation does not match.';
+                return msgTxt('Hindi tugma ang kumpirmasyon ng password.', 'Password confirmation does not match.');
             }
         }
 
         if (el.type === 'date') {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-                return 'Enter a valid date (YYYY-MM-DD).';
+                return msgTxt('Maglagay ng wastong petsa (YYYY-MM-DD).', 'Enter a valid date (YYYY-MM-DD).');
             }
             if (el.min && trimmed < el.min) {
-                return `Date cannot be earlier than ${el.min}.`;
+                return msgTxt(`Hindi maaaring mas maaga sa ${el.min} ang petsa.`, `Date cannot be earlier than ${el.min}.`);
             }
             const maxDate = el.max || (/birth/i.test(name || id) ? todayIsoDate() : '');
             if (maxDate && trimmed > maxDate) {
                 return /birth/i.test(name || id)
-                    ? 'Birth date cannot be in the future.'
-                    : `Date cannot be later than ${maxDate}.`;
+                    ? msgTxt('Ang petsa ng kapanganakan ay hindi maaaring nasa hinaharap.', 'Birth date cannot be in the future.')
+                    : msgTxt(`Hindi maaaring lumampas sa ${maxDate} ang petsa.`, `Date cannot be later than ${maxDate}.`);
             }
         }
 
         if (el.type === 'time') {
             if (!TIME_REGEX.test(trimmed)) {
-                return 'Enter a valid time (HH:MM).';
+                return msgTxt('Maglagay ng wastong oras (HH:MM).', 'Enter a valid time (HH:MM).');
             }
             if (name === 'working_hours_end' && form) {
                 const startEl = form.querySelector('[name="working_hours_start"]');
                 if (startEl && startEl.value && trimmed <= startEl.value) {
-                    return 'Closing time must be after opening time.';
+                    return msgTxt('Ang oras ng pagsasara ay dapat pagkatapos ng oras ng pagbubukas.', 'Closing time must be after opening time.');
                 }
             }
             if (name === 'mediation_hours_end' && form) {
                 const startEl = form.querySelector('[name="mediation_hours_start"]');
                 if (startEl && startEl.value && trimmed <= startEl.value) {
-                    return 'Mediation end time must be after start time.';
+                    return msgTxt('Ang oras ng pagtatapos ng mediation ay dapat pagkatapos ng oras ng pagsisimula.', 'Mediation end time must be after start time.');
                 }
             }
         }
@@ -260,13 +274,13 @@
         if (/latitude/i.test(name || id) && el.type !== 'hidden') {
             const lat = Number(trimmed);
             if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-                return 'Latitude must be a valid number between -90 and 90.';
+                return msgTxt('Ang latitude ay dapat wastong numero sa pagitan ng -90 at 90.', 'Latitude must be a valid number between -90 and 90.');
             }
         }
         if (/longitude/i.test(name || id) && el.type !== 'hidden') {
             const lng = Number(trimmed);
             if (!Number.isFinite(lng) || lng < -180 || lng > 180) {
-                return 'Longitude must be a valid number between -180 and 180.';
+                return msgTxt('Ang longitude ay dapat wastong numero sa pagitan ng -180 at 180.', 'Longitude must be a valid number between -180 and 180.');
             }
         }
 
@@ -275,7 +289,7 @@
             try {
                 const re = new RegExp(`^(?:${pattern})$`);
                 if (!re.test(trimmed)) {
-                    return el.getAttribute('title') || 'Input format does not match the required pattern.';
+                    return el.getAttribute('title') || msgTxt('Hindi tugma ang format sa kinakailangang pattern.', 'Input format does not match the required pattern.');
                 }
             } catch (_) {
                 // Ignore malformed custom pattern
@@ -412,44 +426,44 @@
 
         if (!allowEntity) {
             if (firstName && !isValidName(firstName)) {
-                errors.push('Invalid First Name: use letters, spaces, hyphens, apostrophes, or periods only.');
+                errors.push(msgTxt('Hindi wastong Unang Pangalan: gumamit lamang ng mga letra, espasyo, gitling, kudlit, o tuldok.', 'Invalid First Name: use letters, spaces, hyphens, apostrophes, or periods only.'));
                 fieldIds.push('modalFirstName');
             }
             if (middleName && !isValidName(middleName)) {
-                errors.push('Invalid Middle Name: use letters, spaces, hyphens, apostrophes, or periods only.');
+                errors.push(msgTxt('Hindi wastong Gitnang Pangalan: gumamit lamang ng mga letra, espasyo, gitling, kudlit, o tuldok.', 'Invalid Middle Name: use letters, spaces, hyphens, apostrophes, or periods only.'));
                 fieldIds.push('modalMiddleName');
             }
             if (lastName && !isValidName(lastName)) {
-                errors.push('Invalid Last Name: use letters, spaces, hyphens, apostrophes, or periods only.');
+                errors.push(msgTxt('Hindi wastong Apelyido: gumamit lamang ng mga letra, espasyo, gitling, kudlit, o tuldok.', 'Invalid Last Name: use letters, spaces, hyphens, apostrophes, or periods only.'));
                 fieldIds.push('modalLastName');
             }
         }
         if (birth && (!/^\d{4}-\d{2}-\d{2}$/.test(birth) || birth > todayIsoDate())) {
-            errors.push('Birthdate must be a valid date and cannot be in the future.');
+            errors.push(msgTxt('Ang petsa ng kapanganakan ay dapat wastong petsa at hindi maaaring nasa hinaharap.', 'Birthdate must be a valid date and cannot be in the future.'));
             fieldIds.push('modalBirthdate');
         }
         if (ageRaw !== '') {
             const ageNum = Number(ageRaw);
             if (!Number.isInteger(ageNum) || ageNum < 0 || ageNum > 130) {
-                errors.push('Age must be a whole number from 0 to 130.');
+                errors.push(msgTxt('Ang edad ay dapat buong numero mula 0 hanggang 130.', 'Age must be a whole number from 0 to 130.'));
                 fieldIds.push('modalAge');
             }
         }
         if (!contactUnknown && contact && !isValidPhone(contact)) {
-            errors.push('Enter a valid Philippine mobile (09XXXXXXXXX / +639XXXXXXXXX) or landline number.');
+            errors.push(msgTxt('Maglagay ng wastong Philippine mobile (09XXXXXXXXX / +639XXXXXXXXX) o landline number.', 'Enter a valid Philippine mobile (09XXXXXXXXX / +639XXXXXXXXX) or landline number.'));
             fieldIds.push('modalContactNo');
         }
         if (mail && !isValidEmail(mail)) {
-            errors.push('Enter a valid email address (up to 150 characters).');
+            errors.push(msgTxt('Maglagay ng wastong email address (hanggang 150 karakter).', 'Enter a valid email address (up to 150 characters).'));
             fieldIds.push('modalEmail');
         }
         if (isMinor) {
             if (gName && !isValidName(gName)) {
-                errors.push('Legal Guardian name may contain letters, spaces, hyphens, apostrophes, or periods only.');
+                errors.push(msgTxt('Ang pangalan ng Legal Guardian ay dapat maglaman lamang ng mga letra, espasyo, gitling, kudlit, o tuldok.', 'Legal Guardian name may contain letters, spaces, hyphens, apostrophes, or periods only.'));
                 fieldIds.push('modalGuardianName');
             }
             if (gContact && !isValidPhone(gContact)) {
-                errors.push('Enter a valid Philippine contact number for the Legal Guardian.');
+                errors.push(msgTxt('Maglagay ng wastong numero ng telepono sa Pilipinas para sa Legal Guardian.', 'Enter a valid Philippine contact number for the Legal Guardian.'));
                 fieldIds.push('modalGuardianContact');
             }
         }

@@ -6,18 +6,26 @@ require_once __DIR__ . '/../../controllers/AuthController.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
 require_once __DIR__ . '/../../services/GoogleResidentIdentity.php';
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    header('Allow: POST');
-    exit;
-}
-
-if (!CsrfService::validateRequest()) {
-    http_response_code(403);
-    exit('Google sign-in could not be verified. Reload the sign-in page and try again.');
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
 $portal = '../../../frontend/pages/resident/';
+$signedInHome = (($_SESSION['role_name'] ?? '') === 'Resident')
+    ? ($portal . 'dashboard.php')
+    : ($portal . 'login.php');
+
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    CsrfService::redirectBrowser($signedInHome);
+}
+
+if (!CsrfService::validateRequest()) {
+    $csrfTarget = (($_SESSION['role_name'] ?? '') === 'Resident')
+        ? ($portal . 'dashboard.php')
+        : ($portal . 'login.php?notice=google_failed');
+    CsrfService::redirectBrowser($csrfTarget);
+}
+
 $attempt = $_SESSION['resident_google_attempt'] ?? [];
 unset($_SESSION['resident_google_attempt']);
 $credential = $_POST['credential'] ?? null;
@@ -35,4 +43,4 @@ if (is_string($credential) && ($attempt['expires_at'] ?? 0) > time()) {
         error_log('Resident Google verification failed: ' . get_class($e));
     }
 }
-header('Location: ' . $portal . $destination, true, 303);
+CsrfService::redirectBrowser($portal . $destination);

@@ -9,12 +9,12 @@
             </svg>
         </div>
         <div class="agap-signout-content">
-            <h3 id="signoutModalTitle">Nais mo bang mag-sign out?</h3>
-            <p>Sigurado ka bang nais mong lumabas sa iyong account? Kakailanganin mong mag-log in muli upang ma-access ang system.</p>
+            <h3 id="signoutModalTitle" data-en="Sign out?">Nais mo bang mag-sign out?</h3>
+            <p data-en="Are you sure you want to leave your account? You will need to log in again to access the system.">Sigurado ka bang nais mong lumabas sa iyong account? Kakailanganin mong mag-log in muli upang ma-access ang system.</p>
         </div>
         <div class="agap-signout-actions">
-            <button type="button" class="btn-signout-cancel" id="btnCancelSignout">Manatili (Cancel)</button>
-            <button type="button" class="btn-signout-confirm" id="btnConfirmSignout">Oo, Mag-sign Out</button>
+            <button type="button" class="btn-signout-cancel" id="btnCancelSignout" data-en="Stay (Cancel)">Manatili (Kanselahin)</button>
+            <button type="button" class="btn-signout-confirm" id="btnConfirmSignout" data-en="Yes, Sign Out">Oo, Mag-sign Out</button>
         </div>
     </div>
 </div>
@@ -55,7 +55,10 @@
         confirmLogoutBtn?.addEventListener('click', () => {
             if (!logoutForm) return;
             confirmLogoutBtn.disabled = true;
-            confirmLogoutBtn.textContent = 'Lumalabas...';
+            const isTl = typeof window.getAppLanguage === 'function'
+                ? window.getAppLanguage() === 'tl'
+                : document.documentElement.getAttribute('data-agap-lang') === 'tl';
+            confirmLogoutBtn.textContent = isTl ? 'Lumalabas...' : 'Signing out...';
             logoutForm.submit();
         });
 

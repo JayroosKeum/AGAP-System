@@ -27,8 +27,18 @@ if (($googleAttempt['expires_at'] ?? 0) <= time()) {
     </form>
 </div>
 <script>
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) {
+            window.location.reload();
+        }
+    });
+
     function submitResidentGoogleCredential(response) {
         const form = document.getElementById('resident-google-sign-in');
+        if (!form || form.dataset.submitting === '1') {
+            return;
+        }
+        form.dataset.submitting = '1';
         form.elements.credential.value = response.credential;
         form.submit();
     }

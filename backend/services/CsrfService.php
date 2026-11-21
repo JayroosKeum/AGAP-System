@@ -35,6 +35,49 @@ final class CsrfService
             && hash_equals($expected, $provided);
     }
 
+    /** Returns true for fetch/XHR/curl/JSON callers rather than browser document navigations or plain HTML forms. */
+    public static function expectsJson(): bool
+    {
+        $accept = strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? ''));
+        $xhr = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+        $contentType = strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? ''));
+
+        if ($xhr === 'xmlhttprequest') {
+            return true;
+        }
+        if (str_contains($accept, 'application/json') || str_contains($contentType, 'application/json')) {
+            return true;
+        }
+        if (($_GET['format'] ?? '') === 'json') {
+            return true;
+        }
+
+        return !str_contains($accept, 'text/html');
+    }
+
+    public static function portalHomePath(string $frontendPagesPrefix = '../../../frontend/pages/'): string
+    {
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (($_SESSION['role_name'] ?? '') === 'Resident') {
+            return $frontendPagesPrefix . 'resident/dashboard.php';
+        }
+        return match ((int) ($_SESSION['role_id'] ?? 0)) {
+            1 => $frontendPagesPrefix . 'dashboard/admin-dashboard.php',
+            2 => $frontendPagesPrefix . 'dashboard/clerk-dashboard.php',
+            3 => $frontendPagesPrefix . 'dashboard/lupon-dashboard.php',
+            4 => $frontendPagesPrefix . 'dashboard/server-dashboard.php',
+            default => $frontendPagesPrefix . 'auth/login.php',
+        };
+    }
+
+    public static function redirectBrowser(string $location, int $status = 303): never
+    {
+        header('Location: ' . $location, true, $status);
+        exit;
+    }
+
     /** Rejects unsafe API requests unless they carry the current session token. */
     public static function enforceForApiRequest(): void
     {
@@ -45,6 +88,14 @@ final class CsrfService
 
         if (self::validateRequest()) {
             return;
+        }
+
+        if (!self::expectsJson()) {
+            $fallback = self::portalHomePath();
+            if (str_ends_with($fallback, 'auth/login.php')) {
+                $fallback .= '?error=session_expired';
+            }
+            self::redirectBrowser($fallback);
         }
 
         http_response_code(419);

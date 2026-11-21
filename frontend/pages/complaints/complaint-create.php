@@ -57,8 +57,8 @@ $tumanaPath = __DIR__ . '/../../assets/images/tumana_logo.jpg';
 $marikinaLogoB64 = file_exists($marikinaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($marikinaPath)) : '';
 $tumanaLogoB64 = file_exists($tumanaPath) ? 'data:image/jpeg;base64,' . base64_encode(file_get_contents($tumanaPath)) : '';
 
-$renderResidentOptions = function(?int $selectedId = null) use ($residents): string {
-    $html = '<option value="">Select Profile...</option>';
+$renderResidentOptions = function(?int $selectedId = null) use ($residents, $isResidentPortal): string {
+    $html = '<option value=""' . ($isResidentPortal ? ' data-en="Select Profile..."' : '') . '>' . ($isResidentPortal ? 'Pumili ng Profile...' : 'Select Profile...') . '</option>';
     foreach ($residents as $res) {
         $fullName = trim(implode(' ', array_filter([$res['first_name'], $res['middle_name'] ?? '', $res['last_name']])));
         $displayName = ($res['last_name'] !== '-')
@@ -71,15 +71,15 @@ $renderResidentOptions = function(?int $selectedId = null) use ($residents): str
         if (!empty($res['purok']) && (empty($res['address']) || stripos($res['address'], $res['purok']) === false)) {
             $addrParts[] = trim($res['purok']);
         }
-        $addressText = !empty($addrParts) ? implode(', ', $addrParts) : 'No address on file';
+        $addressText = !empty($addrParts) ? implode(', ', $addrParts) : ($isResidentPortal ? 'Walang nakatalang address' : 'No address on file');
         $isTenantInt = (int)($res['is_tenant'] ?? 0);
         $purokVal = trim((string)($res['purok'] ?? ''));
         if ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) {
-            $residencyTag = 'Non-Resident';
+            $residencyTag = $isResidentPortal ? 'Hindi Residente' : 'Non-Resident';
         } elseif ($isTenantInt === 1) {
-            $residencyTag = 'Tenant - Tumana';
+            $residencyTag = $isResidentPortal ? 'Nangungupahan - Tumana' : 'Tenant - Tumana';
         } else {
-            $residencyTag = 'Resident';
+            $residencyTag = $isResidentPortal ? 'Residente' : 'Resident';
         }
         $optionLabel = $displayName . ' [' . $residencyTag . '] — ' . $addressText;
         $isSelected = ($selectedId !== null && (int)$selectedId === (int)$res['resident_id']) ? ' selected' : '';
@@ -115,7 +115,11 @@ foreach ($residents as $res) {
 
     $isTenantInt = (int)($res['is_tenant'] ?? 0);
     $purokVal = trim((string)($res['purok'] ?? ''));
-    $resLabel = ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) ? 'Non-Resident' : ($isTenantInt === 1 ? 'Tenant - Tumana' : 'Resident');
+    if ($isResidentPortal) {
+        $resLabel = ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) ? 'Hindi Residente' : ($isTenantInt === 1 ? 'Nangungupahan - Tumana' : 'Residente');
+    } else {
+        $resLabel = ($isTenantInt === 2 || strcasecmp($purokVal, 'Non-Resident') === 0) ? 'Non-Resident' : ($isTenantInt === 1 ? 'Tenant - Tumana' : 'Resident');
+    }
 
     $residentsJsonData[] = [
         'resident_id' => (int) $res['resident_id'],
@@ -242,6 +246,19 @@ if ($escalatePaanyayaId > 0) {
 }
 
 $isFromPaanyaya = !empty($escalatePaanyaya);
+
+$rText = static function (string $tl, string $en) use ($isResidentPortal): string {
+    if (!$isResidentPortal) {
+        return htmlspecialchars($en, ENT_QUOTES, 'UTF-8');
+    }
+    return '<span data-en="' . htmlspecialchars($en, ENT_QUOTES, 'UTF-8') . '">'
+        . htmlspecialchars($tl, ENT_QUOTES, 'UTF-8')
+        . '</span>';
+};
+$rOut = static fn (string $tl, string $en): string => $isResidentPortal ? $tl : $en;
+$rEnAttr = static fn (string $en, string $attr = 'data-en'): string => $isResidentPortal
+    ? ' ' . $attr . '="' . htmlspecialchars($en, ENT_QUOTES, 'UTF-8') . '"'
+    : '';
 
 include '../../layouts/header.php';
 ?>
@@ -712,6 +729,254 @@ include '../../layouts/header.php';
 .review-value.is-comp { color: #0284c7; }
 .review-value.is-resp { color: #be123c; }
 
+/* Step 1 Subject ("WHAT") + AI Auto-Labeling Controls */
+.subject-what-group {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed #e2e8f0;
+}
+.subject-label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.subject-label-row label {
+    margin-bottom: 0 !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.blotter-what-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: #dbeafe;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+}
+.ai-title-status {
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 20px;
+}
+.ai-title-status.is-loading { color: #2563eb; }
+.ai-title-status.is-ai { color: #059669; }
+.ai-title-status.is-manual { color: #475569; }
+.ai-title-status.is-error { color: #b45309; }
+.ai-title-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+.ai-title-input-row input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.btn-ai-suggest-title {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 14px;
+    border-radius: 10px;
+    border: 1.5px solid #bfdbfe;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+.btn-ai-suggest-title:hover:not(:disabled) {
+    background: #dbeafe;
+    border-color: #93c5fd;
+}
+.btn-ai-suggest-title:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+/* Step 5 Barangay Blotter Review Card */
+.blotter-summary-card {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 22px;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+.blotter-summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
+    border-bottom: 1.5px solid #cbd5e1;
+}
+.blotter-header-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #0f172a;
+}
+.blotter-header-sub {
+    display: block;
+    font-size: 0.76rem;
+    color: #475569;
+    font-weight: 500;
+    margin-top: 1px;
+}
+.blotter-entry-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+}
+.blotter-cell {
+    padding: 14px 18px;
+    border-bottom: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.blotter-cell:nth-child(even) {
+    border-right: none;
+}
+.blotter-cell.is-full {
+    grid-column: 1 / -1;
+    border-right: none;
+}
+.blotter-cell:last-child {
+    border-bottom: none;
+}
+.blotter-cell-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.blotter-cell-label-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+.blotter-tag {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+}
+.blotter-tag.is-what { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+.blotter-tag.is-who { background: #fae8ff; color: #86198f; border-color: #f0abfc; }
+.blotter-tag.is-whenwhere { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.blotter-field-name {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+.blotter-step-edit-btn {
+    background: transparent;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: #2563eb;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.blotter-step-edit-btn:hover {
+    background: #eff6ff;
+    border-color: #93c5fd;
+}
+.blotter-value {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.45;
+    word-break: break-word;
+}
+.blotter-parties-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+.blotter-party-sublabel {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748b;
+    margin-bottom: 3px;
+}
+.blotter-narrative-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.88rem;
+    font-weight: 400;
+    color: #1e293b;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    max-height: 165px;
+    overflow-y: auto;
+}
+@media (max-width: 768px) {
+    .ai-title-input-row {
+        flex-direction: column;
+    }
+    .btn-ai-suggest-title {
+        justify-content: center;
+        padding: 10px 14px;
+    }
+    .blotter-entry-grid,
+    .blotter-parties-pair {
+        grid-template-columns: 1fr;
+    }
+    .blotter-cell {
+        border-right: none;
+        padding: 12px 14px;
+    }
+    .blotter-cell:not(:last-child) {
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .blotter-summary-header {
+        padding: 12px 14px;
+    }
+    .wizard-card-container {
+        padding: 16px !important;
+    }
+    .wizard-nav-actions {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+}
+
 /* Enhanced Modern Input Styling inside Wizard Card */
 .wizard-card-container input[type="text"],
 .wizard-card-container input[type="number"],
@@ -753,12 +1018,12 @@ include '../../layouts/header.php';
             <!-- Header Bar (Matching Modern Reference UI) -->
             <div class="wizard-header-bar">
                 <div class="wizard-header-left">
-                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="wizard-back-btn" title="<?= $isResidentPortal ? 'Back to Resident Dashboard' : 'Back to Complaints' ?>">
+                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="wizard-back-btn" title="<?= $isResidentPortal ? 'Bumalik sa Talaan ng Residente' : 'Back to Complaints' ?>"<?= $rEnAttr('Back to Resident Dashboard', 'data-en-title') ?>>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
                     </a>
                     <div>
-                        <h1 class="wizard-title"><?= $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : ($isResidentPortal ? 'Submit a Concern' : 'Record a Walk-in Complaint') ?></h1>
-                        <p class="wizard-subtitle">Katarungang Pambarangay — Preliminary Intake &amp; Screening</p>
+                        <h1 class="wizard-title"><?= $isFromPaanyaya ? 'Complete Formal Complaint Details (from Paanyaya)' : $rText('Magsumite ng Sumbong', 'Record a Walk-in Complaint') ?></h1>
+                        <p class="wizard-subtitle"<?= $rEnAttr('Katarungang Pambarangay — Preliminary Intake & Screening') ?>><?= $rOut('Katarungang Pambarangay — Paunang Pagsusuri at Pagtatala', 'Katarungang Pambarangay — Preliminary Intake & Screening') ?></p>
                     </div>
                 </div>
                 <?php if (!$isResidentPortal): ?>
@@ -773,7 +1038,10 @@ include '../../layouts/header.php';
             <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
                 <script>
                 document.addEventListener('DOMContentLoaded', function() {
-                    window.agapNotify?.(<?php echo json_encode($complaintFlash['message']); ?>, <?php echo json_encode($complaintFlash['type'] ?? 'error'); ?>, 'Complaint Intake');
+                    const flashTitle = (typeof window.getAppLanguage === 'function' ? window.getAppLanguage() === 'tl' : <?= $isResidentPortal ? 'true' : 'false' ?>)
+                        ? 'Paghahain ng Sumbong'
+                        : 'Complaint Intake';
+                    window.agapNotify?.(<?php echo json_encode($complaintFlash['message']); ?>, <?php echo json_encode($complaintFlash['type'] ?? 'error'); ?>, flashTitle);
                 });
                 </script>
             <?php endif; ?>
@@ -866,47 +1134,47 @@ include '../../layouts/header.php';
                         <!-- PROGRESS STEPPER SIDEBAR (Matching Modern Reference UI, Narrative-First Order) -->
                         <div class="wizard-stepper-card" id="intakeQuickNav">
                             <div class="wizard-stepper-header">
-                                <div class="wizard-stepper-title">Filing Progress</div>
-                                <div class="wizard-stepper-counter" id="wizardStepIndicator">Step 1 of 5</div>
+                                <div class="wizard-stepper-title"<?= $rEnAttr('Filing Progress') ?>><?= $rOut('Daloy ng Pagsusumite', 'Filing Progress') ?></div>
+                                <div class="wizard-stepper-counter" id="wizardStepIndicator"<?= $rEnAttr('Step 1 of 5') ?>><?= $rOut('Hakbang 1 sa 5', 'Step 1 of 5') ?></div>
                             </div>
                             <div class="wizard-progress-track">
                                 <div class="wizard-progress-bar" id="wizardProgressBar" style="width: 20%;"></div>
                             </div>
 
-                            <div class="wizard-steps-list" role="tablist" aria-label="Filing Step Navigation">
+                            <div class="wizard-steps-list" role="tablist" aria-label="<?= $rOut('Nabigasyon ng mga Hakbang', 'Filing Step Navigation') ?>"<?= $rEnAttr('Filing Step Navigation', 'data-en-aria-label') ?>>
                                 <button type="button" class="wizard-step-item is-active" data-step="1" id="wizardStepBtn1">
                                     <span class="wizard-step-badge">1</span>
                                     <div class="wizard-step-meta">
-                                        <span class="wizard-step-name">Narrative</span>
-                                        <span class="wizard-step-desc">Facts &amp; AI suggestions</span>
+                                        <span class="wizard-step-name"<?= $rEnAttr('Narrative') ?>><?= $rOut('Salaysay', 'Narrative') ?></span>
+                                        <span class="wizard-step-desc"<?= $rEnAttr($isResidentPortal ? 'Subject, facts & AI help' : 'Facts & AI suggestions') ?>><?= $isResidentPortal ? 'Paksa, salaysay at tulong ng AI' : 'Facts & AI suggestions' ?></span>
                                     </div>
                                 </button>
                                 <button type="button" class="wizard-step-item" data-step="2" id="wizardStepBtn2">
                                     <span class="wizard-step-badge">2</span>
                                     <div class="wizard-step-meta">
-                                        <span class="wizard-step-name">When and where</span>
-                                        <span class="wizard-step-desc">Date, address &amp; map pin</span>
+                                        <span class="wizard-step-name"<?= $rEnAttr('When and where') ?>><?= $rOut('Kailan at saan', 'When and where') ?></span>
+                                        <span class="wizard-step-desc"<?= $rEnAttr('Date, address & map pin') ?>><?= $rOut('Petsa, address at pin sa mapa', 'Date, address & map pin') ?></span>
                                     </div>
                                 </button>
                                 <button type="button" class="wizard-step-item" data-step="3" id="wizardStepBtn3">
                                     <span class="wizard-step-badge">3</span>
                                     <div class="wizard-step-meta">
-                                        <span class="wizard-step-name">People involved</span>
-                                        <span class="wizard-step-desc">Complainants &amp; respondents</span>
+                                        <span class="wizard-step-name"<?= $rEnAttr('People involved') ?>><?= $rOut('Mga taong sangkot', 'People involved') ?></span>
+                                        <span class="wizard-step-desc"<?= $rEnAttr('Complainants & respondents') ?>><?= $rOut('Nagsusumbong at inirereklamo', 'Complainants & respondents') ?></span>
                                     </div>
                                 </button>
                                 <button type="button" class="wizard-step-item" data-step="4" id="wizardStepBtn4">
                                     <span class="wizard-step-badge">4</span>
                                     <div class="wizard-step-meta">
-                                        <span class="wizard-step-name">Outcome &amp; evidence</span>
-                                        <span class="wizard-step-desc">Relief sought &amp; attachments</span>
+                                        <span class="wizard-step-name"<?= $rEnAttr($isResidentPortal ? 'Damages & evidence' : 'Outcome & evidence') ?>><?= $isResidentPortal ? 'Halaga at ebidensya' : 'Outcome & evidence' ?></span>
+                                        <span class="wizard-step-desc"<?= $rEnAttr($isResidentPortal ? 'Monetary claim & attachments' : 'Relief sought & attachments') ?>><?= $isResidentPortal ? 'Tinatayang halaga at mga kalakip' : 'Relief sought & attachments' ?></span>
                                     </div>
                                 </button>
                                 <button type="button" class="wizard-step-item" data-step="5" id="wizardStepBtn5">
                                     <span class="wizard-step-badge">5</span>
                                     <div class="wizard-step-meta">
-                                        <span class="wizard-step-name">Review and submit</span>
-                                        <span class="wizard-step-desc">Classification &amp; LISO screening</span>
+                                        <span class="wizard-step-name"<?= $rEnAttr('Review and submit') ?>><?= $rOut('Suriin at isumite', 'Review and submit') ?></span>
+                                        <span class="wizard-step-desc"<?= $rEnAttr($isResidentPortal ? 'Summary & concern submission' : 'Classification & LISO screening') ?>><?= $rOut('Buod at pagsusumite ng sumbong', 'Classification & LISO screening') ?></span>
                                     </div>
                                 </button>
                             </div>
@@ -917,8 +1185,8 @@ include '../../layouts/header.php';
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
                                 </div>
                                 <div class="wizard-assist-body">
-                                    <strong class="wizard-assist-title">Need Assistance?</strong>
-                                    <p class="wizard-assist-desc">Barangay Tumana Lupon Secretariat is available during office hours (8AM - 5PM) to assist with filing rules and KP procedures.</p>
+                                    <strong class="wizard-assist-title"<?= $rEnAttr('Need Assistance?') ?>><?= $rOut('Kailangan ng Tulong?', 'Need Assistance?') ?></strong>
+                                    <p class="wizard-assist-desc"<?= $rEnAttr('Barangay Tumana Lupon Secretariat is available during office hours (8AM - 5PM) to assist with filing rules and KP procedures.') ?>><?= $rOut('Bukas ang Lupon Secretariat ng Barangay Tumana tuwing oras ng opisina (8AM - 5PM) upang tumulong sa mga tuntunin at proseso ng KP.', 'Barangay Tumana Lupon Secretariat is available during office hours (8AM - 5PM) to assist with filing rules and KP procedures.') ?></p>
                                 </div>
                             </div>
                         </div>
@@ -1027,8 +1295,8 @@ include '../../layouts/header.php';
                     <div class="wizard-main-col" id="intakeSectionsContainer">
                         <div class="wizard-card-container">
                             <div class="wizard-card-header">
-                                <h2 class="wizard-card-title" id="wizardCurrentStepTitle">Narrative</h2>
-                                <p class="wizard-card-desc" id="wizardCurrentStepDesc"><?= $isResidentPortal ? 'Describe what happened in your own words.' : 'Record what happened in the resident’s own words.' ?></p>
+                                <h2 class="wizard-card-title" id="wizardCurrentStepTitle"<?= $rEnAttr('Narrative') ?>><?= $rOut('Salaysay', 'Narrative') ?></h2>
+                                <p class="wizard-card-desc" id="wizardCurrentStepDesc"<?= $rEnAttr($isResidentPortal ? 'Describe what happened in your own words.' : 'Record what happened in the resident’s own words.') ?>><?= $isResidentPortal ? 'Ilahad ang nangyari gamit ang iyong sariling mga salita.' : 'Record what happened in the resident’s own words.' ?></p>
                             </div>
 
                             <!-- STEP 1 PANEL: NARRATIVE -->
@@ -1039,37 +1307,66 @@ include '../../layouts/header.php';
                                 <div class="section-header-left">
                                     <span class="section-badge-num">1</span>
                                     <div class="section-title-wrap">
-                                        <h3>Narrative</h3>
-                                        <p><?= $isResidentPortal ? 'Describe what happened in your own words.' : 'Record what happened in the resident’s own words.' ?></p>
+                                        <h3<?= $rEnAttr('Narrative') ?>><?= $rOut('Salaysay', 'Narrative') ?></h3>
+                                        <p<?= $rEnAttr($isResidentPortal ? 'Describe what happened in your own words.' : 'Record what happened in the resident’s own words.') ?>><?= $isResidentPortal ? 'Ilahad ang nangyari gamit ang iyong sariling mga salita.' : 'Record what happened in the resident’s own words.' ?></p>
                                     </div>
                                 </div>
-                                <span class="section-step-indicator">Section 1 of 5</span>
+                                <span class="section-step-indicator"<?= $rEnAttr('Section 1 of 5') ?>><?= $rOut('Bahagi 1 sa 5', 'Section 1 of 5') ?></span>
                             </div>
 
                             <div class="form-group">
-                                <label for="narrative">Complaint Narrative <span class="required-mark" id="narrativeRequiredStar">*</span></label>
-                                <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="Describe what happened in the order it occurred."><?php echo htmlspecialchars($old['narrative'] ?? ''); ?></textarea>
+                                <label for="narrative"><?= $rText('Salaysay ng Sumbong', 'Complaint Narrative') ?> <span class="required-mark" id="narrativeRequiredStar">*</span></label>
+                                <textarea id="narrative" name="narrative" rows="5" maxlength="15000" required placeholder="<?= $rOut('Ilahad ang nangyari ayon sa pagkakasunod-sunod nito.', 'Describe what happened in the order it occurred.') ?>"<?= $rEnAttr('Describe what happened in the order it occurred.', 'data-en-placeholder') ?>><?php echo htmlspecialchars($old['narrative'] ?? ''); ?></textarea>
                                 <?php include __DIR__ . '/../../layouts/narrative-accoc-guide.php'; ?>
                                 <?php include __DIR__ . '/tabs/narrative-dictation.php'; ?>
                                 <div class="ai-narrative-actions">
                                     <div class="ai-narrative-tools">
-                                        <button type="button" class="btn-outline-sm" data-enhance-narrative>Enhance with AI</button>
-                                        <small class="field-hint">Keep statements chronological, clear, and focused on key incident details.</small>
+                                        <button type="button" class="btn-outline-sm" data-enhance-narrative<?= $rEnAttr('Enhance with AI') ?>><?= $rOut('Pahusayin gamit ang AI', 'Enhance with AI') ?></button>
+                                        <small class="field-hint"<?= $rEnAttr('Keep statements chronological, clear, and focused on key incident details.') ?>><?= $rOut('Panatilihing sunod-sunod, malinaw, at nakatuon sa mahahalagang detalye ng insidente.', 'Keep statements chronological, clear, and focused on key incident details.') ?></small>
                                     </div>
                                     <label class="ai-consent-checkbox-label">
                                         <input type="checkbox" data-ai-external-consent>
-                                        <span>I understand this narrative will be sent to Google Gemini for AI processing.</span>
+                                        <span<?= $rEnAttr('I understand this narrative will be sent to Google Gemini for AI processing.') ?>><?= $rOut('Nauunawaan kong ipapadala ang salaysay na ito sa Google Gemini para sa pagproseso ng AI.', 'I understand this narrative will be sent to Google Gemini for AI processing.') ?></span>
                                     </label>
                                 </div>
                                 <div class="ai-narrative-preview" data-narrative-preview hidden>
-                                    <strong>AI suggestion</strong>
+                                    <strong<?= $rEnAttr('AI suggestion') ?>><?= $rOut('Mungkahi ng AI', 'AI suggestion') ?></strong>
                                     <p data-narrative-suggestion></p>
                                     <div class="ai-narrative-preview-actions">
-                                        <button type="button" class="btn-create btn-sm" data-apply-narrative>Apply suggestion</button>
-                                        <button type="button" class="btn-secondary btn-sm" data-discard-narrative>Keep my original</button>
+                                        <button type="button" class="btn-create btn-sm" data-apply-narrative<?= $rEnAttr('Apply suggestion') ?>><?= $rOut('Gamitin ang mungkahi', 'Apply suggestion') ?></button>
+                                        <button type="button" class="btn-secondary btn-sm" data-discard-narrative<?= $rEnAttr('Keep my original') ?>><?= $rOut('Panatilihin ang akin', 'Keep my original') ?></button>
                                     </div>
                                 </div>
                             </div>
+
+                            <?php if ($isResidentPortal): ?>
+                            <div class="form-group subject-what-group" id="residentSubjectGroup" style="margin-bottom: 0;">
+                                <div class="subject-label-row">
+                                    <label for="complaintTitle">
+                                        <span class="blotter-what-pill" data-en="WHAT · Blotter Subject">ANO · Paksa sa Blotter</span>
+                                        <span data-en="Concern Subject / Brief Title"><?= $rOut('Paksa ng Sumbong / Maikling Pamagat', 'Concern Subject / Brief Title') ?></span>
+                                        <span class="required-mark">*</span>
+                                    </label>
+                                    <span id="aiTitleStatus" class="ai-title-status" aria-live="polite"></span>
+                                </div>
+                                <div class="ai-title-input-row">
+                                    <input
+                                        type="text"
+                                        id="complaintTitle"
+                                        name="complaint_title"
+                                        maxlength="255"
+                                        required
+                                        placeholder="hal. Malakas na ingay sa gabi, Hindi nabayarang utang, Alitan sa hangganan ng lupa"
+                                        data-en-placeholder="e.g. Loud noise late at night, Unpaid loan, Property boundary issue"
+                                        value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>"
+                                    >
+                                    <button type="button" id="btnSuggestComplaintTitle" class="btn-ai-suggest-title" data-en="Auto-Suggest Title">Imungkahi gamit ang AI</button>
+                                </div>
+                                <small class="field-hint" data-en="Automatically suggested from your narrative above to represent the &quot;WHAT&quot; of the blotter entry. You may freely edit or customize it.">
+                                    Awtomatikong iminumungkahi mula sa iyong salaysay sa itaas para sa bahaging &ldquo;ANO&rdquo; ng blotter. Maaari mo itong i-edit o baguhin anumang oras.
+                                </small>
+                            </div>
+                            <?php endif; ?>
 
                         </section>
                             </div><!-- /#wizardPanel1 -->
@@ -1082,11 +1379,11 @@ include '../../layouts/header.php';
                                 <div class="section-header-left">
                                     <span class="section-badge-num">2</span>
                                     <div class="section-title-wrap">
-                                        <h3>When and where</h3>
-                                        <p>Confirm the date, time, and place described in the narrative.</p>
+                                        <h3<?= $rEnAttr('When and where') ?>><?= $rOut('Kailan at saan', 'When and where') ?></h3>
+                                        <p<?= $rEnAttr('Confirm the date, time, and place described in the narrative.') ?>><?= $rOut('Kumpirmahin ang petsa, oras, at lugar na binanggit sa salaysay.', 'Confirm the date, time, and place described in the narrative.') ?></p>
                                     </div>
                                 </div>
-                                <span class="section-step-indicator">Section 2 of 5</span>
+                                <span class="section-step-indicator"<?= $rEnAttr('Section 2 of 5') ?>><?= $rOut('Bahagi 2 sa 5', 'Section 2 of 5') ?></span>
                             </div>
 
                             <div class="form-group">
@@ -1101,40 +1398,44 @@ include '../../layouts/header.php';
                                 }
                                 ?>
                                 <label for="incidentDateTime" id="lblIncidentDateTime">
-                                    <?php echo $isTimeUnknownOld ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?> <span class="required-mark">*</span>
+                                    <?php if ($isResidentPortal): ?>
+                                        <span data-en="<?= $isTimeUnknownOld ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time' ?>"><?= $isTimeUnknownOld ? 'Petsa ng Insidente (Hindi Alam ang Eksaktong Oras)' : 'Petsa at Oras ng Insidente' ?></span>
+                                    <?php else: ?>
+                                        <?php echo $isTimeUnknownOld ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?>
+                                    <?php endif; ?> <span class="required-mark">*</span>
                                 </label>
                                 <input type="<?php echo $isTimeUnknownOld ? 'date' : 'datetime-local'; ?>" id="incidentDateTime" name="incident_datetime" required max="<?php echo $isTimeUnknownOld ? date('Y-m-d') : date('Y-m-d\TH:i'); ?>" value="<?php echo htmlspecialchars($defaultDt); ?>">
                                 <div class="time-options-row">
                                     <label class="time-option-label">
                                         <input type="checkbox" name="is_time_approximate" value="1" id="isTimeApproximate" <?php echo !empty($old['is_time_approximate']) ? 'checked' : ''; ?> <?php echo $isTimeUnknownOld ? 'disabled' : ''; ?>>
-                                        <span>Approximate time</span>
+                                        <span<?= $rEnAttr('Approximate time') ?>><?= $rOut('Tinatayang oras', 'Approximate time') ?></span>
                                     </label>
                                     <label class="time-option-label">
                                         <input type="checkbox" name="is_time_unknown" value="1" id="isTimeUnknown" <?php echo $isTimeUnknownOld ? 'checked' : ''; ?>>
-                                        <span>Exact time unknown</span>
+                                        <span<?= $rEnAttr('Exact time unknown') ?>><?= $rOut('Hindi alam ang eksaktong oras', 'Exact time unknown') ?></span>
                                     </label>
                                 </div>
-                                <span id="futureDateNotice" class="future-date-hint" style="display:none; color:#dc2626; font-weight:600;">Incident date and time cannot be in the future.</span>
+                                <span id="futureDateNotice" class="future-date-hint" style="display:none; color:#dc2626; font-weight:600;"<?= $rEnAttr('Incident date and time cannot be in the future.') ?>><?= $rOut('Ang petsa at oras ng insidente ay hindi maaaring nasa hinaharap.', 'Incident date and time cannot be in the future.') ?></span>
                             </div>
 
                             <div class="location-split-layout">
                                 <!-- Left Column: Address Fields -->
                                 <div>
                                     <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:10px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
-                                        <span style="font-size:0.76rem; font-weight:700; color:#475569; margin-right:4px;">Quick Fill Location:</span>
-                                        <button type="button" id="btnPresetIncidentComplainant" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">At Complainant's Address</button>
-                                        <button type="button" id="btnPresetIncidentRespondent" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">At Respondent's Address</button>
-                                        <button type="button" id="btnPresetIncidentGps" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;">&#128205; Use Current GPS</button>
+                                        <span style="font-size:0.76rem; font-weight:700; color:#475569; margin-right:4px;"<?= $rEnAttr('Quick Fill Location:') ?>><?= $rOut('Mabilisang Punan ang Lugar:', 'Quick Fill Location:') ?></span>
+                                        <button type="button" id="btnPresetIncidentComplainant" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;"<?= $rEnAttr("At Complainant's Address") ?>><?= $rOut('Sa Address ng Nagsusumbong', "At Complainant's Address") ?></button>
+                                        <button type="button" id="btnPresetIncidentRespondent" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;"<?= $rEnAttr("At Respondent's Address") ?>><?= $rOut('Sa Address ng Inirereklamo', "At Respondent's Address") ?></button>
+                                        <button type="button" id="btnPresetIncidentGps" class="btn-secondary btn-sm" style="padding:4px 9px; font-size:0.74rem;"<?= $rEnAttr('📍 Use Current GPS') ?>><?= $rOut('📍 Gamitin ang Kasalukuyang GPS', '&#128205; Use Current GPS') ?></button>
                                         <span id="incidentPresetStatus" style="font-size:0.74rem; color:#64748b; margin-left:auto;"></span>
                                     </div>
                                     <div class="form-group">
-                                        <label for="incidentStreet">Street Address / Alley / Landmark <span class="required-mark">*</span></label>
-                                        <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="House #, Street, building, or nearby place" value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
+                                        <label for="incidentStreet"><?= $rText('Kalye / Eskinita / Palatandaan', 'Street Address / Alley / Landmark') ?> <span class="required-mark">*</span></label>
+                                        <input type="text" id="incidentStreet" name="incident_street" maxlength="255" required placeholder="<?= $rOut('Numero ng bahay, kalye, gusali, o malapit na lugar', 'House #, Street, building, or nearby place') ?>"<?= $rEnAttr('House #, Street, building, or nearby place', 'data-en-placeholder') ?> value="<?php echo htmlspecialchars($old['incident_street'] ?? $old['incident_location'] ?? ''); ?>">
                                     </div>
 
                                     <div class="detail-info-grid">
                                         <div class="form-group">
-                                            <label for="incidentPurok">Sitio / Zone / Purok (Tumana)</label>
+                                            <label for="incidentPurok"><?= $rText('Sitio / Sona / Purok (Tumana)', 'Sitio / Zone / Purok (Tumana)') ?></label>
                                             <?php
                                             $currPurok = $old['incident_purok'] ?? '';
                                             $knownPuroks = [
@@ -1146,9 +1447,9 @@ include '../../layouts/header.php';
                                             $isCustomPurok = !empty($currPurok) && !in_array($currPurok, $knownPuroks, true);
                                             ?>
                                             <select name="incident_purok" id="incidentPurok">
-                                                <option value="">Select Purok / Area</option>
-                                                <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?>>Outside Tumana</option>
-                                                <optgroup label="Numbered Puroks">
+                                                <option value=""<?= $rEnAttr('Select Purok / Area') ?>><?= $rOut('Pumili ng Purok / Lugar', 'Select Purok / Area') ?></option>
+                                                <option value="Outside Tumana" id="purokOutsideTumanaOption" <?php echo ($currPurok === 'Outside Tumana' || $currPurok === 'Non-Resident') ? 'selected' : ''; ?><?= $rEnAttr('Outside Tumana') ?>><?= $rOut('Labas ng Tumana', 'Outside Tumana') ?></option>
+                                                <optgroup label="<?= $rOut('Mga Numeradong Purok', 'Numbered Puroks') ?>"<?= $rEnAttr('Numbered Puroks', 'data-en-label') ?>>
                                                     <option value="Purok 1" <?php echo ($currPurok === 'Purok 1') ? 'selected' : ''; ?>>Purok 1</option>
                                                     <option value="Purok 2" <?php echo ($currPurok === 'Purok 2') ? 'selected' : ''; ?>>Purok 2</option>
                                                     <option value="Purok 3" <?php echo ($currPurok === 'Purok 3') ? 'selected' : ''; ?>>Purok 3</option>
@@ -1158,7 +1459,7 @@ include '../../layouts/header.php';
                                                     <option value="Purok 7" <?php echo ($currPurok === 'Purok 7') ? 'selected' : ''; ?>>Purok 7</option>
                                                     <option value="Purok 8" <?php echo ($currPurok === 'Purok 8') ? 'selected' : ''; ?>>Purok 8</option>
                                                 </optgroup>
-                                                <optgroup label="Zones & Compounds">
+                                                <optgroup label="<?= $rOut('Mga Sona at Compound', 'Zones & Compounds') ?>"<?= $rEnAttr('Zones & Compounds', 'data-en-label') ?>>
                                                     <option value="Doña Petra" <?php echo ($currPurok === 'Doña Petra') ? 'selected' : ''; ?>>Doña Petra Compound</option>
                                                     <option value="Bagong Farmers" <?php echo ($currPurok === 'Bagong Farmers') ? 'selected' : ''; ?>>Bagong Farmers</option>
                                                     <option value="Bukang Liwayway" <?php echo ($currPurok === 'Bukang Liwayway') ? 'selected' : ''; ?>>Bukang Liwayway</option>
@@ -1169,7 +1470,7 @@ include '../../layouts/header.php';
                                                     <option value="Singkamas" <?php echo ($currPurok === 'Singkamas') ? 'selected' : ''; ?>>Singkamas Area</option>
                                                 </optgroup>
                                                 <?php if ($isCustomPurok): ?>
-                                                    <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> (Existing)</option>
+                                                    <option value="<?php echo htmlspecialchars($currPurok); ?>" selected><?php echo htmlspecialchars($currPurok); ?> <?= $rOut('(Umiiral)', '(Existing)') ?></option>
                                                 <?php endif; ?>
                                             </select>
                                         </div>
@@ -1182,40 +1483,40 @@ include '../../layouts/header.php';
 
                                     <div class="detail-info-grid">
                                         <div class="form-group">
-                                            <label for="incidentCity">City / Municipality</label>
+                                            <label for="incidentCity"><?= $rText('Lungsod / Munisipyo', 'City / Municipality') ?></label>
                                             <input type="text" id="incidentCity" name="incident_city" value="Marikina City" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
                                         </div>
                                         <div class="form-group">
-                                            <label for="incidentProvince">Province / Region</label>
+                                            <label for="incidentProvince"><?= $rText('Lalawigan / Rehiyon', 'Province / Region') ?></label>
                                             <input type="text" id="incidentProvince" value="Metro Manila" readonly style="background:#f1f5f9; color:#475569; cursor:not-allowed;">
                                         </div>
                                     </div>
 
 
                                     <div class="form-group" style="margin-bottom:0;">
-                                        <label for="incidentLocationDetails">Specific Location / Landmark Details <span class="optional-label">Optional</span></label>
-                                        <textarea id="incidentLocationDetails" name="incident_location_details" rows="2" maxlength="1000" placeholder="Floor, unit number, corner, access directions, or additional boundary notes..."><?php echo htmlspecialchars($old['incident_location_details'] ?? ''); ?></textarea>
+                                        <label for="incidentLocationDetails"><?= $rText('Tiyak na Detalye ng Lugar / Palatandaan', 'Specific Location / Landmark Details') ?> <span class="optional-label"<?= $rEnAttr('Optional') ?>><?= $rOut('Opsyonal', 'Optional') ?></span></label>
+                                        <textarea id="incidentLocationDetails" name="incident_location_details" rows="2" maxlength="1000" placeholder="<?= $rOut('Palapag, unit number, kanto, direksyon, o karagdagang palatandaan...', 'Floor, unit number, corner, access directions, or additional boundary notes...') ?>"<?= $rEnAttr('Floor, unit number, corner, access directions, or additional boundary notes...', 'data-en-placeholder') ?>><?php echo htmlspecialchars($old['incident_location_details'] ?? ''); ?></textarea>
                                     </div>
                                 </div>
 
                                 <!-- Right Column: Map Pinpoint Box -->
                                 <div>
-                                    <button type="button" class="btn-toggle-paper-map" id="btnTogglePaperMap">Pin Precise Map Location (Optional)</button>
+                                    <button type="button" class="btn-toggle-paper-map" id="btnTogglePaperMap"<?= $rEnAttr('Pin Precise Map Location (Optional)') ?>><?= $rOut('Ituro ang Eksaktong Lokasyon sa Mapa (Opsyonal)', 'Pin Precise Map Location (Optional)') ?></button>
                                     <div class="location-map-pinbox" id="locationMapPinbox">
                                         <div class="map-pinbox-topbar">
-                                            <span>Location Coordinates: <strong id="mapCoordsDisplay">14.6521° N, 121.0854° E</strong></span>
-                                            <button type="button" class="btn-recenter-map" id="btnRecenterMap" title="Center map on Barangay Tumana">Recenter</button>
+                                            <span><span<?= $rEnAttr('Location Coordinates:') ?>><?= $rOut('Koordinado ng Lokasyon:', 'Location Coordinates:') ?></span> <strong id="mapCoordsDisplay">14.6521° N, 121.0854° E</strong></span>
+                                            <button type="button" class="btn-recenter-map" id="btnRecenterMap" title="<?= $rOut('Igitna ang mapa sa Barangay Tumana', 'Center map on Barangay Tumana') ?>"<?= $rEnAttr('Center map on Barangay Tumana', 'data-en-title') ?>><?= $rText('Igitna', 'Recenter') ?></button>
                                         </div>
 
                                         <input type="hidden" name="map_location_state" value="<?php echo htmlspecialchars($old['map_location_state'] ?? 'none'); ?>" data-map-state>
                                         <input type="hidden" name="location_latitude" value="<?php echo htmlspecialchars($old['location_latitude'] ?? ''); ?>" data-map-latitude>
                                         <input type="hidden" name="location_longitude" value="<?php echo htmlspecialchars($old['location_longitude'] ?? ''); ?>" data-map-longitude>
 
-                                        <div id="addComplaintMap" class="complaint-location-map" style="height: 320px; border: none; border-radius: 0;" aria-label="Map for selecting the exact incident location"></div>
+                                        <div id="addComplaintMap" class="complaint-location-map" style="height: 320px; border: none; border-radius: 0;" aria-label="<?= $rOut('Mapa para sa pagpili ng eksaktong lokasyon ng insidente', 'Map for selecting the exact incident location') ?>"<?= $rEnAttr('Map for selecting the exact incident location', 'data-en-aria-label') ?>></div>
 
                                         <div style="padding: 10px 14px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; align-items: center; justify-content: space-between; gap: 8px;">
-                                            <span class="map-selection-status" data-map-status style="font-size:0.8rem; color:#64748b;">No map point selected.</span>
-                                            <button type="button" class="btn-secondary btn-sm" data-clear-map style="padding: 4px 10px; font-size: 0.76rem;">Clear pin</button>
+                                            <span class="map-selection-status" data-map-status style="font-size:0.8rem; color:#64748b;"<?= $rEnAttr('No map point selected.') ?>><?= $rOut('Walang napiling punto sa mapa.', 'No map point selected.') ?></span>
+                                            <button type="button" class="btn-secondary btn-sm" data-clear-map style="padding: 4px 10px; font-size: 0.76rem;"<?= $rEnAttr('Clear pin') ?>><?= $rOut('Alisin ang pin', 'Clear pin') ?></button>
                                         </div>
                                     </div>
                                 </div>
@@ -1231,26 +1532,26 @@ include '../../layouts/header.php';
                                 <div class="section-header-left">
                                     <span class="section-badge-num">3</span>
                                     <div class="section-title-wrap">
-                                        <h3>People involved</h3>
-                                        <p>Add or verify the complainants, respondents, and any witnesses.</p>
+                                        <h3<?= $rEnAttr('People involved') ?>><?= $rOut('Mga taong sangkot', 'People involved') ?></h3>
+                                        <p<?= $rEnAttr('Add or verify the complainants, respondents, and any witnesses.') ?>><?= $rOut('Magdagdag o tiyakin ang mga nagsusumbong, inirereklamo, at mga saksi.', 'Add or verify the complainants, respondents, and any witnesses.') ?></p>
                                     </div>
                                 </div>
-                                <span class="section-step-indicator">Section 3 of 5</span>
+                                <span class="section-step-indicator"<?= $rEnAttr('Section 3 of 5') ?>><?= $rOut('Bahagi 3 sa 5', 'Section 3 of 5') ?></span>
                             </div>
 
-                            <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;">
-                                The complainant and respondent cannot be the same profile. Please select or enter different individuals.
+                            <div id="partyDistinctError" class="alert alert-danger" style="display:none; margin: 0 0 16px; padding: 10px 14px; font-size: 0.88rem; border-radius: 6px; background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;"<?= $rEnAttr('The complainant and respondent cannot be the same profile. Please select or enter different individuals.') ?>>
+                                <?= $rOut('Hindi maaaring magkaparehong tao ang nagsusumbong at inirereklamo. Pumili o maglagay ng ibang tao.', 'The complainant and respondent cannot be the same profile. Please select or enter different individuals.') ?>
                             </div>
 
                             <!-- Checkbox options if there are multiple complainants or respondents -->
                             <div class="party-multiple-toggles">
                                 <label class="time-option-label" style="font-weight:600; font-size:0.85rem; color:#1e293b; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
                                     <input type="checkbox" id="chkMultipleComplainants" name="has_multiple_complainants" value="1">
-                                    <span>Multiple Complainants (Maraming Nagrereklamo)</span>
+                                    <span<?= $rEnAttr('Multiple Complainants') ?>><?= $rOut('Maraming Nagsusumbong', 'Multiple Complainants (Maraming Nagrereklamo)') ?></span>
                                 </label>
                                 <label class="time-option-label" style="font-weight:600; font-size:0.85rem; color:#1e293b; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
                                     <input type="checkbox" id="chkMultipleRespondents" name="has_multiple_respondents" value="1">
-                                    <span>Multiple Respondents (Maraming Ipinagrereklamo)</span>
+                                    <span<?= $rEnAttr('Multiple Respondents') ?>><?= $rOut('Maraming Inirereklamo', 'Multiple Respondents (Maraming Ipinagrereklamo)') ?></span>
                                 </label>
                             </div>
 
@@ -1260,10 +1561,10 @@ include '../../layouts/header.php';
                                     <div class="party-group-header">
                                         <div class="party-group-title-wrap">
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                                            <h4 class="party-group-title">Complainants (Nagrereklamo) <span class="required-mark">*</span></h4>
+                                            <h4 class="party-group-title"><?= $rText('Mga Nagsusumbong', 'Complainants (Nagrereklamo)') ?> <span class="required-mark">*</span></h4>
                                         </div>
-                                        <button type="button" class="btn-create btn-sm" id="btnAddComplainantModal" style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; padding:6px 14px;">
-                                            + Add Complainant
+                                        <button type="button" class="btn-create btn-sm" id="btnAddComplainantModal" style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; padding:6px 14px;"<?= $rEnAttr('+ Add Complainant') ?>>
+                                            <?= $rOut('+ Magdagdag ng Nagsusumbong', '+ Add Complainant') ?>
                                         </button>
                                     </div>
                                     <div id="complainantsSummaryList" class="party-summary-list"></div>
@@ -1274,10 +1575,10 @@ include '../../layouts/header.php';
                                     <div class="party-group-header">
                                         <div class="party-group-title-wrap">
                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg>
-                                            <h4 class="party-group-title">Respondents (Ipinagrereklamo) <span class="required-mark">*</span></h4>
+                                            <h4 class="party-group-title"><?= $rText('Mga Inirereklamo', 'Respondents (Ipinagrereklamo)') ?> <span class="required-mark">*</span></h4>
                                         </div>
-                                        <button type="button" class="btn-secondary btn-sm" id="btnAddRespondentModal" style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; padding:6px 14px; border-color:#fca5a5; color:#be123c; background:#fff1f2;">
-                                            + Add Respondent
+                                        <button type="button" class="btn-secondary btn-sm" id="btnAddRespondentModal" style="display:inline-flex; align-items:center; gap:6px; font-size:0.8rem; padding:6px 14px; border-color:#fca5a5; color:#be123c; background:#fff1f2;"<?= $rEnAttr('+ Add Respondent') ?>>
+                                            <?= $rOut('+ Magdagdag ng Inirereklamo', '+ Add Respondent') ?>
                                         </button>
                                     </div>
                                     <div id="respondentsSummaryList" class="party-summary-list"></div>
@@ -1288,10 +1589,10 @@ include '../../layouts/header.php';
                             <div class="party-group-section" id="witnessesGroupSection" style="padding-top:16px; border-top:1px solid #e2e8f0; margin-bottom:0;">
                                 <div class="party-group-header">
                                     <div class="party-group-title-wrap">
-                                        <span class="party-badge" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; font-size:0.75rem;">Witness(es) &amp; Additional Parties (Optional)</span>
+                                        <span class="party-badge" style="background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; font-size:0.75rem;"<?= $rEnAttr('Witness(es) & Additional Parties (Optional)') ?>><?= $rOut('Mga Saksi at Karagdagang Partido (Opsyonal)', 'Witness(es) &amp; Additional Parties (Optional)') ?></span>
                                     </div>
-                                    <button type="button" id="addPartyBtn" class="btn-outline-sm" style="font-size:0.78rem;">
-                                        + Add Witness
+                                    <button type="button" id="addPartyBtn" class="btn-outline-sm" style="font-size:0.78rem;"<?= $rEnAttr('+ Add Witness') ?>>
+                                        <?= $rOut('+ Magdagdag ng Saksi', '+ Add Witness') ?>
                                     </button>
                                 </div>
                                 <div id="additionalPartiesContainer" class="additional-parties-container"></div>
@@ -1358,33 +1659,35 @@ include '../../layouts/header.php';
 
                             <!-- STEP 4 PANEL: REQUESTED OUTCOME & EVIDENCE -->
                             <div class="wizard-step-panel" id="wizardPanel4" data-panel-step="4" style="display: none;">
-                                <!-- Section 4: Requested outcome &amp; evidence -->
+                                <!-- Section 4: Monetary claim / Requested outcome &amp; evidence -->
                                 <section id="section-evidence" class="intake-section-card">
                             <div class="intake-section-header">
                                 <div class="section-header-left">
                                     <span class="section-badge-num">4</span>
                                     <div class="section-title-wrap">
-                                        <h3>Requested outcome &amp; evidence</h3>
-                                        <p><?= $isResidentPortal ? 'Tell us what outcome you’re asking for and attach any available evidence.' : 'Record what the resident is asking for and attach any available evidence.' ?></p>
+                                        <h3<?= $rEnAttr($isResidentPortal ? 'Damages & evidence' : 'Requested outcome & evidence') ?>><?= $isResidentPortal ? 'Tinatayang Halaga at Ebidensya' : 'Requested outcome &amp; evidence' ?></h3>
+                                        <p<?= $rEnAttr($isResidentPortal ? 'Enter any estimated monetary claim and attach supporting evidence.' : 'Record what the resident is asking for and attach any available evidence.') ?>><?= $isResidentPortal ? 'Ilagay ang tinatayang halaga kung mayroon at maglakip ng anumang sumusuportang ebidensya.' : 'Record what the resident is asking for and attach any available evidence.' ?></p>
                                     </div>
                                 </div>
-                                <span class="section-step-indicator">Section 4 of 5</span>
+                                <span class="section-step-indicator"<?= $rEnAttr('Section 4 of 5') ?>><?= $rOut('Bahagi 4 sa 5', 'Section 4 of 5') ?></span>
                             </div>
 
+                            <?php if (!$isResidentPortal): ?>
                             <div class="form-group" id="prayerForReliefGroup" style="margin-bottom:0;">
-                                <label for="requestedResolution">Relief / Settlement Desired by Complainant <span class="optional-label">Optional</span></label>
-                                <textarea id="requestedResolution" name="requested_resolution" rows="3" maxlength="5000" placeholder="Specify desired resolution (e.g., payment of debt, boundary wall restoration, public apology, cessation of nuisance)..."><?php echo htmlspecialchars($old['requested_resolution'] ?? ''); ?></textarea>
+                                <label for="requestedResolution"><?= $rText('Nais na Solusyon / Kasunduan ng Nagsusumbong', 'Relief / Settlement Desired by Complainant') ?> <span class="optional-label"<?= $rEnAttr('Optional') ?>><?= $rOut('Opsyonal', 'Optional') ?></span></label>
+                                <textarea id="requestedResolution" name="requested_resolution" rows="3" maxlength="5000" placeholder="<?= $rOut('Ilahad ang nais na solusyon (hal. pagbabayad ng utang, pag-aayos ng pader, paumanhin, pagtigil ng istorbo)...', 'Specify desired resolution (e.g., payment of debt, boundary wall restoration, public apology, cessation of nuisance)...') ?>"<?= $rEnAttr('Specify desired resolution (e.g., payment of debt, boundary wall restoration, public apology, cessation of nuisance)...', 'data-en-placeholder') ?>><?php echo htmlspecialchars($old['requested_resolution'] ?? ''); ?></textarea>
                             </div>
-                            <div class="form-group" id="claimAmountGroup" style="margin-top: 14px; margin-bottom: 0;">
+                            <?php endif; ?>
+                            <div class="form-group" id="claimAmountGroup" style="margin-top: <?= $isResidentPortal ? '0' : '14px' ?>; margin-bottom: 0;">
                                 <label for="offenseFineMax" style="display:flex; justify-content:space-between; align-items:center;">
-                                    <span>Estimated Damages / Property Value or Monetary Claim (₱) <span class="optional-label">Optional</span></span>
-                                    <span class="threshold-pill" style="font-size:0.75rem; color:#64748b; font-weight:600; background:#f1f5f9; padding:2px 8px; border-radius:4px; border:1px solid #e2e8f0;">KP Statutory Limit: ₱5,000.00</span>
+                                    <span><?= $rText('Tinatayang Pinsala / Halaga ng Ari-arian o Halagang Hinihingi (₱)', 'Estimated Damages / Property Value or Monetary Claim (₱)') ?> <span class="optional-label"<?= $rEnAttr('Optional') ?>><?= $rOut('Opsyonal', 'Optional') ?></span></span>
+                                    <span class="threshold-pill" style="font-size:0.75rem; color:#64748b; font-weight:600; background:#f1f5f9; padding:2px 8px; border-radius:4px; border:1px solid #e2e8f0;"<?= $rEnAttr('KP Statutory Limit: ₱5,000.00') ?>><?= $rOut('Hangganan sa Batas ng KP: ₱5,000.00', 'KP Statutory Limit: ₱5,000.00') ?></span>
                                 </label>
                                 <div style="position:relative;">
                                     <span style="position:absolute; left:12px; top:50%; transform:translateY(-50%); font-weight:700; color:#64748b; font-size:0.95rem; pointer-events:none;">₱</span>
                                     <input type="number" step="0.01" min="0" id="offenseFineMax" name="offense_fine_max" style="padding-left:30px;" placeholder="0.00" value="<?php echo htmlspecialchars($old['offense_fine_max'] ?? ''); ?>">
                                 </div>
-                                <small class="field-hint">Specify total estimated value of property damaged, unpaid money/debt, or compensation claimed.</small>
+                                <small class="field-hint"<?= $rEnAttr('Specify total estimated value of property damaged, unpaid money/debt, or compensation claimed.') ?>><?= $rOut('Ilagay ang kabuuang tinatayang halaga ng nasirang ari-arian, hindi nabayarang utang, o hinihinging danyos.', 'Specify total estimated value of property damaged, unpaid money/debt, or compensation claimed.') ?></small>
                             </div>
 
                             <!-- Real-time Damages / Statutory Jurisdiction Warning Banner -->
@@ -1393,12 +1696,17 @@ include '../../layouts/header.php';
                                     <div style="font-size: 1.4rem; line-height: 1; color: #d97706; flex-shrink: 0; margin-top: 2px;">⚠️</div>
                                     <div style="flex: 1;">
                                         <div class="banner-header">
-                                            <span>Police / Court Jurisdiction — Issue Blotter Reference Only</span>
+                                            <span<?= $rEnAttr('Police / Court Jurisdiction — Issue Blotter Reference Only') ?>><?= $rOut('Hurisdiksyon ng Pulisya / Korte — Para sa Barangay Blotter Lamang', 'Police / Court Jurisdiction — Issue Blotter Reference Only') ?></span>
                                             <span class="banner-statute-badge">RA 7160 §408(c)</span>
                                         </div>
-                                        <p class="banner-desc">
-                                            The estimated damages, claim, or property value (<strong id="damagesDisplayAmount">₱0.00</strong>) exceeds the statutory threshold of <strong>₱5,000.00</strong>. Under Katarungang Pambarangay guidelines and Section 408(c) of R.A. 7160, disputes exceeding this limit are <strong>outside the compulsory conciliation jurisdiction of the Lupon Tagapamayapa</strong>.
+                                        <p class="banner-desc"<?= $rEnAttr('The estimated damages, claim, or property value exceeds the statutory threshold of ₱5,000.00. Under Katarungang Pambarangay guidelines and Section 408(c) of R.A. 7160, disputes exceeding this limit are outside the compulsory conciliation jurisdiction of the Lupon Tagapamayapa.', 'data-en') ?>>
+                                            <?php if ($isResidentPortal): ?>
+                                                Ang tinatayang pinsala o halagang hinihingi (<strong id="damagesDisplayAmount">₱0.00</strong>) ay lumampas sa hangganan ng batas na <strong>₱5,000.00</strong>. Ayon sa Seksyon 408(c) ng R.A. 7160, ang mga alitang lampas sa halagang ito ay maaaring mangailangan ng tulong ng pulisya o korte.
+                                            <?php else: ?>
+                                                The estimated damages, claim, or property value (<strong id="damagesDisplayAmount">₱0.00</strong>) exceeds the statutory threshold of <strong>₱5,000.00</strong>. Under Katarungang Pambarangay guidelines and Section 408(c) of R.A. 7160, disputes exceeding this limit are <strong>outside the compulsory conciliation jurisdiction of the Lupon Tagapamayapa</strong>.
+                                            <?php endif; ?>
                                         </p>
+                                        <?php if (!$isResidentPortal): ?>
                                         <div class="banner-protocol-box">
                                             <div style="font-size: 0.82rem; color: #78350f; line-height: 1.4; flex: 1;">
                                                 <strong>Mandatory Protocol:</strong> Do not issue a conciliation summons/Paanyaya. Issue an official <em>Barangay Blotter Reference Number</em> and advise the parties to seek direct police assistance or court action.
@@ -1411,6 +1719,7 @@ include '../../layouts/header.php';
                                             <input type="checkbox" name="blotter_only_acknowledged" id="blotterOnlyAcknowledged" value="1" <?php echo !empty($old['blotter_only_acknowledged']) ? 'checked' : ''; ?> style="margin-top: 2px;">
                                             <span>I confirm that this case exceeds ₱5,000 and is recorded strictly as a Blotter Reference (Police / Court Jurisdiction).</span>
                                         </label>
+                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </div>
@@ -1427,10 +1736,10 @@ include '../../layouts/header.php';
                                         </svg>
                                     </div>
                                     <div class="upload-zone-text">
-                                        <p class="upload-primary-text"><strong>Choose files</strong> or drag &amp; drop here</p>
-                                        <p class="upload-secondary-text">Images, videos, PDF, and Word documents up to 25 MB each</p>
+                                        <p class="upload-primary-text"<?= $rEnAttr('<strong>Choose files</strong> or drag &amp; drop here', 'data-en-html') ?>><?= $isResidentPortal ? '<strong>Pumili ng mga file</strong> o i-drag at i-drop dito' : '<strong>Choose files</strong> or drag &amp; drop here' ?></p>
+                                        <p class="upload-secondary-text"<?= $rEnAttr('Images, videos, PDF, and Word documents up to 25 MB each') ?>><?= $rOut('Mga larawan, video, PDF, at Word na dokumento hanggang 25 MB bawat isa', 'Images, videos, PDF, and Word documents up to 25 MB each') ?></p>
                                     </div>
-                                    <button type="button" class="btn-browse-files" id="btnBrowseEvidence">Browse Files</button>
+                                    <button type="button" class="btn-browse-files" id="btnBrowseEvidence"<?= $rEnAttr('Browse Files') ?>><?= $rOut('Maghanap ng mga File', 'Browse Files') ?></button>
                                 </div>
                             </div>
 
@@ -1439,8 +1748,8 @@ include '../../layouts/header.php';
                             <!-- Selected files queue preview with Tag Selection -->
                             <div id="evidenceQueueContainer" class="evidence-queue-container" style="display: none; margin-top: 14px;">
                                 <div class="evidence-queue-header">
-                                    <span class="evidence-queue-title">Attached Files (<span id="evidenceCount">0</span>)</span>
-                                    <button type="button" id="clearAllEvidenceBtn" class="btn-clear-evidence">Clear All</button>
+                                    <span class="evidence-queue-title"><span<?= $rEnAttr('Attached Files') ?>><?= $rOut('Mga Kalakip na File', 'Attached Files') ?></span> (<span id="evidenceCount">0</span>)</span>
+                                    <button type="button" id="clearAllEvidenceBtn" class="btn-clear-evidence"<?= $rEnAttr('Clear All') ?>><?= $rOut('Alisin Lahat', 'Clear All') ?></button>
                                 </div>
                                 <ul id="evidenceQueueList" class="evidence-queue-list"></ul>
                             </div>
@@ -1451,6 +1760,102 @@ include '../../layouts/header.php';
                             <!-- STEP 5 PANEL: REVIEW, CLASSIFICATION, LISO SCREENING & SUBMIT -->
                             <div class="wizard-step-panel" id="wizardPanel5" data-panel-step="5" style="display: none;">
                                 <!-- PRE-FILING COMPLAINT REVIEW SUMMARY -->
+                                <?php if ($isResidentPortal): ?>
+                                <div class="blotter-summary-card" id="step5ReviewSummary">
+                                    <div class="blotter-summary-header">
+                                        <div class="blotter-header-title-wrap">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                                <polyline points="14 2 14 8 20 8"></polyline>
+                                                <line x1="16" y1="13" x2="8" y2="13"></line>
+                                                <line x1="16" y1="17" x2="8" y2="17"></line>
+                                                <polyline points="10 9 9 9 8 9"></polyline>
+                                            </svg>
+                                            <div>
+                                                <strong data-en="Barangay Blotter Summary">Buod ng Barangay Blotter</strong>
+                                                <span class="blotter-header-sub" data-en="Verify your blotter entry before submitting to Barangay Tumana Lupon">Suriin ang iyong blotter entry bago isumite sa Lupon ng Barangay Tumana</span>
+                                            </div>
+                                        </div>
+                                        <span class="review-summary-badge" data-en="Pre-Filing Check">Paunang Pagsusuri</span>
+                                    </div>
+                                    <div class="blotter-entry-grid">
+                                        <div class="blotter-cell is-full">
+                                            <div class="blotter-cell-head">
+                                                <span class="blotter-cell-label-group">
+                                                    <span class="blotter-tag is-what" data-en="WHAT">ANO</span>
+                                                    <span class="blotter-field-name" data-en="Concern Subject">Paksa ng Sumbong</span>
+                                                </span>
+                                                <button type="button" class="blotter-step-edit-btn" onclick="window.setWizardStep?.(1)" data-en="Edit">I-edit</button>
+                                            </div>
+                                            <div class="blotter-value" id="revCategoryTitle">—</div>
+                                        </div>
+
+                                        <div class="blotter-cell is-full">
+                                            <div class="blotter-cell-head">
+                                                <span class="blotter-cell-label-group">
+                                                    <span class="blotter-tag is-who" data-en="WHO">SINO</span>
+                                                    <span class="blotter-field-name" data-en="Parties Involved">Mga Taong Sangkot</span>
+                                                </span>
+                                                <button type="button" class="blotter-step-edit-btn" onclick="window.setWizardStep?.(3)" data-en="Edit">I-edit</button>
+                                            </div>
+                                            <div class="blotter-parties-pair">
+                                                <div>
+                                                    <span class="blotter-party-sublabel" data-en="Complainant(s)">Nagsusumbong</span>
+                                                    <div class="review-value is-comp" id="revComplainants">—</div>
+                                                </div>
+                                                <div>
+                                                    <span class="blotter-party-sublabel" data-en="Respondent(s)">Inirereklamo</span>
+                                                    <div class="review-value is-resp" id="revRespondents">—</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="blotter-cell is-full">
+                                            <div class="blotter-cell-head">
+                                                <span class="blotter-cell-label-group">
+                                                    <span class="blotter-tag is-whenwhere" data-en="WHEN &amp; WHERE">KAILAN AT SAAN</span>
+                                                    <span class="blotter-field-name" data-en="Incident Date, Time &amp; Place">Petsa, Oras at Lugar</span>
+                                                </span>
+                                                <button type="button" class="blotter-step-edit-btn" onclick="window.setWizardStep?.(2)" data-en="Edit">I-edit</button>
+                                            </div>
+                                            <div class="blotter-value" id="revIncidentInfo">—</div>
+                                        </div>
+
+                                        <div class="blotter-cell is-full">
+                                            <div class="blotter-cell-head">
+                                                <span class="blotter-cell-label-group">
+                                                    <span class="blotter-tag" data-en="NARRATIVE">SALAYSAY</span>
+                                                    <span class="blotter-field-name" data-en="Statement of Facts">Salaysay ng Pangyayari</span>
+                                                </span>
+                                                <button type="button" class="blotter-step-edit-btn" onclick="window.setWizardStep?.(1)" data-en="Edit">I-edit</button>
+                                            </div>
+                                            <div class="blotter-narrative-box" id="revBlotterNarrative">—</div>
+                                        </div>
+
+                                        <div class="blotter-cell">
+                                            <div class="blotter-cell-head">
+                                                <span class="blotter-cell-label-group">
+                                                    <span class="blotter-tag" data-en="MONETARY CLAIM">HALAGA</span>
+                                                    <span class="blotter-field-name" data-en="Estimated Damages / Claim">Hinihinging Halaga</span>
+                                                </span>
+                                                <button type="button" class="blotter-step-edit-btn" onclick="window.setWizardStep?.(4)" data-en="Edit">I-edit</button>
+                                            </div>
+                                            <div class="blotter-value" id="revBlotterClaim">—</div>
+                                        </div>
+
+                                        <div class="blotter-cell">
+                                            <div class="blotter-cell-head">
+                                                <span class="blotter-cell-label-group">
+                                                    <span class="blotter-tag" data-en="EVIDENCE">EBIDENSYA</span>
+                                                    <span class="blotter-field-name" data-en="Attached Supporting Files">Mga Kalakip na File</span>
+                                                </span>
+                                                <button type="button" class="blotter-step-edit-btn" onclick="window.setWizardStep?.(4)" data-en="Edit">I-edit</button>
+                                            </div>
+                                            <div class="blotter-value" id="revBlotterEvidence">—</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php else: ?>
                                 <div class="wizard-review-summary" id="step5ReviewSummary">
                                     <div class="review-summary-header">
                                         <div class="review-summary-title-wrap">
@@ -1461,29 +1866,30 @@ include '../../layouts/header.php';
                                                 <line x1="16" y1="17" x2="8" y2="17"></line>
                                                 <polyline points="10 9 9 9 8 9"></polyline>
                                             </svg>
-                                            <strong>Complaint Summary Review</strong>
+                                            <strong<?= $rEnAttr('Complaint Summary Review') ?>><?= $rOut('Buod ng Pagsusuri ng Sumbong', 'Complaint Summary Review') ?></strong>
                                         </div>
-                                        <span class="review-summary-badge">Pre-Filing Check</span>
+                                        <span class="review-summary-badge"<?= $rEnAttr('Pre-Filing Check') ?>><?= $rOut('Paunang Pagsusuri', 'Pre-Filing Check') ?></span>
                                     </div>
                                     <div class="review-summary-grid">
                                         <div class="review-summary-item">
-                                            <span class="review-label"><?= $isResidentPortal ? 'Concern Subject' : 'Category &amp; Case Type' ?></span>
+                                            <span class="review-label"<?= $rEnAttr('Category & Case Type') ?>>Category &amp; Case Type</span>
                                             <span class="review-value" id="revCategoryTitle">—</span>
                                         </div>
                                         <div class="review-summary-item">
-                                            <span class="review-label">Incident Schedule &amp; Place</span>
+                                            <span class="review-label"<?= $rEnAttr('Incident Schedule & Place') ?>><?= $rOut('Petsa at Lugar ng Insidente', 'Incident Schedule &amp; Place') ?></span>
                                             <span class="review-value" id="revIncidentInfo">—</span>
                                         </div>
                                         <div class="review-summary-item">
-                                            <span class="review-label">Complainant(s)</span>
+                                            <span class="review-label"<?= $rEnAttr('Complainant(s)') ?>><?= $rOut('Mga Nagsusumbong', 'Complainant(s)') ?></span>
                                             <span class="review-value is-comp" id="revComplainants">—</span>
                                         </div>
                                         <div class="review-summary-item">
-                                            <span class="review-label">Respondent(s)</span>
+                                            <span class="review-label"<?= $rEnAttr('Respondent(s)') ?>><?= $rOut('Mga Inirereklamo', 'Respondent(s)') ?></span>
                                             <span class="review-value is-resp" id="revRespondents">—</span>
                                         </div>
                                     </div>
                                 </div>
+                                <?php endif; ?>
 
                                 <!-- Section 5: Review and submit -->
                                 <section id="section-ingestion" class="intake-section-card">
@@ -1491,22 +1897,24 @@ include '../../layouts/header.php';
                                 <div class="section-header-left">
                                     <span class="section-badge-num">5</span>
                                     <div class="section-title-wrap">
-                                        <h3>Review and submit</h3>
-                                        <p><?= $isResidentPortal ? 'Check your details and enter a brief subject for your concern.' : 'Check the details and record a provisional classification (final category &amp; Civil/Criminal type are confirmed by LISO).' ?></p>
+                                        <h3<?= $rEnAttr('Review and submit') ?>><?= $rOut('Suriin at isumite', 'Review and submit') ?></h3>
+                                        <p<?= $rEnAttr($isResidentPortal ? 'Review your barangay blotter summary above before submitting.' : 'Check the details and record a provisional classification (final category & Civil/Criminal type are confirmed by LISO).') ?>><?= $isResidentPortal ? 'Suriin ang iyong buod ng barangay blotter sa itaas bago isumite.' : 'Check the details and record a provisional classification (final category &amp; Civil/Criminal type are confirmed by LISO).' ?></p>
                                     </div>
                                 </div>
-                                <span class="section-step-indicator">Section 5 of 5</span>
+                                <span class="section-step-indicator"<?= $rEnAttr('Section 5 of 5') ?>><?= $rOut('Bahagi 5 sa 5', 'Section 5 of 5') ?></span>
                             </div>
 
 
+                            <?php if (!$isResidentPortal): ?>
                             <dl class="intake-review-summary" id="intakeReviewSummary" hidden>
-                                <div><dt><a href="#section-narrative">Narrative</a></dt><dd data-review="narrative"></dd></div>
-                                <div><dt><a href="#section-location">When and where</a></dt><dd data-review="incident"></dd></div>
-                                <div><dt><a href="#section-parties">Complainants</a></dt><dd data-review="complainants"></dd></div>
-                                <div><dt><a href="#section-parties">Respondents</a></dt><dd data-review="respondents"></dd></div>
-                                <div><dt><a href="#section-evidence">Requested outcome</a></dt><dd data-review="outcome"></dd></div>
-                                <div><dt><a href="#section-evidence">Evidence</a></dt><dd data-review="evidence"></dd></div>
+                                <div><dt><a href="#section-narrative"<?= $rEnAttr('Narrative') ?>><?= $rOut('Salaysay', 'Narrative') ?></a></dt><dd data-review="narrative"></dd></div>
+                                <div><dt><a href="#section-location"<?= $rEnAttr('When and where') ?>><?= $rOut('Kailan at saan', 'When and where') ?></a></dt><dd data-review="incident"></dd></div>
+                                <div><dt><a href="#section-parties"<?= $rEnAttr('Complainants') ?>><?= $rOut('Mga Nagsusumbong', 'Complainants') ?></a></dt><dd data-review="complainants"></dd></div>
+                                <div><dt><a href="#section-parties"<?= $rEnAttr('Respondents') ?>><?= $rOut('Mga Inirereklamo', 'Respondents') ?></a></dt><dd data-review="respondents"></dd></div>
+                                <div><dt><a href="#section-evidence"<?= $rEnAttr('Requested outcome') ?>><?= $rOut('Hinihinging aksyon', 'Requested outcome') ?></a></dt><dd data-review="outcome"></dd></div>
+                                <div><dt><a href="#section-evidence"<?= $rEnAttr('Evidence') ?>><?= $rOut('Ebidensya', 'Evidence') ?></a></dt><dd data-review="evidence"></dd></div>
                             </dl>
+                            <?php endif; ?>
 
                             <!-- Filing Method Hidden: Default to Digital Intake -->
                             <input type="hidden" name="filing_method" id="filingMethod" value="digital">
@@ -1525,8 +1933,8 @@ include '../../layouts/header.php';
                                 <input type="hidden" id="categoryId" name="category_id" value="<?= $residentFallbackCatId ?>">
                                 <input type="hidden" id="otherCategorySpecification" name="other_category_specification" value="Pending Barangay LISO Classification">
                                 <input type="hidden" id="caseType" name="case_type" value="Civil">
-                                <div style="margin: 10px 0 14px; padding: 12px 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.84rem; color: #1e3a8a; line-height: 1.5;">
-                                    <strong>Legal Classification by Barangay Lupon (LISO):</strong> You do not need to decide whether your concern is Civil or Criminal or pick a legal category. Add a short title below—the assigned Lupon Member (LISO) will classify it and verify Barangay Tumana jurisdiction during screening.
+                                <div style="margin: 10px 0 6px; padding: 12px 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.84rem; color: #1e3a8a; line-height: 1.5;" data-en-html="<strong>Legal Classification by Barangay Lupon (LISO):</strong> You do not need to decide whether your concern is Civil or Criminal or pick a legal category. Review your blotter summary above—the assigned Lupon Member (LISO) will handle formal legal classification and verify Barangay Tumana jurisdiction during screening.">
+                                    <strong>Legal na Pag-uuri ng Barangay Lupon (LISO):</strong> Hindi mo kailangang magpasya kung Sibil o Kriminal ang iyong sumbong o pumili ng legal na kategorya. Suriin ang iyong buod ng blotter sa itaas—ang itinalagang Miyembro ng Lupon (LISO) ang mangangasiwa sa pormal na legal na pag-uuri at susuri sa hurisdiksyon ng Barangay Tumana sa panahon ng pagsusuri.
                                 </div>
                             <?php else: ?>
                             <!-- Dispute Classification Grid -->
@@ -1691,10 +2099,12 @@ include '../../layouts/header.php';
                             </div>
                             <?php endif; ?>
 
+                            <?php if (!$isResidentPortal): ?>
                             <div class="form-group">
-                                <label for="complaintTitle"><?= $isResidentPortal ? 'Concern Subject / Brief Title' : 'Complaint Title / Specific Nature' ?> <span class="required-mark">*</span></label>
-                                <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="<?= $isResidentPortal ? 'e.g. Loud noise late at night, Unpaid loan, Property boundary issue' : 'e.g. Boundary dispute, Unpaid debt, Slander' ?>" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
+                                <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
+                                <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
                             </div>
+                            <?php endif; ?>
 
                             <?php if (!$isResidentPortal): ?>
                             <div class="form-group" style="margin-bottom: 0;">
@@ -1730,14 +2140,14 @@ include '../../layouts/header.php';
                             <!-- Real-time Duplicate Warning Banner -->
                             <div id="duplicateComplaintBanner" class="duplicate-warning-banner" style="display:none;">
                                 <div class="duplicate-warning-header">
-                                    <span>Potential Duplicate Complaint Detected</span>
+                                    <span<?= $rEnAttr('Potential Duplicate Complaint Detected') ?>><?= $rOut('Posibleng Kaparehong Reklamo ang Natagpuan', 'Potential Duplicate Complaint Detected') ?></span>
                                     <button type="button" class="btn-clear-evidence" id="dismissDuplicateBanner" style="background:none;border:none;cursor:pointer;font-size:1.1rem;color:#9a3412;">&times;</button>
                                 </div>
-                                <p style="margin:0;font-size:0.83rem;">The system found active complaint record(s) involving the same complainant and respondent:</p>
+                                <p style="margin:0;font-size:0.83rem;"<?= $rEnAttr('The system found active complaint record(s) involving the same complainant and respondent:') ?>><?= $rOut('Nakahanap ang system ng aktibong reklamo na may parehong nagsusumbong at inirereklamo:', 'The system found active complaint record(s) involving the same complainant and respondent:') ?></p>
                                 <ul class="duplicate-warning-list" id="duplicateComplaintList"></ul>
                                 <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:0.8rem;color:#7c2d12;font-weight:600;">
                                     <input type="checkbox" name="duplicate_acknowledged" id="duplicateAcknowledged" value="1" style="margin-top:2px;">
-                                    <span>I reviewed the possible duplicate record(s) and confirm that this filing should proceed.</span>
+                                    <span<?= $rEnAttr('I reviewed the possible duplicate record(s) and confirm that this filing should proceed.') ?>><?= $rOut('Nasuri ko ang posibleng kaparehong rekord at kinukumpirma kong dapat magpatuloy ang paghahain na ito.', 'I reviewed the possible duplicate record(s) and confirm that this filing should proceed.') ?></span>
                                 </label>
                             </div>
 
@@ -1749,7 +2159,7 @@ include '../../layouts/header.php';
                             <!-- Modern Wizard Footer (Matching Reference UI) -->
                             <div class="wizard-card-footer">
                                 <div class="wizard-footer-left" style="display:flex;align-items:center;gap:8px;">
-                                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="btn-wizard-prev" style="text-decoration:none;">Cancel</a>
+                                    <a href="<?= $isResidentPortal ? '../resident/dashboard.php' : 'complaint-list.php' ?>" class="btn-wizard-prev" style="text-decoration:none;"<?= $rEnAttr('Cancel') ?>><?= $rOut('Kanselahin', 'Cancel') ?></a>
                                     <?php if (!$isResidentPortal): ?>
                                     <button type="submit" form="createComplaintForm" class="btn-wizard-draft" id="btnSaveComplaintDraft">
                                         Save as Draft
@@ -1757,14 +2167,14 @@ include '../../layouts/header.php';
                                     <?php endif; ?>
                                 </div>
                                 <div class="wizard-footer-right">
-                                    <button type="button" class="btn-wizard-prev" id="btnPrevStep" style="display: none;">
-                                        &larr; Previous Step
+                                    <button type="button" class="btn-wizard-prev" id="btnPrevStep" style="display: none;"<?= $rEnAttr('← Previous Step') ?>>
+                                        <?= $rOut('← Nakaraang Hakbang', '&larr; Previous Step') ?>
                                     </button>
-                                    <button type="button" class="btn-wizard-next" id="btnNextStep">
-                                        Next Step &rarr;
+                                    <button type="button" class="btn-wizard-next" id="btnNextStep"<?= $rEnAttr('Next Step →') ?>>
+                                        <?= $rOut('Susunod na Hakbang →', 'Next Step &rarr;') ?>
                                     </button>
-                                    <button type="submit" form="createComplaintForm" class="btn-wizard-submit" id="btnSubmitComplaint" style="display: none;">
-                                        <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation &rarr;' : ($isResidentPortal ? 'Submit Concern &rarr;' : 'Submit for LISO Screening &rarr;') ?>
+                                    <button type="submit" form="createComplaintForm" class="btn-wizard-submit" id="btnSubmitComplaint" style="display: none;"<?= $isResidentPortal ? $rEnAttr('Submit Concern →') : '' ?>>
+                                        <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation &rarr;' : ($isResidentPortal ? 'Isumite ang Sumbong →' : 'Submit for LISO Screening &rarr;') ?>
                                     </button>
                                 </div>
                             </div>
@@ -1840,10 +2250,10 @@ include '../../layouts/header.php';
                 <!-- Modal Header -->
                 <div class="party-modal-header">
                     <div class="party-modal-header-left">
-                        <h3 id="partyModalTitle">Add Person Details</h3>
-                        <p id="partyModalSubtitle">Fill in personal and residence information</p>
+                        <h3 id="partyModalTitle"<?= $rEnAttr('Add Person Details') ?>><?= $rOut('Magdagdag ng Detalye ng Tao', 'Add Person Details') ?></h3>
+                        <p id="partyModalSubtitle"<?= $rEnAttr('Fill in personal and residence information') ?>><?= $rOut('Ilagay ang personal na impormasyon at detalye ng paninirahan', 'Fill in personal and residence information') ?></p>
                     </div>
-                    <button type="button" class="party-modal-close" id="btnClosePartyModal" title="Close modal">&times;</button>
+                    <button type="button" class="party-modal-close" id="btnClosePartyModal" title="<?= $rOut('Isara', 'Close modal') ?>"<?= $rEnAttr('Close modal', 'data-en-title') ?>>&times;</button>
                 </div>
 
                 <!-- Modal Body -->
@@ -1853,14 +2263,14 @@ include '../../layouts/header.php';
                         <div class="quickfill-header">
                             <span class="quickfill-title">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                Quick-Fill from Registered Directory <span class="optional-pill">Optional</span>
+                                <span<?= $rEnAttr('Quick-Fill from Registered Directory') ?>><?= $rOut('Mabilisang Punan mula sa Nakarehistrong Talaan', 'Quick-Fill from Registered Directory') ?></span> <span class="optional-pill"<?= $rEnAttr('Optional') ?>><?= $rOut('Opsyonal', 'Optional') ?></span>
                             </span>
-                            <button type="button" class="btn-clear-quickfill" id="modalClearQuickFill" style="display:none;">Clear Selection</button>
+                            <button type="button" class="btn-clear-quickfill" id="modalClearQuickFill" style="display:none;"<?= $rEnAttr('Clear Selection') ?>><?= $rOut('Alisin ang Pinili', 'Clear Selection') ?></button>
                         </div>
                         <div class="party-search-combobox" id="modalPartySearchCombobox">
                             <div class="party-search-input-wrap">
-                                <input type="text" id="modalPartySearchInput" class="party-search-input" placeholder="Type resident name or address to auto-populate fields..." autocomplete="off">
-                                <button type="button" class="party-search-clear" id="modalPartySearchClear" title="Clear selection" style="display:none;">&times;</button>
+                                <input type="text" id="modalPartySearchInput" class="party-search-input" placeholder="<?= $rOut('Mag-type ng pangalan o address upang awtomatikong mapunan...', 'Type resident name or address to auto-populate fields...') ?>"<?= $rEnAttr('Type resident name or address to auto-populate fields...', 'data-en-placeholder') ?> autocomplete="off">
+                                <button type="button" class="party-search-clear" id="modalPartySearchClear" title="<?= $rOut('Alisin ang pinili', 'Clear selection') ?>"<?= $rEnAttr('Clear selection', 'data-en-title') ?> style="display:none;">&times;</button>
                             </div>
                             <input type="hidden" id="modalResidentId" value="">
                             <div class="party-search-dropdown" id="modalPartySearchDropdown" style="display:none;"></div>
@@ -1870,7 +2280,7 @@ include '../../layouts/header.php';
                     <!-- In-Modal Validation Error Banner -->
                     <div id="modalPartyValidationError" class="party-validation-error-box" style="display:none;">
                         <div style="font-weight:700; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-                            <span>⚠️ Pakikumpleto ang mga kinakailangang impormasyon bago i-save:</span>
+                            <span<?= $rEnAttr('⚠️ Please complete the required information before saving:') ?>>⚠️ Pakikumpleto ang mga kinakailangang impormasyon bago i-save:</span>
                         </div>
                         <ul id="modalPartyValidationList" style="margin:0; padding-left:20px; font-size:0.82rem; line-height:1.6;"></ul>
                     </div>
@@ -1878,29 +2288,29 @@ include '../../layouts/header.php';
                     <!-- Personal Information Grid -->
                     <div class="party-section-heading">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                        Personal Information
+                        <span<?= $rEnAttr('Personal Information') ?>><?= $rOut('Personal na Impormasyon', 'Personal Information') ?></span>
                     </div>
                     <div class="party-fields-grid-4">
                         <div class="party-field-col">
-                            <label for="modalFirstName">First Name <span class="required-mark">*</span></label>
-                            <input type="text" id="modalFirstName" placeholder="e.g. Juan" maxlength="100">
+                            <label for="modalFirstName"><?= $rText('Unang Pangalan', 'First Name') ?> <span class="required-mark">*</span></label>
+                            <input type="text" id="modalFirstName" placeholder="<?= $rOut('hal. Juan', 'e.g. Juan') ?>"<?= $rEnAttr('e.g. Juan', 'data-en-placeholder') ?> maxlength="100">
                         </div>
                         <div class="party-field-col">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                <label for="modalMiddleName" style="margin-bottom:0;">Middle Name</label>
+                                <label for="modalMiddleName" style="margin-bottom:0;"><?= $rText('Gitnang Pangalan', 'Middle Name') ?></label>
                                 <label class="unknown-check-inline" id="modalWrapMiddleUnknown" style="display:none; align-items:center; gap:5px; font-size:0.74rem; font-weight:500; color:#64748b; cursor:pointer; margin-bottom:0; user-select:none; white-space:nowrap;">
-                                    <input type="checkbox" id="modalMiddleUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
+                                    <input type="checkbox" id="modalMiddleUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> <span<?= $rEnAttr('Unknown') ?>><?= $rOut('Hindi Alam', 'Unknown') ?></span>
                                 </label>
                             </div>
-                            <input type="text" id="modalMiddleName" placeholder="e.g. Santos (Optional)" maxlength="100">
+                            <input type="text" id="modalMiddleName" placeholder="<?= $rOut('hal. Santos (Opsyonal)', 'e.g. Santos (Optional)') ?>"<?= $rEnAttr('e.g. Santos (Optional)', 'data-en-placeholder') ?> maxlength="100">
                         </div>
                         <div class="party-field-col">
-                            <label for="modalLastName">Last Name <span class="required-mark">*</span></label>
-                            <input type="text" id="modalLastName" placeholder="e.g. Dela Cruz" maxlength="100">
+                            <label for="modalLastName"><?= $rText('Apelyido', 'Last Name') ?> <span class="required-mark">*</span></label>
+                            <input type="text" id="modalLastName" placeholder="<?= $rOut('hal. Dela Cruz', 'e.g. Dela Cruz') ?>"<?= $rEnAttr('e.g. Dela Cruz', 'data-en-placeholder') ?> maxlength="100">
                         </div>
                         <div class="party-field-col">
-                            <label for="modalSuffix">Suffix</label>
-                            <input type="text" id="modalSuffix" placeholder="e.g. Jr., III" maxlength="20">
+                            <label for="modalSuffix"><?= $rText('Suffix', 'Suffix') ?></label>
+                            <input type="text" id="modalSuffix" placeholder="<?= $rOut('hal. Jr., III', 'e.g. Jr., III') ?>"<?= $rEnAttr('e.g. Jr., III', 'data-en-placeholder') ?> maxlength="20">
                         </div>
                     </div>
 
@@ -1908,34 +2318,34 @@ include '../../layouts/header.php';
                     <div class="party-fields-grid-4" style="margin-top: 10px;">
                         <div class="party-field-col">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                <label for="modalBirthdate" style="margin-bottom:0;">Birthdate</label>
+                                <label for="modalBirthdate" style="margin-bottom:0;"><?= $rText('Petsa ng Kapanganakan', 'Birthdate') ?></label>
                                 <label class="unknown-check-inline" id="modalWrapBirthUnknown" style="display:none; align-items:center; gap:5px; font-size:0.74rem; font-weight:500; color:#64748b; cursor:pointer; margin-bottom:0; user-select:none; white-space:nowrap;">
-                                    <input type="checkbox" id="modalBirthUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
+                                    <input type="checkbox" id="modalBirthUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> <span<?= $rEnAttr('Unknown') ?>><?= $rOut('Hindi Alam', 'Unknown') ?></span>
                                 </label>
                             </div>
                             <input type="date" id="modalBirthdate" min="1900-01-01" max="<?php echo date('Y-m-d'); ?>">
                         </div>
                         <div class="party-field-col">
-                            <label for="modalAge">Age</label>
-                            <input type="number" id="modalAge" min="0" max="130" placeholder="e.g. 35">
+                            <label for="modalAge"><?= $rText('Edad', 'Age') ?></label>
+                            <input type="number" id="modalAge" min="0" max="130" placeholder="<?= $rOut('hal. 35', 'e.g. 35') ?>"<?= $rEnAttr('e.g. 35', 'data-en-placeholder') ?>>
                         </div>
                         <div class="party-field-col">
-                            <label for="modalGender">Gender</label>
+                            <label for="modalGender"><?= $rText('Kasarian', 'Gender') ?></label>
                             <select id="modalGender">
-                                <option value="">Select...</option>
-                                <option value="Male">Male</option>
-                                <option value="Female">Female</option>
-                                <option value="Other">Other</option>
+                                <option value=""<?= $rEnAttr('Select...') ?>><?= $rOut('Pumili...', 'Select...') ?></option>
+                                <option value="Male"<?= $rEnAttr('Male') ?>><?= $rOut('Lalaki', 'Male') ?></option>
+                                <option value="Female"<?= $rEnAttr('Female') ?>><?= $rOut('Babae', 'Female') ?></option>
+                                <option value="Other"<?= $rEnAttr('Other') ?>><?= $rOut('Iba pa', 'Other') ?></option>
                             </select>
                         </div>
                         <div class="party-field-col">
-                            <label for="modalCivilStatus">Civil Status</label>
+                            <label for="modalCivilStatus"><?= $rText('Katayuang Sibil', 'Civil Status') ?></label>
                             <select id="modalCivilStatus">
-                                <option value="">Select...</option>
-                                <option value="Single">Single</option>
-                                <option value="Married">Married</option>
-                                <option value="Widowed">Widowed</option>
-                                <option value="Separated">Separated</option>
+                                <option value=""<?= $rEnAttr('Select...') ?>><?= $rOut('Pumili...', 'Select...') ?></option>
+                                <option value="Single"<?= $rEnAttr('Single') ?>><?= $rOut('Walang Asawa', 'Single') ?></option>
+                                <option value="Married"<?= $rEnAttr('Married') ?>><?= $rOut('May Asawa', 'Married') ?></option>
+                                <option value="Widowed"<?= $rEnAttr('Widowed') ?>><?= $rOut('Balo', 'Widowed') ?></option>
+                                <option value="Separated"<?= $rEnAttr('Separated') ?>><?= $rOut('Hiwalay', 'Separated') ?></option>
                             </select>
                         </div>
                     </div>
@@ -1943,30 +2353,30 @@ include '../../layouts/header.php';
                     <div class="party-fields-grid-2" style="margin-top: 10px;">
                         <div class="party-field-col">
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                                <label for="modalContactNo" style="margin-bottom:0;">Contact Number</label>
+                                <label for="modalContactNo" style="margin-bottom:0;"><?= $rText('Numero ng Telepono / CP', 'Contact Number') ?></label>
                                 <label class="unknown-check-inline" id="modalWrapContactUnknown" style="display:none; align-items:center; gap:5px; font-size:0.74rem; font-weight:500; color:#64748b; cursor:pointer; margin-bottom:0; user-select:none; white-space:nowrap;">
-                                    <input type="checkbox" id="modalContactUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> Unknown
+                                    <input type="checkbox" id="modalContactUnknown" style="width:14px; height:14px; min-height:14px; margin:0; padding:0; cursor:pointer; flex-shrink:0;"> <span<?= $rEnAttr('Unknown') ?>><?= $rOut('Hindi Alam', 'Unknown') ?></span>
                                 </label>
                             </div>
-                            <input type="tel" id="modalContactNo" inputmode="tel" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
+                            <input type="tel" id="modalContactNo" inputmode="tel" placeholder="<?= $rOut('hal. 0917 123 4567', 'e.g. 0917 123 4567') ?>"<?= $rEnAttr('e.g. 0917 123 4567', 'data-en-placeholder') ?> maxlength="20" data-validate="phone">
                         </div>
                         <div class="party-field-col">
-                            <label for="modalEmail">Email Address</label>
-                            <input type="email" id="modalEmail" placeholder="e.g. name@example.com" maxlength="150">
+                            <label for="modalEmail"><?= $rText('Email Address', 'Email Address') ?></label>
+                            <input type="email" id="modalEmail" placeholder="<?= $rOut('hal. pangalan@example.com', 'e.g. name@example.com') ?>"<?= $rEnAttr('e.g. name@example.com', 'data-en-placeholder') ?> maxlength="150">
                         </div>
                     </div>
 
                     <!-- Residence & Address -->
                     <div class="party-section-heading" style="margin-top: 16px;">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                        Residence Details <span class="required-mark">*</span>
+                        <span<?= $rEnAttr('Residence Details') ?>><?= $rOut('Detalye ng Paninirahan', 'Residence Details') ?></span> <span class="required-mark">*</span>
                     </div>
                     <div class="party-fields-grid-2">
                         <div class="party-field-col">
-                            <label for="modalPurok">Purok / Area (Barangay Tumana) <span class="required-mark">*</span></label>
+                            <label for="modalPurok"><?= $rText('Purok / Lugar (Barangay Tumana)', 'Purok / Area (Barangay Tumana)') ?> <span class="required-mark">*</span></label>
                             <select id="modalPurok" required>
-                                <option value="">Select Purok...</option>
-                                <optgroup label="Numbered Puroks">
+                                <option value=""<?= $rEnAttr('Select Purok...') ?>><?= $rOut('Pumili ng Purok...', 'Select Purok...') ?></option>
+                                <optgroup label="<?= $rOut('Mga Numeradong Purok', 'Numbered Puroks') ?>"<?= $rEnAttr('Numbered Puroks', 'data-en-label') ?>>
                                     <option value="Purok 1">Purok 1</option>
                                     <option value="Purok 2">Purok 2</option>
                                     <option value="Purok 3">Purok 3</option>
@@ -1976,7 +2386,7 @@ include '../../layouts/header.php';
                                     <option value="Purok 7">Purok 7</option>
                                     <option value="Purok 8">Purok 8</option>
                                 </optgroup>
-                                <optgroup label="Tumana Puroks / Compounds">
+                                <optgroup label="<?= $rOut('Mga Purok / Compound ng Tumana', 'Tumana Puroks / Compounds') ?>"<?= $rEnAttr('Tumana Puroks / Compounds', 'data-en-label') ?>>
                                     <option value="Doña Petra">Doña Petra Compound</option>
                                     <option value="Bagong Farmers">Bagong Farmers</option>
                                     <option value="Bukang Liwayway">Bukang Liwayway</option>
@@ -1986,15 +2396,15 @@ include '../../layouts/header.php';
                                     <option value="Mais">Mais Area</option>
                                     <option value="Singkamas">Singkamas Area</option>
                                 </optgroup>
-                                <option value="Non-Resident">Non-Resident / Outside Tumana</option>
+                                <option value="Non-Resident"<?= $rEnAttr('Non-Resident / Outside Tumana') ?>><?= $rOut('Hindi Residente / Labas ng Tumana', 'Non-Resident / Outside Tumana') ?></option>
                             </select>
                         </div>
                         <div class="party-field-col">
-                            <label for="modalIsTenant">Residency Status <span class="required-mark">*</span></label>
+                            <label for="modalIsTenant"><?= $rText('Katayuan ng Paninirahan', 'Residency Status') ?> <span class="required-mark">*</span></label>
                             <select id="modalIsTenant" required>
-                                <option value="0">Resident (Permanent — Tumana)</option>
-                                <option value="1">Resident (Tenant / Renter — Tumana)</option>
-                                <option value="2">Non-Resident (Outside Tumana)</option>
+                                <option value="0"<?= $rEnAttr('Resident (Permanent — Tumana)') ?>><?= $rOut('Residente (Permanente — Tumana)', 'Resident (Permanent — Tumana)') ?></option>
+                                <option value="1"<?= $rEnAttr('Resident (Tenant / Renter — Tumana)') ?>><?= $rOut('Residente (Nangungupahan — Tumana)', 'Resident (Tenant / Renter — Tumana)') ?></option>
+                                <option value="2"<?= $rEnAttr('Non-Resident (Outside Tumana)') ?>><?= $rOut('Hindi Residente (Labas ng Tumana)', 'Non-Resident (Outside Tumana)') ?></option>
                             </select>
                         </div>
                     </div>
@@ -2025,12 +2435,12 @@ include '../../layouts/header.php';
 
                     <div class="party-field-col" style="margin-top: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                            <label for="modalAddress" style="margin-bottom: 0;">Complete Street Address <span class="required-mark">*</span></label>
-                            <button type="button" class="btn-secondary btn-sm" id="btnPinPartyAddress" style="padding: 2px 8px; font-size: 0.72rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="Find and drop pin on map">
-                                <span>Pin on Map</span>
+                            <label for="modalAddress" style="margin-bottom: 0;"><?= $rText('Kumpletong Address sa Kalye', 'Complete Street Address') ?> <span class="required-mark">*</span></label>
+                            <button type="button" class="btn-secondary btn-sm" id="btnPinPartyAddress" style="padding: 2px 8px; font-size: 0.72rem; border-radius: 4px; display: inline-flex; align-items: center; gap: 4px;" title="<?= $rOut('Hanapin at ituro ang pin sa mapa', 'Find and drop pin on map') ?>"<?= $rEnAttr('Find and drop pin on map', 'data-en-title') ?>>
+                                <span<?= $rEnAttr('Pin on Map') ?>><?= $rOut('Ituro sa Mapa', 'Pin on Map') ?></span>
                             </button>
                         </div>
-                        <input type="text" id="modalAddress" required placeholder="House #, Street name, Purok/Compound, Barangay Tumana">
+                        <input type="text" id="modalAddress" required placeholder="<?= $rOut('Numero ng bahay, Pangalan ng kalye, Purok/Compound, Barangay Tumana', 'House #, Street name, Purok/Compound, Barangay Tumana') ?>"<?= $rEnAttr('House #, Street name, Purok/Compound, Barangay Tumana', 'data-en-placeholder') ?>>
                         <input type="hidden" id="modalLatitude" value="">
                         <input type="hidden" id="modalLongitude" value="">
                     </div>
@@ -2040,16 +2450,16 @@ include '../../layouts/header.php';
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <span style="font-size: 0.82rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 6px;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
-                                Pin Residence Location on Map
+                                <span<?= $rEnAttr('Pin Residence Location on Map') ?>><?= $rOut('Ituro ang Lokasyon ng Tirahan sa Mapa', 'Pin Residence Location on Map') ?></span>
                             </span>
                             <div style="display: flex; gap: 6px;">
-                                <button type="button" class="btn-secondary btn-sm" id="btnRecenterPartyMap" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 4px;">Recenter Tumana</button>
-                                <button type="button" class="btn-secondary btn-sm" id="btnClearPartyMap" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 4px;">Clear Pin</button>
+                                <button type="button" class="btn-secondary btn-sm" id="btnRecenterPartyMap" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 4px;"<?= $rEnAttr('Recenter Tumana') ?>><?= $rOut('Igitna sa Tumana', 'Recenter Tumana') ?></button>
+                                <button type="button" class="btn-secondary btn-sm" id="btnClearPartyMap" style="padding: 3px 8px; font-size: 0.72rem; border-radius: 4px;"<?= $rEnAttr('Clear Pin') ?>><?= $rOut('Alisin ang Pin', 'Clear Pin') ?></button>
                             </div>
                         </div>
                         <div id="modalPartyAddressMap" style="height: 200px; width: 100%; border-radius: 6px; border: 1px solid #cbd5e1; background: #e2e8f0; position: relative;"></div>
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.75rem; color: #64748b;">
-                            <span id="modalPartyMapStatus">Click on map or drag pin to auto-fill complete street address with house number.</span>
+                            <span id="modalPartyMapStatus"<?= $rEnAttr('Click on map or drag pin to auto-fill complete street address with house number.') ?>><?= $rOut('I-click ang mapa o i-drag ang pin upang awtomatikong mapunan ang kumpletong address kasama ang numero ng bahay.', 'Click on map or drag pin to auto-fill complete street address with house number.') ?></span>
                             <span id="modalPartyMapCoords" style="font-family: monospace; font-size: 0.72rem; color: #0284c7;"></span>
                         </div>
                     </div>
@@ -2059,27 +2469,27 @@ include '../../layouts/header.php';
 
                     <div id="modalGuardianSection" class="conditional-party-details guardian-box" style="display:none; margin-top:16px;">
                         <div class="guardian-box-title" style="font-size:0.84rem; font-weight:700; color:#0369a1; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
-                            <span>Legal Guardian / Representative Details</span>
-                            <span style="background:#e0f2fe; color:#0369a1; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:9999px;">Person is a Minor (&lt; 18 years old)</span>
+                            <span<?= $rEnAttr('Legal Guardian / Representative Details') ?>><?= $rOut('Detalye ng Legal Guardian / Kinatawan', 'Legal Guardian / Representative Details') ?></span>
+                            <span style="background:#e0f2fe; color:#0369a1; font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:9999px;"<?= $rEnAttr('Person is a Minor (< 18 years old)') ?>><?= $rOut('Ang tao ay Menor de Edad (< 18 taong gulang)', 'Person is a Minor (&lt; 18 years old)') ?></span>
                         </div>
                             <div class="party-fields-grid-2">
                                 <div class="party-field-col">
-                                    <label for="modalGuardianName">Guardian Full Name <span class="required-mark" id="modalGuardianReqName">*</span></label>
-                                    <input type="text" id="modalGuardianName" placeholder="Full name of parent or legal guardian">
+                                    <label for="modalGuardianName"><?= $rText('Buong Pangalan ng Guardian', 'Guardian Full Name') ?> <span class="required-mark" id="modalGuardianReqName">*</span></label>
+                                    <input type="text" id="modalGuardianName" placeholder="<?= $rOut('Buong pangalan ng magulang o legal guardian', 'Full name of parent or legal guardian') ?>"<?= $rEnAttr('Full name of parent or legal guardian', 'data-en-placeholder') ?>>
                                 </div>
                                 <div class="party-field-col">
-                                    <label for="modalGuardianRelationship">Relationship to Minor <span class="required-mark" id="modalGuardianReqRel">*</span></label>
-                                    <input type="text" id="modalGuardianRelationship" placeholder="e.g. Mother, Father, Legal Guardian">
+                                    <label for="modalGuardianRelationship"><?= $rText('Relasyon sa Menor de Edad', 'Relationship to Minor') ?> <span class="required-mark" id="modalGuardianReqRel">*</span></label>
+                                    <input type="text" id="modalGuardianRelationship" placeholder="<?= $rOut('hal. Ina, Ama, Legal Guardian', 'e.g. Mother, Father, Legal Guardian') ?>"<?= $rEnAttr('e.g. Mother, Father, Legal Guardian', 'data-en-placeholder') ?>>
                                 </div>
                             </div>
                             <div class="party-fields-grid-2" style="margin-top:8px;">
                                 <div class="party-field-col">
-                                    <label for="modalGuardianContact">Guardian Contact Number</label>
-                                    <input type="tel" id="modalGuardianContact" inputmode="tel" placeholder="e.g. 0917 123 4567" maxlength="20" data-validate="phone">
+                                    <label for="modalGuardianContact"><?= $rText('Numero ng Telepono ng Guardian', 'Guardian Contact Number') ?></label>
+                                    <input type="tel" id="modalGuardianContact" inputmode="tel" placeholder="<?= $rOut('hal. 0917 123 4567', 'e.g. 0917 123 4567') ?>"<?= $rEnAttr('e.g. 0917 123 4567', 'data-en-placeholder') ?> maxlength="20" data-validate="phone">
                                 </div>
                                 <div class="party-field-col">
-                                    <label for="modalGuardianAddress">Guardian Address</label>
-                                    <input type="text" id="modalGuardianAddress" placeholder="Address if different from person">
+                                    <label for="modalGuardianAddress"><?= $rText('Address ng Guardian', 'Guardian Address') ?></label>
+                                    <input type="text" id="modalGuardianAddress" placeholder="<?= $rOut('Address kung iba sa tirahan ng menor de edad', 'Address if different from person') ?>"<?= $rEnAttr('Address if different from person', 'data-en-placeholder') ?>>
                                 </div>
                             </div>
                         </div>
@@ -2087,8 +2497,8 @@ include '../../layouts/header.php';
 
                     <!-- Modal Footer -->
                     <div class="party-modal-footer">
-                        <button type="button" class="btn-secondary" id="btnCancelPartyModal">Cancel</button>
-                        <button type="button" class="btn-create" id="btnSavePartyModal">Save &amp; Apply Details</button>
+                        <button type="button" class="btn-secondary" id="btnCancelPartyModal"<?= $rEnAttr('Cancel') ?>><?= $rOut('Kanselahin', 'Cancel') ?></button>
+                        <button type="button" class="btn-create" id="btnSavePartyModal"<?= $rEnAttr('Save & Apply Details') ?>><?= $rOut('I-save at Ilapat ang Detalye', 'Save &amp; Apply Details') ?></button>
                     </div>
                 </div>
             </div>
@@ -2103,6 +2513,16 @@ include '../../layouts/header.php';
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    const IS_RESIDENT_PORTAL = <?php echo json_encode($isResidentPortal); ?>;
+    const isTlLang = () => {
+        if (typeof window.getAppLanguage === 'function') {
+            return window.getAppLanguage() === 'tl';
+        }
+        const attr = document.documentElement.getAttribute('data-agap-lang');
+        return attr ? attr === 'tl' : IS_RESIDENT_PORTAL;
+    };
+    const tr = (tl, en) => (isTlLang() ? tl : en);
+
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>'"]/g, character => ({
             '&': '&amp;',
@@ -2523,17 +2943,228 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let isTitleUserCustomized = false;
+    let isApplyingAutoTitle = false;
+    let titleSuggestionSource = 'empty'; // 'empty' | 'local' | 'ai' | 'manual'
+    const aiTitleStatusEl = document.getElementById('aiTitleStatus');
+    const btnSuggestTitleEl = document.getElementById('btnSuggestComplaintTitle');
+    const narrativeFieldEl = document.getElementById('narrative');
+
+    function setAiTitleStatus(state, text) {
+        if (!aiTitleStatusEl) return;
+        aiTitleStatusEl.className = 'ai-title-status' + (state ? ' is-' + state : '');
+        aiTitleStatusEl.textContent = text || '';
+    }
+
+    function applySuggestedTitleValue(newTitle, sourceState, statusText) {
+        if (!complaintTitleInputEl) return;
+        isApplyingAutoTitle = true;
+        complaintTitleInputEl.value = String(newTitle || '').slice(0, 255);
+        titleSuggestionSource = sourceState;
+        isTitleUserCustomized = false;
+        setAiTitleStatus(sourceState === 'ai' ? 'ai' : (sourceState === 'local' ? 'manual' : ''), statusText);
+        complaintTitleInputEl.dispatchEvent(new Event('input', { bubbles: true }));
+        isApplyingAutoTitle = false;
+    }
+
+    function buildLocalBlotterTitle(text) {
+        const cleaned = String(text || '').trim().replace(/\s+/g, ' ');
+        if (cleaned.length < 15) return '';
+
+        const topicRules = [
+            [/(videoke|karaoke|sound\s*system|loud\s*noise|speaker|maingay|ingay|nagpapatugtog|kantahan|inuman)/i, 'Malakas na ingay at istorbo sa gabi', 'Excessive noise / videoke disturbance'],
+            [/(utang|pautang|hindi\s*(pa\s*)?binayaran|di\s*nagbayad|loan|debt|borrowed|singil|naniningil)/i, 'Hindi nabayarang utang / paniningil', 'Unpaid debt / loan obligation dispute'],
+            [/(hangganan|bakod|pader|boundary|encroach|lote|lupa|harang\s*sa\s*(daan|eskinita)|right\s*of\s*way|daanan|parking)/i, 'Alitan sa hangganan ng lupa o daanan', 'Property boundary / right-of-way dispute'],
+            [/(sinuntok|sinampal|sinakal|binugbog|tinulak|physical|assault|injur|pananakit|sugat|bugbog|suntukan)/i, 'Pananakit o pisikal na alitan', 'Physical altercation / assault incident'],
+            [/(pinagbantaan|banta|threat|papatayin|tinakot|harass|pananakot)/i, 'Pagbabanta o pananakot', 'Verbal threat or intimidation'],
+            [/(siniraan|chismis|tsismis|slander|libel|defamation|paninirang[-\s]?puri|mura|minura|insulto|binastos)/i, 'Paninirang-puri o masamang pananalita', 'Defamation / verbal abuse complaint'],
+            [/(nasira|sinira|binasag|damaged|vandal|basag|kotse|motor|bubong|bintana|ari-arian)/i, 'Pagsira o pinsala sa ari-arian', 'Damage to property complaint'],
+            [/(aso|pusa|alagang\s*hayop|dumi|basura|kanal|sanitation|kagat|kinagat)/i, 'Reklamo sa basura, hayop o kalinisan', 'Sanitation / stray animal or waste complaint'],
+            [/(upa|upahan|tenant|landlord|paupahan|rent|evict|papalayas|bayad\s*sa\s*upa)/i, 'Alitan ng umuupa at may-ari ng paupahan', 'Landlord-tenant / rental dispute'],
+            [/(ninakaw|nakaw|theft|stolen|nawawala|tinangay|scam|niloko|panloloko)/i, 'Hinala ng pagnanakaw o panloloko', 'Suspected theft or fraud complaint']
+        ];
+
+        for (const [pattern, tlLabel, enLabel] of topicRules) {
+            if (pattern.test(cleaned)) {
+                return tr(tlLabel, enLabel);
+            }
+        }
+
+        const firstSentence = cleaned.split(/[.!?\n]/)[0] || cleaned;
+        const stripped = firstSentence
+            .replace(/^(noong|kahapon|kanina|kagabi|nitong|last|yesterday|today|on\s+\w+\s+\d{1,2}(,?\s*\d{4})?)\s+/i, '')
+            .replace(/^(gusto ko (po(ng)?)? magsumbong (tungkol sa|dahil sa)?|i would like to (report|complain about)|ako ay|nagsusumbong ako)\s+/i, '')
+            .trim();
+        const words = (stripped || firstSentence).split(/\s+/).filter(Boolean).slice(0, 7);
+        if (words.length === 0) return '';
+        const summary = words.join(' ').replace(/[,:;.\-]+$/, '');
+        return summary.charAt(0).toUpperCase() + summary.slice(1);
+    }
+
     if (complaintTitleInputEl) {
         if (complaintTitleInputEl.value.trim() !== '') {
             isTitleUserCustomized = true;
+            titleSuggestionSource = 'manual';
         }
         complaintTitleInputEl.addEventListener('input', () => {
-            isTitleUserCustomized = (complaintTitleInputEl.value.trim() !== '');
+            if (isApplyingAutoTitle) return;
+            const hasVal = complaintTitleInputEl.value.trim() !== '';
+            isTitleUserCustomized = hasVal;
+            titleSuggestionSource = hasVal ? 'manual' : 'empty';
+            setAiTitleStatus(
+                hasVal ? 'manual' : '',
+                hasVal ? tr('Na-edit ng nagsusumbong', 'Customized by you') : ''
+            );
+        });
+    }
+
+    let autoTitleDebounceTimer = null;
+    let autoTitleAbortController = null;
+    let lastAutoLabeledNarrative = '';
+
+    async function requestComplaintTitleSuggestion(options = {}) {
+        if (!IS_RESIDENT_PORTAL || !complaintTitleInputEl || !narrativeFieldEl) return;
+        const force = Boolean(options.force);
+        const allowPromptConsent = Boolean(options.allowPromptConsent);
+        const narrativeText = narrativeFieldEl.value.trim();
+
+        if (narrativeText.length < 15) {
+            if (force) {
+                window.agapNotify?.(
+                    tr('Maglagay muna ng kahit 15 letra sa iyong salaysay bago bumuo ng paksa.', 'Enter at least 15 characters in your narrative before suggesting a title.'),
+                    'info',
+                    tr('Paksa ng Sumbong', 'Concern Subject')
+                );
+                narrativeFieldEl.focus();
+            }
+            return;
+        }
+
+        if (!force && isTitleUserCustomized && complaintTitleInputEl.value.trim() !== '') {
+            return;
+        }
+        if (!force && narrativeText === lastAutoLabeledNarrative && complaintTitleInputEl.value.trim() !== '') {
+            return;
+        }
+
+        const consentBox = document.querySelector('[data-ai-external-consent]');
+        let hasConsent = Boolean(consentBox?.checked);
+
+        if (!hasConsent && allowPromptConsent) {
+            const approved = window.confirm(tr(
+                'Ipapadala sa Google Gemini ang iyong salaysay upang awtomatikong makabuo ng maikling paksa ng sumbong. Payagan at ituloy?',
+                'This will send your narrative to Google Gemini to generate a concise concern subject. Approve and continue?'
+            ));
+            if (approved && consentBox) {
+                consentBox.checked = true;
+                hasConsent = true;
+            }
+        }
+
+        if (!hasConsent) {
+            const localTitle = buildLocalBlotterTitle(narrativeText);
+            if (localTitle) {
+                lastAutoLabeledNarrative = narrativeText;
+                applySuggestedTitleValue(
+                    localTitle,
+                    'local',
+                    tr('⚡ Awtomatikong binuo mula sa salaysay', '⚡ Auto-labeled from narrative')
+                );
+            }
+            return;
+        }
+
+        if (autoTitleAbortController) {
+            autoTitleAbortController.abort();
+        }
+        autoTitleAbortController = new AbortController();
+
+        setAiTitleStatus('loading', tr('Sinusuri ng AI ang salaysay...', 'AI analyzing narrative...'));
+        if (btnSuggestTitleEl) btnSuggestTitleEl.disabled = true;
+
+        try {
+            const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+            const res = await fetch('../../../backend/api/ai/suggest-title.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({
+                    narrative: narrativeText,
+                    external_ai_consent: true,
+                    language: isTlLang() ? 'tl' : 'en',
+                    csrf_token: csrfToken
+                }),
+                signal: autoTitleAbortController.signal
+            });
+
+            const data = await res.json();
+            if (res.ok && data?.success && data?.title) {
+                if (force || !isTitleUserCustomized || complaintTitleInputEl.value.trim() === '') {
+                    lastAutoLabeledNarrative = narrativeText;
+                    applySuggestedTitleValue(
+                        data.title,
+                        'ai',
+                        tr('✨ Iminungkahi ng AI', '✨ Suggested by AI')
+                    );
+                }
+                return;
+            }
+            throw new Error(data?.message || 'AI title suggestion unavailable.');
+        } catch (err) {
+            if (err && err.name === 'AbortError') return;
+            const fallbackTitle = buildLocalBlotterTitle(narrativeText);
+            if (fallbackTitle && (force || !isTitleUserCustomized || complaintTitleInputEl.value.trim() === '')) {
+                lastAutoLabeledNarrative = narrativeText;
+                applySuggestedTitleValue(
+                    fallbackTitle,
+                    'local',
+                    tr('⚡ Awtomatikong binuo mula sa salaysay', '⚡ Auto-labeled from narrative')
+                );
+            } else if (force) {
+                setAiTitleStatus('error', tr('Hindi nakabuo ng mungkahi; ilagay nang manu-mano.', 'Unable to auto-suggest; please enter manually.'));
+            }
+        } finally {
+            if (btnSuggestTitleEl) btnSuggestTitleEl.disabled = false;
+        }
+    }
+
+    if (IS_RESIDENT_PORTAL && narrativeFieldEl) {
+        narrativeFieldEl.addEventListener('input', () => {
+            clearTimeout(autoTitleDebounceTimer);
+            const len = narrativeFieldEl.value.trim().length;
+            if (len < 15) {
+                if (!isTitleUserCustomized && titleSuggestionSource !== 'empty' && complaintTitleInputEl) {
+                    applySuggestedTitleValue('', 'empty', '');
+                    lastAutoLabeledNarrative = '';
+                }
+                return;
+            }
+            autoTitleDebounceTimer = setTimeout(() => {
+                requestComplaintTitleSuggestion({ force: false });
+            }, 850);
+        });
+
+        narrativeFieldEl.addEventListener('blur', () => {
+            if (!isTitleUserCustomized && narrativeFieldEl.value.trim().length >= 15) {
+                clearTimeout(autoTitleDebounceTimer);
+                requestComplaintTitleSuggestion({ force: false });
+            }
+        });
+
+        document.querySelector('[data-ai-external-consent]')?.addEventListener('change', (e) => {
+            if (e.target.checked && !isTitleUserCustomized && narrativeFieldEl.value.trim().length >= 15) {
+                requestComplaintTitleSuggestion({ force: true });
+            }
+        });
+
+        btnSuggestTitleEl?.addEventListener('click', () => {
+            requestComplaintTitleSuggestion({ force: true, allowPromptConsent: true });
         });
     }
 
     function autoUpdateComplaintTitle() {
-        if (isTitleUserCustomized || !complaintTitleInputEl) return;
+        if (IS_RESIDENT_PORTAL || isTitleUserCustomized || !complaintTitleInputEl) return;
         const cat1 = primaryCategoryInputEl?.value?.trim() || '';
         const cat2 = secondaryCategoryInputEl?.value?.trim() || '';
         if (cat1 && cat2) {
@@ -2715,23 +3346,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="party-row-fields">
                     <div class="form-group party-type-col">
                         <select name="party_types[]" class="party-type-select">
-                            <option value="Witness">Witness</option>
-                            <option value="Complainant">Complainant</option>
-                            <option value="Respondent">Respondent</option>
+                            <option value="Witness">${tr('Saksi', 'Witness')}</option>
+                            <option value="Complainant">${tr('Nagsusumbong', 'Complainant')}</option>
+                            <option value="Respondent">${tr('Inirereklamo', 'Respondent')}</option>
                         </select>
                     </div>
                     <div class="form-group party-name-col">
                         <div class="party-search-combobox" data-party-role="additional">
                             <div class="party-search-input-wrap">
-                                <input type="text" class="party-search-input" placeholder="Type resident name or address to search..." autocomplete="off">
-                                <button type="button" class="party-search-clear" title="Clear selection" style="display:none;">&times;</button>
+                                <input type="text" class="party-search-input" placeholder="${tr('Mag-type ng pangalan o address upang maghanap...', 'Type resident name or address to search...')}" autocomplete="off">
+                                <button type="button" class="party-search-clear" title="${tr('Alisin ang pinili', 'Clear selection')}" style="display:none;">&times;</button>
                             </div>
                             <input type="hidden" name="party_resident_ids[]" value="">
                             <input type="hidden" name="party_names[]" value="">
                             <div class="party-search-dropdown" style="display:none;"></div>
                         </div>
                     </div>
-                    <button type="button" class="btn-remove-party" title="Remove party" onclick="document.getElementById('${rowId}').remove()">&times;</button>
+                    <button type="button" class="btn-remove-party" title="${tr('Alisin ang partido', 'Remove party')}" onclick="document.getElementById('${rowId}').remove()">&times;</button>
                 </div>
                 <div class="party-selected-preview additional-party-preview" style="display:none;"></div>
             `;
@@ -2764,14 +3395,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const rawDate = value('incidentDateTime');
         const date = rawDate ? new Date(rawDate.includes('T') ? rawDate : rawDate + 'T00:00') : null;
-        let when = 'Date not entered';
+        let when = tr('Hindi pa nailalagay ang petsa', 'Date not entered');
         if (date && !Number.isNaN(date.getTime())) {
-            when = date.toLocaleDateString('en-PH', { dateStyle: 'medium' });
+            when = date.toLocaleDateString(isTlLang() ? 'fil-PH' : 'en-PH', { dateStyle: 'medium' });
             if (document.getElementById('isTimeUnknown')?.checked) {
-                when += ' (time unknown)';
+                when += tr(' (hindi alam ang oras)', ' (time unknown)');
             } else if (rawDate.includes('T')) {
                 when += ' · ' + date.toLocaleTimeString('en-PH', { timeStyle: 'short' });
-                if (document.getElementById('isTimeApproximate')?.checked) when += ' (approximate)';
+                if (document.getElementById('isTimeApproximate')?.checked) when += tr(' (tinatayang oras)', ' (approximate)');
             }
         }
         const street = value('incidentStreet');
@@ -2779,12 +3410,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .filter(Boolean).join(', ');
         const fileCount = document.getElementById('evidenceFiles')?.files?.length ?? 0;
         const summary = {
-            narrative: shortText(value('narrative'), 'Narrative not entered'),
-            incident: when + ' — ' + (street ? place : 'Location not entered'),
-            complainants: partyNamesList(complainantsList, value('complainantFirstName'), value('complainantLastName'), 'No complainant added'),
-            respondents: partyNamesList(respondentsList, value('respondentFirstName'), value('respondentLastName'), 'No respondent added'),
-            outcome: shortText(value('requestedResolution'), 'No outcome specified'),
-            evidence: fileCount ? `${fileCount} ${fileCount === 1 ? 'file' : 'files'} attached` : 'No attachments',
+            narrative: shortText(value('narrative'), tr('Hindi pa nailalagay ang salaysay', 'Narrative not entered')),
+            incident: when + ' — ' + (street ? place : tr('Hindi pa nailalagay ang lugar', 'Location not entered')),
+            complainants: partyNamesList(complainantsList, value('complainantFirstName'), value('complainantLastName'), tr('Walang nakatalang nagsusumbong', 'No complainant added')),
+            respondents: partyNamesList(respondentsList, value('respondentFirstName'), value('respondentLastName'), tr('Walang nakatalang inirereklamo', 'No respondent added')),
+            outcome: shortText(value('requestedResolution'), tr('Walang tinukoy na solusyon', 'No outcome specified')),
+            evidence: fileCount
+                ? tr(`${fileCount} ${fileCount === 1 ? 'file' : 'mga file'} ang nakalakip`, `${fileCount} ${fileCount === 1 ? 'file' : 'files'} attached`)
+                : tr('Walang kalakip', 'No attachments'),
         };
         reviewFields.forEach((field, key) => {
             field.textContent = summary[key];
@@ -2803,23 +3436,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isRepeatVawc) {
                     e.preventDefault();
                     window.setWizardStep?.(1);
-                    window.agapNotify?.('VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.', 'error');
+                    window.agapNotify?.(tr(
+                        'Hurisdiksyon ng VAWC / PNP: Ang ika-2 at ika-3 paglabag sa ilalim ng Safe Spaces Act (R.A. 11313) ay hindi maaaring i-docket sa mediation ng Lupon. Direktang idulog ito sa Barangay VAWC Desk o PNP WCPD.',
+                        'VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.'
+                    ), 'error');
                     document.getElementById('vawcPnpRoutingBanner')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     return;
                 }
                 if (!isFirstOffense) {
                     e.preventDefault();
                     window.setWizardStep?.(1);
-                    window.agapNotify?.('Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.', 'error');
+                    window.agapNotify?.(tr(
+                        'Kinakailangang Kumpirmasyon: Kumpirmahin ang "1st Offense Only (Catcalling/Whistling)" upang magpatuloy, o ilipat sa VAWC/PNP.',
+                        'Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.'
+                    ), 'error');
                     const firstBox = document.getElementById('chkFirstOffenseCatcalling');
                     firstBox?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     firstBox?.focus();
                     return;
                 }
             }
-            // Check statutory damages jurisdiction (> ₱5,000)
+            // Check statutory damages jurisdiction (> ₱5,000) for staff desk entry
             const fineVal = parseFloat(document.getElementById('offenseFineMax')?.value) || 0;
-            if (fineVal > 5000) {
+            if (!IS_RESIDENT_PORTAL && fineVal > 5000) {
                 const blotterVal = document.getElementById('blotterRefNo')?.value?.trim();
                 const blotterAck = document.getElementById('blotterOnlyAcknowledged')?.checked;
 
@@ -2845,7 +3484,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (potentialDuplicatesDetected && !document.getElementById('duplicateAcknowledged')?.checked) {
                 e.preventDefault();
                 document.getElementById('duplicateComplaintBanner').style.display = 'block';
-                window.agapNotify?.('Review the potential duplicate record(s) and confirm whether this filing should proceed.', 'error');
+                window.agapNotify?.(tr(
+                    'Suriin ang posibleng kaparehong rekord at kumpirmahin kung dapat magpatuloy ang paghahain na ito.',
+                    'Review the potential duplicate record(s) and confirm whether this filing should proceed.'
+                ), 'error');
                 document.getElementById('duplicateAcknowledged')?.focus();
                 return;
             }
@@ -2860,16 +3502,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!compId && (!compFirst || !compLast)) {
                 e.preventDefault();
-                window.setWizardStep?.(2);
-                window.agapNotify?.('Please provide the complainant\'s First Name and Last Name.', 'error');
+                window.setWizardStep?.(3);
+                window.agapNotify?.(tr('Pakilagay ang Unang Pangalan at Apelyido ng nagsusumbong.', 'Please provide the complainant\'s First Name and Last Name.'), 'error');
                 window.openPartyModal('complainant', complainantsList.length > 0 ? 'edit' : 'add', 0);
                 return;
             }
 
             if (!respId && (!respFirst || !respLast)) {
                 e.preventDefault();
-                window.setWizardStep?.(2);
-                window.agapNotify?.('Please provide the respondent\'s First Name and Last Name.', 'error');
+                window.setWizardStep?.(3);
+                window.agapNotify?.(tr('Pakilagay ang Unang Pangalan at Apelyido ng inirereklamo.', 'Please provide the respondent\'s First Name and Last Name.'), 'error');
                 window.openPartyModal('respondent', respondentsList.length > 0 ? 'edit' : 'add', 0);
                 return;
             }
@@ -2878,7 +3520,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const compAddress = document.getElementById('complainantAddress')?.value?.trim();
             if (!compPurok || !compAddress) {
                 e.preventDefault();
-                window.agapNotify?.('Please provide the complainant\'s complete residence details (Purok/Area and Street Address).', 'error');
+                window.agapNotify?.(tr('Pakilagay ang kumpletong detalye ng paninirahan ng nagsusumbong (Purok/Lugar at Address sa Kalye).', 'Please provide the complainant\'s complete residence details (Purok/Area and Street Address).'), 'error');
                 window.openPartyModal('complainant', complainantsList.length > 0 ? 'edit' : 'add', 0);
                 return;
             }
@@ -2887,7 +3529,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const respAddress = document.getElementById('respondentAddress')?.value?.trim();
             if (!respPurok || !respAddress) {
                 e.preventDefault();
-                window.agapNotify?.('Please provide the respondent\'s complete residence details (Purok/Area and Street Address).', 'error');
+                window.agapNotify?.(tr('Pakilagay ang kumpletong detalye ng paninirahan ng inirereklamo (Purok/Lugar at Address sa Kalye).', 'Please provide the respondent\'s complete residence details (Purok/Area and Street Address).'), 'error');
                 window.openPartyModal('respondent', respondentsList.length > 0 ? 'edit' : 'add', 0);
                 return;
             }
@@ -2896,7 +3538,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const c = complainantsList[i];
                 if (!c.purok || !c.address) {
                     e.preventDefault();
-                    window.agapNotify?.(`Please provide complete residence details for Complainant ${i + 1} (${c.first_name} ${c.last_name}).`, 'error');
+                    window.agapNotify?.(tr(
+                        `Pakilagay ang kumpletong detalye ng tirahan para sa Nagsusumbong ${i + 1} (${c.first_name} ${c.last_name}).`,
+                        `Please provide complete residence details for Complainant ${i + 1} (${c.first_name} ${c.last_name}).`
+                    ), 'error');
                     window.openPartyModal('complainant', 'edit', i);
                     return;
                 }
@@ -2906,7 +3551,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const r = respondentsList[i];
                 if (!r.purok || !r.address) {
                     e.preventDefault();
-                    window.agapNotify?.(`Please provide complete residence details for Respondent ${i + 1} (${r.first_name} ${r.last_name}).`, 'error');
+                    window.agapNotify?.(tr(
+                        `Pakilagay ang kumpletong detalye ng tirahan para sa Inirereklamo ${i + 1} (${r.first_name} ${r.last_name}).`,
+                        `Please provide complete residence details for Respondent ${i + 1} (${r.first_name} ${r.last_name}).`
+                    ), 'error');
                     window.openPartyModal('respondent', 'edit', i);
                     return;
                 }
@@ -2918,7 +3566,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if ((compId && respId && compId === respId) || (fullComp && fullResp && fullComp === fullResp)) {
                 e.preventDefault();
                 window.validateDistinctParties();
-                window.agapNotify?.('The complainant and respondent cannot be the exact same person.', 'error');
+                window.agapNotify?.(tr('Hindi maaaring maging iisang tao ang nagsusumbong at inirereklamo.', 'The complainant and respondent cannot be the exact same person.'), 'error');
                 return;
             }
 
@@ -2929,7 +3577,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const gRel  = document.getElementById('complainantGuardianRelationship')?.value?.trim();
                 if (!gName || !gRel) {
                     e.preventDefault();
-                    window.agapNotify?.('Since the complainant is a minor, the legal guardian\'s full name and relationship are required.', 'error');
+                    window.agapNotify?.(tr(
+                        'Dahil menor de edad ang nagsusumbong, kailangan ang buong pangalan at relasyon ng legal guardian.',
+                        'Since the complainant is a minor, the legal guardian\'s full name and relationship are required.'
+                    ), 'error');
                     window.openPartyModal('complainant', 'edit', 0);
                     return;
                 }
@@ -2938,8 +3589,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const cityInput = document.getElementById('incidentCity');
             if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
                 e.preventDefault();
-                window.setWizardStep?.(4);
-                window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                window.setWizardStep?.(2);
+                window.agapNotify?.(tr('Ang lugar ng insidente ay dapat nasa loob ng Lungsod ng Marikina.', 'Incident location must be within Marikina City.'), 'error');
                 return;
             }
 
@@ -2951,7 +3602,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const lngVal = parseFloat(mapLngInput.value);
                 if (isNaN(latVal) || isNaN(lngVal) || latVal < 14.610 || latVal > 14.690 || lngVal < 121.075 || lngVal > 121.155) {
                     e.preventDefault();
-                    window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                    window.agapNotify?.(tr('Ang lugar ng insidente ay dapat nasa loob ng Lungsod ng Marikina.', 'Incident location must be within Marikina City.'), 'error');
                     return;
                 }
             }
@@ -2959,7 +3610,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedMethod = document.querySelector('input[name="filing_method"]:checked')?.value || 'digital';
             if (selectedMethod !== 'digital') {
                 if (!currentKp7File && !kp7Input?.files?.length) {
-                    const proceed = confirm('No scanned handwritten document file has been attached. Do you still wish to submit this complaint as a paper filing?');
+                    const proceed = confirm(tr(
+                        'Walang nakalakip na na-scan na dokumentong sulat-kamay. Nais mo pa rin bang isumite ito?',
+                        'No scanned handwritten document file has been attached. Do you still wish to submit this complaint as a paper filing?'
+                    ));
                     if (!proceed) {
                         e.preventDefault();
                         return;
@@ -2970,7 +3624,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const submitBtn = document.getElementById('btnSubmitComplaint');
             if (submitBtn) {
                 submitBtn.disabled = true;
-                submitBtn.textContent = 'Saving Complaint...';
+                submitBtn.textContent = tr('Sine-save ang Sumbong...', 'Saving Complaint...');
             }
         });
     }
@@ -3075,13 +3729,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const isComplainant = (role === 'complainant');
         if (modalTitle) {
             modalTitle.textContent = mode === 'edit'
-                ? `Edit ${isComplainant ? 'Complainant' : 'Respondent'} Details`
-                : `Add ${isComplainant ? 'Complainant' : 'Respondent'}`;
+                ? (isComplainant ? tr('I-edit ang Detalye ng Nagsusumbong', 'Edit Complainant Details') : tr('I-edit ang Detalye ng Inirereklamo', 'Edit Respondent Details'))
+                : (isComplainant ? tr('Magdagdag ng Nagsusumbong', 'Add Complainant') : tr('Magdagdag ng Inirereklamo', 'Add Respondent'));
         }
         if (modalSubtitle) {
             modalSubtitle.textContent = isComplainant
-                ? 'Enter complainant personal details directly or quick-fill from resident directory.'
-                : 'Enter respondent details directly or indicate unknown information if unavailable.';
+                ? tr('Ilagay ang personal na detalye ng nagsusumbong o mabilisang punan mula sa talaan ng residente.', 'Enter complainant personal details directly or quick-fill from resident directory.')
+                : tr('Ilagay ang detalye ng inirereklamo o lagyan ng tsek ang "Hindi Alam" kung walang impormasyon.', 'Enter respondent details directly or indicate unknown information if unavailable.');
         }
 
         // Show/hide respondent-specific unknown toggles
@@ -3162,7 +3816,7 @@ document.addEventListener('DOMContentLoaded', () => {
             partyMapInstance.invalidateSize();
         }
         const pStatus = document.getElementById('modalPartyMapStatus');
-        if (pStatus) pStatus.textContent = 'Click on map or drag pin to auto-fill complete street address with house number.';
+        if (pStatus) pStatus.textContent = tr('I-click ang mapa o i-drag ang pin upang awtomatikong mapunan ang kumpletong address kasama ang numero ng bahay.', 'Click on map or drag pin to auto-fill complete street address with house number.');
         const pCoords = document.getElementById('modalPartyMapCoords');
         if (pCoords) pCoords.textContent = '';
         const resIdEl = document.getElementById('modalResidentId');
@@ -3345,7 +3999,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const matches = window.AGAP_RESIDENTS.filter(r => (r.search_text && r.search_text.includes(query))).slice(0, 8);
             if (matches.length === 0) {
-                modalSearchDropdown.innerHTML = '<div class="party-search-item" style="color:#94a3b8;cursor:default;">No matching registered residents found</div>';
+                modalSearchDropdown.innerHTML = `<div class="party-search-item" style="color:#94a3b8;cursor:default;">${tr('Walang nakitang katugmang nakarehistrong residente', 'No matching registered residents found')}</div>`;
                 modalSearchDropdown.style.display = 'block';
                 return;
             }
@@ -3757,7 +4411,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (errorFieldIds.length > 0) {
             document.getElementById(errorFieldIds[0])?.focus();
         }
-        window.agapNotify?.('Pakikumpleto ang mga kinakailangang impormasyon sa modal.', 'error');
+        window.agapNotify?.(tr('Pakikumpleto ang mga kinakailangang impormasyon sa modal.', 'Please complete the required information in the modal.'), 'error');
     }
 
     function initPartyAddressMap() {
@@ -3805,7 +4459,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     partyMapInstance.invalidateSize();
                 }
                 const statusEl = document.getElementById('modalPartyMapStatus');
-                if (statusEl) statusEl.textContent = 'Pin cleared. Click on map to pin address.';
+                if (statusEl) statusEl.textContent = tr('Naalis ang pin. I-click ang mapa upang ituro ang address.', 'Pin cleared. Click on map to pin address.');
                 const coordsEl = document.getElementById('modalPartyMapCoords');
                 if (coordsEl) coordsEl.textContent = '';
             });
@@ -3842,12 +4496,12 @@ document.addEventListener('DOMContentLoaded', () => {
             partyMapInstance.setView([lat, lng], 17);
             partyMapInstance.invalidateSize();
             const statusEl = document.getElementById('modalPartyMapStatus');
-            if (statusEl) statusEl.textContent = 'Address pinned from saved profile coordinates.';
+            if (statusEl) statusEl.textContent = tr('Naituro ang address mula sa naka-save na lokasyon ng profile.', 'Address pinned from saved profile coordinates.');
             return;
         }
 
         const statusEl = document.getElementById('modalPartyMapStatus');
-        if (statusEl) statusEl.textContent = 'Locating complete address including house number...';
+        if (statusEl) statusEl.textContent = tr('Hinahanap ang kumpletong address kasama ang numero ng bahay...', 'Locating complete address including house number...');
 
         const requestVersion = ++partyMapLookupVersion;
 
@@ -3957,10 +4611,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             if (statusEl) {
-                statusEl.textContent = `Address captured: ${wholeAddress}`;
+                statusEl.textContent = tr(`Nakuha ang address: ${wholeAddress}`, `Address captured: ${wholeAddress}`);
             }
         } catch (err) {
-            if (statusEl) statusEl.textContent = `Point pinned (${lat.toFixed(5)}, ${lng.toFixed(5)}). Complete house number can be edited above.`;
+            if (statusEl) statusEl.textContent = tr(`Naituro ang lokasyon (${lat.toFixed(5)}, ${lng.toFixed(5)}). Maaaring i-edit ang numero ng bahay sa itaas.`, `Point pinned (${lat.toFixed(5)}, ${lng.toFixed(5)}). Complete house number can be edited above.`);
         }
     }
 
@@ -3992,7 +4646,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const statusEl = document.getElementById('modalPartyMapStatus');
         const coordsEl = document.getElementById('modalPartyMapCoords');
-        if (statusEl) statusEl.textContent = 'Searching location on map...';
+        if (statusEl) statusEl.textContent = tr('Hinahanap ang lokasyon sa mapa...', 'Searching location on map...');
 
         const requestVersion = ++partyMapLookupVersion;
 
@@ -4099,11 +4753,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 coordsEl.textContent = `${foundLat.toFixed(6)}° N, ${foundLng.toFixed(6)}° E`;
             }
             if (statusEl) {
-                statusEl.textContent = `Address pinned on map: ${addr || matchedDisplay}`;
+                statusEl.textContent = tr(`Naituro ang address sa mapa: ${addr || matchedDisplay}`, `Address pinned on map: ${addr || matchedDisplay}`);
             }
         } else {
             if (statusEl) {
-                statusEl.textContent = 'Could not pinpoint address automatically. Click on map to place pin.';
+                statusEl.textContent = tr('Hindi awtomatikong matukoy ang address. I-click ang mapa upang ituro ang pin.', 'Could not pinpoint address automatically. Click on map to place pin.');
             }
         }
     }
@@ -4356,21 +5010,32 @@ document.addEventListener('DOMContentLoaded', () => {
         window.validateDistinctParties?.();
         triggerDuplicateCheck();
 
-        const roleText = currentModalRole === 'complainant' ? 'Complainant' : 'Respondent';
-        window.agapNotify?.(`Matagumpay na naitala si ${partyData.first_name} ${partyData.last_name} bilang ${roleText}.`, 'success');
+        const roleText = currentModalRole === 'complainant'
+            ? tr('Nagsusumbong', 'Complainant')
+            : tr('Inirereklamo', 'Respondent');
+        window.agapNotify?.(tr(
+            `Matagumpay na naitala si ${partyData.first_name} ${partyData.last_name} bilang ${roleText}.`,
+            `Successfully recorded ${partyData.first_name} ${partyData.last_name} as ${roleText}.`
+        ), 'success');
     });
 
     window.removeParty = function(role, index) {
         if (role === 'complainant') {
             if (complainantsList.length <= 1) {
-                if (!confirm('Are you sure you want to remove this complainant? A complaint requires at least one complainant.')) {
+                if (!confirm(tr(
+                    'Sigurado ka bang nais mong alisin ang nagsusumbong na ito? Kinakailangan ng kahit isang nagsusumbong sa sumbong.',
+                    'Are you sure you want to remove this complainant? A complaint requires at least one complainant.'
+                ))) {
                     return;
                 }
             }
             complainantsList.splice(index, 1);
         } else {
             if (respondentsList.length <= 1) {
-                if (!confirm('Are you sure you want to remove this respondent? A complaint requires at least one respondent.')) {
+                if (!confirm(tr(
+                    'Sigurado ka bang nais mong alisin ang inirereklamong ito? Kinakailangan ng kahit isang inirereklamo sa sumbong.',
+                    'Are you sure you want to remove this respondent? A complaint requires at least one respondent.'
+                ))) {
                     return;
                 }
             }
@@ -4524,12 +5189,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function getResidencyPillHtml(p) {
         const isTen = String(p?.is_tenant ?? (p?.purok === 'Non-Resident' ? '2' : '0'));
         if (isTen === '2' || p?.purok === 'Non-Resident') {
-            return '<span class="party-role-pill" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-size: 0.68rem;">Non-Resident</span>';
+            return `<span class="party-role-pill" style="background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; font-size: 0.68rem;">${tr('Hindi Residente', 'Non-Resident')}</span>`;
         }
         if (isTen === '1') {
-            return '<span class="party-role-pill" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 0.68rem;">Resident • Tenant</span>';
+            return `<span class="party-role-pill" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; font-size: 0.68rem;">${tr('Residente • Nangungupahan', 'Resident • Tenant')}</span>`;
         }
-        return '<span class="party-role-pill" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.68rem;">Resident</span>';
+        return `<span class="party-role-pill" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.68rem;">${tr('Residente', 'Resident')}</span>`;
     }
 
     function renderParties() {
@@ -4547,8 +5212,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="party-empty-card" onclick="openPartyModal('complainant', 'add')" style="border-color:#bae6fd; background:#f0f9ff; color:#0369a1;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
                     <div>
-                        <strong>No complainant recorded yet</strong>
-                        <div style="font-size: 0.78rem; color: #0284c7; margin-top:2px;">Click here or "+ Add Complainant" to fill in complainant details</div>
+                        <strong>${tr('Wala pang nakatalang nagsusumbong', 'No complainant recorded yet')}</strong>
+                        <div style="font-size: 0.78rem; color: #0284c7; margin-top:2px;">${tr('I-click ito o "+ Magdagdag ng Nagsusumbong" upang ilagay ang detalye', 'Click here or "+ Add Complainant" to fill in complainant details')}</div>
                     </div>
                 </div>
             `;
@@ -4556,7 +5221,9 @@ document.addEventListener('DOMContentLoaded', () => {
             listEl.innerHTML = complainantsList.map((c, idx) => {
                 const initials = ((c.first_name?.[0] || '') + (c.last_name?.[0] || '')).toUpperCase() || 'C';
                 const fullName = [c.first_name, c.middle_name, c.last_name, c.suffix].filter(Boolean).join(' ');
-                const roleLabel = idx === 0 ? 'Primary Complainant' : `Additional Complainant #${idx + 1}`;
+                const roleLabel = idx === 0
+                    ? tr('Pangunahing Nagsusumbong', 'Primary Complainant')
+                    : tr(`Karagdagang Nagsusumbong #${idx + 1}`, `Additional Complainant #${idx + 1}`);
                 const rolePillClass = idx === 0 ? 'primary-complainant' : 'additional-party';
 
                 const chips = [];
@@ -4570,14 +5237,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> ${escapeHtml(addrArr.join(', '))}</span>`);
                 }
                 const demo = [];
-                if (c.age) demo.push(`${escapeHtml(c.age)} yrs old`);
+                if (c.age) demo.push(tr(`${escapeHtml(c.age)} taong gulang`, `${escapeHtml(c.age)} yrs old`));
                 if (c.gender) demo.push(escapeHtml(c.gender));
                 if (c.civil_status) demo.push(escapeHtml(c.civil_status));
                 if (demo.length) {
                     chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${demo.join(' • ')}</span>`);
                 }
                 if (c.is_minor && c.guardian_name) {
-                    chips.push(`<span class="party-detail-chip chip-accent">Minor (Guardian: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
+                    chips.push(`<span class="party-detail-chip chip-accent">${tr('Menor de Edad (Guardian', 'Minor (Guardian')}: ${escapeHtml(c.guardian_name)}${c.guardian_relationship ? ' - ' + escapeHtml(c.guardian_relationship) : ''})</span>`);
                 }
 
                 return `
@@ -4594,13 +5261,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </div>
                             </div>
                             <div class="party-summary-actions">
-                                <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})" title="Edit Details">
+                                <button type="button" class="btn-summary-action" onclick="openPartyModal('complainant', 'edit', ${idx})" title="${tr('I-edit ang Detalye', 'Edit Details')}">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                    <span>Edit</span>
+                                    <span>${tr('I-edit', 'Edit')}</span>
                                 </button>
-                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})" title="Remove Party">
+                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('complainant', ${idx})" title="${tr('Alisin ang Partido', 'Remove Party')}">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                    <span>Remove</span>
+                                    <span>${tr('Alisin', 'Remove')}</span>
                                 </button>
                             </div>
                         </div>
@@ -4615,10 +5282,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (addBtn) {
             if (complainantsList.length === 0) {
                 addBtn.style.display = 'inline-flex';
-                addBtn.textContent = '+ Add Complainant';
+                addBtn.textContent = tr('+ Magdagdag ng Nagsusumbong', '+ Add Complainant');
             } else if (isMultiple) {
                 addBtn.style.display = 'inline-flex';
-                addBtn.textContent = '+ Add Another Complainant';
+                addBtn.textContent = tr('+ Magdagdag ng Isa Pang Nagsusumbong', '+ Add Another Complainant');
             } else {
                 addBtn.style.display = 'none';
             }
@@ -4634,8 +5301,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="party-empty-card" onclick="openPartyModal('respondent', 'add')" style="border-color:#fecaca; background:#fff1f2; color:#be123c;">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg>
                     <div>
-                        <strong>No respondent recorded yet</strong>
-                        <div style="font-size: 0.78rem; color: #be123c; margin-top:2px;">Click here or "+ Add Respondent" to fill in respondent details</div>
+                        <strong>${tr('Wala pang nakatalang inirereklamo', 'No respondent recorded yet')}</strong>
+                        <div style="font-size: 0.78rem; color: #be123c; margin-top:2px;">${tr('I-click ito o "+ Magdagdag ng Inirereklamo" upang ilagay ang detalye', 'Click here or "+ Add Respondent" to fill in respondent details')}</div>
                     </div>
                 </div>
             `;
@@ -4643,12 +5310,14 @@ document.addEventListener('DOMContentLoaded', () => {
             listEl.innerHTML = respondentsList.map((r, idx) => {
                 const initials = ((r.first_name?.[0] || '') + (r.last_name?.[0] || '')).toUpperCase() || 'R';
                 const fullName = [r.first_name, r.middle_name, r.last_name, r.suffix].filter(Boolean).join(' ');
-                const roleLabel = idx === 0 ? 'Primary Respondent' : `Additional Respondent #${idx + 1}`;
+                const roleLabel = idx === 0
+                    ? tr('Pangunahing Inirereklamo', 'Primary Respondent')
+                    : tr(`Karagdagang Inirereklamo #${idx + 1}`, `Additional Respondent #${idx + 1}`);
                 const rolePillClass = idx === 0 ? 'primary-respondent' : 'additional-party';
 
                 const chips = [];
                 if (r.contact_unknown) {
-                    chips.push('<span class="party-detail-chip">Tel: Contact Unknown</span>');
+                    chips.push(`<span class="party-detail-chip">${tr('Tel: Hindi Alam ang Numero', 'Tel: Contact Unknown')}</span>`);
                 } else if (r.contact_no) {
                     chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg> Tel: ${escapeHtml(r.contact_no)}</span>`);
                 }
@@ -4660,9 +5329,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 const demo = [];
                 if (r.birth_unknown) {
-                    demo.push('Birthdate Unknown');
+                    demo.push(tr('Hindi Alam ang Kapanganakan', 'Birthdate Unknown'));
                 } else if (r.age) {
-                    demo.push(`${escapeHtml(r.age)} yrs old`);
+                    demo.push(tr(`${escapeHtml(r.age)} taong gulang`, `${escapeHtml(r.age)} yrs old`));
                 }
                 if (r.gender) demo.push(escapeHtml(r.gender));
                 if (r.civil_status) demo.push(escapeHtml(r.civil_status));
@@ -4670,11 +5339,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     chips.push(`<span class="party-detail-chip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg> ${demo.join(' • ')}</span>`);
                 }
                 if (r.is_minor && r.guardian_name) {
-                    chips.push(`<span class="party-detail-chip chip-accent">Minor (Guardian: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
+                    chips.push(`<span class="party-detail-chip chip-accent">${tr('Menor de Edad (Guardian', 'Minor (Guardian')}: ${escapeHtml(r.guardian_name)}${r.guardian_relationship ? ' - ' + escapeHtml(r.guardian_relationship) : ''})</span>`);
                 }
 
                 const exceptionPill = (r.purok === "Non-Resident" || r.is_tenant === "2") && r.kp_jurisdiction_exception 
-                    ? '<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">KP Sec. 409(c/d) Exception</span>' 
+                    ? `<span class="party-role-pill" style="background: #fef3c7; color: #92400e; border: 1px solid #fde68a; font-size: 0.68rem;">${tr('Eksepsiyon sa KP Sec. 409(c/d)', 'KP Sec. 409(c/d) Exception')}</span>` 
                     : '';
 
                 return `
@@ -4692,13 +5361,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 </div>
                             </div>
                             <div class="party-summary-actions">
-                                <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})" title="Edit Details">
+                                <button type="button" class="btn-summary-action" onclick="openPartyModal('respondent', 'edit', ${idx})" title="${tr('I-edit ang Detalye', 'Edit Details')}">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                                    <span>Edit</span>
+                                    <span>${tr('I-edit', 'Edit')}</span>
                                 </button>
-                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})" title="Remove Party">
+                                <button type="button" class="btn-summary-action remove-party-action" onclick="removeParty('respondent', ${idx})" title="${tr('Alisin ang Partido', 'Remove Party')}">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                                    <span>Remove</span>
+                                    <span>${tr('Alisin', 'Remove')}</span>
                                 </button>
                             </div>
                         </div>
@@ -4713,10 +5382,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (addBtn) {
             if (respondentsList.length === 0) {
                 addBtn.style.display = 'inline-flex';
-                addBtn.textContent = '+ Add Respondent';
+                addBtn.textContent = tr('+ Magdagdag ng Inirereklamo', '+ Add Respondent');
             } else if (isMultiple) {
                 addBtn.style.display = 'inline-flex';
-                addBtn.textContent = '+ Add Another Respondent';
+                addBtn.textContent = tr('+ Magdagdag ng Isa Pang Inirereklamo', '+ Add Another Respondent');
             } else {
                 addBtn.style.display = 'none';
             }
@@ -4729,7 +5398,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (complainantsList.length > 1) chkMultComp.checked = true;
         chkMultComp.addEventListener('change', () => {
             if (!chkMultComp.checked && complainantsList.length > 1) {
-                if (confirm('Unchecking multiple complainants will keep only the primary complainant. Continue?')) {
+                if (confirm(tr(
+                    'Ang pag-alis ng tsek sa maraming nagsusumbong ay magpapanatili lamang sa pangunahing nagsusumbong. Magpatuloy?',
+                    'Unchecking multiple complainants will keep only the primary complainant. Continue?'
+                ))) {
                     complainantsList = complainantsList.slice(0, 1);
                     syncHiddenPartyInputs();
                     renderParties();
@@ -4747,7 +5419,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (respondentsList.length > 1) chkMultResp.checked = true;
         chkMultResp.addEventListener('change', () => {
             if (!chkMultResp.checked && respondentsList.length > 1) {
-                if (confirm('Unchecking multiple respondents will keep only the primary respondent. Continue?')) {
+                if (confirm(tr(
+                    'Ang pag-alis ng tsek sa maraming inirereklamo ay magpapanatili lamang sa pangunahing inirereklamo. Magpatuloy?',
+                    'Unchecking multiple respondents will keep only the primary respondent. Continue?'
+                ))) {
                     respondentsList = respondentsList.slice(0, 1);
                     syncHiddenPartyInputs();
                     renderParties();
@@ -4869,7 +5544,7 @@ document.addEventListener('DOMContentLoaded', () => {
             isFuture = !Number.isNaN(selDate.getTime()) && selDate > now;
         }
         futureNotice.style.display = isFuture ? 'block' : 'none';
-        dtField.setCustomValidity(isFuture ? 'Incident date and time cannot be in the future.' : '');
+        dtField.setCustomValidity(isFuture ? tr('Ang petsa at oras ng insidente ay hindi maaaring nasa hinaharap.', 'Incident date and time cannot be in the future.') : '');
         return !isFuture;
     }
     if (dtField) {
@@ -4884,7 +5559,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function syncDateTimeInputs() {
         if (!dtField) return;
         if (timeUnknownCheck && timeUnknownCheck.checked) {
-            if (lblDtField) lblDtField.innerHTML = 'Incident Date (Exact Time Unknown) <span class="required-mark">*</span>';
+            if (lblDtField) lblDtField.innerHTML = `${tr('Petsa ng Insidente (Hindi Alam ang Eksaktong Oras)', 'Incident Date (Exact Time Unknown)')} <span class="required-mark">*</span>`;
             const currVal = dtField.value;
             if (currVal && currVal.includes('T')) {
                 dtField.value = currVal.split('T')[0];
@@ -4895,7 +5570,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 timeApproxCheck.disabled = true;
             }
         } else {
-            if (lblDtField) lblDtField.innerHTML = 'Incident Date &amp; Time <span class="required-mark">*</span>';
+            if (lblDtField) lblDtField.innerHTML = `${tr('Petsa at Oras ng Insidente', 'Incident Date &amp; Time')} <span class="required-mark">*</span>`;
             const currVal = dtField.value;
             dtField.type = 'datetime-local';
             if (currVal && !currVal.includes('T') && currVal.length === 10) {
@@ -5178,28 +5853,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Modern Stepper Controller (Matching Reference UI, Narrative-First Order) ──
-    const WIZARD_STEP_META = {
-        1: {
-            title: 'Narrative',
-            desc: 'Record what happened in the order it occurred so AI can assist with classification.'
-        },
-        2: {
-            title: 'When and where',
-            desc: 'Confirm the date, time, and place described in the narrative.'
-        },
-        3: {
-            title: 'People involved',
-            desc: 'Add and manage all dispute participants cleanly without cluttering the screen.'
-        },
-        4: {
-            title: 'Requested outcome & evidence',
-            desc: 'Record what outcome is requested and attach any available supporting evidence.'
-        },
-        5: {
-            title: 'Review and submit',
-            desc: 'Check the details, select the complaint classification, and assign LISO screening.'
-        }
-    };
+    function getWizardStepMeta(step) {
+        const meta = {
+            1: {
+                title: tr('Salaysay', 'Narrative'),
+                desc: tr(
+                    IS_RESIDENT_PORTAL ? 'Ilahad ang nangyari gamit ang iyong sariling mga salita at kumpirmahin ang paksa ng sumbong.' : 'Record what happened in the order it occurred so AI can assist with classification.',
+                    IS_RESIDENT_PORTAL ? 'Describe what happened in your own words and confirm the concern subject.' : 'Record what happened in the order it occurred so AI can assist with classification.'
+                )
+            },
+            2: {
+                title: tr('Kailan at saan', 'When and where'),
+                desc: tr('Kumpirmahin ang petsa, oras, at lugar na binanggit sa salaysay.', 'Confirm the date, time, and place described in the narrative.')
+            },
+            3: {
+                title: tr('Mga taong sangkot', 'People involved'),
+                desc: tr('Magdagdag o tiyakin ang mga nagsusumbong, inirereklamo, at mga saksi.', 'Add and manage all dispute participants cleanly without cluttering the screen.')
+            },
+            4: {
+                title: IS_RESIDENT_PORTAL
+                    ? tr('Halaga at ebidensya', 'Damages & evidence')
+                    : tr('Hinihinging aksyon at ebidensya', 'Requested outcome & evidence'),
+                desc: IS_RESIDENT_PORTAL
+                    ? tr('Ilagay ang tinatayang halaga kung mayroon at maglakip ng anumang sumusuportang ebidensya.', 'Enter any estimated monetary claim and attach supporting evidence.')
+                    : tr('Sabihin sa amin kung anong solusyon ang hinihingi mo at maglakip ng anumang ebidensya.', 'Record what outcome is requested and attach any available supporting evidence.')
+            },
+            5: {
+                title: tr('Suriin at isumite', 'Review and submit'),
+                desc: tr(
+                    IS_RESIDENT_PORTAL ? 'Suriin ang iyong buod ng barangay blotter bago isumite.' : 'Check the details, select the complaint classification, and assign LISO screening.',
+                    IS_RESIDENT_PORTAL ? 'Review your barangay blotter summary before submitting.' : 'Check the details, select the complaint classification, and assign LISO screening.'
+                )
+            }
+        };
+        return meta[step] || null;
+    }
 
     let currentWizardStep = 1;
     const totalWizardSteps = 5;
@@ -5208,38 +5896,58 @@ document.addEventListener('DOMContentLoaded', () => {
         if (step === 1) {
             const narrative = (document.getElementById('narrative')?.value || '').trim();
             if (!narrative && document.getElementById('narrative')?.hasAttribute('required')) {
-                window.agapNotify?.('Please provide the complaint narrative (salaysay).', 'error');
+                window.agapNotify?.(tr('Pakilagay ang salaysay ng sumbong.', 'Please provide the complaint narrative (salaysay).'), 'error');
                 document.getElementById('narrative')?.focus();
                 return false;
+            }
+            if (IS_RESIDENT_PORTAL) {
+                const titleInputEl = document.getElementById('complaintTitle');
+                let title = (titleInputEl?.value || '').trim();
+                if (!title && typeof buildLocalBlotterTitle === 'function' && narrative.length >= 15 && !isTitleUserCustomized) {
+                    const quickTitle = buildLocalBlotterTitle(narrative);
+                    if (quickTitle && typeof applySuggestedTitleValue === 'function') {
+                        applySuggestedTitleValue(
+                            quickTitle,
+                            'local',
+                            tr('⚡ Awtomatikong binuo mula sa salaysay', '⚡ Auto-labeled from narrative')
+                        );
+                        title = quickTitle;
+                    }
+                }
+                if (!title) {
+                    window.agapNotify?.(tr('Pakilagay ang Paksa o Maikling Pamagat ng iyong sumbong.', 'Please enter a Concern Subject / Brief Title for your concern.'), 'error');
+                    titleInputEl?.focus();
+                    return false;
+                }
             }
             return true;
         } else if (step === 2) {
             const dt = document.getElementById('incidentDateTime')?.value;
             if (!dt) {
-                window.agapNotify?.('Please provide the incident date and time.', 'error');
+                window.agapNotify?.(tr('Pakilagay ang petsa at oras ng insidente.', 'Please provide the incident date and time.'), 'error');
                 document.getElementById('incidentDateTime')?.focus();
                 return false;
             }
             if (!checkFutureDate()) {
-                window.agapNotify?.('Incident date and time cannot be in the future.', 'error');
+                window.agapNotify?.(tr('Ang petsa at oras ng insidente ay hindi maaaring nasa hinaharap.', 'Incident date and time cannot be in the future.'), 'error');
                 document.getElementById('incidentDateTime')?.focus();
                 return false;
             }
             const street = (document.getElementById('incidentStreet')?.value || '').trim();
             if (!street) {
-                window.agapNotify?.('Please provide the street address / landmark of the incident.', 'error');
+                window.agapNotify?.(tr('Pakilagay ang kalye / palatandaan ng insidente.', 'Please provide the street address / landmark of the incident.'), 'error');
                 document.getElementById('incidentStreet')?.focus();
                 return false;
             }
             return true;
         } else if (step === 3) {
             if (!complainantsList || complainantsList.length === 0) {
-                window.agapNotify?.('Please add at least one complainant.', 'error');
+                window.agapNotify?.(tr('Magdagdag ng kahit isang nagsusumbong.', 'Please add at least one complainant.'), 'error');
                 window.openPartyModal('complainant', 'add');
                 return false;
             }
             if (!respondentsList || respondentsList.length === 0) {
-                window.agapNotify?.('Please add at least one respondent.', 'error');
+                window.agapNotify?.(tr('Magdagdag ng kahit isang inirereklamo.', 'Please add at least one respondent.'), 'error');
                 window.openPartyModal('respondent', 'add');
                 return false;
             }
@@ -5251,25 +5959,34 @@ document.addEventListener('DOMContentLoaded', () => {
             if (primaryCatInputEl) {
                 const cat = (primaryCatInputEl.value || '').trim();
                 if (!cat) {
-                    window.agapNotify?.('Please enter or select a Complaint Category.', 'error');
+                    window.agapNotify?.(tr('Pumili o maglagay ng Kategorya ng Reklamo.', 'Please enter or select a Complaint Category.'), 'error');
                     primaryCatInputEl.focus();
                     return false;
                 }
             }
             if (window.isSafeSpacesCategorySelected && window.isSafeSpacesCategorySelected()) {
                 if (document.getElementById('chkRepeatOffenseVawc')?.checked) {
-                    window.agapNotify?.('VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.', 'error');
+                    window.agapNotify?.(tr(
+                        'Hurisdiksyon ng VAWC / PNP: Ang ika-2 at ika-3 paglabag sa ilalim ng Safe Spaces Act (R.A. 11313) ay hindi maaaring i-docket sa mediation ng Lupon. Direktang idulog ito sa Barangay VAWC Desk o PNP WCPD.',
+                        'VAWC / PNP Jurisdiction: 2nd and 3rd offenses under the Safe Spaces Act (R.A. 11313) cannot be docketed for Lupon mediation. Route this case directly to the Barangay VAWC Desk or PNP WCPD.'
+                    ), 'error');
                     return false;
                 }
                 if (!document.getElementById('chkFirstOffenseCatcalling')?.checked) {
-                    window.agapNotify?.('Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.', 'error');
+                    window.agapNotify?.(tr(
+                        'Kinakailangang Kumpirmasyon: Kumpirmahin ang "1st Offense Only (Catcalling/Whistling)" upang magpatuloy, o ilipat sa VAWC/PNP.',
+                        'Mandatory Verification Required: Confirm "1st Offense Only (Catcalling/Whistling)" to proceed, or route 2nd/3rd offenses to VAWC/PNP.'
+                    ), 'error');
                     document.getElementById('chkFirstOffenseCatcalling')?.focus();
                     return false;
                 }
             }
             const title = (document.getElementById('complaintTitle')?.value || '').trim();
             if (!title) {
-                window.agapNotify?.('Please enter the Complaint Title / Specific Nature.', 'error');
+                if (IS_RESIDENT_PORTAL) {
+                    window.setWizardStep?.(1);
+                }
+                window.agapNotify?.(tr('Pakilagay ang Paksa o Pamagat ng Sumbong.', 'Please enter the Complaint Title / Specific Nature.'), 'error');
                 document.getElementById('complaintTitle')?.focus();
                 return false;
             }
@@ -5287,7 +6004,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (catEl) {
             catEl.textContent = primaryCatEl
                 ? `${cat} • ${type}${title ? ' — "' + title + '"' : ''}`
-                : (title || 'Pending Barangay LISO Classification');
+                : (title || tr('Wala pang nakalagay na paksa', 'No concern subject entered'));
         }
 
         const dt = document.getElementById('incidentDateTime')?.value || '';
@@ -5295,8 +6012,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const purok = document.getElementById('incidentPurok')?.value || 'Tumana';
         const incEl = document.getElementById('revIncidentInfo');
         if (incEl) {
-            const formattedDt = dt ? dt.replace('T', ' ') : 'Not specified';
-            incEl.textContent = `${formattedDt} @ ${street ? street + ', ' : ''}${purok}`;
+            const parsedDt = dt ? new Date(dt.includes('T') ? dt : dt + 'T00:00') : null;
+            let formattedDt = dt ? dt.replace('T', ' ') : tr('Hindi nakasaad', 'Not specified');
+            if (parsedDt && !Number.isNaN(parsedDt.getTime())) {
+                formattedDt = parsedDt.toLocaleDateString(isTlLang() ? 'fil-PH' : 'en-PH', { dateStyle: 'medium' });
+                if (document.getElementById('isTimeUnknown')?.checked) {
+                    formattedDt += tr(' (hindi alam ang oras)', ' (time unknown)');
+                } else if (dt.includes('T')) {
+                    formattedDt += ' · ' + parsedDt.toLocaleTimeString('en-PH', { timeStyle: 'short' });
+                    if (document.getElementById('isTimeApproximate')?.checked) {
+                        formattedDt += tr(' (tinatayang oras)', ' (approximate)');
+                    }
+                }
+            }
+            const locParts = [street, purok, 'Tumana, Marikina City'].filter(Boolean).join(', ');
+            incEl.textContent = `${formattedDt} — ${locParts}`;
         }
 
         const compEl = document.getElementById('revComplainants');
@@ -5308,7 +6038,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px;"><span>${escapeHtmlLocal(name)}</span>${pill}</div>`;
                 }).join('');
             } else {
-                compEl.textContent = 'None recorded';
+                compEl.textContent = tr('Walang nakatala', 'None recorded');
             }
         }
 
@@ -5321,7 +6051,43 @@ document.addEventListener('DOMContentLoaded', () => {
                     return `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:2px;"><span>${escapeHtmlLocal(name)}</span>${pill}</div>`;
                 }).join('');
             } else {
-                respEl.textContent = 'None recorded';
+                respEl.textContent = tr('Walang nakatala', 'None recorded');
+            }
+        }
+
+        const narrativeRevEl = document.getElementById('revBlotterNarrative');
+        if (narrativeRevEl) {
+            const narrativeTxt = (document.getElementById('narrative')?.value || '').trim();
+            narrativeRevEl.textContent = narrativeTxt || tr('Walang nakalagay na salaysay', 'No narrative entered');
+        }
+
+        const claimRevEl = document.getElementById('revBlotterClaim');
+        if (claimRevEl) {
+            const rawClaim = document.getElementById('offenseFineMax')?.value?.trim() || '';
+            const numClaim = parseFloat(rawClaim);
+            if (rawClaim !== '' && !Number.isNaN(numClaim) && numClaim > 0) {
+                const formattedAmt = '₱' + numClaim.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                claimRevEl.textContent = numClaim > 5000
+                    ? `${formattedAmt} (${tr('Lampas sa ₱5,000 KP limit', 'Exceeds ₱5,000 KP limit')})`
+                    : formattedAmt;
+            } else {
+                claimRevEl.textContent = tr('Walang tinukoy na halaga', 'No monetary claim specified');
+            }
+        }
+
+        const evidenceRevEl = document.getElementById('revBlotterEvidence');
+        if (evidenceRevEl) {
+            const attached = Array.from(document.getElementById('evidenceFiles')?.files || []);
+            if (attached.length === 0) {
+                evidenceRevEl.textContent = tr('Walang kalakip na ebidensya', 'No attachments');
+            } else {
+                const countLabel = tr(
+                    `${attached.length} ${attached.length === 1 ? 'file ang nakalakip' : 'mga file ang nakalakip'}`,
+                    `${attached.length} ${attached.length === 1 ? 'file attached' : 'files attached'}`
+                );
+                const namesPreview = attached.slice(0, 3).map(f => f.name).join(', ')
+                    + (attached.length > 3 ? ` (+${attached.length - 3})` : '');
+                evidenceRevEl.textContent = `${countLabel}: ${namesPreview}`;
             }
         }
     }
@@ -5339,7 +6105,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Update Progress Header & Bar
         const stepIndicator = document.getElementById('wizardStepIndicator');
-        if (stepIndicator) stepIndicator.textContent = `Step ${step} of ${totalWizardSteps}`;
+        if (stepIndicator) stepIndicator.textContent = tr(`Hakbang ${step} sa ${totalWizardSteps}`, `Step ${step} of ${totalWizardSteps}`);
 
         const progressBar = document.getElementById('wizardProgressBar');
         if (progressBar) progressBar.style.width = `${(step / totalWizardSteps) * 100}%`;
@@ -5364,8 +6130,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update Card Header
         const cardTitle = document.getElementById('wizardCurrentStepTitle');
         const cardDesc = document.getElementById('wizardCurrentStepDesc');
-        if (cardTitle && WIZARD_STEP_META[step]) cardTitle.textContent = WIZARD_STEP_META[step].title;
-        if (cardDesc && WIZARD_STEP_META[step]) cardDesc.textContent = WIZARD_STEP_META[step].desc;
+        const stepMeta = getWizardStepMeta(step);
+        if (cardTitle && stepMeta) cardTitle.textContent = stepMeta.title;
+        if (cardDesc && stepMeta) cardDesc.textContent = stepMeta.desc;
 
         // Show/Hide Panels
         for (let s = 1; s <= totalWizardSteps; s++) {
@@ -5423,12 +6190,79 @@ document.addEventListener('DOMContentLoaded', () => {
         setWizardStep(currentWizardStep - 1, false);
     });
 
-    ['primaryCategoryInput', 'caseType', 'complaintTitle'].forEach((fieldId) => {
+    [
+        'primaryCategoryInput', 'caseType', 'complaintTitle',
+        'narrative', 'incidentDateTime', 'incidentStreet', 'incidentPurok', 'offenseFineMax',
+        'isTimeUnknown', 'isTimeApproximate'
+    ].forEach((fieldId) => {
         document.getElementById(fieldId)?.addEventListener('input', updateStep5ReviewSummary);
         document.getElementById(fieldId)?.addEventListener('change', updateStep5ReviewSummary);
     });
 
     window.setWizardStep = setWizardStep;
+
+    // ── Resident Portal Draft State Persistence Across Steps & Accidental Reloads ──
+    if (IS_RESIDENT_PORTAL && window.sessionStorage) {
+        const draftStorageKey = 'agap_resident_complaint_draft_<?php echo (int) ($_SESSION['user_id'] ?? 0); ?>';
+        const hasServerOldInput = <?php echo json_encode(!empty($old)); ?>;
+        const draftFieldIds = ['narrative', 'complaintTitle', 'incidentDateTime', 'incidentStreet', 'incidentPurok', 'offenseFineMax'];
+
+        function saveResidentWizardDraft() {
+            try {
+                const payload = {
+                    step: currentWizardStep,
+                    titleCustomized: Boolean(isTitleUserCustomized),
+                    titleSource: titleSuggestionSource || 'empty'
+                };
+                draftFieldIds.forEach((id) => {
+                    const el = document.getElementById(id);
+                    if (el) payload[id] = el.value;
+                });
+                window.sessionStorage.setItem(draftStorageKey, JSON.stringify(payload));
+            } catch (e) {}
+        }
+
+        if (!hasServerOldInput) {
+            try {
+                const rawDraft = window.sessionStorage.getItem(draftStorageKey);
+                if (rawDraft) {
+                    const saved = JSON.parse(rawDraft);
+                    draftFieldIds.forEach((id) => {
+                        const el = document.getElementById(id);
+                        if (el && typeof saved[id] === 'string' && saved[id] !== '' && el.value.trim() === '') {
+                            el.value = saved[id];
+                        }
+                    });
+                    if (typeof saved.titleCustomized === 'boolean' && complaintTitleInputEl?.value?.trim() !== '') {
+                        isTitleUserCustomized = saved.titleCustomized;
+                        titleSuggestionSource = saved.titleSource || (saved.titleCustomized ? 'manual' : 'local');
+                        if (!isTitleUserCustomized && saved.titleSource === 'ai') {
+                            setAiTitleStatus('ai', tr('✨ Iminungkahi ng AI', '✨ Suggested by AI'));
+                        } else if (!isTitleUserCustomized && saved.titleSource === 'local') {
+                            setAiTitleStatus('manual', tr('⚡ Awtomatikong binuo mula sa salaysay', '⚡ Auto-labeled from narrative'));
+                        }
+                    }
+                    setTimeout(() => {
+                        checkDamagesJurisdiction?.();
+                        updateStep5ReviewSummary();
+                    }, 0);
+                }
+            } catch (e) {}
+        }
+
+        draftFieldIds.forEach((id) => {
+            document.getElementById(id)?.addEventListener('input', saveResidentWizardDraft);
+            document.getElementById(id)?.addEventListener('change', saveResidentWizardDraft);
+        });
+
+        createForm?.addEventListener('submit', (e) => {
+            if (!e.defaultPrevented) {
+                try {
+                    window.sessionStorage.removeItem(draftStorageKey);
+                } catch (err) {}
+            }
+        });
+    }
 
     // ── Filing Method Dynamic Selector ──
     const methodRadios = document.querySelectorAll('input[name="filing_method"]');
@@ -5497,9 +6331,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnTogglePaperMap && locationMapPinbox) {
         btnTogglePaperMap.addEventListener('click', () => {
             const isOpen = locationMapPinbox.classList.toggle('is-open');
-            btnTogglePaperMap.textContent = isOpen 
-                ? 'Hide Map Pin' 
-                : 'Pin Precise Map Location (Optional)';
+            btnTogglePaperMap.textContent = isOpen
+                ? tr('Itago ang Pin sa Mapa', 'Hide Map Pin')
+                : tr('Ituro ang Eksaktong Lokasyon sa Mapa (Opsyonal)', 'Pin Precise Map Location (Optional)');
             if (isOpen) {
                 setTimeout(() => {
                     const mapController = window.complaintMaps?.addComplaintMap;
@@ -5601,7 +6435,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function getFileTypeInfo(file) {
         const ext = file.name.split('.').pop().toLowerCase();
         if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-            return { type: 'image', badge: 'Image', iconClass: 'icon-image', text: 'IMG' };
+            return { type: 'image', badge: tr('Larawan', 'Image'), iconClass: 'icon-image', text: 'IMG' };
         }
         if (['mp4', 'webm'].includes(ext)) {
             return { type: 'video', badge: 'Video', iconClass: 'icon-video', text: 'VID' };
@@ -5617,6 +6451,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderEvidenceQueue() {
         updateIntakeReview();
+        updateStep5ReviewSummary();
         if (!queueContainer || !queueList || !countDisplay) return;
         const files = Array.from(evidenceDataTransfer.files);
         countDisplay.textContent = files.length;
@@ -5677,12 +6512,12 @@ document.addEventListener('DOMContentLoaded', () => {
             tagSelect.name = 'evidence_tags[]';
             tagSelect.className = 'evidence-tag-select';
             tagSelect.innerHTML = `
-                <option value="Photo Evidence">Photo Evidence</option>
-                <option value="Barangay Blotter Copy">Barangay Blotter Copy</option>
+                <option value="Photo Evidence">${tr('Larawang Ebidensya', 'Photo Evidence')}</option>
+                <option value="Barangay Blotter Copy">${tr('Kopya ng Barangay Blotter', 'Barangay Blotter Copy')}</option>
                 <option value="KP Form 7">KP Form 7</option>
-                <option value="Medical Certificate">Medical Certificate</option>
-                <option value="Sworn Statement">Sworn Statement</option>
-                <option value="Other Document">Other Document</option>
+                <option value="Medical Certificate">${tr('Sertipikong Medikal', 'Medical Certificate')}</option>
+                <option value="Sworn Statement">${tr('Sinumpaang Salaysay', 'Sworn Statement')}</option>
+                <option value="Other Document">${tr('Ibang Dokumento', 'Other Document')}</option>
             `;
             const lowerName = file.name.toLowerCase();
             if (lowerName.includes('blotter')) {
@@ -5704,7 +6539,7 @@ document.addEventListener('DOMContentLoaded', () => {
             removeBtn.type = 'button';
             removeBtn.className = 'btn-remove-evidence-item';
             removeBtn.innerHTML = '&times;';
-            removeBtn.title = 'Remove this file';
+            removeBtn.title = tr('Alisin ang file na ito', 'Remove this file');
             removeBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 removeFileFromQueue(index);
@@ -5723,13 +6558,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
         Array.from(incomingFiles).forEach(file => {
             if (file.size > maxFileSize) {
-                errors.push(`"${file.name}" exceeds the 25 MB limit.`);
+                errors.push(tr(
+                    `Ang "${file.name}" ay lumampas sa 25 MB na limitasyon.`,
+                    `"${file.name}" exceeds the 25 MB limit.`
+                ));
                 return;
             }
 
             const ext = file.name.split('.').pop().toLowerCase();
             if (!allowedExtensions.includes(ext)) {
-                errors.push(`"${file.name}" is not an allowed format (JPG, PNG, GIF, WebP, MP4, WebM, PDF, DOC, DOCX).`);
+                errors.push(tr(
+                    `Hindi pinapayagan ang format ng "${file.name}" (JPG, PNG, GIF, WebP, MP4, WebM, PDF, DOC, DOCX lamang).`,
+                    `"${file.name}" is not an allowed format (JPG, PNG, GIF, WebP, MP4, WebM, PDF, DOC, DOCX).`
+                ));
                 return;
             }
 
@@ -6607,9 +7448,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const party = (Array.isArray(list) && list.length > 0) ? list[0] : { address: fallbackAddr, purok: fallbackPurok };
         const addr = String(party?.address || fallbackAddr || '').trim();
         const purok = String(party?.purok || fallbackPurok || '').trim();
+        const partyLabelTl = partyType === 'complainant' ? 'nagsusumbong' : 'inirereklamo';
 
         if (!addr && !purok) {
-            window.agapNotify?.(`Enter the ${partyType}'s address first.`, 'info', 'Incident Location');
+            window.agapNotify?.(tr(
+                `Ilagay muna ang address ng ${partyLabelTl}.`,
+                `Enter the ${partyType}'s address first.`
+            ), 'info', tr('Lokasyon ng Insidente', 'Incident Location'));
             return;
         }
         if (streetEl && addr) {
@@ -6628,7 +7473,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (party?.latitude && party?.longitude && window.complaintMaps?.addComplaintMap?.setPoint) {
             window.complaintMaps.addComplaintMap.setPoint(Number(party.latitude), Number(party.longitude), 'selected', false);
         }
-        if (statusEl) statusEl.textContent = `Copied from ${partyType}'s address.`;
+        if (statusEl) {
+            statusEl.textContent = tr(
+                `Kinopya mula sa address ng ${partyLabelTl}.`,
+                `Copied from ${partyType}'s address.`
+            );
+        }
     }
 
     document.getElementById('btnPresetIncidentComplainant')?.addEventListener('click', () => applyPartyAddressToIncident('complainant'));
@@ -6636,10 +7486,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnPresetIncidentGps')?.addEventListener('click', () => {
         const statusEl = document.getElementById('incidentPresetStatus');
         if (!navigator.geolocation) {
-            window.agapNotify?.('GPS geolocation is not supported on this device.', 'error', 'Location GPS');
+            window.agapNotify?.(tr('Hindi sinusuportahan ang GPS geolocation sa device na ito.', 'GPS geolocation is not supported on this device.'), 'error', tr('Lokasyon sa GPS', 'Location GPS'));
             return;
         }
-        if (statusEl) statusEl.textContent = 'Detecting GPS location...';
+        if (statusEl) statusEl.textContent = tr('Kinukuha ang lokasyon sa GPS...', 'Detecting GPS location...');
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const { latitude, longitude } = pos.coords;
@@ -6649,13 +7499,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const ok = controller?.setPoint?.(latitude, longitude, 'selected', true);
                 if (statusEl) {
                     statusEl.textContent = ok === false
-                        ? 'GPS point is outside Marikina City; adjust manually.'
-                        : 'GPS pinned and address updated.';
+                        ? tr('Ang lokasyon ng GPS ay nasa labas ng Lungsod ng Marikina; pakibago nang mano-mano.', 'GPS point is outside Marikina City; adjust manually.')
+                        : tr('Naituro ang GPS at na-update ang address.', 'GPS pinned and address updated.');
                 }
             },
             () => {
                 if (statusEl) statusEl.textContent = '';
-                window.agapNotify?.('Unable to retrieve GPS coordinates.', 'warning', 'Location GPS');
+                window.agapNotify?.(tr('Hindi makuha ang koordinado ng GPS.', 'Unable to retrieve GPS coordinates.'), 'warning', tr('Lokasyon sa GPS', 'Location GPS'));
             },
             { enableHighAccuracy: true, timeout: 10000 }
         );
@@ -6664,7 +7514,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnModalSameAsComplainant')?.addEventListener('click', () => {
         const comp = (Array.isArray(complainantsList) && complainantsList.length > 0) ? complainantsList[0] : null;
         if (!comp) {
-            window.agapNotify?.('Add the Complainant first before copying their address.', 'info', 'Party Details');
+            window.agapNotify?.(tr('Magdagdag muna ng Nagsusumbong bago kopyahin ang kanilang address.', 'Add the Complainant first before copying their address.'), 'info', tr('Detalye ng Partido', 'Party Details'));
             return;
         }
         const modalPurokEl = document.getElementById('modalPurok');
@@ -6684,7 +7534,40 @@ document.addEventListener('DOMContentLoaded', () => {
         if (comp.latitude && comp.longitude && typeof setPartyAddressMapPoint === 'function') {
             setPartyAddressMapPoint(Number(comp.latitude), Number(comp.longitude), false);
         }
-        window.agapNotify?.("Copied complainant's Purok and street address.", 'success', 'Party Details');
+        window.agapNotify?.(tr('Kinopya ang Purok at address ng nagsusumbong.', "Copied complainant's Purok and street address."), 'success', tr('Detalye ng Partido', 'Party Details'));
+    });
+
+    window.addEventListener('agapLanguageChanged', () => {
+        const stepIndicator = document.getElementById('wizardStepIndicator');
+        if (stepIndicator) {
+            stepIndicator.textContent = tr(`Hakbang ${currentWizardStep} sa ${totalWizardSteps}`, `Step ${currentWizardStep} of ${totalWizardSteps}`);
+        }
+        const cardTitle = document.getElementById('wizardCurrentStepTitle');
+        const cardDesc = document.getElementById('wizardCurrentStepDesc');
+        const stepMeta = getWizardStepMeta(currentWizardStep);
+        if (cardTitle && stepMeta) cardTitle.textContent = stepMeta.title;
+        if (cardDesc && stepMeta) cardDesc.textContent = stepMeta.desc;
+        if (btnTogglePaperMap && locationMapPinbox) {
+            const isOpen = locationMapPinbox.classList.contains('is-open');
+            btnTogglePaperMap.textContent = isOpen
+                ? tr('Itago ang Pin sa Mapa', 'Hide Map Pin')
+                : tr('Ituro ang Eksaktong Lokasyon sa Mapa (Opsyonal)', 'Pin Precise Map Location (Optional)');
+        }
+        document.querySelectorAll('.additional-party-row').forEach((row) => {
+            const sel = row.querySelector('.party-type-select');
+            if (sel) {
+                const map = { Witness: ['Saksi', 'Witness'], Complainant: ['Nagsusumbong', 'Complainant'], Respondent: ['Inirereklamo', 'Respondent'] };
+                Array.from(sel.options).forEach((opt) => {
+                    if (map[opt.value]) opt.textContent = tr(map[opt.value][0], map[opt.value][1]);
+                });
+            }
+            const inp = row.querySelector('.party-search-input');
+            if (inp) inp.placeholder = tr('Mag-type ng pangalan o address upang maghanap...', 'Type resident name or address to search...');
+        });
+        syncDateTimeInputs();
+        renderParties();
+        renderEvidenceQueue();
+        updateStep5ReviewSummary();
     });
 });
 </script>

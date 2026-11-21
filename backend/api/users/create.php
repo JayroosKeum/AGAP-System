@@ -3,8 +3,12 @@
 session_start();
 header('Content-Type: application/json');
 require_once __DIR__ . '/../../controllers/UserController.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    if (!CsrfService::expectsJson()) {
+        CsrfService::redirectBrowser('../../../frontend/pages/users/user-list.php');
+    }
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
     exit;

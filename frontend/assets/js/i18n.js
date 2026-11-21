@@ -7,7 +7,11 @@
 (function () {
     'use strict';
 
-    const STORAGE_KEY = 'agap_language';
+    // Detect pages where Tagalog is the default (Resident Portal)
+    const isTagalogDefaultPage = document.documentElement.getAttribute('data-default-lang') === 'tl'
+        || document.documentElement.getAttribute('data-resident-portal') === '1';
+    const STORAGE_KEY = isTagalogDefaultPage ? 'agap_resident_language' : 'agap_language';
+    const DEFAULT_LANG = isTagalogDefaultPage ? 'tl' : 'en';
 
     // Comprehensive English to Tagalog dictionary
     const DICTIONARY = {
@@ -239,15 +243,85 @@
     };
 
     // State tracking
-    let currentLang = 'en';
+    let currentLang = DEFAULT_LANG;
     try {
-        currentLang = localStorage.getItem(STORAGE_KEY) || 'en';
+        const savedLang = localStorage.getItem(STORAGE_KEY);
+        if (savedLang === 'tl' || savedLang === 'en') {
+            currentLang = savedLang;
+        }
     } catch (e) {
-        currentLang = 'en';
+        currentLang = DEFAULT_LANG;
     }
 
     // WeakMap to store original English text for exact restoration
     const originalTextMap = new WeakMap();
+
+    /**
+     * Bidirectional attribute-based translation for Tagalog-default pages (Resident Portal).
+     * Supports data-en, data-en-html, data-en-placeholder, data-en-title, data-en-aria-label, data-en-label, data-en-alt.
+     */
+    function applyDataEnTranslations(root, lang) {
+        if (!root) return;
+
+        const attrPairs = [
+            ['en', 'tl', 'text'],
+            ['en-html', 'tl-html', 'html'],
+            ['en-placeholder', 'tl-placeholder', 'placeholder'],
+            ['en-title', 'tl-title', 'title'],
+            ['en-aria-label', 'tl-aria-label', 'aria-label'],
+            ['en-label', 'tl-label', 'label'],
+            ['en-alt', 'tl-alt', 'alt']
+        ];
+
+        const processTarget = (el) => {
+            if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
+            for (const [enKey, tlKey, targetKind] of attrPairs) {
+                const enAttr = `data-${enKey}`;
+                const tlAttr = `data-${tlKey}`;
+                if (!el.hasAttribute(enAttr)) continue;
+
+                if (lang === 'en') {
+                    if (!el.hasAttribute(tlAttr)) {
+                        const currentVal = targetKind === 'text'
+                            ? el.textContent
+                            : (targetKind === 'html' ? el.innerHTML : (el.getAttribute(targetKind) ?? ''));
+                        el.setAttribute(tlAttr, currentVal);
+                    }
+                    const nextVal = el.getAttribute(enAttr) ?? '';
+                    if (targetKind === 'text') {
+                        if (el.textContent !== nextVal) el.textContent = nextVal;
+                    } else if (targetKind === 'html') {
+                        if (el.innerHTML !== nextVal) el.innerHTML = nextVal;
+                    } else {
+                        if (el.getAttribute(targetKind) !== nextVal) el.setAttribute(targetKind, nextVal);
+                    }
+                } else if (el.hasAttribute(tlAttr)) {
+                    const prevVal = el.getAttribute(tlAttr) ?? '';
+                    if (targetKind === 'text') {
+                        if (el.textContent !== prevVal) el.textContent = prevVal;
+                    } else if (targetKind === 'html') {
+                        if (el.innerHTML !== prevVal) el.innerHTML = prevVal;
+                    } else {
+                        if (el.getAttribute(targetKind) !== prevVal) el.setAttribute(targetKind, prevVal);
+                    }
+                }
+            }
+        };
+
+        if (root === document.body) {
+            const titleEl = document.querySelector('head > title[data-en]');
+            if (titleEl) {
+                processTarget(titleEl);
+                document.title = titleEl.textContent;
+            }
+        }
+
+        if (root.nodeType === Node.ELEMENT_NODE) {
+            processTarget(root);
+            const selector = '[data-en],[data-en-html],[data-en-placeholder],[data-en-title],[data-en-aria-label],[data-en-label],[data-en-alt]';
+            root.querySelectorAll(selector).forEach(processTarget);
+        }
+    }
 
     /**
      * Determines whether an element should be ignored from translation.
@@ -406,7 +480,11 @@
         } catch (e) {}
 
         updateTogglePills(currentLang);
-        applyTranslationsToNode(document.body, currentLang);
+        if (isTagalogDefaultPage) {
+            applyDataEnTranslations(document.body, currentLang);
+        } else {
+            applyTranslationsToNode(document.body, currentLang);
+        }
 
         window.dispatchEvent(new CustomEvent('agapLanguageChanged', { detail: { language: currentLang } }));
     }
@@ -456,6 +534,17 @@
     function initObserver() {
         if (!window.MutationObserver) return;
         observer = new MutationObserver(mutations => {
+            if (isTagalogDefaultPage) {
+                if (currentLang !== 'en') return;
+                mutations.forEach(m => {
+                    m.addedNodes.forEach(addedNode => {
+                        if (addedNode.nodeType === Node.ELEMENT_NODE) {
+                            applyDataEnTranslations(addedNode, 'en');
+                        }
+                    });
+                });
+                return;
+            }
             if (currentLang !== 'tl') return;
             mutations.forEach(m => {
                 m.addedNodes.forEach(addedNode => {
@@ -543,7 +632,12 @@
     const bootI18nAndFont = () => {
         updateTogglePills(currentLang);
         bindFontSliders();
-        if (currentLang === 'tl') {
+        if (isTagalogDefaultPage) {
+            if (currentLang === 'en') {
+                applyDataEnTranslations(document.body, 'en');
+                window.dispatchEvent(new CustomEvent('agapLanguageChanged', { detail: { language: currentLang } }));
+            }
+        } else if (currentLang === 'tl') {
             applyTranslationsToNode(document.body, 'tl');
         }
         initObserver();

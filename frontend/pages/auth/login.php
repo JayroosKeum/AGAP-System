@@ -1,4 +1,7 @@
 <?php
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 $errorCode = (string) ($_GET['error'] ?? '');
 $lockMins = max(1, min(120, (int) ($_GET['minutes'] ?? 15)));
 $loginErrorMessage = match ($errorCode) {

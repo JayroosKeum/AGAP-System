@@ -128,23 +128,38 @@ function initialiseNarrativeEnhancement() {
     const consent = document.querySelector('[data-ai-external-consent]');
     if (!button || !narrative || !preview || !suggestion || !consent) return;
 
+    const isTl = () => (typeof window.getAppLanguage === 'function'
+        ? window.getAppLanguage() === 'tl'
+        : document.documentElement.getAttribute('data-agap-lang') === 'tl');
     const applyButton = preview.querySelector('[data-apply-narrative]');
     const discardButton = preview.querySelector('[data-discard-narrative]');
     let proposedNarrative = '';
     const setBusy = (busy) => {
         button.disabled = busy;
-        button.textContent = busy ? 'Enhancing…' : 'Enhance with AI';
+        button.textContent = busy
+            ? (isTl() ? 'Pinapahusay…' : 'Enhancing…')
+            : (isTl() ? 'Pahusayin gamit ang AI' : 'Enhance with AI');
     };
 
     button.addEventListener('click', async () => {
         const original = narrative.value.trim();
         if (original.length < 10) {
-            window.agapNotify?.('Enter at least 10 characters before using AI enhancement.', 'error');
+            window.agapNotify?.(
+                isTl()
+                    ? 'Maglagay ng hindi bababa sa 10 karakter bago gamitin ang AI.'
+                    : 'Enter at least 10 characters before using AI enhancement.',
+                'error'
+            );
             narrative.focus();
             return;
         }
         if (!consent.checked) {
-            window.agapNotify?.('Confirm that the narrative may be sent to Google Gemini before using AI enhancement.', 'error');
+            window.agapNotify?.(
+                isTl()
+                    ? 'Kumpirmahin na maaaring ipadala ang salaysay sa Google Gemini bago gamitin ang AI.'
+                    : 'Confirm that the narrative may be sent to Google Gemini before using AI enhancement.',
+                'error'
+            );
             consent.focus();
             return;
         }
@@ -165,14 +180,14 @@ function initialiseNarrativeEnhancement() {
             });
             const result = await response.json().catch(() => ({}));
             if (!response.ok || !result.success || !result.narrative) {
-                throw new Error(result.message || 'Unable to enhance the narrative.');
+                throw new Error(result.message || (isTl() ? 'Hindi mapahusay ang salaysay.' : 'Unable to enhance the narrative.'));
             }
             proposedNarrative = result.narrative;
             suggestion.textContent = proposedNarrative;
             preview.hidden = false;
             preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } catch (error) {
-            window.agapNotify?.(error.message || 'Unable to enhance the narrative.', 'error');
+            window.agapNotify?.(error.message || (isTl() ? 'Hindi mapahusay ang salaysay.' : 'Unable to enhance the narrative.'), 'error');
         } finally {
             setBusy(false);
         }
@@ -183,7 +198,12 @@ function initialiseNarrativeEnhancement() {
         narrative.value = proposedNarrative;
         narrative.dispatchEvent(new Event('input', { bubbles: true }));
         preview.hidden = true;
-        window.agapNotify?.('AI suggestion applied. Please review it before saving.', 'success');
+        window.agapNotify?.(
+            isTl()
+                ? 'Nailapat ang mungkahi ng AI. Pakisuri ito bago i-save.'
+                : 'AI suggestion applied. Please review it before saving.',
+            'success'
+        );
     });
 
     discardButton?.addEventListener('click', () => {
@@ -6322,6 +6342,10 @@ function initialiseComplaintMap(mapId, emptyState) {
     let marker = null;
     let geocodeTimer = null;
     let lookupVersion = 0;
+    const isTlMap = () => (typeof window.getAppLanguage === 'function'
+        ? window.getAppLanguage() === 'tl'
+        : document.documentElement.getAttribute('data-agap-lang') === 'tl');
+    const mapTr = (tl, en) => (isTlMap() ? tl : en);
     const setStatus = (message) => { status.textContent = message; };
     const updateAddressFromPoint = async (lat, lng) => {
         const requestVersion = ++lookupVersion;
@@ -6351,8 +6375,8 @@ function initialiseComplaintMap(mapId, emptyState) {
                 latitude.value = '';
                 longitude.value = '';
                 state.value = (mapId === 'editComplaintMap' ? 'clear' : 'none');
-                setStatus('Incident location must be within Marikina City.');
-                window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+                setStatus(mapTr('Ang lugar ng insidente ay dapat nasa loob ng Lungsod ng Marikina.', 'Incident location must be within Marikina City.'));
+                window.agapNotify?.(mapTr('Ang lugar ng insidente ay dapat nasa loob ng Lungsod ng Marikina.', 'Incident location must be within Marikina City.'), 'error');
                 return;
             }
 
@@ -6407,7 +6431,10 @@ function initialiseComplaintMap(mapId, emptyState) {
                         purok.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 }
-                setStatus(`Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (Barangay Tumana). Address updated.`);
+                setStatus(mapTr(
+                    `Napiling punto sa mapa: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (Barangay Tumana). Na-update ang address.`,
+                    `Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (Barangay Tumana). Address updated.`
+                ));
             } else {
                 // Case B: Pin is outside Tumana, but still within Marikina City
                 const detectedCandidates = [addr.suburb, addr.village, addr.quarter, addr.neighbourhood, addr.city_district].filter(Boolean).join(' ');
@@ -6455,8 +6482,11 @@ function initialiseComplaintMap(mapId, emptyState) {
                     purok.dispatchEvent(new Event('change', { bubbles: true }));
                 }
 
-                const bgyLabel = detectedBgy ? `Barangay ${detectedBgy}` : 'Outside Tumana';
-                setStatus(`Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (${bgyLabel}). Address updated.`);
+                const bgyLabel = detectedBgy ? `Barangay ${detectedBgy}` : mapTr('Labas ng Tumana', 'Outside Tumana');
+                setStatus(mapTr(
+                    `Napiling punto sa mapa: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (${bgyLabel}). Na-update ang address.`,
+                    `Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)} (${bgyLabel}). Address updated.`
+                ));
             }
         } catch (_) {
             const inTumana = isWithinTumana(lat, lng);
@@ -6477,7 +6507,10 @@ function initialiseComplaintMap(mapId, emptyState) {
                     purok.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             }
-            setStatus(`Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}. Address lookup is unavailable.`);
+            setStatus(mapTr(
+                `Napiling punto sa mapa: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}. Hindi magamit ang paghahanap ng address.`,
+                `Map point selected: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}. Address lookup is unavailable.`
+            ));
         }
     };
 
@@ -6488,7 +6521,7 @@ function initialiseComplaintMap(mapId, emptyState) {
 
         // Immediate bounding box check for Marikina City (Lat 14.610 to 14.690, Lng 121.075 to 121.155)
         if (latNum < 14.610 || latNum > 14.690 || lngNum < 121.075 || lngNum > 121.155) {
-            window.agapNotify?.('Incident location must be within Marikina City.', 'error');
+            window.agapNotify?.(mapTr('Ang lugar ng insidente ay dapat nasa loob ng Lungsod ng Marikina.', 'Incident location must be within Marikina City.'), 'error');
             if (marker) {
                 map.removeLayer(marker);
                 marker = null;
@@ -6496,7 +6529,7 @@ function initialiseComplaintMap(mapId, emptyState) {
             latitude.value = '';
             longitude.value = '';
             state.value = (mapId === 'editComplaintMap' ? 'clear' : 'none');
-            setStatus('Incident location must be within Marikina City.');
+            setStatus(mapTr('Ang lugar ng insidente ay dapat nasa loob ng Lungsod ng Marikina.', 'Incident location must be within Marikina City.'));
             return false;
         }
 
@@ -6515,7 +6548,7 @@ function initialiseComplaintMap(mapId, emptyState) {
         latitude.value = latNum.toFixed(8);
         longitude.value = lngNum.toFixed(8);
         state.value = mapState;
-        setStatus(`Map point selected: ${latitude.value}, ${longitude.value}`);
+        setStatus(mapTr(`Napiling punto sa mapa: ${latitude.value}, ${longitude.value}`, `Map point selected: ${latitude.value}, ${longitude.value}`));
         map.setView([latNum, lngNum], Math.max(map.getZoom(), 16));
         if (syncAddress) updateAddressFromPoint(latNum, lngNum);
         return true;
@@ -6558,7 +6591,7 @@ function initialiseComplaintMap(mapId, emptyState) {
             if (requestVersion !== lookupVersion || !results[0]) return;
             const lat = Number(results[0].lat), lng = Number(results[0].lon);
             setPoint(lat, lng, 'selected');
-        } catch (_) { setStatus('Address lookup is unavailable. You can still place the pin on the map.'); }
+        } catch (_) { setStatus(mapTr('Hindi magamit ang paghahanap ng address. Maaari mo pa ring ituro ang pin sa mapa.', 'Address lookup is unavailable. You can still place the pin on the map.')); }
     };
     [street, purok, barangay].filter(Boolean).forEach((field) => {
         field.addEventListener('input', () => {
@@ -6589,7 +6622,9 @@ function initialiseComplaintMap(mapId, emptyState) {
             latitude.value = '';
             longitude.value = '';
             state.value = nextState;
-            setStatus(nextState === 'clear' ? 'Saved map point will be removed.' : 'No map point selected.');
+            setStatus(nextState === 'clear'
+                ? mapTr('Aalisin ang naka-save na punto sa mapa.', 'Saved map point will be removed.')
+                : mapTr('Walang napiling punto sa mapa.', 'No map point selected.'));
         },
         refresh() { setTimeout(() => map.invalidateSize(), 0); }
     };
@@ -6789,6 +6824,10 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
 
     function renderPreview(res) {
         if (!previewEl) return;
+        const isTlCb = typeof window.getAppLanguage === 'function'
+            ? window.getAppLanguage() === 'tl'
+            : document.documentElement.getAttribute('data-agap-lang') === 'tl';
+        const cbTr = (tl, en) => (isTlCb ? tl : en);
         const details = [
             res.address ? `${escapeHtml(res.address)}` : '',
             res.purok ? `Purok ${escapeHtml(res.purok)}` : '',
@@ -6799,11 +6838,11 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
         const isTenant = Number(res.is_tenant);
         const purok = (res.purok || '').trim().toLowerCase();
         if (isTenant === 2 || purok === 'non-resident') {
-            resBadge = '<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>Non-Resident</span>';
+            resBadge = `<span class="residency-badge badge-non-resident"><span class="residency-dot"></span>${cbTr('Hindi Residente', 'Non-Resident')}</span>`;
         } else if (isTenant === 1) {
-            resBadge = '<span class="residency-badge badge-tenant"><span class="residency-dot"></span>Tenant - Tumana</span>';
+            resBadge = `<span class="residency-badge badge-tenant"><span class="residency-dot"></span>${cbTr('Nangungupahan - Tumana', 'Tenant - Tumana')}</span>`;
         } else {
-            resBadge = '<span class="residency-badge badge-resident"><span class="residency-dot"></span>Resident</span>';
+            resBadge = `<span class="residency-badge badge-resident"><span class="residency-dot"></span>${cbTr('Residente', 'Resident')}</span>`;
         }
 
         previewEl.innerHTML = `
@@ -6815,7 +6854,7 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
                     </div>
                     ${details ? `<div style="font-size: 0.8rem; color: #475569; margin-top: 2px;">${details}</div>` : ''}
                 </div>
-                <span class="party-search-item-badge party-search-badge-verified">Verified</span>
+                <span class="party-search-item-badge party-search-badge-verified">${cbTr('Beripikado', 'Verified')}</span>
             </div>
         `;
         previewEl.style.display = 'block';
@@ -6829,9 +6868,19 @@ window.initPartySearchCombobox = function(comboboxEl, residentsList) {
 
     function selectResident(res, triggerChange = true) {
         const effectiveRole = getEffectiveRole();
+        const isTlCb = typeof window.getAppLanguage === 'function'
+            ? window.getAppLanguage() === 'tl'
+            : document.documentElement.getAttribute('data-agap-lang') === 'tl';
+        const cbTr = (tl, en) => (isTlCb ? tl : en);
         if (effectiveRole === 'respondent' && isNonResident(res)) {
-            showInlineWarning('Under Katarungang Pambarangay rules, only residents and tenants living within Barangay Tumana can be named as respondents.');
-            window.agapNotify?.('Non-residents cannot be named as respondents in Barangay Tumana.', 'error');
+            showInlineWarning(cbTr(
+                'Sa ilalim ng mga tuntunin ng Katarungang Pambarangay, ang mga residente at nangungupahan lamang sa loob ng Barangay Tumana ang maaaring pangalanang inirereklamo.',
+                'Under Katarungang Pambarangay rules, only residents and tenants living within Barangay Tumana can be named as respondents.'
+            ));
+            window.agapNotify?.(cbTr(
+                'Ang mga hindi residente ay hindi maaaring pangalanang inirereklamo sa Barangay Tumana.',
+                'Non-residents cannot be named as respondents in Barangay Tumana.'
+            ), 'error');
             return;
         }
 

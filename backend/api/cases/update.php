@@ -3,8 +3,12 @@ session_start();
 header('Content-Type: application/json; charset=utf-8');
 
 require_once '../../controllers/CaseController.php';
+require_once __DIR__ . '/../../services/CsrfService.php';
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+    if (!CsrfService::expectsJson()) {
+        CsrfService::redirectBrowser('../../../frontend/pages/cases/case-list.php');
+    }
     http_response_code(405);
     echo json_encode(['success' => false, 'message' => 'Method not allowed.']);
     exit;

@@ -191,7 +191,12 @@
 
         const scoreEl = container.querySelector('[data-story-score]');
         if (scoreEl) {
-            scoreEl.textContent = `${result.metCount} / ${result.totalCount} met`;
+            const isTl = (typeof window !== 'undefined' && typeof window.getAppLanguage === 'function')
+                ? window.getAppLanguage() === 'tl'
+                : (typeof document !== 'undefined' && document.documentElement.getAttribute('data-agap-lang') === 'tl');
+            scoreEl.textContent = isTl
+                ? `${result.metCount} / ${result.totalCount} natugunan`
+                : `${result.metCount} / ${result.totalCount} met`;
             scoreEl.classList.toggle('is-complete', result.metCount === result.totalCount);
         }
 
@@ -255,6 +260,12 @@
             if (!already) {
                 bind(targetSelector, container);
             }
+        });
+    }
+
+    if (typeof window !== 'undefined') {
+        window.addEventListener('agapLanguageChanged', () => {
+            boundInstances.forEach((inst) => inst.update());
         });
     }
 

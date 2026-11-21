@@ -40,11 +40,26 @@
         info: 'i'
     };
 
-    const defaultTitles = {
+    const isTlLocale = () => {
+        if (typeof window.getAppLanguage === 'function') {
+            return window.getAppLanguage() === 'tl';
+        }
+        return document.documentElement.getAttribute('data-agap-lang') === 'tl'
+            || document.documentElement.getAttribute('data-default-lang') === 'tl';
+    };
+
+    const defaultTitlesEn = {
         success: 'Success',
         error: 'Error / Attention Needed',
         warning: 'Warning',
         info: 'Notice'
+    };
+
+    const defaultTitlesTl = {
+        success: 'Tagumpay',
+        error: 'May Mali / Kailangan ng Pansin',
+        warning: 'Babala',
+        info: 'Paalala'
     };
 
     /**
@@ -196,7 +211,8 @@
 
         const validTypes = ['success', 'error', 'warning', 'info'];
         const toastType = validTypes.includes(type) ? type : 'info';
-        const toastTitle = title || defaultTitles[toastType];
+        const titlesMap = isTlLocale() ? defaultTitlesTl : defaultTitlesEn;
+        const toastTitle = title || titlesMap[toastType];
         const toastIcon = defaultIcons[toastType];
 
         let actionHtml = '';
@@ -361,7 +377,7 @@
             const res = await fetch('../../../backend/api/notifications/list.php', {
                 headers: { 'Accept': 'application/json' }
             });
-            const data = await safeParseJson(res, 'Failed to load notifications.');
+            const data = await safeParseJson(res, isTlLocale() ? 'Nabigong kunin ang mga abiso.' : 'Failed to load notifications.');
             if (res.ok && data.success) {
                 popoverNotifications = Array.isArray(data.data) ? data.data : [];
                 const unreadCount = Number(data.unread_count || 0);
@@ -369,10 +385,10 @@
                 updatePopoverCounts();
                 renderPopoverList();
             } else {
-                listEl.innerHTML = '<div class="nav-popover-empty">Could not load notifications.</div>';
+                listEl.innerHTML = `<div class="nav-popover-empty">${isTlLocale() ? 'Hindi ma-load ang mga abiso.' : 'Could not load notifications.'}</div>`;
             }
         } catch (_) {
-            if (listEl) listEl.innerHTML = '<div class="nav-popover-empty">Failed to load notifications.</div>';
+            if (listEl) listEl.innerHTML = `<div class="nav-popover-empty">${isTlLocale() ? 'Nabigong kunin ang mga abiso.' : 'Failed to load notifications.'}</div>`;
         }
     }
     window.loadPopoverNotifications = loadPopoverNotifications;
@@ -381,7 +397,9 @@
         const badge = document.getElementById('navBellBadge');
         if (badge) {
             badge.style.display = unreadCount > 0 ? 'block' : 'none';
-            badge.title = `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`;
+            badge.title = isTlLocale()
+                ? `${unreadCount} hindi pa nababasang abiso`
+                : `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`;
         }
     }
     window.updateNavNotificationBadge = updateNavNotificationBadge;
@@ -424,7 +442,7 @@
         if (filtered.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'nav-popover-empty';
-            empty.textContent = 'No notifications in this tab.';
+            empty.textContent = isTlLocale() ? 'Walang abiso sa tab na ito.' : 'No notifications in this tab.';
             listEl.appendChild(empty);
             return;
         }
@@ -514,7 +532,9 @@
         let actionsHtml = '';
         if (actionUrl) {
             const isComplaintTarget = actionUrl.includes('complaint-') || actionUrl.includes('paanyaya-');
-            const actionLabel = isResidentPortal ? 'Open Concern' : (isComplaintTarget ? 'Open Complaint' : 'Open Case');
+            const actionLabel = isTlLocale()
+                ? (isResidentPortal ? 'Buksan ang Sumbong' : (isComplaintTarget ? 'Buksan ang Reklamo' : 'Buksan ang Kaso'))
+                : (isResidentPortal ? 'Open Concern' : (isComplaintTarget ? 'Open Complaint' : 'Open Case'));
             actionsHtml += `
                 <a href="${escapePopoverAttr(actionUrl)}" class="btn-popover-primary" onclick="handlePopoverActionClick(event, ${item.notification_id}, '${escapePopoverAttr(actionUrl)}')">
                     ${actionLabel}
@@ -524,7 +544,7 @@
         if (isUnread) {
             actionsHtml += `
                 <button type="button" class="btn-popover-secondary" onclick="markReadFromPopover(${item.notification_id}, event)">
-                    Mark Read
+                    ${isTlLocale() ? 'Markahang Nabasa' : 'Mark Read'}
                 </button>
             `;
         }
@@ -596,14 +616,14 @@
         }
 
         const markBtn = document.getElementById('popoverMarkAllBtn');
-        if (markBtn) markBtn.textContent = 'Marking...';
+        if (markBtn) markBtn.textContent = isTlLocale() ? 'Minamarkahan...' : 'Marking...';
 
         try {
             const res = await fetch('../../../backend/api/notifications/mark-all-read.php', {
                 method: 'POST',
                 headers: { 'Accept': 'application/json' }
             });
-            const data = await safeParseJson(res, 'Failed to mark all as read.');
+            const data = await safeParseJson(res, isTlLocale() ? 'Nabigong markahan lahat bilang nabasa.' : 'Failed to mark all as read.');
             if (data && data.success) {
                 popoverNotifications.forEach(n => {
                     n.is_read = 1;
@@ -614,7 +634,7 @@
                 renderPopoverList();
 
                 if (window.agapNotify) {
-                    window.agapNotify('All notifications marked as read.', 'success');
+                    window.agapNotify(isTlLocale() ? 'Minarkahan na bilang nabasa ang lahat ng abiso.' : 'All notifications marked as read.', 'success');
                 }
 
                 if (typeof window.loadNotifications === 'function') {
@@ -623,7 +643,7 @@
             }
         } catch (_) {
         } finally {
-            if (markBtn) markBtn.textContent = 'Mark all as read';
+            if (markBtn) markBtn.textContent = isTlLocale() ? 'Markahan lahat bilang nabasa' : 'Mark all as read';
         }
     };
 
@@ -633,19 +653,28 @@
             const then = new Date(dateString.replace(' ', 'T')).getTime();
             if (isNaN(then)) return dateString;
             const diffSeconds = Math.max(0, Math.floor((Date.now() - then) / 1000));
-            if (diffSeconds < 60) return 'Just now';
+            const tl = isTlLocale();
+            if (diffSeconds < 60) return tl ? 'Ngayon lang' : 'Just now';
             const diffMins = Math.floor(diffSeconds / 60);
-            if (diffMins < 60) return `${diffMins}m ago`;
+            if (diffMins < 60) return tl ? `${diffMins}m ang nakalipas` : `${diffMins}m ago`;
             const diffHours = Math.floor(diffMins / 60);
-            if (diffHours < 24) return `${diffHours}h ago`;
+            if (diffHours < 24) return tl ? `${diffHours} oras ang nakalipas` : `${diffHours}h ago`;
             const diffDays = Math.floor(diffHours / 24);
-            if (diffDays === 1) return 'Yesterday';
-            if (diffDays < 7) return `${diffDays}d ago`;
-            return new Date(then).toLocaleDateString([], { month: 'short', day: 'numeric' });
+            if (diffDays === 1) return tl ? 'Kahapon' : 'Yesterday';
+            if (diffDays < 7) return tl ? `${diffDays} araw ang nakalipas` : `${diffDays}d ago`;
+            return new Date(then).toLocaleDateString(tl ? 'fil-PH' : [], { month: 'short', day: 'numeric' });
         } catch (_) {
             return dateString;
         }
     }
+
+    window.addEventListener('agapLanguageChanged', () => {
+        const unreadCount = popoverNotifications.filter(n => !Number(n.is_read)).length;
+        updateNavNotificationBadge(unreadCount);
+        if (popoverNotifications.length > 0 || isPopoverOpen) {
+            renderPopoverList();
+        }
+    });
 
     function escapePopoverHtml(str) {
         if (!str && str !== 0) return '';

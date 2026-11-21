@@ -9,8 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 if (!CsrfService::validateRequest()) {
-    http_response_code(403);
-    exit('Registration could not be verified. Reload the registration page and try again.');
+    CsrfService::redirectBrowser('../../../frontend/pages/resident/register.php?error=session_expired');
 }
 
 $result = (new AuthController())->registerResident($_POST);

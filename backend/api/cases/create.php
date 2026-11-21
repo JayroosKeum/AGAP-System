@@ -3,6 +3,11 @@
 session_start();
 require_once '../../controllers/CaseController.php';
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: ../../../frontend/pages/cases/case-list.php', true, 303);
+    exit;
+}
+
 $controller = new CaseController();
 
 if($_SERVER['REQUEST_METHOD'] === 'POST')

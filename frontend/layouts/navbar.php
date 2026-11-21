@@ -18,9 +18,9 @@ $navSettingsHref = $isResidentNav || !in_array($navRoleId, [1, 2], true)
         </button>
     <?php endif; ?>
     <?php if ($isResidentNav): ?>
-        <a href="../resident/dashboard.php" class="navbar-context" style="text-decoration:none; color:inherit;" aria-label="Back to Resident Dashboard">
+        <a href="../resident/dashboard.php" class="navbar-context" style="text-decoration:none; color:inherit;" aria-label="Bumalik sa Talaan ng Residente" data-en-aria-label="Back to Resident Dashboard">
             <span class="navbar-eyebrow">Barangay Tumana</span>
-            <span class="navbar-title">AGAP Resident Portal</span>
+            <span class="navbar-title" data-en="AGAP Resident Portal">AGAP Portal ng Residente</span>
         </a>
     <?php else: ?>
         <div class="navbar-context"><span class="navbar-eyebrow">Barangay Tumana</span><span class="navbar-title">Katarungang Pambarangay</span></div>
@@ -32,17 +32,23 @@ $navSettingsHref = $isResidentNav || !in_array($navRoleId, [1, 2], true)
     <div class="navbar-right">
         <!-- Global UI Language Switch Toggle (English / Tagalog) -->
         <div class="lang-switch-wrapper" id="langSwitchWrapper">
-            <button type="button" class="lang-switch-btn" id="langSwitchToggle" onclick="toggleAppLanguage()" aria-label="Toggle language (English / Tagalog)" title="Palitan ang Wika / Switch Language">
-                <span class="lang-pill lang-en active" id="langPillEn">EN</span>
-                <span class="lang-separator">|</span>
-                <span class="lang-pill lang-tl" id="langPillTl">TL</span>
+            <button type="button" class="lang-switch-btn" id="langSwitchToggle" onclick="toggleAppLanguage()" aria-label="Palitan ang Wika (Tagalog / English)" title="<?= $isResidentNav ? 'Kasalukuyang Wika: Tagalog (I-click para mag-English)' : 'Palitan ang Wika / Switch Language' ?>">
+                <?php if ($isResidentNav): ?>
+                    <span class="lang-pill lang-tl active" id="langPillTl">TL</span>
+                    <span class="lang-separator">|</span>
+                    <span class="lang-pill lang-en" id="langPillEn">EN</span>
+                <?php else: ?>
+                    <span class="lang-pill lang-en active" id="langPillEn">EN</span>
+                    <span class="lang-separator">|</span>
+                    <span class="lang-pill lang-tl" id="langPillTl">TL</span>
+                <?php endif; ?>
             </button>
         </div>
 
 
         <!-- Modern Notification Popover Trigger (Inspiration from Modern App Header) -->
         <div class="nav-notification-wrapper" id="navNotificationWrapper"<?= $isResidentNav ? ' data-resident="1"' : '' ?>>
-            <button type="button" class="nav-bell-btn" id="navBellBtn" aria-label="Open notifications" aria-expanded="false" title="Notifications" onclick="toggleNotificationPopover(event)">
+            <button type="button" class="nav-bell-btn" id="navBellBtn" aria-label="<?= $isResidentNav ? 'Buksan ang mga abiso' : 'Open notifications' ?>"<?= $isResidentNav ? ' data-en-aria-label="Open notifications"' : '' ?> aria-expanded="false" title="<?= $isResidentNav ? 'Mga Abiso' : 'Notifications' ?>"<?= $isResidentNav ? ' data-en-title="Notifications"' : '' ?> onclick="toggleNotificationPopover(event)">
                 <svg class="nav-bell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                     <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
@@ -51,23 +57,23 @@ $navSettingsHref = $isResidentNav || !in_array($navRoleId, [1, 2], true)
             </button>
 
             <!-- Dropdown Popover Card -->
-            <div class="nav-notification-popover" id="navNotificationPopover" style="display: none;" role="dialog" aria-label="Notifications Dropdown">
+            <div class="nav-notification-popover" id="navNotificationPopover" style="display: none;" role="dialog" aria-label="<?= $isResidentNav ? 'Listahan ng mga Abiso' : 'Notifications Dropdown' ?>"<?= $isResidentNav ? ' data-en-aria-label="Notifications Dropdown"' : '' ?>>
                 <!-- Header -->
                 <div class="nav-popover-header">
                     <div class="nav-popover-title-row">
-                        <span class="nav-popover-title">Notifications</span>
-                        <button type="button" class="nav-popover-markall" id="popoverMarkAllBtn" onclick="markAllAsReadFromPopover(event)">Mark all as read</button>
+                        <span class="nav-popover-title"<?= $isResidentNav ? ' data-en="Notifications"' : '' ?>><?= $isResidentNav ? 'Mga Abiso' : 'Notifications' ?></span>
+                        <button type="button" class="nav-popover-markall" id="popoverMarkAllBtn"<?= $isResidentNav ? ' data-en="Mark all as read"' : '' ?> onclick="markAllAsReadFromPopover(event)"><?= $isResidentNav ? 'Markahan lahat bilang nabasa' : 'Mark all as read' ?></button>
                     </div>
                     <!-- Tabs -->
                     <div class="nav-popover-tabs" role="tablist">
                         <button type="button" class="nav-tab-btn active" data-tab="all" onclick="setPopoverTab('all', event)">
-                            All <span class="nav-tab-count" id="popoverCountAll">0</span>
+                            <?php if ($isResidentNav): ?><span data-en="All">Lahat</span><?php else: ?>All<?php endif; ?> <span class="nav-tab-count" id="popoverCountAll">0</span>
                         </button>
                         <button type="button" class="nav-tab-btn" data-tab="urgent" onclick="setPopoverTab('urgent', event)">
-                            Urgent <span class="nav-tab-count" id="popoverCountUrgent">0</span>
+                            <?php if ($isResidentNav): ?><span data-en="Urgent">Agaran</span><?php else: ?>Urgent<?php endif; ?> <span class="nav-tab-count" id="popoverCountUrgent">0</span>
                         </button>
                         <button type="button" class="nav-tab-btn" data-tab="warning" onclick="setPopoverTab('warning', event)">
-                            <?= $isResidentNav ? 'Updates' : 'Deadlines' ?> <span class="nav-tab-count" id="popoverCountWarning">0</span>
+                            <?php if ($isResidentNav): ?><span data-en="Updates">Mga Update</span><?php else: ?>Deadlines<?php endif; ?> <span class="nav-tab-count" id="popoverCountWarning">0</span>
                         </button>
                         <?php if (!$isResidentNav): ?>
                             <a href="../notifications/inbox.php" class="nav-tab-icon-link" title="Full Notifications Center" aria-label="Full Notifications Center">
@@ -79,7 +85,7 @@ $navSettingsHref = $isResidentNav || !in_array($navRoleId, [1, 2], true)
 
                 <!-- Scrollable Item List -->
                 <div class="nav-popover-list" id="navPopoverList">
-                    <div class="nav-popover-loading">Loading notifications...</div>
+                    <div class="nav-popover-loading"<?= $isResidentNav ? ' data-en="Loading notifications..."' : '' ?>><?= $isResidentNav ? 'Kinukuha ang mga abiso...' : 'Loading notifications...' ?></div>
                 </div>
 
                 <!-- Footer -->
@@ -94,7 +100,7 @@ $navSettingsHref = $isResidentNav || !in_array($navRoleId, [1, 2], true)
         </div>
 
         <?php if ($isResidentNav): ?>
-            <a href="<?php echo htmlspecialchars($navSettingsHref, ENT_QUOTES, 'UTF-8'); ?>" class="nav-bell-btn" title="Account Settings" aria-label="Account Settings">
+            <a href="<?php echo htmlspecialchars($navSettingsHref, ENT_QUOTES, 'UTF-8'); ?>" class="nav-bell-btn" title="Mga Setting ng Account" data-en-title="Account Settings" aria-label="Mga Setting ng Account" data-en-aria-label="Account Settings">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <circle cx="12" cy="12" r="3"></circle>
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -103,17 +109,17 @@ $navSettingsHref = $isResidentNav || !in_array($navRoleId, [1, 2], true)
         <?php endif; ?>
 
         <?php
-            $navDisplayUser = trim((string) ($_SESSION['full_name'] ?? $_SESSION['username'] ?? 'User'));
+            $navDisplayUser = trim((string) ($_SESSION['full_name'] ?? $_SESSION['username'] ?? ($isResidentNav ? 'Residente' : 'User')));
             $navParts = preg_split('/\s+/', $navDisplayUser) ?: ['U'];
             $navInitials = strtoupper(substr($navParts[0] ?? 'U', 0, 1) . (isset($navParts[1]) ? substr($navParts[1], 0, 1) : ''));
         ?>
         <div class="navbar-user-chip">
             <span class="navbar-avatar" aria-hidden="true"><?php echo htmlspecialchars($navInitials, ENT_QUOTES, 'UTF-8'); ?></span>
-            <div class="user-summary"><strong><?php echo htmlspecialchars($_SESSION['username'] ?? 'User', ENT_QUOTES, 'UTF-8'); ?></strong><span><?php echo htmlspecialchars((string) $roleName, ENT_QUOTES, 'UTF-8'); ?></span></div>
+            <div class="user-summary"><strong><?php echo htmlspecialchars($_SESSION['username'] ?? ($isResidentNav ? 'Residente' : 'User'), ENT_QUOTES, 'UTF-8'); ?></strong><?php if ($isResidentNav): ?><span data-en="Resident">Residente</span><?php else: ?><span><?php echo htmlspecialchars((string) $roleName, ENT_QUOTES, 'UTF-8'); ?></span><?php endif; ?></div>
         </div>
         <form id="globalLogoutForm" method="post" action="../../../backend/api/auth/logout.php" style="display: inline;">
             <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8'); ?>">
-            <button type="button" class="logout-btn" id="globalLogoutBtn">Sign out</button>
+            <button type="button" class="logout-btn" id="globalLogoutBtn"<?= $isResidentNav ? ' data-en="Sign out"' : '' ?>><?= $isResidentNav ? 'Mag-sign out' : 'Sign out' ?></button>
         </form>
     </div>
 </nav>

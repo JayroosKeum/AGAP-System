@@ -9,10 +9,10 @@ $narrativeTargetSelector = isset($narrativeTargetSelector) && is_string($narrati
 <div class="rd-story-guide-card" id="<?php echo htmlspecialchars($narrativeGuideId, ENT_QUOTES, 'UTF-8'); ?>" data-narrative-target="<?php echo htmlspecialchars($narrativeTargetSelector, ENT_QUOTES, 'UTF-8'); ?>" aria-label="5 W's + How and ACCOC complaint narrative checklist">
     <div class="rd-story-guide-head">
         <div class="rd-story-guide-title">
-            <strong>5 W&#39;s + How Affidavit w/ ACCOC</strong>
-            <small>Detalyadong isalaysay ang sumbong o reklamo. Nagiging berde kapag tama at kumpleto.</small>
+            <strong data-en="5 W's + How Affidavit w/ ACCOC">Gabay sa Salaysay (5 W&#39;s + How at ACCOC)</strong>
+            <small data-en="Describe the complaint in detail. Turns green when accurate and complete.">Detalyadong isalaysay ang sumbong o reklamo. Nagiging berde kapag tama at kumpleto.</small>
         </div>
-        <span class="rd-story-guide-score" data-story-score>0 / 11 met</span>
+        <span class="rd-story-guide-score" data-story-score>0 / 11 natugunan</span>
     </div>
 
     <div class="rd-story-guide" role="list" aria-label="5 W's and How checklist">

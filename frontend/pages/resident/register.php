@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 session_start();
 if (($_SESSION['role_name'] ?? '') === 'Resident') {
     header('Location: dashboard.php', true, 303);
@@ -21,6 +24,7 @@ $messages = [
     'duplicate' => 'That username or email address is already registered.',
     'unavailable' => 'We could not create your account right now. Please try again later.',
     'google_required' => 'Confirm your Gmail address with Google before registering.',
+    'session_expired' => 'Your registration session expired. Please submit your details again.',
 ];
 ?>
 <!doctype html>

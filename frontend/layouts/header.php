@@ -37,14 +37,23 @@ if (!empty($_SESSION['flash']) && is_array($_SESSION['flash']) && !empty($_SESSI
     ];
     unset($_SESSION['flash']);
 }
+$headerIsResident = (($_SESSION['role_name'] ?? '') === 'Resident' || (int) ($_SESSION['role_id'] ?? 0) === 5);
 ?>
 <!DOCTYPE html>
+<?php if ($headerIsResident): ?>
+<html lang="tl" data-agap-lang="tl" data-default-lang="tl" data-resident-portal="1">
+<?php else: ?>
 <html lang="en">
+<?php endif; ?>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#102b2d">
+    <?php if ($headerIsResident): ?>
+    <title data-en="AGAP | Automated Grievance Assistance Platform">AGAP | Plataporma ng Tulong sa Sumbong ng Barangay</title>
+    <?php else: ?>
     <title>AGAP | Automated Grievance Assistance Platform</title>
+    <?php endif; ?>
     <link rel="stylesheet" href="../../assets/css/app.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/app.css'); ?>">
     <link rel="stylesheet" href="../../assets/css/notifications.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/notifications.css'); ?>">
     <link rel="stylesheet" href="../../assets/css/forms.css?v=<?php echo filemtime(__DIR__ . '/../assets/css/forms.css'); ?>">
