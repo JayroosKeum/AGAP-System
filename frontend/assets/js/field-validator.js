@@ -385,7 +385,7 @@
         if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return;
         const form = el.form || el.closest('form');
         if (form && shouldSkipForm(form)) return;
-        if (el.type === 'file' || isVisibleElement(el)) {
+            if (isVisibleElement(el)) {
             if (String(el.value || '').trim() !== '' || el.hasAttribute('required')) {
                 validateElement(el, true);
             }

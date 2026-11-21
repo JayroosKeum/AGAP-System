@@ -150,6 +150,21 @@ foreach ($residents as $res) {
 
 $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 $old = $complaintFlash['old'] ?? [];
+// A resident's linked profile is the initial complainant, including on a fresh intake.
+if ($isResidentPortal && !empty($residents[0]) && empty($old['complainant_resident_id']) && empty($old['complainant_first_name'])) {
+    $profile = $residents[0];
+    $old['complainant_resident_id'] = $profile['resident_id'];
+    foreach (['first_name', 'middle_name', 'last_name', 'suffix', 'gender', 'civil_status', 'occupation', 'contact_no', 'email', 'preferred_contact', 'purok', 'address', 'is_tenant'] as $field) {
+        $old['complainant_' . $field] = $profile[$field] ?? '';
+    }
+    $old['complainant_birthdate'] = $profile['birth_date'] ?? '';
+    if (!empty($profile['birth_date']) && strtotime((string) $profile['birth_date']) !== false) {
+        $old['complainant_age'] = (string) date_diff(new DateTime($profile['birth_date']), new DateTime('today'))->y;
+    }
+    $old['complainant_latitude'] = $profile['home_latitude'] ?? '';
+    $old['complainant_longitude'] = $profile['home_longitude'] ?? '';
+    $old['complainant_name'] = trim(implode(' ', array_filter([$profile['first_name'], $profile['middle_name'], $profile['last_name']])));
+}
 unset($_SESSION['complaint_flash']);
 
 $escalatePaanyayaId = $isResidentPortal ? 0 : (int) ($_GET['escalate_paanyaya_id'] ?? $_GET['paanyaya_id'] ?? 0);
@@ -361,8 +376,8 @@ include '../../layouts/header.php';
 
 /* Left Sidebar Stepper */
 .wizard-sidebar-col {
-    position: sticky;
-    top: 88px;
+    position: static;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 16px;

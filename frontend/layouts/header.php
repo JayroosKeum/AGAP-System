@@ -48,7 +48,10 @@ $headerIsResident = (($_SESSION['role_name'] ?? '') === 'Resident' || (int) ($_S
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="agap-authenticated" content="<?= isset($_SESSION['user_id']) ? '1' : '0' ?>">
+    <meta name="agap-role-id" content="<?= (int) ($_SESSION['role_id'] ?? 0) ?>">
     <meta name="theme-color" content="#102b2d">
+    <link rel="icon" type="image/jpeg" href="../../assets/images/tumana_logo.jpg">
     <?php if ($headerIsResident): ?>
     <title data-en="AGAP | Automated Grievance Assistance Platform">AGAP | Plataporma ng Tulong sa Sumbong ng Barangay</title>
     <?php else: ?>
@@ -65,6 +68,7 @@ $headerIsResident = (($_SESSION['role_name'] ?? '') === 'Resident' || (int) ($_S
     <script src="../../assets/js/draft-autosave.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/draft-autosave.js'); ?>"></script>
     <script src="../../assets/js/field-validator.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/field-validator.js'); ?>"></script>
     <script src="../../assets/js/forms.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/forms.js'); ?>"></script>
+    <script src="../../assets/js/category-picker.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/category-picker.js'); ?>"></script>
     <script src="../../assets/js/narrative-checklist.js?v=<?php echo filemtime(__DIR__ . '/../assets/js/narrative-checklist.js'); ?>"></script>
     <script>
         (function() {

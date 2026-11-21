@@ -322,12 +322,10 @@ class SummonDeliveryService
                 if ($hType === 'Conciliation') {
                     $this->conn->prepare("
                         UPDATE summon_deliveries
-                        SET form_type = 'KP Form 12',
-                            attempt_number = ?,
-                            document_id = COALESCE(document_id, ?),
+                        SET document_id = COALESCE(document_id, ?),
                             remarks = COALESCE(remarks, ?)
                         WHERE delivery_id = ?
-                    ")->execute([$attemptNum, $kp12DocId, $remarks, $existingId]);
+                    ")->execute([$kp12DocId, $remarks, $existingId]);
                 }
             }
         }

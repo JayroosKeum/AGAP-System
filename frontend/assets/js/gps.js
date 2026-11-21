@@ -144,7 +144,7 @@ let activeSummonSortDir = 'asc';
 function isCasePending(item) {
     const compStatus = String(item.complainant_service_status || 'Pending');
     const compServed = compStatus.startsWith('Served');
-    const respServed = Number(item.respondent_served_attempts || 0) > 0 || String(item.respondent_service_status || '').startsWith('Served');
+    const respServed = String(item.respondent_service_status || '').startsWith('Served');
     if (!item.is_paanyaya) {
         return !compServed || (!respServed && !isCaseCfaReady(item));
     }
@@ -445,7 +445,7 @@ function renderTableServiceStatus(item) {
     }
 
     if (item && item.is_paanyaya) {
-        const respServed = Number(item.respondent_served_attempts || 0) > 0 || String(item.respondent_service_status || '').startsWith('Served');
+        const respServed = String(item.respondent_service_status || '').startsWith('Served');
         const respFailCount = Number(item.respondent_failed_attempts || 0);
         const stageLabel = escapeGpsHtml(item.paanyaya_stage_type || 'Paanyaya');
         if (respServed) {
@@ -462,7 +462,7 @@ function renderTableServiceStatus(item) {
     const compStatus = String(item.complainant_service_status || 'Pending');
     const respStatus = String(item.respondent_service_status || 'Pending');
     const compServed = compStatus.startsWith('Served');
-    const respServed = Number(item.respondent_served_attempts || 0) > 0 || respStatus.startsWith('Served');
+    const respServed = respStatus.startsWith('Served');
 
     if (compServed && respServed) {
         return `<span class="service-status-pill badge-served-mini" style="font-weight:700;">Both Parties Served</span>`;

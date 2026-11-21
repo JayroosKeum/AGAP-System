@@ -3157,6 +3157,38 @@ class Paanyaya
             ];
         }
 
+        // Handle Dismissal (Complainant Absent)
+        if ($action === 'dismiss') {
+            $upd = $this->conn->prepare("
+                UPDATE paanyayas
+                SET complainant_attended = ?,
+                    invitee_attended = ?,
+                    salaysay = ?,
+                    dialogue_notes = ?,
+                    status = 'Cancelled',
+                    attendance_recorded_at = NOW(),
+                    updated_at = NOW()
+                WHERE paanyaya_id = ?
+            ");
+            $upd->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
+
+            $complaintId = (int)($paanyaya['complaint_id'] ?? 0);
+            if ($complaintId > 0) {
+                $this->conn->prepare("
+                    UPDATE complaints
+                    SET status = 'Dismissed',
+                        resolved_without_docketing = 1,
+                        updated_at = NOW()
+                    WHERE complaint_id = ?
+                ")->execute([$complaintId]);
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Opisyal nang na-dismiss ang usapin at naitala ang hindi pagdalo.'
+            ];
+        }
+
         // Default: Save Attendance Only
         $upd = $this->conn->prepare("
             UPDATE paanyayas

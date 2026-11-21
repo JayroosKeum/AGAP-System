@@ -409,6 +409,25 @@ function unlockOutcomesTab(cId) {
 }
 window.unlockOutcomesTab = unlockOutcomesTab;
 
+function activateRequestedCaseTab() {
+    if (window.__agapInitialTabActivated || !window.complaintData) return;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedTab = urlParams.get('tab') || window.location.hash.replace('#', '');
+    window.__agapInitialTabActivated = true;
+    if (!requestedTab) return;
+
+    let targetId = requestedTab.startsWith('tab-') ? requestedTab : ('tab-' + requestedTab);
+    if (targetId === 'tab-parties') targetId = 'tab-mediation';
+    if (targetId === 'tab-documents') targetId = 'tab-conciliation';
+
+    const targetBtn = document.querySelector(`.case-tab-item[data-tab="${targetId}"]`);
+    if (targetBtn) {
+        const access = canAccessTab(targetId);
+        switchCaseTab(access.allowed ? targetId : 'tab-overview');
+    }
+}
+
 function initialiseCaseTabs() {
     document.querySelectorAll('.case-tab-item').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -420,24 +439,7 @@ function initialiseCaseTabs() {
         });
     });
 
-    // Check URL parameter or hash to activate specific tab on page load
-    const urlParams = new URLSearchParams(window.location.search);
-    const requestedTab = urlParams.get('tab') || window.location.hash.replace('#', '');
-    if (requestedTab) {
-        let targetId = requestedTab;
-        if (!targetId.startsWith('tab-')) {
-            targetId = 'tab-' + targetId;
-        }
-        const targetBtn = document.querySelector(`.case-tab-item[data-tab="${targetId}"]`);
-        if (targetBtn) {
-            const access = canAccessTab(targetId);
-            if (access.allowed) {
-                switchCaseTab(targetId);
-            } else {
-                switchCaseTab('tab-overview');
-            }
-        }
-    }
+    activateRequestedCaseTab();
 }
 
 function switchCaseTab(tabId) {
@@ -862,6 +864,7 @@ async function loadComplaintDetails() {
 
         // Update stage tab lock state based on active complaint lifecycle
         updateStageTabsLockState();
+        activateRequestedCaseTab();
 
         // Render Cross-Link Alert Banner for Concurrent Disputes (Module 5)
         if (typeof renderCrossLinkAlertBanner === 'function') {
@@ -1884,11 +1887,8 @@ function renderOfficialKpForms(workspace, complaint) {
     const stg2Details = stg2.details || {};
     const stg2Latest = stg2.latest_attempt || null;
     const stg2Count = stg2.attempts_count || 0;
-    const hasP2Attempt = Boolean(
-        stg2Count > 0 ||
-        stg2Details.invitation_date ||
-        (stg2Details.status && stg2Details.status !== 'Not Started')
-    );
+    // A delivery retry is not a second invitation.
+    const hasP2Attempt = Boolean(stg2Details.issued_at);
 
     const kp7IssuedCount = (complaintId > 0 && !kp7OnHold) ? 1 : 0;
     const paanyayaIssuedCount = (complaintId > 0 && hasPaanyayaDoc) ? (hasP2Attempt ? 2 : 1) : 0;
@@ -2656,6 +2656,7 @@ async function loadHeroTransmittalStatus(complaintId) {
         }
 
         const isLocked = Boolean(data.is_locked);
+        const isCfaSource = data.source_type === 'CFA';
         const daysRemaining = Number(data.working_days_remaining || 0);
         const unlockDate = data.unlock_date_formatted || data.ten_day_expiry_date_formatted || 'Soon';
         const lockTitle = `Transmittal unlocks on ${unlockDate} pursuant to the 10-day repudiation period under RA 7160 Sec. 416.`;
@@ -2688,7 +2689,9 @@ async function loadHeroTransmittalStatus(complaintId) {
                 badge.style.border = '1px solid #86efac';
             }
             if (meta) {
-                meta.innerHTML = `<span style="color: #15803d; font-weight: 600;">10-working-day repudiation period completed &bull; Official endorsement ready for print &amp; submission</span>`;
+                meta.innerHTML = isCfaSource
+                    ? '<span style="color: #15803d; font-weight: 600;">CFA issued &bull; Official endorsement ready for print &amp; submission</span>'
+                    : '<span style="color: #15803d; font-weight: 600;">10-working-day repudiation period completed &bull; Official endorsement ready for print &amp; submission</span>';
             }
             if (actions) {
                 actions.innerHTML = `
@@ -2700,7 +2703,7 @@ async function loadHeroTransmittalStatus(complaintId) {
                     </button>
                 `;
             }
-            if (banner) banner.style.display = 'flex';
+            if (banner) banner.style.display = isCfaSource ? 'none' : 'flex';
         }
     } catch (err) {
         console.error('Failed to load transmittal status:', err);
@@ -4171,7 +4174,7 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
     const deckTitle = document.getElementById('schedVisualDeckTitle');
     const timeHint = document.getElementById('schedTimeHint');
     const cfg = window.AGAP_SETTINGS || {};
-    const medDaysLbl = (cfg.mediation_days_label || 'Tuesdays');
+    const medDaysLbl = (cfg.mediation_days_label || 'Tuesdays').replace(/\s+only$/i, '');
     const maxCap = Number(cfg.daily_hearing_capacity || cfg.daily_capacity || 8);
     const fmtTime12 = (t) => { const p = String(t || '00:00').split(':'); const h = parseInt(p[0], 10) || 0; const m = parseInt(p[1], 10) || 0; return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`; };
     const medStartStr = (cfg.mediation_hours_start || '13:00').slice(0, 5);
@@ -4190,18 +4193,18 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
     const dynamicMedMax = calcMedSlots > 0 ? Math.min(maxCap, calcMedSlots) : maxCap;
 
     if (deckTitle) {
-        deckTitle.textContent = stageType === 'Conciliation'
+        deckTitle.textContent = stageType === 'Arbitration' ? 'AVAILABLE ARBITRATION WORKING DAYS (MON–FRI):' : stageType === 'Conciliation'
             ? 'AVAILABLE CONCILIATION DAYS (MON, WED, THU, FRI):'
             : `AVAILABLE MEDIATION DAYS (${medDaysLbl.toUpperCase()} ONLY · ${dynamicMedMax} SLOTS/DAY):`;
     }
     if (timeHint) {
-        timeHint.textContent = stageType === 'Conciliation'
+        timeHint.textContent = stageType === 'Arbitration' ? 'Arbitration uses regular office hours, excluding lunch, holidays, and conflicting bookings.' : stageType === 'Conciliation'
             // Conciliation hint uses configured working hours below
             ? `Conciliation hours: ${fmtTime12(workStartStr)} – ${fmtTime12(workEndStr)} (excluding 12–1 PM lunch & designated Mediation window). Standard duration: ${concilDur} mins (max ${concilMaxDur} mins).`
             : `Designated Mediation session window: ${fmtTime12(medStartStr)} – ${fmtTime12(medEndStr)} (${medDaysLbl}). Standard duration: ${medDur} mins (max ${medMaxDur} mins).`;
     }
     if (timeInput && !timeInput.value) {
-        timeInput.value = stageType === 'Conciliation' ? workStartStr : medStartStr;
+        timeInput.value = stageType !== 'Mediation' ? workStartStr : medStartStr;
     }
 
     renderTimeSlotsPillGrid('schedTimeSlotsGrid', 'schedTime', [], stageType, dateInput ? dateInput.value : '', () => {
@@ -4214,7 +4217,7 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
     }
 
     try {
-        const hParam = stageType === 'Conciliation' ? 'Conciliation' : 'Mediation';
+        const hParam = stageType;
         const res = await fetch(`../../../backend/api/summons/check-schedule.php?case_id=${encodeURIComponent(caseId || '')}&complaint_id=${encodeURIComponent(complaintId || '')}&hearing_type=${encodeURIComponent(hParam)}&get_window=1`);
         const json = await res.json();
         if (json.window) {
@@ -4237,7 +4240,7 @@ async function initEmbeddedScheduleModalCalendar(stageType, caseId, complaintId)
                     const dt = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
                     return allowedNums.includes(dt.getDay()) || allowedDays.includes(slot.day_name);
                 }
-                return !slot.is_weekend && !slot.is_non_working_day && slot.day_name !== 'Tue';
+                return !slot.is_weekend && !slot.is_non_working_day && (stageType !== 'Conciliation' || slot.day_name !== 'Tue');
             };
 
             if (!isDateValidForMode(targetDate)) {
@@ -4621,10 +4624,10 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
     const allDays = Object.values(windowMeta.daily_slots);
 
     let days = allDays;
-    const stageSessions = isMediationMode
+    const stageSessions = hearingType === 'Arbitration' ? (window.embeddedHearingsState?.arbitration_sessions || []) : isMediationMode
         ? (window.embeddedHearingsState?.mediation_sessions || [])
         : (window.embeddedHearingsState?.conciliation_sessions || []);
-    const previousStageDate = stageSessions
+    const previousStageDate = hearingType === 'Arbitration' ? '' : stageSessions
         .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && s.hearing_date)
         .map(s => String(s.hearing_date).slice(0, 10))
         .sort()
@@ -4644,10 +4647,10 @@ function renderWorkspaceVisualDatePicker(windowMeta, selectedDate) {
     } else {
         // Conciliation dates are Mon/Wed/Thu/Fri and must be strictly after
         // the prior conciliation session.
-        days = allDays.filter(d => !d.is_past && d.day_name !== 'Tue' && d.day_name !== 'Sat' && d.day_name !== 'Sun');
+        days = allDays.filter(d => !d.is_past && !d.is_non_working_day && (hearingType !== 'Conciliation' || d.day_name !== 'Tue') && !d.is_weekend);
     }
 
-    if (previousStageDate) {
+    if (previousStageDate && hearingType !== 'Arbitration') {
         days = days.filter(d => d.date > previousStageDate);
     }
 
@@ -8309,7 +8312,10 @@ async function generateAiCaseBrief() {
     if (btnText) btnText.textContent = 'Compiling Brief...';
 
     try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const csrfToken = window.agapCsrfToken
+            || document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
+            || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            || '';
         const response = await fetch('../../../backend/api/ai/case-summary.php', {
             method: 'POST',
             headers: {
@@ -11491,7 +11497,8 @@ function openIssueArbitrationAwardModal(caseId, agreementDate, isEdit = false) {
     if (agrDateInput) agrDateInput.value = agreementDate;
 
     // Compute Day 6 and Day 15
-    const d0 = new Date(agrDateInput.value + 'T00:00:00');
+    // Keep date-only statutory bounds in UTC to avoid Manila's previous-day shift.
+    const d0 = new Date(agreementDate + 'T00:00:00Z');
     const msPerDay = 86400000;
     const minD = new Date(d0.getTime() + 6 * msPerDay);
     const maxD = new Date(d0.getTime() + 15 * msPerDay);
@@ -11504,7 +11511,8 @@ function openIssueArbitrationAwardModal(caseId, agreementDate, isEdit = false) {
         awardDateInput.min = minStr;
         awardDateInput.max = maxStr;
         if (!awardDateInput.value || !isEdit) {
-            const todayStr = (new Date()).toISOString().slice(0, 10);
+            const now = new Date();
+            const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             if (todayStr >= minStr && todayStr <= maxStr) {
                 awardDateInput.value = todayStr;
             } else {

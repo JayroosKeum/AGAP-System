@@ -603,6 +603,9 @@ class Complaint
             default => 'Pending',
         };
         $reviewerId ??= (int) ($_SESSION['user_id'] ?? 0);
+        if ($status === 'Rejected' && (trim((string) $notes) === '' || mb_strlen((string) $notes) > 2000 || !ValidationService::text((string) $notes))) {
+            return ['success' => false, 'message' => 'Provide a rejection reason or jurisdictional basis (up to 2000 characters).'];
+        }
         $this->conn->beginTransaction();
         try {
             $lock = $this->conn->prepare(

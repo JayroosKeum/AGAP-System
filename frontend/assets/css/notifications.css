@@ -6,7 +6,7 @@
 /* Toast Container */
 #agapToastContainer {
     position: fixed;
-    top: 24px;
+    top: 88px;
     right: 24px;
     z-index: 999999;
     display: flex;

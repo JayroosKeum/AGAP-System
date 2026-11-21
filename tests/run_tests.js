@@ -10,7 +10,8 @@ const suites = {
   show_cause: 'test_show_cause_workflow_matrix.php',
   regressions: 'test_cfa_and_service_verification_regressions.php',
   resident_google: 'test_resident_google_registration.php',
-  new_features: 'test_new_features.php'
+  new_features: 'test_new_features.php',
+  workflow_bugs: 'test_workflow_bug_regressions.php'
 };
 
 const requested = process.argv.slice(2);

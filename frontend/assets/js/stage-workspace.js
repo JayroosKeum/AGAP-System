@@ -1856,7 +1856,9 @@ function renderHeaderAndBreadcrumbs(data, stage) {
         let badgeLabel = stage.stage_status || 'In Progress';
         let bg = '#f1f5f9', color = '#475569';
         const st = stage.stage_status;
-        if (st === 'Completed' || st === 'Settled' || activeSession?.session_outcome === 'Settled') {
+        if (['Arbitration', 'Arbitration Award'].includes(data.case?.case_status)) {
+            badgeLabel = data.case.case_status; bg = '#dbeafe'; color = '#1d4ed8';
+        } else if (st === 'Settled' || activeSession?.session_outcome === 'Settled') {
             badgeLabel = 'Completed · Settled'; bg = '#dcfce7'; color = '#15803d';
         } else if (st === 'Referred to Pangkat' || activeSession?.session_outcome === 'Referred to Pangkat') {
             badgeLabel = 'Referred to Pangkat'; bg = '#e0f2fe'; color = '#0369a1';
@@ -2087,8 +2089,8 @@ function renderStageOverview(data, stage) {
     const sessions = stageWorkspaceState.sessions || [];
     const activeSession = sessions.find(s => Number(s.hearing_id) === Number(stageWorkspaceState.activeSessionHearingId)) || sessions[0] || null;
     const activeOrdinal = activeSession ? getStageSessionOrdinalLabel(mode, activeSession.session_index || 1) : '';
-    const activeCompAtt = activeSession?.attendance_recorded_at ? (activeSession.complainant_attendance || 'Present') : 'Pending Check-In';
-    const activeRespAtt = activeSession?.attendance_recorded_at ? (activeSession.respondent_attendance || 'Present') : 'Pending Check-In';
+    const activeCompAtt = activeSession?.complainant_attendance || 'Pending Check-In';
+    const activeRespAtt = activeSession?.respondent_attendance || (['Arbitration', 'Arbitration Award'].includes(caseData.case_status) ? caseData.case_status : 'Pending Check-In');
     const activePresider = (activeSession?.presider_attendance === 'Substitute' && activeSession?.substitute_presider_name)
         ? `${activeSession.substitute_presider_name} (Substitute)`
         : (activeSession?.presiding_officer_name || stage.presiding_officer || 'Punong Barangay');
@@ -3282,7 +3284,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
     const isFinalized = (session.minutes_status === 'Finalized');
     const isDraftMinutes = (session.minutes_status === 'Draft');
-    const isConcludedSession = (!isDraftMinutes && ['Concluded', 'Completed'].includes(String(session.queue_status || session.status || '')))
+    const isConcludedSession = (!isDraftMinutes && ['Concluded'].includes(String(session.queue_status || session.status || '')))
         || (isFinalized && ['Settled', 'Resolved', 'Dismissed', 'Pending CFA', 'Arbitration Award', 'Repudiated'].includes(String(session.session_outcome || '')));
     const readonlyAttr = (stageWorkspaceState.readOnly || isFinalized || isConcludedSession)
         ? 'disabled aria-disabled="true" title="Read-only concluded session"'
@@ -4236,7 +4238,7 @@ function handleMinutesOutcomeChange(outcomeVal, isUserChange = false, hearingId 
 
                     <div style="color: #1e293b; font-size: 0.85rem;">
 
-                        <strong style="font-size: 0.92rem; display: block; color: #0f172a;">Failure of Mediation Â· Elevate to Pangkat ng Tagapagkasundo</strong>
+                        <strong style="font-size: 0.92rem; display: block; color: #0f172a;">Failure of Mediation · Elevate to Pangkat ng Tagapagkasundo</strong>
 
                         2nd Mediation session concluded without agreement. The dispute elevates to the 3-member Pangkat panel (KP Form 10, 11, and 12).
 
@@ -4830,8 +4832,9 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
         .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id)
         .some(s => Number(s.session_index) === nextSessionIndex);
 
-    const isConcludedSession = ['Completed', 'Concluded', 'Attendance Recorded'].includes(session.status)
-        || session.queue_status === 'Concluded';
+    const isConcludedSession = (session.minutes_status === 'Finalized')
+        || session.queue_status === 'Concluded'
+        || session.status === 'Concluded';
     let bookingOnly = false;
 
 
@@ -5839,7 +5842,7 @@ async function openScheduleModal(hearingId = null, targetStageType = null) {
 
         const deckTitle = document.getElementById('schedVisualDeckTitle');
 
-        if (deckTitle) deckTitle.textContent = 'AVAILABLE CONCILIATION DAYS (MON, TUE AM, WED, THU, FRI):';
+        if (deckTitle) deckTitle.textContent = 'AVAILABLE CONCILIATION DAYS (MON, WED, THU, FRI):';
 
         const schedDayTitle = document.getElementById('schedDaySchedulesTitle');
 
@@ -7080,7 +7083,10 @@ window.appendDelayRemark = appendDelayRemark;
 
 
 
+let attendanceSaveInFlight = false;
 async function saveStreamlinedAttendance(silent = false) {
+    // Field changes stay local until the user explicitly saves the check-in.
+    if (silent || attendanceSaveInFlight) return;
 
     if (guardWorkspaceMutation()) return;
 
@@ -7154,6 +7160,10 @@ async function saveStreamlinedAttendance(silent = false) {
 
 
 
+    if (partyRecords.some(p => !['Present', 'Absent', 'Late', 'Excused', 'Not Served', 'Pending Verification'].includes(p.attendance_status))) {
+        notifyUser('Choose an attendance status for each party before saving check-in.', 'warning');
+        return;
+    }
     const payload = {
 
         hearing_id: hearingId,
@@ -7182,6 +7192,7 @@ async function saveStreamlinedAttendance(silent = false) {
 
     const attendanceButton = document.getElementById('btnSaveAttendance') || document.querySelector('#wsAttCardBody button[type="submit"]');
     if (!silent && attendanceButton?.dataset.agapBusy === '1') return;
+    attendanceSaveInFlight = true;
     if (!silent) setAsyncButtonState(attendanceButton, true, 'Saving…');
     try {
 
@@ -7235,6 +7246,7 @@ async function saveStreamlinedAttendance(silent = false) {
         }
 
     } finally {
+        attendanceSaveInFlight = false;
         if (!silent) setAsyncButtonState(attendanceButton, false);
     }
 
@@ -7286,7 +7298,7 @@ function renderAttendanceModalForm(data) {
     const serviceGate = data.service_gate || { allowed: true };
     const isLockedByService = !serviceGate.allowed;
     const gateDisabledAttr = isLockedByService ? 'disabled' : '';
-    const activeOrdLabel = getStageSessionOrdinalLabel(stageWorkspaceState.mode || 'Mediation', hearing.session_index || 1);
+    const activeOrdLabel = getStageSessionOrdinalLabel(stageWorkspaceState.mode || 'Mediation', hearing.session_index || (stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === hearingId)?.session_index || 1);
     const cardTitleEl = document.getElementById('wsAttCardTitle');
     if (cardTitleEl) cardTitleEl.textContent = `Hearing Session Attendance — ${activeOrdLabel}`;
 
@@ -7502,7 +7514,7 @@ function renderAttendanceModalForm(data) {
 
 
                 <div style="display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; order: 2;">
-                    <button type="button" class="btn-create" onclick="saveStreamlinedAttendance(false)" ${gateDisabledAttr} style="font-size: 0.85rem; padding: 8px 18px; background: ${isLockedByService ? '#94a3b8' : '#16a34a'}; border-color: ${isLockedByService ? '#94a3b8' : '#16a34a'}; cursor: ${isLockedByService ? 'not-allowed' : 'pointer'};">
+                    <button type="button" id="btnSaveAttendance" class="btn-create" onclick="saveStreamlinedAttendance(false)" ${gateDisabledAttr} style="font-size: 0.85rem; padding: 8px 18px; background: ${isLockedByService ? '#94a3b8' : '#16a34a'}; border-color: ${isLockedByService ? '#94a3b8' : '#16a34a'}; cursor: ${isLockedByService ? 'not-allowed' : 'pointer'};">
                         ${isLockedByService ? '🔒 Check-In Locked (Await Summons Return)' : (isSaved ? '💾 Update Attendance Check-In' : '💾 Save Attendance Check-In')}
                     </button>
                 </div>
@@ -8724,7 +8736,10 @@ async function generateAiHearingMinutesDraft(hearingId) {
     }
 
     try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+        const csrfToken = window.agapCsrfToken
+            || document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
+            || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            || '';
         const response = await fetch(getStageApiUrl('ai/draft-hearing-minutes.php'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },

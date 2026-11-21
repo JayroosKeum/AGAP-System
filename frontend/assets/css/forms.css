@@ -571,3 +571,24 @@ form.complaint-intake-form .intake-bottom-actions .btn-secondary:hover {
     color: #b91c1c;
     font-weight: 600;
 }
+/* Full category labels remain readable at every form width. */
+.category-suggestions {
+    position: relative;
+    z-index: 20;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .12);
+}
+.category-suggestions[hidden] { display: none; }
+.category-suggestions [role="option"] {
+    padding: 10px 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    font-size: .85rem;
+}
+.category-suggestions [role="option"]:hover,
+.category-suggestions [aria-selected="true"] { background: #ecfdf5; }

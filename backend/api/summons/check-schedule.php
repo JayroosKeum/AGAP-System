@@ -27,7 +27,7 @@ $input = ($_SERVER['REQUEST_METHOD'] === 'POST') ? $_POST : $_GET;
 $date = trim((string) ($input['date'] ?? ''));
 $time = trim((string) ($input['time'] ?? ''));
 $hearingType = trim((string) ($input['hearing_type'] ?? ($input['stage'] ?? 'Mediation')));
-if ($hearingType !== 'Conciliation') {
+if (!in_array($hearingType, ['Mediation', 'Conciliation', 'Arbitration'], true)) {
     $hearingType = 'Mediation';
 }
 $complaintId = filter_var($input['complaint_id'] ?? null, FILTER_VALIDATE_INT) ?: null;
@@ -164,11 +164,11 @@ $isTuesday = ($dayOfWeek === 2);
         $isMedDay = in_array($curDayCode, $allowedMedDays, true);
         $booked = $dailyCounts[$dStr] ?? 0;
 
-        if ($hearingType === 'Conciliation') {
+        if (in_array($hearingType, ['Conciliation', 'Arbitration'], true)) {
             // Conciliation is restricted to Mon/Wed/Thu/Fri. Tuesdays are
             // reserved for formal mediation; capacity always derives from
             // settings and never from a hard-coded visual count.
-            if ($isWeekend || $isHoliday || $curDayCode === 'Tue') {
+            if ($isWeekend || $isHoliday || ($hearingType === 'Conciliation' && $curDayCode === 'Tue')) {
                 $maxSlots = 0;
                 $avail = 0;
                 $isFull = true;
@@ -301,8 +301,8 @@ if ($hearingType === 'Mediation') {
             exit;
         }
     }
-} elseif ($hearingType === 'Conciliation') {
-    if ($isWeekend || $isNonWorkingDay || $curDayCode === 'Tue') {
+} elseif (in_array($hearingType, ['Conciliation', 'Arbitration'], true)) {
+    if ($isWeekend || $isNonWorkingDay || ($hearingType === 'Conciliation' && $curDayCode === 'Tue')) {
         echo json_encode([
             'success' => false,
             'has_conflict' => true,
@@ -318,7 +318,7 @@ if ($hearingType === 'Mediation') {
         ]);
         exit;
     }
-    if ($curDayCode === 'Tue' && $time !== '') {
+    if ($hearingType === 'Conciliation' && $curDayCode === 'Tue' && $time !== '') {
         $hourCheck = (int) date('H', strtotime($time));
         if ($hourCheck >= 12) {
             echo json_encode([
@@ -335,8 +335,8 @@ if ($hearingType === 'Mediation') {
     }
 }
 
-if ($hearingType === 'Conciliation') {
-    if ($isWeekend || $isNonWorkingDay || $curDayCode === 'Tue') {
+if (in_array($hearingType, ['Conciliation', 'Arbitration'], true)) {
+    if ($isWeekend || $isNonWorkingDay || ($hearingType === 'Conciliation' && $curDayCode === 'Tue')) {
         $maxSlots = 0;
     } else {
         $maxSlots = $concilMaxFull;
@@ -408,12 +408,12 @@ if ($hearingType === 'Conciliation' && $isTuesday) {
             'venue' => $venue,
             'message' => "Mediation sessions must have target call times within the configured Mediation Session Window (" . date('g:i A', strtotime($medHoursStart)) . " – " . date('g:i A', strtotime($medHoursEnd)) . ")."
         ];
-    } elseif ($hearingType === 'Conciliation') {
+    } elseif (in_array($hearingType, ['Conciliation', 'Arbitration'], true)) {
         require_once __DIR__ . '/../../services/OfficeLogisticsService.php';
         $logisticsCheck = (new OfficeLogisticsService($db))->validateHearingSchedule(
             substr($date, 0, 10) . ' ' . substr($time, 0, 5) . ':00',
-            $concilDefaultDuration,
-            'Conciliation'
+            $hearingType === 'Arbitration' ? $medDefaultDuration : $concilDefaultDuration,
+            $hearingType
         );
         if (empty($logisticsCheck['valid'])) {
             $hasConflict = true;

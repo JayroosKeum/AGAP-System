@@ -375,6 +375,12 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             const requestEl = document.getElementById('lisoResidentRequest');
             const btnNeedsInfo = document.getElementById('btnIntakeNeedsInfo');
             const btnEligible = document.getElementById('btnMarkIntakeEligible');
+            const btnRejected = document.getElementById('btnMarkIntakeRejected');
+            if (status === 'Rejected' && !(notesEl?.value || '').trim()) {
+                window.agapNotify?.('Enter the reason or jurisdictional basis before marking this intake ineligible.', 'error');
+                notesEl?.focus();
+                return;
+            }
 
             if (status === 'Accepted') {
                 const typedPrimary = (catInputEl?.value || '').trim();
@@ -404,9 +410,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             }
 
             window.__agapReviewIntakeSubmitting = true;
-            const activeBtn = status === 'Accepted' ? btnEligible : btnNeedsInfo;
+            const activeBtn = status === 'Accepted' ? btnEligible : (status === 'Rejected' ? btnRejected : btnNeedsInfo);
             const originalLabel = activeBtn ? activeBtn.textContent : '';
-            const allControls = [btnNeedsInfo, btnEligible, notesEl, requestEl, catInputEl, catEl, otherEl, secCatInputEl, secCatEl, secOtherEl, caseTypeEl, titleEl];
+            const allControls = [btnNeedsInfo, btnEligible, btnRejected, notesEl, requestEl, catInputEl, catEl, otherEl, secCatInputEl, secCatEl, secOtherEl, caseTypeEl, titleEl];
 
             allControls.forEach((el) => {
                 if (el) {
@@ -424,6 +430,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             form.append('complaint_id', complaintId);
             form.append('status', status);
             form.append('review_notes', reviewNotes);
+            if (status !== 'Rejected') {
             if (catEl) form.append('category_id', catEl.value);
             if (catInputEl) form.append('category_name', catInputEl.value.trim());
             if (otherEl) form.append('other_category_specification', otherEl.value.trim());
@@ -432,6 +439,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             if (secOtherEl) form.append('secondary_other_category_specification', secOtherEl.value.trim());
             if (caseTypeEl) form.append('case_type', caseTypeEl.value);
             if (titleEl) form.append('complaint_title', titleEl.value.trim());
+            }
             if (status === 'Needs Information' && requestEl) {
                 form.append('request_message', requestEl.value.trim());
             }
@@ -824,7 +832,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         </div>
 
                         <div class="form-group" style="margin-bottom: 14px;">
-                            <label for="lisoScreeningDecisionNotes" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Internal screening notes (optional)</label>
+                            <label for="lisoScreeningDecisionNotes" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Internal screening notes / rejection basis (required for rejection)</label>
                             <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff; resize: vertical;"></textarea>
                         </div>
                         <?php if ($hasResidentAccount): ?>
@@ -835,6 +843,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             </div>
                         <?php endif; ?>
                         <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
+                            <button type="button" id="btnMarkIntakeRejected" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Rejected')">Mark Ineligible / Reject</button>
                             <button type="button" id="btnIntakeNeedsInfo" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
                             <button type="button" id="btnMarkIntakeEligible" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')">Mark Intake Eligible</button>
                         </div>
@@ -1599,7 +1608,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <!-- Visual 15-Working-Day Calendar & Capacity Strip -->
                     <div id="summonVisualDatePickerContainer" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 6px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.78rem; flex-wrap: wrap; gap: 6px;">
-                            <span id="schedVisualDeckTitle" style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
+                            <span id="summonVisualDeckTitle" style="font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: 0.03em; font-size: 0.74rem;">
                                 Available Mediation Days (Max 8 Hearings/Day):
                             </span>
                             <div style="display: flex; gap: 10px; font-size: 0.72rem; flex-wrap: wrap;">

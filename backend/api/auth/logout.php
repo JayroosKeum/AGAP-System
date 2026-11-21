@@ -29,6 +29,7 @@ if (!CsrfService::validateRequest()) {
     exit;
 }
 
+$logoutPortal = (($_SESSION['role_name'] ?? '') === 'Resident' || (int) ($_SESSION['role_id'] ?? 0) === 5) ? 'resident' : 'auth';
 $_SESSION = [];
 
 if (ini_get('session.use_cookies')) {
@@ -45,5 +46,5 @@ if (ini_get('session.use_cookies')) {
 }
 
 session_destroy();
-header('Location: ../../../frontend/pages/auth/login.php?logged_out=1', true, 303);
+header('Location: ../../../frontend/pages/' . $logoutPortal . '/login.php?logged_out=1', true, 303);
 exit;

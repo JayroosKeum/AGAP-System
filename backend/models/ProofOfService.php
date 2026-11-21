@@ -208,7 +208,28 @@ class ProofOfService
         $stmt->execute();
         $cases = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $cfa = new CFA($this->conn);
+        // Use the latest operative return for every required recipient. Historical
+        // successful returns must not mask a pending replacement notice or retry.
+        $returns = $this->conn->prepare("SELECT cp.party_type,
+            (SELECT sd.delivery_status FROM summon_deliveries sd
+             WHERE sd.case_id = ? AND (? IS NULL OR sd.hearing_id = ?)
+               AND sd.party_type = cp.party_type
+               AND (sd.resident_id = cp.resident_id OR sd.resident_id IS NULL)
+               AND sd.delivery_status <> 'Superseded'
+             ORDER BY sd.delivery_id DESC LIMIT 1) AS delivery_status
+            FROM complaint_parties cp WHERE cp.complaint_id = ?
+              AND cp.party_type IN ('Complainant', 'Respondent')");
         foreach ($cases as &$case) {
+            $returns->execute([$case['case_id'], $case['hearing_id'], $case['hearing_id'], $case['complaint_id']]);
+            $byRole = [];
+            foreach ($returns->fetchAll(PDO::FETCH_ASSOC) as $recipient) {
+                $byRole[$recipient['party_type']][] = $recipient['delivery_status'] ?: 'Pending';
+            }
+            foreach (['Complainant', 'Respondent'] as $partyType) {
+                $statuses = $byRole[$partyType] ?? ['Pending'];
+                $allServed = count(array_filter($statuses, static fn ($status) => in_array($status, ['Served', 'Served Personal', 'Served Substituted', 'Served Refused'], true))) === count($statuses);
+                $case[strtolower($partyType) . '_service_status'] = $allServed ? 'Served' : (in_array('Unserved', $statuses, true) ? 'Unserved' : 'Pending');
+            }
             $case['cfa_eligibility'] = $cfa->determineCfaEligibility((int) $case['case_id']);
         }
         unset($case);

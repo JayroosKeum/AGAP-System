@@ -51,7 +51,7 @@ final class ResidentComplaintTimeline
         $events = [];
         $add = static function (?string $date, string $title, string $detail = '', bool $reply = false) use (&$events): void {
             if ($date) {
-                $events[] = ['date' => $date, 'title' => $title, 'detail' => $detail, 'reply' => $reply];
+                $events[] = ['date' => $date, 'title' => $title, 'detail' => $detail, 'reply' => $reply, 'sequence' => count($events)];
             }
         };
         $add($complaint['created_at'], 'Concern submitted');
@@ -148,7 +148,7 @@ final class ResidentComplaintTimeline
             }
         }
 
-        usort($events, static fn (array $left, array $right): int => strcmp($left['date'], $right['date']));
+        usort($events, static fn (array $left, array $right): int => strcmp(substr($left['date'], 0, 16), substr($right['date'], 0, 16)) ?: ($left['sequence'] <=> $right['sequence']));
         return ['complaint' => $complaint, 'events' => $events, 'request' => $openRequest];
     }
 

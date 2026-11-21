@@ -59,6 +59,8 @@
                 ? window.getAppLanguage() === 'tl'
                 : document.documentElement.getAttribute('data-agap-lang') === 'tl';
             confirmLogoutBtn.textContent = isTl ? 'Lumalabas...' : 'Signing out...';
+            window.agapSigningOut = true;
+            window.agapDataSync?.stop();
             logoutForm.submit();
         });
 

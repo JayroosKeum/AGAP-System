@@ -427,7 +427,14 @@ class CaseStage
             'badge' => 'badge-primary'
         ];
 
-        if ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
+        if (in_array($case['case_status'], ['Arbitration', 'Arbitration Award'], true)) {
+            $nextPermittedAction = [
+                'action' => $case['case_status'] === 'Arbitration Award' ? 'Review Arbitration Award' : 'Continue Arbitration',
+                'description' => 'Open the Arbitration workspace for the agreement, hearings, and award.',
+                'action_type' => 'arbitration',
+                'badge' => 'badge-info'
+            ];
+        } elseif ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
             $nextPermittedAction = [
                 'action' => 'Amicable Settlement Reached',
                 'description' => 'Dispute resolved amicably. Monitor settlement compliance or close case.',

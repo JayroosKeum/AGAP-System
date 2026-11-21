@@ -178,8 +178,10 @@ class HearingMinutes
 
         $finalCaseStatuses = ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration', 'Arbitration Award', 'Closed', 'Endorsed to Court', 'Certified'];
         $isCaseFinal = in_array((string) $hearing['case_status'], $finalCaseStatuses, true);
+        // Attendance check-in sets hearings.status = 'Completed' before minutes are recorded;
+        // only queue_status = 'Concluded'/'Completed' or Finalized minutes lock out saving.
         $isHearingConcluded = in_array((string) ($hearing['queue_status'] ?? ''), ['Concluded', 'Completed'], true)
-            || in_array((string) ($hearing['status'] ?? ''), ['Completed', 'Concluded'], true);
+            || ((string) ($hearing['status'] ?? '') === 'Concluded');
         if ($isCaseFinal || $existingStatus === 'Finalized' || ($isHearingConcluded && $existingStatus !== 'Draft')) {
             return ['success' => false, 'message' => 'This concluded case or hearing session is read-only and its minutes cannot be changed.'];
         }

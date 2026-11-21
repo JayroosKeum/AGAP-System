@@ -2984,7 +2984,10 @@ tr[data-paanyaya-row="1"].is-expanded td {
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const csrfToken = window.agapCsrfToken
+        || document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content')
+        || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || '';
 
     // =========================================================================
     // 1. SCHEDULE PAANYAYA MODAL

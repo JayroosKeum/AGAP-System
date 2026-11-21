@@ -1,4 +1,6 @@
 (() => {
+    if (document.querySelector('meta[name="agap-authenticated"]')?.content !== '1' ||
+        ![1, 2, 3, 4].includes(Number(document.querySelector('meta[name="agap-role-id"]')?.content))) return;
     const endpoint = '../../../backend/api/sync/state.php';
     const eventName = 'agap:data-changed';
     const storageKey = 'agap:data-sync';
@@ -8,6 +10,14 @@
     let pollTimer = null;
     let checking = false;
     let channel = null;
+    let stopped = false;
+    let activeController = null;
+    const stop = () => {
+        stopped = true;
+        window.clearInterval(pollTimer);
+        pollTimer = null;
+        activeController?.abort();
+    };
 
     const changedModules = (previous, next) => {
         if (!previous?.modules || !next?.modules) return [];
@@ -40,9 +50,10 @@
     };
 
     const checkNow = async (force = false) => {
-        if (checking || (!force && document.hidden)) return;
+        if (stopped || window.agapSigningOut || checking || (!force && document.hidden)) return;
         checking = true;
         const controller = new AbortController();
+        activeController = controller;
         const timeout = window.setTimeout(() => controller.abort(), 8000);
         try {
             const response = await window.fetch(`${endpoint}?_t=${Date.now()}`, {
@@ -53,6 +64,10 @@
                 signal: controller.signal
             });
             const nextState = await response.json().catch(() => null);
+            if (response.status === 401 || response.status === 403) {
+                stop();
+                return;
+            }
             if (!response.ok || !nextState?.success) return;
 
             if (currentState && currentState.revision !== nextState.revision) {
@@ -82,7 +97,7 @@
     };
 
     const start = () => {
-        if (pollTimer) return;
+        if (stopped || pollTimer) return;
         checkNow(true);
         pollTimer = window.setInterval(checkNow, pollInterval);
     };
@@ -94,6 +109,7 @@
             return () => subscribers.delete(callback);
         },
         checkNow: () => checkNow(true),
+        stop,
         eventName
     };
 
@@ -322,7 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const recentlyDisplayed = new Set();
     const showMessagePopup = (element) => {
-        if (!(element instanceof Element) || element.classList.contains('field-validation-message') || element.closest('.agap-toast') || element.closest('#agapToastContainer')) return;
+        if (!(element instanceof Element) || element.closest('.field-validation-message, .agap-field-error, .agap-toast, #agapToastContainer') || element.hidden || !element.getClientRects().length) return;
         const message = element.textContent.trim();
         if (!message || recentlyDisplayed.has(`${element.id}:${message}`)) return;
         const targetEl = element.closest('[role="alert"], [role="status"]') || element;
@@ -348,9 +364,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const seenKey = 'agap-seen-notification-ids';
     const seen = new Set(JSON.parse(sessionStorage.getItem(seenKey) || '[]'));
     const checkWorkflowNotifications = async () => {
+        if (window.agapSigningOut) return;
         try {
             // This endpoint is idempotent: it only creates each due-soon/overdue alert once.
-            await fetch('../../../backend/api/hearings/deadline-alerts.php', { method: 'POST' }).catch(() => null);
+            if ([1, 2].includes(Number(document.querySelector('meta[name="agap-role-id"]')?.content))) {
+                await fetch('../../../backend/api/hearings/deadline-alerts.php', { method: 'POST' }).catch(() => null);
+            }
             const response = await fetch('../../../backend/api/notifications/list.php');
             const result = await response.json();
             if (!response.ok || result.success === false) return;
