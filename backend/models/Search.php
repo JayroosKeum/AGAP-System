@@ -121,8 +121,9 @@ class Search
         (SELECT COUNT(*) FROM hearings h_med WHERE h_med.case_id = c.case_id AND h_med.hearing_type = 'Mediation') AS mediation_count,
         (SELECT COUNT(*) FROM hearings h_con WHERE h_con.case_id = c.case_id AND h_con.hearing_type = 'Conciliation') AS conciliation_count,
         (SELECT COUNT(*) FROM hearings h_arb WHERE h_arb.case_id = c.case_id AND h_arb.hearing_type = 'Arbitration') AS arbitration_hearing_count,
-        (SELECT COUNT(*) FROM settlements s WHERE s.case_id = c.case_id) AS settlement_count,
+        (SELECT COUNT(*) FROM settlements s WHERE s.case_id = c.case_id AND s.settlement_status = 'Signed and Attested') AS settlement_count,
         (SELECT COUNT(*) FROM arbitration_records ar WHERE ar.case_id = c.case_id) AS arbitration_record_count,
+        (SELECT COUNT(*) FROM arbitration_records ar WHERE ar.case_id = c.case_id AND (ar.award_status = 'Finalized' OR ar.award_date IS NOT NULL)) AS arbitration_finalized_count,
         (SELECT COUNT(*) FROM cfa_records cfa WHERE cfa.case_id = c.case_id) AS cfa_count
         FROM complaints co
         LEFT JOIN cases c ON c.complaint_id = co.complaint_id
@@ -208,14 +209,25 @@ class Search
     {
         // 1. Final Disposition (How the case was resolved or terminated)
         $disposition = 'Pending';
-        if ((int)($row['settlement_count'] ?? 0) > 0 || ($row['case_status'] ?? '') === 'Settled' || ($row['complaint_status'] ?? '') === 'Settled' || ($row['complaint_status'] ?? '') === 'Resolved at Paanyaya / Closed') {
-            $disposition = 'Amicable Settlement';
-        } elseif ((int)($row['cfa_count'] ?? 0) > 0 || ($row['case_status'] ?? '') === 'CFA Issued' || ($row['complaint_status'] ?? '') === 'CFA Issued') {
-            $disposition = 'Certificate to File Action (CFA)';
-        } elseif ((int)($row['arbitration_record_count'] ?? 0) > 0) {
-            $disposition = 'Arbitration Award';
-        } elseif (($row['case_status'] ?? '') === 'Dismissed' || in_array($row['complaint_status'] ?? '', ['Dismissed', 'Rejected'], true)) {
+        $cs = (string) ($row['case_status'] ?? '');
+        $cos = (string) ($row['complaint_status'] ?? '');
+        $hasCfa = (int) ($row['cfa_count'] ?? 0) > 0 || $cs === 'CFA Issued' || $cos === 'CFA Issued';
+        $hasArbRec = (int) ($row['arbitration_record_count'] ?? 0) > 0;
+        $hasArbFinalized = (int) ($row['arbitration_finalized_count'] ?? 0) > 0;
+        $hasSettleRec = (int) ($row['settlement_count'] ?? 0) > 0;
+
+        if (in_array($cs, ['Dismissed', 'DISMISSED_BARRED'], true) || in_array($cos, ['Dismissed', 'DISMISSED_BARRED', 'Rejected'], true)) {
             $disposition = 'Dismissed / Dropped';
+        } elseif ($cs === 'Repudiated' || $cos === 'Repudiated') {
+            $disposition = 'Repudiated';
+        } elseif ($hasCfa) {
+            $disposition = 'Certificate to File Action (CFA)';
+        } elseif ($cs === 'Arbitration Award' || $hasArbFinalized || ($hasArbRec && ($cs === 'Settled' || $cos === 'Settled') && !$hasSettleRec)) {
+            $disposition = 'Arbitration Award';
+        } elseif ($cs === 'Arbitration' || $cos === 'Arbitration') {
+            $disposition = 'Pending';
+        } elseif ($hasSettleRec || $cs === 'Settled' || $cos === 'Settled' || $cos === 'Resolved at Paanyaya / Closed') {
+            $disposition = 'Amicable Settlement';
         }
 
         // 2. Progression / Dispute Stage (Procedural phase)
@@ -228,11 +240,10 @@ class Search
         $complaintStatus = (string)($row['complaint_status'] ?? '');
         $hasCase = !empty($row['case_id']);
 
-        $isDisposed = in_array($caseStatus, ['Settled', 'CFA Issued', 'Dismissed', 'Archived'], true)
-            || in_array($complaintStatus, ['Settled', 'Dismissed', 'Rejected', 'Resolved at Paanyaya / Closed'], true)
-            || (int)($row['settlement_count'] ?? 0) > 0
-            || (int)($row['arbitration_record_count'] ?? 0) > 0
-            || (int)($row['cfa_count'] ?? 0) > 0;
+        $isDisposed = in_array($caseStatus, ['Settled', 'CFA Issued', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Arbitration Award', 'Archived'], true)
+            || in_array($complaintStatus, ['Settled', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Rejected', 'Resolved at Paanyaya / Closed'], true)
+            || ($hasSettleRec && $caseStatus !== 'Arbitration')
+            || $hasCfa;
         $isStageExhausted = $isDisposed;
 
         if ($arbCount > 0 || $caseStatus === 'Arbitration' || $complaintStatus === 'Arbitration') {
@@ -279,10 +290,12 @@ class Search
                 $labels[] = 'Amicable Settlement';
             } elseif ($disposition === 'Certificate to File Action (CFA)') {
                 $labels[] = 'CFA';
+            } elseif ($disposition === 'Repudiated') {
+                $labels[] = 'Repudiated';
             } elseif ($disposition === 'Arbitration Award') {
                 $labels[] = 'Arbitration Award';
             } elseif ($disposition === 'Dismissed / Dropped') {
-                $labels[] = 'Dismissed';
+                $labels[] = ($caseStatus === 'DISMISSED_BARRED' || $complaintStatus === 'DISMISSED_BARRED') ? 'Dismissed (Barred)' : 'Dismissed';
             }
         } else {
             if ($stage !== 'None') {
@@ -309,6 +322,14 @@ class Search
         $caseStatus = (string) ($row['case_status'] ?? '');
         $complaintStatus = (string) ($row['complaint_status'] ?? '');
 
+        $dismissedStatuses = ['Dismissed', 'DISMISSED_BARRED', 'Archived', 'Rejected'];
+        if (in_array($caseStatus, $dismissedStatuses, true) || in_array($complaintStatus, $dismissedStatuses, true)) {
+            return 'Resolution / Closed';
+        }
+        if ((int) ($row['cfa_count'] ?? 0) > 0 || $caseStatus === 'CFA Issued' || $complaintStatus === 'CFA Issued' || $caseStatus === 'Repudiated' || $complaintStatus === 'Repudiated') {
+            return 'CFA';
+        }
+
         $closedStatuses = ['Settled', 'Dismissed', 'Archived', 'Rejected', 'Arbitration', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Resolved at Paanyaya / Closed'];
 
         if ((int) ($row['settlement_count'] ?? 0) > 0
@@ -316,9 +337,6 @@ class Search
             || in_array($caseStatus, $closedStatuses, true)
             || in_array($complaintStatus, $closedStatuses, true)) {
             return 'Resolution / Closed';
-        }
-        if ((int) ($row['cfa_count'] ?? 0) > 0 || $caseStatus === 'CFA Issued' || $complaintStatus === 'CFA Issued') {
-            return 'CFA';
         }
         if ((int) ($row['conciliation_count'] ?? 0) > 0 || $caseStatus === 'Conciliation' || $complaintStatus === 'Conciliation') {
             return 'Conciliation';

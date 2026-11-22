@@ -14,7 +14,8 @@ class Document
     public function getAvailableCases(): array
     {
         $stmt = $this->conn->prepare(
-            "SELECT c.case_id, c.case_number, c.case_status, co.complaint_title
+            "SELECT c.case_id, c.case_number, c.case_status, co.complaint_title,
+                    (SELECT COUNT(*) FROM cfa_records cr WHERE cr.case_id = c.case_id) AS cfa_count
              FROM cases c
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              WHERE c.case_status <> 'Archived'

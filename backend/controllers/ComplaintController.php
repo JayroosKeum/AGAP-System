@@ -280,7 +280,10 @@ class ComplaintController
             }
             $docket = $paanyaya->escalateToFormalDocketing($complaintId, $actorId, "Formal complaint created from Paanyaya #{$sourceId}.", $data);
             if (empty($docket['success']) || empty($docket['case_id'])) {
-                throw new RuntimeException($docket['message'] ?? 'Unable to create the formal Mediation docket.');
+                if (!empty($docket['message'])) {
+                    throw new DomainException($docket['message']);
+                }
+                throw new RuntimeException('Unable to create the formal Mediation docket.');
             }
 
             $this->conn->commit();

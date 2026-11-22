@@ -6353,7 +6353,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 wasSubmitted = window.sessionStorage.getItem(submittedFlagKey) === '1';
                 if (wasSubmitted) window.sessionStorage.removeItem(submittedFlagKey);
             } catch (err) {}
-            if (event.persisted || wasSubmitted) {
+            if (event.persisted && wasSubmitted) {
                 window.location.reload();
             }
         });

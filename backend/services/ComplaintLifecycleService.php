@@ -85,6 +85,7 @@ class ComplaintLifecycleService
                     SELECT 1
                     FROM settlements s
                     WHERE s.case_id = c.case_id
+                      AND s.settlement_status = 'Signed and Attested'
                 ) AS has_settlement,
 
                 EXISTS(
@@ -180,6 +181,28 @@ class ComplaintLifecycleService
         /*
          * Resolution / Closed has the highest priority.
          */
+        /*
+         * Dismissed / Barred cases are closed; CFA and Repudiation take priority
+         * over historical settlement rows so CFA queue and badges stay accurate.
+         */
+        $barredOrDismissed = ['Dismissed', 'DISMISSED_BARRED', 'Rejected', 'Archived'];
+        if (
+            in_array($caseStatus, ['Dismissed', 'DISMISSED_BARRED', 'Rejected', 'Archived'], true) ||
+            in_array($complaintStatus, $barredOrDismissed, true)
+        ) {
+            return self::CLOSED;
+        }
+
+        if (
+            $hasCfa ||
+            $caseStatus === 'CFA Issued' ||
+            $complaintStatus === 'CFA Issued' ||
+            $caseStatus === 'Repudiated' ||
+            $complaintStatus === 'Repudiated'
+        ) {
+            return self::CFA;
+        }
+
         $closedStatuses = [
             'Settled',
             'Dismissed',

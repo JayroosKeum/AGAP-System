@@ -9,10 +9,10 @@ class Summons
     private PDO $conn;
     private NotificationService $notifications;
 
-    public function __construct()
+    public function __construct(?PDO $db = null)
     {
-        $this->conn = (new Database())->connect();
-        $this->notifications = new NotificationService();
+        $this->conn = $db ?: (new Database())->connect();
+        $this->notifications = new NotificationService($this->conn);
     }
 
     /**
@@ -23,15 +23,20 @@ class Summons
      */
     public function issueFirstSummon(int $complaintId, int $userId, array $mediationData = []): array
     {
+        $ownsTransaction = !$this->conn->inTransaction();
         try {
-            $this->conn->beginTransaction();
+            if ($ownsTransaction) {
+                $this->conn->beginTransaction();
+            }
 
             $complaintStmt = $this->conn->prepare('SELECT complaint_id, complaint_number, complaint_title, status, case_type, created_at FROM complaints WHERE complaint_id = ? FOR UPDATE');
             $complaintStmt->execute([$complaintId]);
             $complaint = $complaintStmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$complaint) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
 
@@ -46,7 +51,9 @@ class Summons
             $allowLegacyAutoCreate = !$case && !$isPreparedOrModern && !empty($mediationData['override_paanyaya']);
 
             if (!$case && !$allowLegacyAutoCreate) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return [
                     'success' => false,
                     'message' => 'Docket this complaint into a formal case before issuing the first formal summons.'
@@ -58,7 +65,9 @@ class Summons
             $paaModel = new Paanyaya($this->conn);
             $prereq = $paaModel->checkSummonsPrerequisite($complaintId);
             if (!$prereq['allowed'] && !$allowLegacyAutoCreate) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return [
                     'success' => false,
                     'message' => $prereq['message'] ?? 'Complete the required Paanyaya process before issuing the first formal summons.'
@@ -79,7 +88,9 @@ class Summons
                 $medTime = Setting::getSetting('mediation_hours_start', '13:00');
             }
             if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $medDate) || !preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/', $medTime)) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return ['success' => false, 'message' => 'Please provide a valid 1st Mediation date and time.'];
             }
 
@@ -88,15 +99,21 @@ class Summons
             $dayOfWeek = (int) date('w', strtotime($medDate));
             $hour = (int) date('H', strtotime($medTime));
             if ($dayOfWeek === 0) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return ['success' => false, 'message' => 'Mediation hearings can only be scheduled on working days (Monday to Friday).'];
             }
             if (($hour < 8 || $hour >= 17) || ($hour >= 12 && $hour < 13)) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return ['success' => false, 'message' => 'Mediation hearings must be during regular office hours (8:00 AM – 5:00 PM, excluding 12:00 PM – 1:00 PM lunch break).'];
             }
             if (MediationDeadlineService::isNonWorkingDay(new \DateTimeImmutable($medDate))) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return ['success' => false, 'message' => 'Mediation hearings cannot be scheduled on non-working days or Philippine holidays.'];
             }
 
@@ -112,7 +129,9 @@ class Summons
             $capacityStmt->execute([$medDate]);
             $dailyCap = (int) Setting::getSetting('daily_hearing_capacity', 8) ?: 8;
             if ((int) $capacityStmt->fetchColumn() >= $dailyCap) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 return [
                     'success' => false,
                     'message' => "Daily capacity limit reached: All {$dailyCap} mediation slots are fully booked for this date. Please select another date."
@@ -130,7 +149,9 @@ class Summons
 
             if (!$case) {
                 if (!$allowLegacyAutoCreate) {
-                    $this->conn->rollBack();
+                    if ($ownsTransaction && $this->conn->inTransaction()) {
+                        $this->conn->rollBack();
+                    }
                     return [
                         'success' => false,
                         'message' => 'Docket this complaint into a formal case before issuing the first formal summons.'
@@ -148,7 +169,9 @@ class Summons
                 $adminStmt->execute();
                 $administrator = $adminStmt->fetch(PDO::FETCH_ASSOC);
                 if (!$administrator) {
-                    $this->conn->rollBack();
+                    if ($ownsTransaction && $this->conn->inTransaction()) {
+                        $this->conn->rollBack();
+                    }
                     return ['success' => false, 'message' => 'The active Administrator or Barangay Captain account could not be found.'];
                 }
 
@@ -190,7 +213,9 @@ class Summons
 
             $conflictAck = !empty($mediationData['conflict_acknowledged']) || !empty($mediationData['allow_overlap']) || !empty($mediationData['override_conflict']);
             if ($conflict && !$conflictAck) {
-                $this->conn->rollBack();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
                 $cDate = date('M j, Y', strtotime($conflict['hearing_date']));
                 $cTime = date('g:i A', strtotime($conflict['hearing_date']));
                 $caseRef = !empty($conflict['case_number']) ? ' for Case ' . $conflict['case_number'] : '';
@@ -299,7 +324,9 @@ class Summons
             $anyServedStmt = $this->conn->prepare("SELECT 1 FROM proof_of_service WHERE case_id = ? AND service_result = 'Served'");
             $anyServedStmt->execute([$caseId]);
             if ($anyServedStmt->fetchColumn()) {
-                $this->conn->commit();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->commit();
+                }
                 $latest = !empty($existingSummons) ? end($existingSummons) : null;
                 return [
                     'success' => true,
@@ -336,7 +363,9 @@ class Summons
                 ");
                 $attemptCheck->execute([$latestDocId, $caseId, $caseId, $latestDocId, $existingCount]);
                 if (!$attemptCheck->fetchColumn()) {
-                    $this->conn->commit();
+                    if ($ownsTransaction && $this->conn->inTransaction()) {
+                        $this->conn->commit();
+                    }
                     $ordinals = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th'];
                     $currOrd = $ordinals[$existingCount] ?? ($existingCount . 'th');
                     $nextOrd = $ordinals[$existingCount + 1] ?? (($existingCount + 1) . 'th');
@@ -349,7 +378,9 @@ class Summons
 
             // 3. Cap at 6 summons per mediation/conciliation
             if ($existingCount >= 6) {
-                $this->conn->commit();
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->commit();
+                }
                 $latest = end($existingSummons);
                 return [
                     'success' => true,
@@ -496,7 +527,9 @@ class Summons
                 error_log('Failed to complete Next-Working-Day Summons SLA: ' . $sE->getMessage());
             }
 
-            $this->conn->commit();
+            if ($ownsTransaction && $this->conn->inTransaction()) {
+                $this->conn->commit();
+            }
 
             // Notify Summons Server users
             $this->notifySummonsServers($caseNumber, $summonsNum, $userId);
@@ -518,7 +551,7 @@ class Summons
                 ),
             ];
         } catch (Throwable $e) {
-            if ($this->conn->inTransaction()) {
+            if ($ownsTransaction && $this->conn->inTransaction()) {
                 $this->conn->rollBack();
             }
             error_log('Error issuing summons: ' . $e->getMessage());

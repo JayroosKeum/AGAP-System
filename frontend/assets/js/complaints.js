@@ -288,7 +288,16 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
 
     const medStage = stages.mediation || {};
     const conStage = stages.conciliation || {};
-    const isMediationCompletedOrReferred = isPaanyayaCompletedOrEscalated && (
+    const hasConciliationStarted = Boolean(
+        conStage.sessions_count > 0 ||
+        ['Conciliation'].includes(cStatus) ||
+        Boolean(complaint?.pangkat || complaint?.case_workspace?.conciliation?.pangkat?.is_constituted || window.__agapComplaintWorkspace?.conciliation?.pangkat?.is_constituted || conStage?.pangkat?.is_constituted)
+    );
+    const isDismissedBeforeConciliation = (
+        medStage.stage_status === 'Dismissed' ||
+        ((cStatus === 'Dismissed' || cStatus === 'DISMISSED_BARRED') && !hasConciliationStarted)
+    );
+    const isMediationCompletedOrReferred = isPaanyayaCompletedOrEscalated && !isDismissedBeforeConciliation && (
         conStage.is_locked === false ||
         ['Completed', 'Referred to Pangkat', 'Unsuccessful', 'Settled'].includes(medStage.stage_status) ||
         ['Conciliation', 'CFA', 'Arbitration'].includes(lifecycle) ||
@@ -298,6 +307,13 @@ function canAccessTab(tabId, caseStatus, stageProgress) {
     );
 
     if (tabId === 'tab-conciliation') {
+        if (isDismissedBeforeConciliation) {
+            return {
+                allowed: false,
+                prerequisite: 'Mediation',
+                message: 'Complaint was dismissed during Mediation; Pangkat Conciliation was not convened.'
+            };
+        }
         if (!isPaanyayaCompletedOrEscalated) {
             return {
                 allowed: false,
@@ -767,14 +783,34 @@ async function loadComplaintDetails() {
             data.status === '1st Paanyaya Failed (No-Show)' ||
             data.status === 'Pre-Docketed (Paanyaya 2 Authorized)'
         );
+        const isCfaIssued = Boolean(
+            data.case_status === 'CFA Issued' ||
+            data.case_workspace?.case?.case_status === 'CFA Issued' ||
+            data.status === 'CFA Issued' ||
+            (data.cfa && data.cfa.cfa_id) ||
+            (data.case_workspace?.cfa && data.case_workspace.cfa.cfa_id)
+        );
+        const isArbitrationAwardFinal = Boolean(
+            data.case_workspace?.arbitration?.award_status === 'Finalized' ||
+            data.case_workspace?.arbitration?.award_date ||
+            data.arbitration?.award_status === 'Finalized' ||
+            data.arbitration?.award_date ||
+            data.case_status === 'Arbitration Award'
+        );
         let displayStage = '';
 
-        if (isRepudiated && isCfa) {
+        if (isCfaIssued) {
+            displayStage = 'CFA Stage (Court Referral)';
+        } else if (isRepudiated && isCfa) {
             displayStage = 'Repudiated — For CFA';
         } else if (isRepudiated) {
             displayStage = 'Repudiated Settlement';
         } else if (isCfa) {
             displayStage = 'CFA Stage (Court Referral)';
+        } else if (data.case_status === 'DISMISSED_BARRED' || data.case_workspace?.case?.case_status === 'DISMISSED_BARRED') {
+            displayStage = 'Dismissed (Barred)';
+        } else if (isArbitrationAwardFinal) {
+            displayStage = 'Arbitration Award';
         } else if (isSettled) {
             displayStage = 'Settled (Amicable Settlement)';
         } else if (data.status === 'Resolved at Paanyaya / Closed') {
@@ -798,7 +834,11 @@ async function loadComplaintDetails() {
         const statusEl = document.getElementById('complaintStatusBadge');
         if (statusEl) {
             statusEl.className = 'case-stage-pill';
-            if (isRepudiated && isCfa) {
+            if (isCfaIssued) {
+                statusEl.style.background = '#ede9fe';
+                statusEl.style.color = '#6d28d9';
+                statusEl.style.border = '1px solid #c4b5fd';
+            } else if (isRepudiated && isCfa) {
                 statusEl.style.background = '#fee2e2';
                 statusEl.style.color = '#991b1b';
                 statusEl.style.border = '1px solid #fca5a5';
@@ -810,7 +850,11 @@ async function loadComplaintDetails() {
                 statusEl.style.background = '#ede9fe';
                 statusEl.style.color = '#6d28d9';
                 statusEl.style.border = '1px solid #c4b5fd';
-            } else if (isSettled || data.status === 'Resolved at Paanyaya / Closed') {
+            } else if (data.case_status === 'DISMISSED_BARRED' || data.case_workspace?.case?.case_status === 'DISMISSED_BARRED' || data.case_status === 'Dismissed') {
+                statusEl.style.background = '#fee2e2';
+                statusEl.style.color = '#991b1b';
+                statusEl.style.border = '1px solid #fca5a5';
+            } else if (isSettled || isArbitrationAwardFinal || data.status === 'Resolved at Paanyaya / Closed') {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
@@ -1733,12 +1777,36 @@ function renderCaseWorkspace(workspace, complaint) {
         complaint?.case_status === 'CFA Issued' ||
         complaint?.status === 'CFA Issued'
     );
+    const isCfaIssued = Boolean(
+        caseData?.case_status === 'CFA Issued' ||
+        complaint?.case_status === 'CFA Issued' ||
+        complaint?.status === 'CFA Issued' ||
+        (complaint?.cfa && complaint.cfa.cfa_id) ||
+        (workspace?.cfa && workspace.cfa.cfa_id)
+    );
     const hasExecution = Boolean(workspace?.execution || complaint?.execution);
     const isArbitration = Boolean(
         workspace?.arbitration ||
+        complaint?.arbitration ||
         caseData?.case_status === 'Arbitration' ||
-        stages?.arbitration?.stage_status === 'Settled' ||
-        stages?.arbitration?.stage_status === 'Arbitration Award'
+        caseData?.case_status === 'Arbitration Award' ||
+        stages?.arbitration?.stage_status === 'Arbitration Award' ||
+        (stages?.arbitration && !stages.arbitration.is_locked && (stages.arbitration.stage_status === 'In Progress' || stages.arbitration.stage_status === 'Settled' || stages.arbitration.outcome === 'Arbitration' || stages.arbitration.outcome === 'Arbitration Award'))
+    );
+    const isArbitrationFinalized = Boolean(
+        workspace?.arbitration?.award_status === 'Finalized' ||
+        workspace?.arbitration?.award_date ||
+        complaint?.arbitration?.award_status === 'Finalized' ||
+        complaint?.arbitration?.award_date ||
+        caseData?.case_status === 'Arbitration Award' ||
+        stages?.arbitration?.stage_status === 'Arbitration Award' ||
+        (isArbitration && (caseData?.case_status === 'Settled' || complaint?.status === 'Settled'))
+    );
+    const hasSignedSettlement = Boolean(
+        settlement && settlement.settlement_id && (
+            settlement.settlement_status === 'Signed and Attested' ||
+            (!settlement.settlement_status && Boolean(Number(settlement.complainant_signed) && Number(settlement.respondent_signed) && Number(settlement.pb_attested)))
+        )
     );
     const hasSettledSession = (workspace?.hearings || []).some(h => (h.session_outcome === 'Settled' || h.outcome === 'Settled')) ||
                               (workspace?.sessions || []).some(s => (s.session_outcome === 'Settled' || s.outcome === 'Settled')) ||
@@ -1746,20 +1814,24 @@ function renderCaseWorkspace(workspace, complaint) {
                               (complaint?.case_workspace?.hearings || []).some(h => (h.session_outcome === 'Settled' || h.outcome === 'Settled'));
 
     const isSettledCase = Boolean(
-        complaint?.status === 'Settled' ||
-        complaint?.case_status === 'Settled' ||
-        caseData?.case_status === 'Settled' ||
-        workspace?.settlement ||
-        med?.stage_status === 'Settled' ||
-        con?.stage_status === 'Settled' ||
-        stages?.arbitration?.stage_status === 'Settled' ||
-        hasSettledSession
+        hasSignedSettlement ||
+        (!isArbitration && (
+            complaint?.status === 'Settled' ||
+            complaint?.case_status === 'Settled' ||
+            caseData?.case_status === 'Settled' ||
+            (workspace?.settlement && workspace.settlement.settlement_id) ||
+            med?.stage_status === 'Settled' ||
+            con?.stage_status === 'Settled' ||
+            hasSettledSession
+        ))
     );
 
     const isDismissedCase = Boolean(
         complaint?.status === 'Dismissed' ||
         complaint?.case_status === 'Dismissed' ||
         caseData?.case_status === 'Dismissed' ||
+        caseData?.case_status === 'DISMISSED_BARRED' ||
+        complaint?.case_status === 'DISMISSED_BARRED' ||
         med?.stage_status === 'Dismissed' ||
         con?.stage_status === 'Dismissed'
     );
@@ -1774,7 +1846,7 @@ function renderCaseWorkspace(workspace, complaint) {
 
     // A completed disposition closes the workflow record. Keep its session history
     // and documents viewable and openable, but prevent mutations outside the Outcome tab.
-    const outcomeLocked = Boolean(isSettledCase || isCfa || isArbitration || isRepudiated || isDismissedCase || isClosedCase);
+    const outcomeLocked = Boolean(isSettledCase || isCfaIssued || isCfa || isArbitrationFinalized || isRepudiated || isDismissedCase || isClosedCase);
     applyOutcomeReadOnlyLock(outcomeLocked);
 
     const tabLabel = document.getElementById('tabOutcomesLabel');
@@ -1782,12 +1854,18 @@ function renderCaseWorkspace(workspace, complaint) {
     const arbWs = document.getElementById('arbitrationCfaWorkspace');
 
     let tabPillHtml = '';
-    if (isRepudiated) {
+    if (isCfaIssued) {
+        tabPillHtml = '<span class="status-pill" style="background:#ede9fe; color:#6d28d9; border:1px solid #c4b5fd; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">📄 CFA ISSUED</span>';
+    } else if (isDismissedCase) {
+        tabPillHtml = '<span class="status-pill" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">✕ DISMISSED</span>';
+    } else if (isRepudiated) {
         tabPillHtml = '<span class="status-pill" style="background:#fee2e2; color:#b91c1c; border:1px solid #fca5a5; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">⚠ REPUDIATED</span>';
     } else if (isCfa) {
         tabPillHtml = '<span class="status-pill" style="background:#ede9fe; color:#6d28d9; border:1px solid #c4b5fd; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">📄 FOR CFA</span>';
     } else if (hasExecution) {
         tabPillHtml = '<span class="status-pill" style="background:#dbeafe; color:#1d4ed8; border:1px solid #93c5fd; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">⚖️ FOR EXECUTION</span>';
+    } else if (isArbitrationFinalized) {
+        tabPillHtml = '<span class="status-pill status-active" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">✓ ARBITRATION AWARD</span>';
     } else if (isArbitration) {
         tabPillHtml = '<span class="status-pill" style="background:#fef3c7; color:#b45309; border:1px solid #fcd34d; font-size:0.7rem; padding:2px 8px; border-radius:9999px; margin-left:6px; font-weight:700;">⚖️ ARBITRATION</span>';
     } else if (isSettledCase) {
@@ -1802,7 +1880,15 @@ function renderCaseWorkspace(workspace, complaint) {
 
     const arbProgWs = document.getElementById('arbitrationProgressiveWorkspace');
 
-    if (isSettledCase || (isRepudiated && !isArbitration)) {
+    if (isArbitration && !hasSignedSettlement && !isRepudiated) {
+        if (typeof unlockOutcomesTab === 'function') {
+            unlockOutcomesTab(stageCaseId || complaint.complaint_id);
+        }
+        if (amicWs) amicWs.style.display = 'none';
+        if (arbProgWs) arbProgWs.style.display = 'block';
+        if (arbWs) arbWs.style.display = 'none';
+        renderArbitrationProgressiveWorkspace(workspace, complaint, stageCaseId);
+    } else if (isSettledCase || (isRepudiated && !isArbitration)) {
         if (typeof unlockOutcomesTab === 'function') {
             unlockOutcomesTab(stageCaseId || complaint.complaint_id);
         }
@@ -2196,16 +2282,28 @@ function renderOfficialKpForms(workspace, complaint) {
     ];
     const sessionOutcomes = allEmbeddedSessions.map(s => (s.session_outcome || s.outcome || '').toLowerCase());
 
-    const isSettled = compStatus.includes('settle') || medOutcome.includes('settle') || concOutcome.includes('settle') ||
-                      sessionOutcomes.some(o => o.includes('settle')) || Boolean(activeComplaint?.settlement || workspace?.settlement);
-
     const isArbitration = compStatus.includes('arbitrat') || compStage.includes('arbitrat') ||
                           arbOutcome !== '' || medOutcome.includes('arbitrat') || concOutcome.includes('arbitrat') ||
                           sessionOutcomes.some(o => o.includes('arbitrat')) || Boolean(activeComplaint?.arbitration || workspace?.arbitration);
     const isArbitrationAward = arbOutcome.includes('award') ||
                                sessionOutcomes.some(o => o.includes('arbitration award')) ||
-                               Boolean(activeComplaint?.arbitration?.award_date || activeComplaint?.arbitration?.award_terms ||
-                                   workspace?.arbitration?.award_date || workspace?.arbitration?.award_terms);
+                               compStatus === 'arbitration award' ||
+                               Boolean(activeComplaint?.arbitration?.award_status === 'Finalized' ||
+                                   workspace?.arbitration?.award_status === 'Finalized' ||
+                                   activeComplaint?.arbitration?.award_date || activeComplaint?.arbitration?.award_terms ||
+                                   activeComplaint?.arbitration?.award_details || workspace?.arbitration?.award_date ||
+                                   workspace?.arbitration?.award_terms || workspace?.arbitration?.award_details);
+
+    const hasSignedSettlement = Boolean(
+        workspace?.settlement && (
+            workspace.settlement.settlement_status === 'Signed and Attested' ||
+            (!workspace.settlement.settlement_status && Boolean(Number(workspace.settlement.complainant_signed) && Number(workspace.settlement.respondent_signed) && Number(workspace.settlement.pb_attested)))
+        )
+    );
+    const isSettled = hasSignedSettlement || (!isArbitrationAward && !isArbitration && (
+        compStatus.includes('settle') || medOutcome.includes('settle') || concOutcome.includes('settle') ||
+        sessionOutcomes.some(o => o.includes('settle')) || Boolean(activeComplaint?.settlement || workspace?.settlement)
+    ));
 
     const isRepudiated = compStatus.includes('repudiat') || sessionOutcomes.some(o => o.includes('repudiat')) ||
                          Boolean(activeComplaint?.settlement?.repudiation_date || workspace?.settlement?.repudiation_date);
@@ -2249,7 +2347,7 @@ function renderOfficialKpForms(workspace, complaint) {
     };
 
     // 1. When Outcome = "Amicably Settled (KP Form 16)"
-    if (isSettled && !hasDocTpl('KP Form 16') && activeCaseId > 0) {
+    if (isSettled && !isArbitration && !isArbitrationAward && !hasDocTpl('KP Form 16') && activeCaseId > 0) {
         rowsHtml += `
             <div class="kp-form-item-row" style="background: #f0fdf4; border-left: 4px solid #16a34a;">
                 <div class="kp-form-info-left" style="display: flex; flex-direction: row; align-items: center; gap: 14px;">
@@ -10594,10 +10692,15 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
     }
 
     // 6. Action Buttons
+    const btnEditSettle = document.querySelector('#amicableSettlementWorkspace button[onclick*="openEditSettlementTermsModal"]');
     const btnFileRep = document.getElementById('btnActionFileRepudiation');
     const btnIssueExec = document.getElementById('btnActionIssueExecution');
     const btnRecTrans = document.getElementById('btnActionRecordTransmittal');
 
+    const hasIssuedCfa = Boolean(ws.cfa && ws.cfa.cfa_id);
+    if (btnEditSettle) {
+        btnEditSettle.style.display = (isRepudiated || hasIssuedCfa) ? 'none' : 'inline-flex';
+    }
     if (btnFileRep) {
         btnFileRep.style.display = (!isRepudiated && isSignedAttested && isLocked) ? 'inline-flex' : 'none';
     }
@@ -10788,8 +10891,8 @@ async function handleRepudiationSubmit(e) {
 
     const settlementId = document.getElementById('repudiationSettlementId')?.value;
     const repudiatedBy = document.getElementById('repudiatingPartySelect')?.value;
-    const reason = document.getElementById('repudiationReasonText')?.value;
-    const swornDate = document.getElementById('repudiationSwornDate')?.value;
+    const reason = document.getElementById('repudiationReasonText')?.value?.trim();
+    const swornDate = document.getElementById('repudiationDateInput')?.value || document.getElementById('repudiationSwornDate')?.value || '';
 
     const checkboxes = document.querySelectorAll('#modalFileRepudiation input[name="ground"]:checked');
     if (checkboxes.length === 0) {
@@ -10797,6 +10900,10 @@ async function handleRepudiationSubmit(e) {
         if (btn) btn.disabled = false;
         return;
     }
+
+    const rawGroundValues = Array.from(checkboxes).map(c => String(c.value || '').trim()).filter(Boolean);
+    const groundKeywordMatch = rawGroundValues.join(' ').match(/\b(Fraud|Violence|Intimidation)\b/i);
+    const canonicalGround = groundKeywordMatch ? (groundKeywordMatch[1].charAt(0).toUpperCase() + groundKeywordMatch[1].slice(1).toLowerCase()) : '';
 
     if (!settlementId || !repudiatedBy || !reason) {
         alert('Please complete all required fields.');
@@ -10811,6 +10918,7 @@ async function handleRepudiationSubmit(e) {
             body: JSON.stringify({
                 settlement_id: Number(settlementId),
                 repudiated_by: Number(repudiatedBy),
+                repudiation_ground: canonicalGround || rawGroundValues[0] || '',
                 repudiation_reason: reason,
                 sworn_date: swornDate
             })
@@ -11342,7 +11450,10 @@ function renderArbitrationProgressiveWorkspace(workspace, complaint, caseId) {
                                 <span style="font-size: 0.76rem; color: #64748b;">Kasunduan sa Pag-aarbitro &bull; Mutual agreement executed pursuant to Sec. 413</span>
                             </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <a href="../cases/arbitration-workspace.php?case_id=${encodeURIComponent(activeCaseId)}&complaint_id=${encodeURIComponent(complaint?.complaint_id || window.complaintData?.complaint_id || activeCaseId)}" class="btn-secondary" style="font-size: 0.78rem; padding: 6px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                                ⚖️ Arbitration Workspace &rarr;
+                            </a>
                             <button type="button" class="btn-secondary" onclick="openKpFormModal(${activeCaseId}, 'KP Form 14')" style="font-size: 0.78rem; padding: 6px 14px; display: inline-flex; align-items: center; gap: 5px;">
                                 🔍 Preview KP Form 14
                             </button>

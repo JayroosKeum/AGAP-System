@@ -185,7 +185,7 @@ include '../../layouts/header.php';
                     <button type="button" class="btn-create" onclick="openScheduleModal()" style="font-size: 0.82rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
                         Schedule Arbitration Hearing
                     </button>
-                    <a id="wsViewArbitrationAwardLink" href="../documents/arbitration-award.php?case_id=<?php echo $caseId; ?>" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
+                    <a id="wsViewArbitrationAwardLink" href="../complaints/complaint-details.php?id=<?php echo $complaintId; ?>&tab=arbitration#caseWorkspaceSection" class="btn-secondary" style="font-size: 0.82rem; padding: 7px 14px; text-decoration: none; display: inline-flex; align-items: center; gap: 5px;">
                         Arbitration Award &rarr;
                     </a>
                 </div>

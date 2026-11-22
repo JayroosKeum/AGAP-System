@@ -633,8 +633,8 @@ class Paanyaya
     {
         return match ($status) {
             null, '', 'all' => true,
-            'Resolved', 'Completed', 'Settled' => in_array($currentStatus, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true),
-            'Cancelled', 'Failed', 'Escalated' => in_array($currentStatus, ['Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true),
+            'Resolved', 'Completed', 'Settled' => in_array($currentStatus, ['Resolved', 'Completed', 'Settled', 'Archived'], true),
+            'Cancelled', 'Failed', 'Escalated' => in_array($currentStatus, ['Dismissed', 'Cancelled', 'Failed', 'Escalated', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true),
             'Scheduled', 'Pending' => in_array($currentStatus, ['Scheduled', 'Pending', 'Pending Preparation', 'Prepared', 'Ready for Release', 'Assigned for Delivery', 'Delivered', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true),
             default => $currentStatus === $status,
         };
@@ -770,6 +770,9 @@ class Paanyaya
         }
 
         $currentStatus = $linkedStatus !== '' ? $linkedStatus : $historicalStatus;
+        if ($linkedStatus === '' && $historicalStatus === 'Cancelled' && !empty($record['attendance_recorded_at'])) {
+            $currentStatus = 'Dismissed';
+        }
         $stageLabels = [
             'Docketed' => 'Stage 1 · Ready for Mediation',
             'Mediation' => 'Stage 1 · Punong Barangay Mediation',
@@ -1274,7 +1277,7 @@ class Paanyaya
             require_once __DIR__ . '/Summons.php';
 
             $caseModel = new CaseModel($this->conn);
-            $summonsModel = new Summons();
+            $summonsModel = new Summons($this->conn);
 
             // 1. Check if case already docketed
             $checkCase = $this->conn->prepare('SELECT case_id, case_number, case_status FROM cases WHERE complaint_id = ? LIMIT 1');
@@ -3029,6 +3032,19 @@ class Paanyaya
                 'success' => false,
                 'message' => 'Naka-lock ang Paanyaya dahil opisyal na itong nai-akyat sa Mediation.'
             ];
+        }
+
+        // Enforce Early Escalation Guard when escalating before the scheduled date/time
+        $requiresEarlyEscCheck = ($action === 'escalate') || !empty($data['require_early_escalation_check']);
+        if ($requiresEarlyEscCheck) {
+            $scheduledAtStr = trim((string) ($paanyaya['scheduled_date'] ?? '') . ' ' . (string) ($paanyaya['scheduled_time'] ?? '00:00:00'));
+            $isEarlyAction = ($scheduledAtStr !== '' && strtotime($scheduledAtStr) !== false && strtotime($scheduledAtStr) > time());
+            if ($isEarlyAction && empty($data['allow_immediate_escalation'])) {
+                return [
+                    'success' => false,
+                    'message' => 'Hindi pa umaabot ang nakatakdang petsa at oras ng Paanyaya (' . $scheduledAtStr . '). Lagyan ng tsek ang "Pahintulutan ang Maagang Pag-akyat sa Mediation (Early Escalation)" bago magpatuloy.'
+                ];
+            }
         }
 
         // Handle Schedule 2nd Paanyaya

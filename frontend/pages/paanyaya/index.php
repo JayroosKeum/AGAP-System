@@ -61,8 +61,8 @@ $countCancelled = 0;
 foreach ($allList as $item) {
     $st = (string) ($item['workflow_status'] ?? ($item['display_status'] ?? 'Scheduled'));
     if (in_array($st, ['1st Paanyaya', '2nd Paanyaya', 'Scheduled', 'Pending', 'Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'CFA Issued'], true)) $countScheduled++;
-    elseif (str_starts_with($st, 'Settled') || in_array($st, ['Resolved', 'Completed', 'Settled', 'Dismissed', 'Archived'], true)) $countCompleted++;
-    elseif (in_array($st, ['Escalated', 'Cancelled', 'Failed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true)) $countCancelled++;
+    elseif (str_starts_with($st, 'Settled') || in_array($st, ['Resolved', 'Completed', 'Settled', 'Archived'], true)) $countCompleted++;
+    elseif (in_array($st, ['Escalated', 'Dismissed', 'Cancelled', 'Failed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated'], true)) $countCancelled++;
 }
 
 include '../../layouts/header.php';
@@ -4405,6 +4405,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const p2TimeInput = document.getElementById('p2Time');
 
     let currentAttAttempt = 1;
+    let currentAttScheduledAt = '';
     let currentAttLocked = false;
 
     const closeAttModal = () => { if (attModal) attModal.style.display = 'none'; };
@@ -4461,10 +4462,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const isSecond = Number(attempt) >= 2;
         const compPresent = compAttended === 'Present';
         const invPresent = invAttended === 'Present';
+        const allowEarlyEsc = Boolean(document.getElementById('attAllowImmediateEscalation')?.checked);
 
         if (!isSecond) {
+            let spec;
             if (compPresent && invPresent) {
-                return {
+                spec = {
                     hint: '1st Paanyaya · Both Present',
                     defaultValue: 'resolve',
                     options: [
@@ -4472,18 +4475,23 @@ document.addEventListener('DOMContentLoaded', function() {
                         { value: 'schedule_second_paanyaya', label: 'Schedule 2nd Paanyaya' }
                     ]
                 };
+            } else {
+                const absentWho = (!compPresent && !invPresent)
+                    ? 'Both Absent'
+                    : (!compPresent ? 'Complainant Absent' : 'Respondent Absent');
+                spec = {
+                    hint: `1st Paanyaya · ${absentWho} — Schedule 2nd Paanyaya`,
+                    defaultValue: 'schedule_second_paanyaya',
+                    options: [
+                        { value: 'schedule_second_paanyaya', label: 'Schedule 2nd Paanyaya' },
+                        { value: 'resolve', label: 'Settlement' }
+                    ]
+                };
             }
-            const absentWho = (!compPresent && !invPresent)
-                ? 'Both Absent'
-                : (!compPresent ? 'Complainant Absent' : 'Respondent Absent');
-            return {
-                hint: `1st Paanyaya · ${absentWho} — Schedule 2nd Paanyaya`,
-                defaultValue: 'schedule_second_paanyaya',
-                options: [
-                    { value: 'schedule_second_paanyaya', label: 'Schedule 2nd Paanyaya' },
-                    { value: 'resolve', label: 'Settlement' }
-                ]
-            };
+            if (allowEarlyEsc && !spec.options.some(o => o.value === 'escalate')) {
+                spec.options.push({ value: 'escalate', label: 'Escalate to Mediation (Early)' });
+            }
+            return spec;
         }
 
         // 2nd Paanyaya
@@ -4820,6 +4828,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    const attEarlyEscCheckbox = document.getElementById('attAllowImmediateEscalation');
+    if (attEarlyEscCheckbox) {
+        attEarlyEscCheckbox.addEventListener('change', () => {
+            applyAttendanceOutcomeRules({ preserveSelection: true });
+        });
+    }
+
     document.querySelectorAll('.btn-open-attendance').forEach(btn => {
         btn.addEventListener('click', async function(e) {
             e.preventDefault();
@@ -4836,6 +4851,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const complaintNumber = this.dataset.complaintNumber || '';
 
             currentAttAttempt = attempt;
+            currentAttScheduledAt = `${date} ${time}`.trim();
 
             if (attIdInput) attIdInput.value = paanyayaId;
             if (attComplaintIdInput) attComplaintIdInput.value = complaintId;
@@ -4888,6 +4904,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     const row = json.data;
                     const rowAttempt = parseInt(row.attempt_number || attempt, 10);
                     currentAttAttempt = Math.min(2, Math.max(1, rowAttempt));
+                    currentAttScheduledAt = `${row.scheduled_date || date || ''} ${row.scheduled_time || time || ''}`.trim();
                     if (attAttemptBadge) {
                         if (currentAttAttempt >= 2) {
                             attAttemptBadge.textContent = '2nd Paanyaya';
@@ -5045,6 +5062,18 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
+        const earlyEscChecked = Boolean(document.getElementById('attAllowImmediateEscalation')?.checked);
+        if (currentAttScheduledAt) {
+            const parsedSched = new Date(currentAttScheduledAt.replace(' ', 'T'));
+            if (!Number.isNaN(parsedSched.getTime()) && parsedSched.getTime() > Date.now() && !earlyEscChecked) {
+                agapAlert(
+                    `Hindi pa umaabot ang nakatakdang petsa at oras ng Paanyaya (${currentAttScheduledAt}). Lagyan ng tsek ang "Pahintulutan ang Maagang Pag-akyat sa Mediation (Early Escalation)" bago magpatuloy.`,
+                    'warning'
+                );
+                return;
+            }
+        }
+
         const linkedComplaintId = parseInt(attComplaintIdInput?.value || 0, 10);
         if (linkedComplaintId > 0) {
             submitAttendanceAction(
@@ -5086,6 +5115,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     notes: notesText,
                     dialogue_notes: notesText,
                     allow_immediate_escalation: Boolean(document.getElementById('attAllowImmediateEscalation')?.checked),
+                    require_early_escalation_check: true,
                     action: 'save_attendance'
                 })
             });

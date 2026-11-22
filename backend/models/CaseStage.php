@@ -375,10 +375,24 @@ class CaseStage
         $outcome = $stageRecord['outcome'] ?? 'Pending';
         $outcomeRemarks = $stageRecord['outcome_remarks'] ?? null;
 
+        $isDismissedStatus = in_array($case['case_status'], ['Dismissed', 'DISMISSED_BARRED'], true)
+            || ($stageRecord && ($stageRecord['stage_status'] ?? '') === 'Dismissed')
+            || $outcome === 'Dismissed';
+        $hasMediationDismissalMinute = false;
+        foreach ($hearings as $mhCheck) {
+            if (($mhCheck['minutes_status'] ?? '') === 'Finalized' && ($mhCheck['session_outcome'] ?? '') === 'Dismissed') {
+                $hasMediationDismissalMinute = true;
+                break;
+            }
+        }
+
         if (!empty($eligibility['is_settled']) || $case['case_status'] === 'Settled' || $outcome === 'Settled') {
             $stageStatus = 'Completed';
             $outcome = 'Settled';
-        } elseif (!empty($eligibility['already_referred']) || in_array($case['case_status'], ['Conciliation', 'CFA Issued', 'Dismissed'], true)) {
+        } elseif ($hasMediationDismissalMinute || ($isDismissedStatus && empty($eligibility['already_referred']) && $case['case_status'] !== 'Conciliation')) {
+            $stageStatus = 'Dismissed';
+            $outcome = 'Dismissed';
+        } elseif (!empty($eligibility['already_referred']) || in_array($case['case_status'], ['Conciliation', 'CFA Issued'], true)) {
             $stageStatus = 'Referred to Pangkat';
             $outcome = 'Referred to Pangkat';
         } elseif ($canProceedToPangkat) {
@@ -433,6 +447,13 @@ class CaseStage
                 'description' => 'Open the Arbitration workspace for the agreement, hearings, and award.',
                 'action_type' => 'arbitration',
                 'badge' => 'badge-info'
+            ];
+        } elseif ($stageStatus === 'Dismissed' || in_array($case['case_status'], ['Dismissed', 'DISMISSED_BARRED'], true)) {
+            $nextPermittedAction = [
+                'action' => 'Case Dismissed / Closed',
+                'description' => 'Proceedings terminated by dismissal.',
+                'action_type' => 'closed',
+                'badge' => 'badge-danger'
             ];
         } elseif ($case['case_status'] === 'Settled' || $outcome === 'Settled' || $hasSettledSession) {
             $nextPermittedAction = [
@@ -1258,7 +1279,7 @@ class CaseStage
             // Summons-return gate: attendance check-in unlocks only after an
             // appropriate Officer's Return (successful service) is logged for all required parties.
             $attendanceGate = ['allowed' => true, 'code' => 'NOT_MEDIATION', 'message' => ''];
-            if ($stageType === 'Mediation') {
+            if (in_array($stageType, ['Mediation', 'Conciliation'], true)) {
                 try {
                     require_once __DIR__ . '/../services/SummonServiceGate.php';
                     $gateRes = (new SummonServiceGate($this->conn))->forHearing($hId);
@@ -1276,7 +1297,7 @@ class CaseStage
                     ];
                 }
             }
-            $proofStatus = (!empty($attendanceGate['allowed']) || ($stageType !== 'Mediation')) ? 'Served' : 'Pending Delivery';
+            $proofStatus = (!empty($attendanceGate['allowed']) || !in_array($stageType, ['Mediation', 'Conciliation'], true)) ? 'Served' : 'Pending Delivery';
 
                         $attemptNum = $attemptMap[$hId] ?? (!empty($h['mediation_attempt']) ? (int) $h['mediation_attempt'] : $index);
             $sessionNumber = $stageType === 'Mediation'

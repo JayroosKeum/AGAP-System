@@ -56,7 +56,13 @@ async function loadCases() {
 
         const preselected = window.AGAP_CFA?.preselectedCaseId;
         const excludedStatuses = new Set(['Settled', 'CFA Issued', 'Dismissed', 'Archived', 'Closed']);
-        const filteredCases = cases.filter((item) => !excludedStatuses.has(String(item.case_status || '').trim()) || Number(item.case_id) === Number(preselected));
+        const filteredCases = cases.filter((item) => {
+            if (Number(item.case_id) === Number(preselected)) return true;
+            const st = String(item.case_status || '').trim();
+            if (excludedStatuses.has(st)) return false;
+            if (st === 'DISMISSED_BARRED' && Number(item.cfa_count || 0) > 0) return false;
+            return true;
+        });
 
         filteredCases.forEach((item) => {
             const opt = new Option(`${item.case_number} — ${item.complaint_title} (${item.case_status})`, item.case_id);

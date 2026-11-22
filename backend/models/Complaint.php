@@ -239,15 +239,15 @@ class Complaint
                 if (!$jurisdictionValidation['success']) {
                     return $jurisdictionValidation;
                 }
-            }
-            $duplicates = $this->findPotentialDuplicates($data);
-            if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
-                return [
-                    'success' => false,
-                    'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
-                    'message' => 'A possible duplicate complaint was found. Review it and confirm that this filing should proceed.',
-                    'duplicates' => $duplicates,
-                ];
+                $duplicates = $this->findPotentialDuplicates($data);
+                if ($duplicates !== [] && empty($data['duplicate_acknowledged'])) {
+                    return [
+                        'success' => false,
+                        'code' => 'POSSIBLE_DUPLICATE_REQUIRES_ACKNOWLEDGEMENT',
+                        'message' => 'A possible duplicate complaint was found. Review it and confirm that this filing should proceed.',
+                        'duplicates' => $duplicates,
+                    ];
+                }
             }
 
             if (session_status() === PHP_SESSION_NONE && !headers_sent()) {

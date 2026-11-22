@@ -746,8 +746,11 @@ class Settlement
             return ['success' => false, 'message' => 'A sworn narrative alleging fraud, violence, or intimidation is required.'];
         }
 
-        $ground = trim((string) ($data['repudiation_ground'] ?? ''));
-        if ($ground === '' && preg_match('/\b(fraud|violence|intimidation)\b/i', $reason, $match)) {
+        $rawGround = trim((string) ($data['repudiation_ground'] ?? ''));
+        $ground = '';
+        if ($rawGround !== '' && preg_match('/\b(fraud|violence|intimidation)\b/i', $rawGround, $match)) {
+            $ground = ucfirst(strtolower($match[1]));
+        } elseif ($reason !== '' && preg_match('/\b(fraud|violence|intimidation)\b/i', $reason, $match)) {
             $ground = ucfirst(strtolower($match[1]));
         }
         if (!in_array($ground, ['Fraud', 'Violence', 'Intimidation'], true)) {
@@ -815,7 +818,8 @@ class Settlement
                     updated_at = NOW()
                 WHERE settlement_id = ?
             ");
-            $stmt->execute(["{$ground}: {$reason}", $residentId, $docPath ?: null, $settlementId]);
+            $storedReason = stripos($reason, $ground . ':') === 0 ? $reason : "{$ground}: {$reason}";
+            $stmt->execute([$storedReason, $residentId, $docPath ?: null, $settlementId]);
 
             // Update case status and history
             $updCase = $this->conn->prepare("UPDATE cases SET case_status = 'Repudiated', updated_at = NOW() WHERE case_id = ?");

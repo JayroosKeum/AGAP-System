@@ -822,21 +822,38 @@ document.addEventListener('DOMContentLoaded', () => {
         if (Array.isArray(row.status_labels) && row.status_labels.length > 0) {
             labelsToRender = row.status_labels;
         } else {
-            // Fallback: unahin ang pagsusuri kung Settled / Resolution / Closed bago mag-fallback sa procedural stage
-            const isSettledOrClosed = row.status === 'Settled'
+            const isCfaRow = row.lifecycle_status === 'CFA'
+                || row.status === 'CFA Issued'
+                || row.case_status === 'CFA Issued';
+            const isDismissedRow = ['Dismissed', 'DISMISSED_BARRED', 'Rejected'].includes(row.case_status)
+                || ['Dismissed', 'DISMISSED_BARRED', 'Rejected'].includes(row.status)
+                || ['Dismissed', 'DISMISSED_BARRED', 'Rejected'].includes(row.complaint_status);
+            const isRepudiatedRow = !isCfaRow && (row.case_status === 'Repudiated' || row.status === 'Repudiated');
+            const isSettledOrClosed = !isCfaRow && !isDismissedRow && !isRepudiatedRow && (
+                row.status === 'Settled'
                 || row.case_status === 'Settled'
                 || row.complaint_status === 'Settled'
                 || row.status === 'Resolved at Paanyaya / Closed'
-                || row.lifecycle_status === 'Resolution / Closed';
+                || row.lifecycle_status === 'Resolution / Closed'
+            );
 
-            if (isSettledOrClosed) {
-                if (!row.case_id || isPaanyaya) {
+            if (isDismissedRow) {
+                const isBarred = row.case_status === 'DISMISSED_BARRED' || row.status === 'DISMISSED_BARRED';
+                labelsToRender = [isBarred ? 'Dismissed (Barred)' : 'Dismissed'];
+            } else if (isCfaRow) {
+                labelsToRender = ['CFA'];
+            } else if (isRepudiatedRow) {
+                labelsToRender = ['Repudiated'];
+            } else if (isSettledOrClosed) {
+                if (row.case_status === 'Arbitration Award') {
+                    labelsToRender = ['Arbitration Award'];
+                } else if (row.case_status === 'Arbitration' || row.status === 'Arbitration') {
+                    labelsToRender = ['Arbitration'];
+                } else if (!row.case_id || isPaanyaya) {
                     labelsToRender = ['1st Paanyaya', 'Amicable Settlement'];
                 } else {
                     labelsToRender = ['Amicable Settlement'];
                 }
-            } else if (row.lifecycle_status === 'CFA' || row.status === 'CFA Issued' || row.case_status === 'CFA Issued') {
-                labelsToRender = ['CFA'];
             } else if (isPaanyaya) {
                 labelsToRender = [row.current_stage || ((Number(row.paanyaya_attempt || 1) >= 2 || rowStatus.includes('2nd')) ? '2nd Paanyaya' : '1st Paanyaya')];
             } else if (!hasCase && row.lifecycle_status === 'Verification') {
@@ -865,9 +882,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // 5. Actions
         const isDisposedOrClosed = Boolean(
             (row.final_disposition && row.final_disposition !== 'Pending') ||
-            ['Settled', 'Dismissed', 'Archived', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.case_status) ||
-            ['Settled', 'Dismissed', 'Archived', 'Rejected', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.status) ||
-            ['Settled', 'Dismissed', 'Archived', 'Rejected', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.complaint_status) ||
+            ['Settled', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Archived', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.case_status) ||
+            ['Settled', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Archived', 'Rejected', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.status) ||
+            ['Settled', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Archived', 'Rejected', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(row.complaint_status) ||
             row.lifecycle_status === 'Resolution / Closed' ||
             row.lifecycle_status === 'CFA'
         );

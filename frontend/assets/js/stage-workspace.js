@@ -378,12 +378,12 @@ let stageWorkspaceState = {
 };
 
 const WORKSPACE_FINAL_CASE_STATUSES = new Set([
-    'Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived',
+    'Settled', 'Resolved', 'Completed', 'Dismissed', 'DISMISSED_BARRED', 'Archived',
     'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration', 'Arbitration Award',
     'Closed', 'Endorsed to Court', 'Certified'
 ]);
 const WORKSPACE_FINAL_STAGE_STATUSES = new Set([
-    'Completed', 'Settled', 'Resolved', 'Dismissed', 'Archived',
+    'Completed', 'Settled', 'Resolved', 'Dismissed', 'DISMISSED_BARRED', 'Archived',
     'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration Award', 'Closed'
 ]);
 
@@ -402,8 +402,14 @@ function isWorkspaceReadOnly(stage = null) {
         )
     );
     const isPendingSettlementAttestation = (stageOutcome === 'Settled' && caseStatus !== 'Settled' && !isSignedSettlement);
+    const isPendingArbitrationActive = (
+        currentMode === 'Arbitration' &&
+        caseStatus === 'Arbitration' &&
+        !['Completed', 'Arbitration Award', 'Settled', 'Repudiated'].includes(stageStatus) &&
+        !['Arbitration Award', 'Settled', 'Repudiated'].includes(stageOutcome)
+    );
 
-    if (WORKSPACE_FINAL_CASE_STATUSES.has(caseStatus) || (!isPendingSettlementAttestation && WORKSPACE_FINAL_STAGE_STATUSES.has(stageStatus))) {
+    if ((WORKSPACE_FINAL_CASE_STATUSES.has(caseStatus) && !isPendingArbitrationActive) || (!isPendingSettlementAttestation && !isPendingArbitrationActive && WORKSPACE_FINAL_STAGE_STATUSES.has(stageStatus))) {
         return true;
     }
 
@@ -1875,6 +1881,9 @@ function renderHeaderAndBreadcrumbs(data, stage) {
         const st = stage.stage_status;
         if (['Arbitration', 'Arbitration Award'].includes(data.case?.case_status)) {
             badgeLabel = data.case.case_status; bg = '#dbeafe'; color = '#1d4ed8';
+        } else if (st === 'Dismissed' || ['Dismissed', 'DISMISSED_BARRED'].includes(data.case?.case_status)) {
+            badgeLabel = data.case?.case_status === 'DISMISSED_BARRED' ? 'Dismissed (Barred)' : 'Dismissed';
+            bg = '#fee2e2'; color = '#991b1b';
         } else if (st === 'Settled' || activeSession?.session_outcome === 'Settled') {
             badgeLabel = 'Completed · Settled'; bg = '#dcfce7'; color = '#15803d';
         } else if (st === 'Referred to Pangkat' || activeSession?.session_outcome === 'Referred to Pangkat') {
@@ -2355,6 +2364,8 @@ function renderStageOverview(data, stage) {
             <strong class="stat-value" style="font-size: 0.95rem; color: #1e40af;">${escapeHtml(stage.next_permitted_action.action)}</strong>
 
             <span class="stat-sub">${escapeHtml(stage.next_permitted_action.description)}</span>
+
+            ${stage.next_permitted_action.action_type === 'arbitration' ? `<a href="arbitration-workspace.php?case_id=${encodeURIComponent(stageWorkspaceState.caseId || '')}&complaint_id=${encodeURIComponent(stageWorkspaceState.complaintId || '')}" class="btn-secondary" style="margin-top:6px; font-size:0.76rem; padding:4px 10px; text-decoration:none; display:inline-flex; width:fit-content;">Open Arbitration Workspace &rarr;</a>` : ''}
 
         </div>
 
@@ -4733,13 +4744,19 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
     const outcomeVal = outcomeEl?.value;
 
     if (!outcomeVal) {
-
         notifyUser('Please select a session outcome.', 'warning');
-
         outcomeEl?.focus();
-
         return;
+    }
 
+    if (status === 'Finalized' && !suppressAutoModal) {
+        const discussionField = getMinutesField('session_minutes', hearingId);
+        const discussionVal = String(discussionField?.value || '').trim();
+        if (!discussionVal) {
+            notifyUser('Please enter the Discussion Summary & Statements before finalizing the minutes.', 'warning', 'Discussion Summary Required');
+            discussionField?.focus();
+            return;
+        }
     }
 
 
@@ -7491,7 +7508,7 @@ function renderAttendanceModalForm(data) {
     bodyEl.innerHTML = `
 
         <div class="streamlined-attendance-container" style="display: flex; flex-direction: column; gap: 16px;">
-            ${isLockedByService ? `
+            ${(isLockedByService && !isSaved && !stageWorkspaceState.readOnly) ? `
                 <div style="background: #fffbeb; border: 1.5px solid #fde68a; border-left: 4px solid #d97706; border-radius: 8px; padding: 12px 16px; font-size: 0.84rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div>
                         <strong style="display: block; font-size: 0.9rem; color: #78350f;">🔒 Attendance Check-In Locked — Summons Return Required</strong>

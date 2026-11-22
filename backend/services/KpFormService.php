@@ -709,9 +709,17 @@ class KpFormService
 
             // KP Form 15: Gawad ng Arbitrasyon (Arbitration Award)
 
-            $formData['award_date'] = !empty($arbitration['award_date']) ? $arbitration['award_date'] : date('Y-m-d');
+            $formData['award_date'] = !empty($options['award_date'])
+                ? $options['award_date']
+                : (!empty($arbitration['award_date']) ? $arbitration['award_date'] : date('Y-m-d'));
 
-            $formData['award_details'] = $arbitration['award_terms'] ?? $arbitration['resolution_notes'] ?? 'Matapos ang masusing pagdinig at pagsusuri sa lahat ng ebidensya at pahayag ng magkabilang panig, iginagawad ng Lupon ang sumusunod na hatol...';
+            $formData['notice_date'] = $formData['award_date'];
+
+            $formData['award_details'] = !empty($options['award_details'])
+                ? (string) $options['award_details']
+                : (!empty($arbitration['award_details'])
+                    ? (string) $arbitration['award_details']
+                    : ($arbitration['award_terms'] ?? $arbitration['resolution_notes'] ?? 'Matapos ang masusing pagdinig at pagsusuri sa lahat ng ebidensya at pahayag ng magkabilang panig, iginagawad ng Lupon ang sumusunod na hatol...'));
 
             $formData['award_terms'] = $formData['award_details'];
 
