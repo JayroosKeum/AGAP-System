@@ -31,7 +31,11 @@ class CaseStage
         $caseStmt = $this->conn->prepare("
             SELECT c.*,
                    co.complaint_id, co.complaint_number, co.complaint_title, co.narrative,
-                   co.created_at AS filing_date, co.incident_date, co.incident_location,
+                   co.category_id, co.secondary_category_id,
+                   co.other_category_specification, co.secondary_other_category_specification,
+                   co.requested_resolution, co.additional_details,
+                   co.created_at AS filing_date, co.incident_date, co.incident_time, co.incident_location,
+                   cat.category_name, cat2.category_name AS secondary_category_name,
                    (
                        SELECT GROUP_CONCAT(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)) SEPARATOR ', ')
                        FROM complaint_parties cp
@@ -46,6 +50,8 @@ class CaseStage
                    ) AS respondent_names
             FROM cases c
             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+            LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
+            LEFT JOIN complaint_categories cat2 ON cat2.category_id = co.secondary_category_id
             WHERE c.case_id = ?
         ");
         $caseStmt->execute([$caseId]);
@@ -54,6 +60,19 @@ class CaseStage
         if (!$case) {
             return false;
         }
+
+        $primaryDisplay = (!empty($case['other_category_specification']) && (stripos((string) ($case['category_name'] ?? ''), 'Others') !== false || stripos((string) ($case['category_name'] ?? ''), 'Iba pa') !== false))
+            ? 'Others: ' . $case['other_category_specification']
+            : (string) ($case['category_name'] ?? '');
+        if (!empty($case['secondary_category_id']) || !empty($case['secondary_other_category_specification'])) {
+            $secDisplay = (!empty($case['secondary_other_category_specification']) && (stripos((string) ($case['secondary_category_name'] ?? ''), 'Others') !== false || stripos((string) ($case['secondary_category_name'] ?? ''), 'Iba pa') !== false))
+                ? 'Others: ' . $case['secondary_other_category_specification']
+                : (string) ($case['secondary_category_name'] ?? $case['secondary_other_category_specification'] ?? '');
+            if ($secDisplay !== '') {
+                $primaryDisplay = $primaryDisplay !== '' ? ($primaryDisplay . ' & ' . $secDisplay) : $secDisplay;
+            }
+        }
+        $case['category_display'] = $primaryDisplay;
 
         // Mediation timer computation
         require_once __DIR__ . '/../services/MediationDeadlineService.php';

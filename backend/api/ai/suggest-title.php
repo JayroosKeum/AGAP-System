@@ -3,7 +3,9 @@
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../controllers/AIController.php';
+require_once __DIR__ . '/../../services/ComplaintClassificationService.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
 require_once __DIR__ . '/../../services/AiRequestRateLimit.php';
 
@@ -61,5 +63,16 @@ if (!AiRequestRateLimit::consume(20, 300)) {
 
 $language = (($payload['language'] ?? 'tl') === 'en') ? 'en' : 'tl';
 $result = (new AIController())->suggestComplaintTitle($narrative, $language);
+if (!empty($result['success'])) {
+    try {
+        $db = (new Database())->connect();
+        $suggestion = ComplaintClassificationService::suggestFromNarrative($db, $narrative);
+        $result['suggested_category_id'] = $suggestion['primary']['category_id'] ?? null;
+        $result['suggested_category_name'] = $suggestion['primary']['category_name'] ?? null;
+        $result['suggested_case_type'] = $suggestion['case_type'] ?? 'Civil';
+    } catch (Throwable) {
+        // Non-fatal: title suggestion still succeeds even if advisory classification fails.
+    }
+}
 http_response_code($result['success'] ? 200 : 422);
 echo json_encode($result);

@@ -443,7 +443,25 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
                 </div>
 
-
+                <!-- Inherited Salaysay (Statement of Complaint) & Classification Card (read-only from Intake / Paanyaya) -->
+                <div class="stage-section-card" id="wsSalaysaySection" style="display:none; border-left: 4px solid #2563eb; background: #ffffff; margin-bottom: 20px;">
+                    <div class="stage-section-header" style="align-items: flex-start; gap: 12px;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom: 4px;">
+                                <h3 style="margin:0;">Inherited Statement of Complaint (Salaysay)</h3>
+                                <span id="wsSalaysayCaseTypePill" style="display:inline-flex; align-items:center; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;">Civil</span>
+                                <span id="wsSalaysayCategoryText" style="display:inline-flex; align-items:center; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; background: #f8fafc; color: #334155; border: 1px solid #cbd5e1;">Loading category...</span>
+                            </div>
+                            <p id="wsSalaysayTitleText" style="margin: 2px 0 0; font-size: 0.86rem; font-weight: 600; color: #1e293b;"></p>
+                            <p id="wsSalaysayIncidentText" style="margin: 2px 0 0; font-size: 0.78rem; color: #64748b;">Recorded during intake and inherited cleanly from Paanyaya without mixing with hearing minutes.</p>
+                        </div>
+                        <button type="button" id="wsCopySalaysayBtn" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 11px; white-space: nowrap;">Copy Salaysay</button>
+                    </div>
+                    <div id="wsSalaysayBody" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; font-size: 0.91rem; line-height: 1.62; color: #0f172a; white-space: pre-wrap;"></div>
+                    <div id="wsSalaysayResolutionWrap" style="display:none; margin-top: 10px; padding: 10px 14px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a; font-size: 0.85rem; color: #78350f;">
+                        <strong>Requested Resolution:</strong> <span id="wsSalaysayResolution"></span>
+                    </div>
+                </div>
 
                 <!-- Session Switcher: 1st Mediation vs 2nd Mediation (Distinct Page Views) -->
                 <div id="wsSessionNavContainer" style="margin-bottom: 20px;"></div>

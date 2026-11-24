@@ -426,10 +426,12 @@ function unlockOutcomesTab(cId) {
 window.unlockOutcomesTab = unlockOutcomesTab;
 
 function activateRequestedCaseTab() {
-    if (window.__agapInitialTabActivated || !window.complaintData) return;
+    if (!window.complaintData) return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    const requestedTab = urlParams.get('tab') || window.location.hash.replace('#', '');
+    const hashTab = window.location.hash ? window.location.hash.replace('#', '') : '';
+    const requestedTab = urlParams.get('tab') || hashTab;
+    if (window.__agapInitialTabActivated && !hashTab) return;
     window.__agapInitialTabActivated = true;
     if (!requestedTab) return;
 
@@ -453,6 +455,11 @@ function initialiseCaseTabs() {
                 switchCaseTab(tabId);
             }
         });
+    });
+
+    window.addEventListener('hashchange', () => {
+        window.__agapInitialTabActivated = false;
+        activateRequestedCaseTab();
     });
 
     activateRequestedCaseTab();
@@ -502,6 +509,21 @@ function switchCaseTab(tabId) {
 
     const hasLoadedData = Boolean(window.complaintData && (window.complaintData.case_id || window.complaintData.complaint_id));
     if (tabId === 'tab-mediation' && hasLoadedData) {
+        const cData = window.complaintData;
+        setText('embeddedMedSalaysayText', cData.narrative || 'No Salaysay narrative recorded.');
+        let mCat = cData.category_name || 'Unclassified Dispute';
+        if (cData.other_category_specification && (mCat.includes('Others') || mCat.includes('Iba pa'))) {
+            mCat = `Others: ${cData.other_category_specification}`;
+        }
+        setText('embeddedMedCategoryText', mCat);
+        const embBadge = document.getElementById('embeddedMedCaseTypeBadge');
+        if (embBadge) {
+            const mCt = (cData.case_type || 'Civil') === 'Criminal' ? 'Criminal' : 'Civil';
+            embBadge.textContent = mCt;
+            embBadge.style.background = mCt === 'Criminal' ? '#fef2f2' : '#eff6ff';
+            embBadge.style.color = mCt === 'Criminal' ? '#b91c1c' : '#1d4ed8';
+            embBadge.style.borderColor = mCt === 'Criminal' ? '#fecaca' : '#bfdbfe';
+        }
         loadHearingSessions('Mediation');
     } else if (tabId === 'tab-conciliation' && hasLoadedData) {
         loadHearingSessions('Conciliation');
@@ -1018,6 +1040,16 @@ async function loadComplaintDetails() {
         const narrEl = document.getElementById('complaintNarrative');
         if (narrEl) narrEl.textContent = data.narrative || 'No statement narrative provided.';
         setText('tab2ComplaintNarrative', data.narrative || 'No statement narrative provided.');
+        setText('embeddedMedSalaysayText', data.narrative || 'No Salaysay narrative recorded.');
+        setText('embeddedMedCategoryText', catDisplay || 'Unclassified Dispute');
+        const embeddedMedCaseBadge = document.getElementById('embeddedMedCaseTypeBadge');
+        if (embeddedMedCaseBadge) {
+            const ct = (data.case_type || 'Civil') === 'Criminal' ? 'Criminal' : 'Civil';
+            embeddedMedCaseBadge.textContent = ct;
+            embeddedMedCaseBadge.style.background = ct === 'Criminal' ? '#fef2f2' : '#eff6ff';
+            embeddedMedCaseBadge.style.color = ct === 'Criminal' ? '#b91c1c' : '#1d4ed8';
+            embeddedMedCaseBadge.style.borderColor = ct === 'Criminal' ? '#fecaca' : '#bfdbfe';
+        }
 
         const addWrap = document.getElementById('complaintAdditionalDetailsWrap');
         const addEl = document.getElementById('complaintAdditionalDetails');
@@ -1195,8 +1227,11 @@ function renderCrossLinkAlertBanner(concurrentDisputes) {
         const a = alerts[0];
         html = `<span><strong>Active Dispute Notice:</strong> <strong>${escapeHtml(a.resident_name)}</strong> (${escapeHtml(a.current_role)}) is currently an active party in <a href="${escapeHtml(a.view_url)}" style="color: #92400e; font-weight: 700; text-decoration: underline;">Case #${escapeHtml(a.concurrent_display_number)}</a> (${escapeHtml(a.concurrent_status)}).</span>`;
     } else {
-        const partyNames = [...new Set(alerts.map(a => a.resident_name))].join(', ');
-        html = `<span><strong>Concurrent Disputes Notice:</strong> Active parties (<strong>${escapeHtml(partyNames)}</strong>) are involved in <strong>${alerts.length} other active case(s)</strong>.</span>`;
+        const uniqueParties = [...new Set(alerts.map(a => a.resident_name).filter(Boolean))];
+        const partyNames = uniqueParties.join(', ');
+        const verb = uniqueParties.length === 1 ? 'is' : 'are';
+        const partyNoun = uniqueParties.length === 1 ? 'party' : 'parties';
+        html = `<span><strong>Concurrent Disputes Notice:</strong> Active ${partyNoun} (<strong>${escapeHtml(partyNames)}</strong>) ${verb} involved in <strong>${alerts.length} other active ${alerts.length === 1 ? 'case' : 'cases'}</strong>.</span>`;
     }
 
     content.innerHTML = html;
@@ -1999,7 +2034,16 @@ function renderOfficialKpForms(workspace, complaint) {
         const pSess = activeComplaint.paanyaya || {};
         const pDate = pSess.invitation_date ? formatDateReadable(pSess.invitation_date) : (stg1Details.invitation_date ? formatDateReadable(stg1Details.invitation_date) : 'Scheduled');
         const pTime = pSess.invitation_time || '';
-        const pStatus = pSess.status || activeComplaint.status || 'Active';
+        const pRawStatus = pSess.status || activeComplaint.status || 'Active';
+        const pStatusLabels = {
+            'Impasse_Escalate': 'Escalated to Mediation',
+            'Max_Failed_Escalate': 'Escalated to Mediation (Max Attempts)',
+            'Continue_Dialogue': 'Continue to 2nd Paanyaya',
+            'Continued_Dialogue': 'Continue to 2nd Paanyaya',
+            'Escalate_Mediation': 'Escalated to Mediation',
+            'Absent_Retry': 'Respondent Absent (Retry)'
+        };
+        const pStatus = pStatusLabels[pRawStatus] || String(pRawStatus).replace(/_/g, ' ');
 
         const isP1Delivered = Boolean(stg1.is_delivered || stg1Details.status === 'Successfully Delivered' || stg1Latest?.delivery_outcome === 'Successfully delivered');
         let p1BadgeText = '';
@@ -5142,8 +5186,15 @@ async function submitEmbeddedSchedule(e) {
         const json = await res.json();
         if (json.success) {
             closeEmbeddedScheduleModal();
+            if (window._hearingSessionsInFlight) {
+                window._hearingSessionsInFlight[hearingType] = null;
+                window._hearingSessionsInFlight['Mediation'] = null;
+            }
             await loadComplaintDetails();
-            loadHearingSessions(hearingType);
+            if (window._hearingSessionsInFlight) {
+                window._hearingSessionsInFlight[hearingType] = null;
+            }
+            await loadHearingSessions(hearingType);
 
             // The first mediation is the only booking that issues KP Forms 8
             // and 9. Open their combined print-preview immediately after a
@@ -10750,7 +10801,10 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
                 btnPrintTrans.title = 'Settlement Repudiated — Transmittal Cancelled';
             }
             if (dlTrans) {
-                dlTrans.href = 'javascript:void(0)';
+                dlTrans.removeAttribute('href');
+                dlTrans.setAttribute('aria-disabled', 'true');
+                dlTrans.tabIndex = -1;
+                dlTrans.style.pointerEvents = 'none';
                 dlTrans.style.opacity = '0.5';
                 dlTrans.style.cursor = 'not-allowed';
                 dlTrans.title = 'Settlement Repudiated — Transmittal Cancelled';
@@ -10769,7 +10823,10 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
                 btnPrintTrans.title = 'Locked pursuant to RA 7160 Sec. 416 until repudiation period expires';
             }
             if (dlTrans) {
-                dlTrans.href = 'javascript:void(0)';
+                dlTrans.removeAttribute('href');
+                dlTrans.setAttribute('aria-disabled', 'true');
+                dlTrans.tabIndex = -1;
+                dlTrans.style.pointerEvents = 'none';
                 dlTrans.style.opacity = '0.5';
                 dlTrans.style.cursor = 'not-allowed';
                 dlTrans.title = 'Locked pursuant to RA 7160 Sec. 416 until repudiation period expires';
@@ -10789,6 +10846,9 @@ function renderAmicableSettlementWorkspace(workspace, complaint) {
             }
             if (dlTrans) {
                 dlTrans.href = `../../../backend/api/transmittals/preview.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(activeComplaintId)}&pdf=1`;
+                dlTrans.removeAttribute('aria-disabled');
+                dlTrans.removeAttribute('tabindex');
+                dlTrans.style.pointerEvents = 'auto';
                 dlTrans.style.opacity = '1';
                 dlTrans.style.cursor = 'pointer';
                 dlTrans.title = 'Download Court Transmittal Letter PDF';

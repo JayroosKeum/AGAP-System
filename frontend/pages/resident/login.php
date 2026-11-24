@@ -9,6 +9,7 @@ if (($_SESSION['role_name'] ?? '') === 'Resident') {
     header('Location: dashboard.php', true, 303);
     exit;
 }
+unset($_SESSION['complaint_flash'], $_SESSION['resident_flash'], $_SESSION['flash'], $_SESSION['paanyaya_preparation_flash']);
 
 $loggedOut = !empty($_GET['logged_out']);
 $notice = (string) ($_GET['notice'] ?? $_GET['error'] ?? ($loggedOut ? 'logged_out' : ''));
@@ -56,7 +57,7 @@ $showResend = in_array($notice, ['verification_sent', 'verification_pending', 'v
             <div class="resident-auth-card">
                 <p class="resident-eyebrow">Resident Portal</p>
                 <h2>Welcome back</h2>
-                <p class="resident-auth-lead">Sign in with the username and password you created.</p>
+                <p class="resident-auth-lead">Sign in with your username or email and password.</p>
 
                 <?php if (isset($messages[$notice])): ?>
                     <?php $isSuccess = in_array($notice, ['email_verified', 'registered', 'verification_sent', 'logged_out'], true); ?>
@@ -65,7 +66,7 @@ $showResend = in_array($notice, ['verification_sent', 'verification_pending', 'v
 
                 <form action="../../../backend/api/auth/resident-login.php" method="post">
                     <div class="resident-field">
-                        <label for="username">Username</label>
+                        <label for="username">Username or Email</label>
                         <input id="username" name="username" type="text" autocomplete="username" required autofocus>
                     </div>
                     <div class="resident-field">

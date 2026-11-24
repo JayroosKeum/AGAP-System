@@ -43,6 +43,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     form?.addEventListener('submit', handleCfaSubmit);
+
+    window.addEventListener('pageshow', (event) => {
+        if (event.persisted) {
+            loadCases();
+            loadCfaRecords();
+        }
+    });
 });
 
 async function loadCases() {

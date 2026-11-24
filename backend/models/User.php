@@ -26,6 +26,25 @@ class User {
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
+    public function findByUsernameOrEmail(string $identity): array|false
+    {
+        $clean = trim($identity);
+        if ($clean === '') {
+            return false;
+        }
+        $stmt = $this->db->prepare(
+            "SELECT u.*, r.role_name
+             FROM users u
+             INNER JOIN roles r ON r.role_id = u.role_id
+             WHERE u.username = ?
+                OR (u.email IS NOT NULL AND u.email <> '' AND LOWER(u.email) = LOWER(?))
+             ORDER BY (u.username = ?) DESC, u.user_id ASC
+             LIMIT 1"
+        );
+        $stmt->execute([$clean, $clean, $clean]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
     public function findResidentByGoogleSubject(string $subject): array|false
     {
         $stmt = $this->db->prepare("SELECT u.user_id, u.username, u.role_id, u.status, r.role_name

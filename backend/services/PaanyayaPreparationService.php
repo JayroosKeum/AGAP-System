@@ -129,12 +129,16 @@ final class PaanyayaPreparationService
     {
         $eligibility = ($invitation === 2 ? self::SECOND_ELIGIBLE : self::ELIGIBLE) . ' OR (' . self::RESCHEDULED_ELIGIBLE . ')';
         $statement = $this->db->prepare(
-            'SELECT c.complaint_id, c.review_notes, c.status AS complaint_status, cs.case_id, (' . $eligibility . ') AS eligible,
+            'SELECT c.complaint_id, c.review_notes, c.status AS complaint_status,
+                    c.complaint_title, c.narrative, c.case_type, c.category_id,
+                    c.other_category_specification, cat.category_name,
+                    cs.case_id, (' . $eligibility . ') AS eligible,
                     p.appointment_at, p.venue, p.prepared_at, p.ready_at, p.verified_parties,
                     ' . self::CURRENT_VERSION . ' AS document_version, p.document_version IS NOT NULL AS rescheduled,
                     TRIM(CONCAT_WS(\' \', preparer.first_name, preparer.last_name)) AS prepared_by_name,
                     TRIM(CONCAT_WS(\' \', approver.first_name, approver.last_name)) AS ready_by_name
              FROM complaints c
+             LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
              LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
              LEFT JOIN paanyaya_preparations p ON p.complaint_id = c.complaint_id AND p.invitation_number = ?
              LEFT JOIN users preparer ON preparer.user_id = p.prepared_by

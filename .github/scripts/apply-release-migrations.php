@@ -62,6 +62,7 @@ try {
             '20261115_004_order4_settlement_arbitration_transmittal.sql' => !$orderFourReady(),
             '20261115_005_link_paanyaya_threads.sql' => true,
             '20261116_001_link_resident_google_identity.sql' => true,
+            '20261124_001_category_case_type_mapping_and_paanyaya_other.sql' => $columnType('complaint_categories', 'default_case_type') === '' || $columnType('paanyayas', 'preliminary_other_category_specification') === '',
         ];
         $migrationDir = $argv[1] ?? dirname(__DIR__, 2) . '/database/migrations';
         foreach ($migrations as $file => $needed) {

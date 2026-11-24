@@ -347,7 +347,9 @@ class AuthController {
 
     private function attemptLogin(string $username, string $password, ?bool $residentOnly = null): bool
     {
-        $user = $this->userModel->findByUsername($username);
+        $user = ($residentOnly === true || str_contains($username, '@'))
+            ? $this->userModel->findByUsernameOrEmail($username)
+            : $this->userModel->findByUsername($username);
         $isResident = ($user['role_name'] ?? '') === 'Resident';
         if (
             !$user ||

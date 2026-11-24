@@ -15,6 +15,17 @@ require_once '../../../backend/config/database.php';
 require_once '../../../backend/services/CsrfService.php';
 
 $userId = (int) $_SESSION['user_id'];
+$residentDashboardFlashes = [];
+foreach (['complaint_flash', 'resident_flash', 'flash'] as $flashKey) {
+    if (!empty($_SESSION[$flashKey]) && is_array($_SESSION[$flashKey]) && !empty($_SESSION[$flashKey]['message'])) {
+        $residentDashboardFlashes[] = [
+            'message' => (string) $_SESSION[$flashKey]['message'],
+            'type' => (string) ($_SESSION[$flashKey]['type'] ?? 'success'),
+            'title' => isset($_SESSION[$flashKey]['title']) ? (string) $_SESSION[$flashKey]['title'] : null,
+        ];
+    }
+    unset($_SESSION[$flashKey]);
+}
 $db = (new Database())->connect();
 $dashboardUnavailable = false;
 $profile = [];
@@ -200,6 +211,18 @@ $renderConcernRow = static function (array $complaint) use ($statusDetails, $con
     <script src="../../assets/js/i18n.js?v=<?= filemtime(__DIR__ . '/../../assets/js/i18n.js') ?>" defer></script>
 </head>
 <body class="resident-dashboard-page">
+    <?php if (!empty($residentDashboardFlashes)): ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const flashes = <?= json_encode($residentDashboardFlashes, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+        flashes.forEach(function(f) {
+            if (window.agapNotify && f && f.message) {
+                window.agapNotify(f.message, f.type || 'success', f.title || null);
+            }
+        });
+    });
+    </script>
+    <?php endif; ?>
     <?php
     $residentTopbarName = !$dashboardUnavailable ? $firstName : '';
     include __DIR__ . '/../../layouts/resident-topbar.php';

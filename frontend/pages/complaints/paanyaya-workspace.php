@@ -383,6 +383,32 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
                 </div>
             </div>
 
+            <!-- Inherited Salaysay & Classification Card -->
+            <?php
+                $wsCaseType = trim((string) ($complaint['case_type'] ?? 'Civil')) === 'Criminal' ? 'Criminal' : 'Civil';
+                $wsCatDisplay = trim((string) ($complaint['category_name'] ?? 'Unclassified Dispute'));
+                if (strcasecmp($wsCatDisplay, 'Others') === 0 && !empty($complaint['other_category_specification'])) {
+                    $wsCatDisplay = 'Others — ' . trim((string) $complaint['other_category_specification']);
+                }
+                $wsNarrativeText = trim((string) ($complaint['narrative'] ?? ''));
+            ?>
+            <div class="paanyaya-card" id="paanyayaSalaysayCard">
+                <div class="paanyaya-card-header">
+                    <div>
+                        <h3>Statement of Complaint (Salaysay) &amp; Classification</h3>
+                        <p style="margin: 3px 0 0; font-size: 0.82rem; color: #64748b;">Initial Salaysay recorded at intake — preserved verbatim for Lupon Member dialogue and carried into formal Mediation if escalated.</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <span class="badge" style="font-weight: 700; <?= $wsCaseType === 'Criminal' ? 'background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;' : 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;' ?>"><?= htmlspecialchars($wsCaseType, ENT_QUOTES, 'UTF-8') ?></span>
+                        <span class="badge" style="background: #f8fafc; color: #334155; border: 1px solid #cbd5e1; font-weight: 600;"><?= htmlspecialchars($wsCatDisplay, ENT_QUOTES, 'UTF-8') ?></span>
+                    </div>
+                </div>
+                <?php if (!empty($complaint['complaint_title'])): ?>
+                    <div style="font-size: 0.9rem; font-weight: 700; color: #0f172a; margin-bottom: 8px;"><?= htmlspecialchars((string) $complaint['complaint_title'], ENT_QUOTES, 'UTF-8') ?></div>
+                <?php endif; ?>
+                <div style="font-size: 0.9rem; line-height: 1.6; color: #1e293b; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; white-space: pre-wrap;"><?php echo htmlspecialchars($wsNarrativeText !== '' ? $wsNarrativeText : 'No Salaysay narrative recorded.', ENT_QUOTES, 'UTF-8'); ?></div>
+            </div>
+
             <!-- Paanyaya Sessions Timeline (Dalawang Beses Lang) -->
             <div class="paanyaya-card">
                 <div class="paanyaya-card-header">

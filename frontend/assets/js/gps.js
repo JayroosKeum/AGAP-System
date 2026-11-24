@@ -1881,11 +1881,22 @@ function openOfficerReturnModal(partyType, residentId, hearingId, caseId, curren
         }
     }
 
+    const getLiveLocalMax = (bufferMinutes = 2) => {
+        const d = new Date(Date.now() + bufferMinutes * 60000);
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
     const nowLocal = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     const servedAtInput = document.getElementById('returnServedAt');
     if (servedAtInput) {
         servedAtInput.value = replacement?.served_at ? replacement.served_at.replace(' ', 'T').slice(0, 16) : nowLocal;
-        servedAtInput.max = nowLocal;
+        servedAtInput.max = getLiveLocalMax(2);
+        if (servedAtInput.dataset.liveMaxBound !== '1') {
+            servedAtInput.dataset.liveMaxBound = '1';
+            const syncServedMax = () => { servedAtInput.max = getLiveLocalMax(2); };
+            servedAtInput.addEventListener('focus', syncServedMax);
+            servedAtInput.addEventListener('input', syncServedMax);
+            servedAtInput.addEventListener('change', syncServedMax);
+        }
     }
 
     const recipientInput = document.getElementById('returnRecipientName');

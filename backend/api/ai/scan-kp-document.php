@@ -75,12 +75,12 @@ if ($mimeType === 'image/jpg') {
 }
 
 // Fetch categories from DB for intelligent matching
+require_once __DIR__ . '/../../services/ComplaintClassificationService.php';
 $db = (new Database())->connect();
-$categoriesStmt = $db->query("SELECT category_id, category_name FROM complaint_categories WHERE COALESCE(is_active, 1) = 1 ORDER BY category_name ASC");
-$allCategories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+$allCategories = ComplaintClassificationService::getCategories($db);
 
 $categoryNamesList = array_map(static fn($c) => $c['category_name'], $allCategories);
-$categoryListStr = implode(', ', array_slice($categoryNamesList, 0, 20));
+$categoryListStr = implode(', ', $categoryNamesList);
 
 $geminiService = new GeminiService();
 $apiKey = $geminiService->getApiKey();
@@ -345,26 +345,26 @@ if (isset($extractedData['offense_fine_max'])) {
     $extractedData['offense_fine_max'] = 0;
 }
 
-// 7. Resolve matching category ID from database
-$matchedCategoryId = null;
+// 7. Resolve matching category ID from database and auto-map Civil/Criminal classification
+$matchedCategory = null;
 if (!empty($extractedData['category_name']) && !empty($allCategories)) {
     $searchName = mb_strtolower(trim($extractedData['category_name']));
     foreach ($allCategories as $cat) {
         $catName = mb_strtolower(trim($cat['category_name']));
         if ($catName === $searchName || str_contains($catName, $searchName) || str_contains($searchName, $catName)) {
-            $matchedCategoryId = (int)$cat['category_id'];
+            $matchedCategory = $cat;
             $extractedData['category_name'] = $cat['category_name'];
             break;
         }
     }
     // Secondary keyword matching if not matched
-    if (!$matchedCategoryId) {
+    if (!$matchedCategory) {
         $keywords = preg_split('/\s+/', $searchName);
         foreach ($allCategories as $cat) {
             $catName = mb_strtolower(trim($cat['category_name']));
             foreach ($keywords as $kw) {
                 if (strlen($kw) > 3 && str_contains($catName, $kw)) {
-                    $matchedCategoryId = (int)$cat['category_id'];
+                    $matchedCategory = $cat;
                     $extractedData['category_name'] = $cat['category_name'];
                     break 2;
                 }
@@ -372,7 +372,27 @@ if (!empty($extractedData['category_name']) && !empty($allCategories)) {
         }
     }
 }
-$extractedData['category_id'] = $matchedCategoryId ?: ($allCategories[0]['category_id'] ?? 1);
+if (!$matchedCategory && !empty($extractedData['narrative'])) {
+    $narrativeSuggestion = ComplaintClassificationService::suggestFromNarrative(
+        $db,
+        (string) $extractedData['narrative'],
+        (string) ($extractedData['requested_resolution'] ?? '')
+    );
+    $sugPrimaryId = (int) ($narrativeSuggestion['primary']['category_id'] ?? 0);
+    foreach ($allCategories as $cat) {
+        if ((int) $cat['category_id'] === $sugPrimaryId) {
+            $matchedCategory = $cat;
+            $extractedData['category_name'] = $cat['category_name'];
+            break;
+        }
+    }
+}
+$extractedData['category_id'] = $matchedCategory['category_id'] ?? ($allCategories[0]['category_id'] ?? 1);
+if ($matchedCategory && empty($matchedCategory['is_other'])) {
+    $extractedData['case_type'] = $matchedCategory['default_case_type'];
+} elseif (!in_array($extractedData['case_type'], ['Civil', 'Criminal'], true)) {
+    $extractedData['case_type'] = 'Civil';
+}
 
 echo json_encode([
     'success' => true,

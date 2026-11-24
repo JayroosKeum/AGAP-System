@@ -35,18 +35,8 @@ if (!$isResidentPortal) {
         error_log('Unable to load active LISOs for walk-in intake: ' . $exception->getMessage());
     }
 }
-$categoriesStmt = $db->query("
-    SELECT category_id, category_name 
-    FROM complaint_categories 
-    WHERE COALESCE(is_active, 1) = 1 
-    ORDER BY 
-        CASE 
-            WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 
-            ELSE 0 
-        END ASC, 
-        category_name ASC
-");
-$categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+require_once __DIR__ . '/../../../backend/services/ComplaintClassificationService.php';
+$categories = ComplaintClassificationService::getCategories($db);
 
 $residentSelect = "SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, home_latitude, home_longitude, is_tenant, residency_verified FROM residents";
 if ($isResidentPortal) {
@@ -195,8 +185,13 @@ if ($escalatePaanyayaId > 0) {
         if (!empty($escalatePaanyaya['preliminary_category_id'])) {
             $old['category_id'] = (int) $escalatePaanyaya['preliminary_category_id'];
         }
+        if (!empty($escalatePaanyaya['preliminary_other_category_specification'])) {
+            $old['other_category_specification'] = (string) $escalatePaanyaya['preliminary_other_category_specification'];
+        }
         if (!empty($escalatePaanyaya['preliminary_case_type'])) {
             $old['case_type'] = (string) $escalatePaanyaya['preliminary_case_type'];
+        } elseif (!empty($old['category_id'])) {
+            $old['case_type'] = ComplaintClassificationService::resolveEffectiveCaseType($db, (int) $old['category_id'], null, null);
         }
         $old['tracking_reference'] = !empty($escalatePaanyaya['tracking_reference'])
             ? (string) $escalatePaanyaya['tracking_reference']
@@ -1962,14 +1957,17 @@ include '../../layouts/header.php';
                             <!-- Dispute Classification Grid -->
                             <div class="form-row-2" style="margin-top: 10px;">
                                 <div class="form-group">
-                                    <label for="primaryCategoryInput">Complaint Category <span class="required-mark">*</span></label>
+                                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+                                        <label for="primaryCategoryInput" style="margin: 0;">Complaint Category <span class="required-mark">*</span></label>
+                                        <button type="button" id="btnStaffSuggestCategory" class="btn-outline-sm" style="font-size: 0.72rem; padding: 3px 9px;" title="Auto-suggest category and Civil/Criminal type from the Salaysay">Auto-Classify from Salaysay</button>
+                                    </div>
                                     <div style="position: relative;">
                                         <input type="text"
                                                id="primaryCategoryInput"
                                                name="category_name"
                                                list="categoriesList"
                                                class="form-control"
-                                               placeholder="Select category or type complaint..."
+                                               placeholder="Search KP category or type Other / Custom..."
                                                autocomplete="off"
                                                required
                                                value="<?php
@@ -1993,17 +1991,20 @@ include '../../layouts/header.php';
                                         <select id="categoryId" name="category_id" style="display: none;">
                                             <option value="">Select Category</option>
                                             <?php foreach ($categories as $cat): ?>
-                                                <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)($old['category_id'] ?? '') === (string)$cat['category_id']) ? 'selected' : ''; ?>>
+                                                <option value="<?php echo (int)$cat['category_id']; ?>"
+                                                        data-case-type="<?php echo htmlspecialchars((string)($cat['default_case_type'] ?? 'Civil')); ?>"
+                                                        data-is-other="<?php echo !empty($cat['is_other']) ? '1' : '0'; ?>"
+                                                        <?php echo ((string)($old['category_id'] ?? '') === (string)$cat['category_id']) ? 'selected' : ''; ?>>
                                                      <?php echo htmlspecialchars($cat['category_name']); ?>
                                                 </option>
                                             <?php endforeach; ?>
                                         </select>
                                     </div>
-                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Provisional category at intake (final classification confirmed by LISO).</small>
+                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Searchable KP categories with "Other / Custom" fallback (editable by LISO / Clerk).</small>
                                 </div>
 
                                 <div class="form-group">
-                                    <label for="caseType">Case Type <span class="required-mark">*</span></label>
+                                    <label for="caseType">Case Type (Auto-Mapped) <span class="required-mark">*</span></label>
                                     <div class="agap-segmented-group" data-seg-target="caseType" role="group" aria-label="Case type">
                                         <button type="button" class="agap-seg-btn" data-seg-value="Civil">Civil</button>
                                         <button type="button" class="agap-seg-btn" data-seg-value="Criminal">Criminal</button>
@@ -2012,7 +2013,7 @@ include '../../layouts/header.php';
                                         <option value="Civil" <?php echo (($old['case_type'] ?? 'Civil') === 'Civil') ? 'selected' : ''; ?>>Civil</option>
                                         <option value="Criminal" <?php echo (($old['case_type'] ?? '') === 'Criminal') ? 'selected' : ''; ?>>Criminal</option>
                                     </select>
-                                    <small style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Provisional — LISO determines final Civil/Criminal classification.</small>
+                                    <small id="caseTypeAutoHint" style="color: #64748b; font-size: 0.78rem; display: block; margin-top: 4px;">Auto-mapped from selected category; LISO determines final Civil/Criminal classification.</small>
                                 </div>
                             </div>
 
@@ -2077,7 +2078,9 @@ include '../../layouts/header.php';
                             <!-- Shared HTML5 Datalist for Categories Autocomplete -->
                             <datalist id="categoriesList">
                                 <?php foreach ($categories as $cat): ?>
-                                    <option value="<?php echo htmlspecialchars($cat['category_name']); ?>"></option>
+                                    <option value="<?php echo htmlspecialchars($cat['category_name']); ?>"
+                                            data-category-id="<?php echo (int) $cat['category_id']; ?>"
+                                            data-case-type="<?php echo htmlspecialchars((string) ($cat['default_case_type'] ?? 'Civil')); ?>"></option>
                                 <?php endforeach; ?>
                             </datalist>
 
@@ -2118,6 +2121,55 @@ include '../../layouts/header.php';
                                         Under <strong>R.A. 11313 Sec. 11</strong>, 2nd and 3rd offenses of gender-based street harassment carry higher penalties (imprisonment of 6–30 days and fines up to ₱10,000) and cannot be conciliated by the Lupon. Endorse and route this complainant directly to the <strong>Barangay VAWC Desk</strong> or <strong>PNP Women and Children Protection Desk (WCPD)</strong>.
                                     </p>
                                 </div>
+                            </div>
+
+                            <!-- Conditional Criminal-Specific Intake Fields (Shown ONLY when Case Type is Criminal) -->
+                            <?php
+                                $initCaseType = $old['case_type'] ?? 'Civil';
+                                $initImpVal = (string) ($old['offense_imprisonment_max'] ?? '0');
+                                $initNoPriv = array_key_exists('has_private_offended_party', $old) && empty($old['has_private_offended_party']);
+                            ?>
+                            <div id="criminalIntakeFieldsSection" data-criminal-only="1" style="display: <?php echo ($initCaseType === 'Criminal') ? 'block' : 'none'; ?>; margin: 12px 0 14px; padding: 14px 16px; background: #fff5f5; border: 1.5px solid #fecaca; border-radius: 10px;" <?php echo ($initCaseType === 'Criminal') ? '' : 'hidden'; ?>>
+                                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                                    <div>
+                                        <strong style="font-size: 0.92rem; color: #991b1b; display: block;">Criminal Offense Screening Fields (R.A. 7160 &sect;&sect;408(c)–(d), 412)</strong>
+                                        <span style="font-size: 0.78rem; color: #7f1d1d;">Shown only for Criminal cases to verify Katarungang Pambarangay statutory thresholds.</span>
+                                    </div>
+                                    <span style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; text-transform: uppercase;">Criminal Intake</span>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom: 10px;">
+                                    <label for="offenseImprisonmentMax" style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">Maximum Statutory Imprisonment (&sect;408(c))</label>
+                                    <select id="offenseImprisonmentMax" name="offense_imprisonment_max" class="form-control">
+                                        <option value="0" <?php echo $initImpVal === '0' ? 'selected' : ''; ?>>Fine-only / Light felony without imprisonment (KP Eligible)</option>
+                                        <option value="0.5" <?php echo $initImpVal === '0.5' ? 'selected' : ''; ?>>Up to 6 months (Arresto Mayor — KP Eligible)</option>
+                                        <option value="1" <?php echo $initImpVal === '1' ? 'selected' : ''; ?>>Over 6 months up to 1 year (Max KP Limit)</option>
+                                        <option value="2" <?php echo $initImpVal === '2' ? 'selected' : ''; ?>>Exceeds 1 year (&gt; 1 Year — Outside KP Jurisdiction)</option>
+                                    </select>
+                                </div>
+
+                                <input type="hidden" id="hasPrivateOffendedParty" name="has_private_offended_party" value="<?php echo $initNoPriv ? '0' : '1'; ?>">
+
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;">
+                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
+                                        <input type="checkbox" id="chkCriminalNoPrivateParty" value="1" <?php echo $initNoPriv ? 'checked' : ''; ?> style="margin-top: 2px;">
+                                        <span>Offense has no private offended party (&sect;408(d))</span>
+                                    </label>
+                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
+                                        <input type="checkbox" id="chkCriminalAccusedDetained" name="accused_under_detention" value="1" <?php echo !empty($old['accused_under_detention']) ? 'checked' : ''; ?> style="margin-top: 2px;">
+                                        <span>Accused is currently under detention (&sect;412(a))</span>
+                                    </label>
+                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
+                                        <input type="checkbox" id="chkCriminalHabeasCorpus" name="habeas_corpus_needed" value="1" <?php echo !empty($old['habeas_corpus_needed']) ? 'checked' : ''; ?> style="margin-top: 2px;">
+                                        <span>Personal liberty / habeas corpus needed (&sect;412(b))</span>
+                                    </label>
+                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
+                                        <input type="checkbox" id="chkCriminalPrescriptionRisk" name="prescription_risk" value="1" <?php echo !empty($old['prescription_risk']) ? 'checked' : ''; ?> style="margin-top: 2px;">
+                                        <span>Criminal action at risk of prescription (&sect;412(d))</span>
+                                    </label>
+                                </div>
+
+                                <div id="criminalIntakeExclusionAlert" style="display: none; margin-top: 10px; padding: 9px 12px; background: #fef2f2; border: 1px solid #f87171; border-radius: 6px; font-size: 0.8rem; color: #991b1b; font-weight: 600;"></div>
                             </div>
                             <?php endif; ?>
 
@@ -2174,7 +2226,9 @@ include '../../layouts/header.php';
                             </div>
 
                             <input type="hidden" name="jurisdiction_screened" id="jurisdictionScreened" value="1">
+                            <?php if ($isResidentPortal): ?>
                             <input type="hidden" name="has_private_offended_party" value="1">
+                            <?php endif; ?>
                         </section>
                         </div><!-- /#wizardPanel5 -->
 
@@ -2942,13 +2996,123 @@ document.addEventListener('DOMContentLoaded', () => {
     const secondaryOtherSpecificationEl = document.getElementById('secondaryOtherSpecification');
     const complaintTitleInputEl = document.getElementById('complaintTitle');
 
-    // Build category map: name -> id
+    // Build category map: name -> id, and id -> default_case_type
     const categoriesMap = {};
+    const categoryCaseTypeMap = {};
+    let othersCategoryId = '51';
     if (categorySelectEl && categorySelectEl.options) {
         for (let i = 0; i < categorySelectEl.options.length; i++) {
             const opt = categorySelectEl.options[i];
             if (opt.value) {
                 categoriesMap[opt.text.trim().toLowerCase()] = opt.value;
+                categoryCaseTypeMap[opt.value] = opt.dataset.caseType || 'Civil';
+                if (opt.dataset.isOther === '1' || /\b(others|iba pa)\b/i.test(opt.text)) {
+                    othersCategoryId = opt.value;
+                }
+            }
+        }
+    }
+
+    const caseTypeSelectEl = document.getElementById('caseType');
+    const caseTypeAutoHintEl = document.getElementById('caseTypeAutoHint');
+    const criminalFieldsSectionEl = document.getElementById('criminalIntakeFieldsSection');
+    const offenseImpSelectEl = document.getElementById('offenseImprisonmentMax');
+    const hasPrivatePartyHiddenEl = document.getElementById('hasPrivateOffendedParty');
+    const chkNoPrivPartyEl = document.getElementById('chkCriminalNoPrivateParty');
+    const chkAccDetainedEl = document.getElementById('chkCriminalAccusedDetained');
+    const chkHabeasEl = document.getElementById('chkCriminalHabeasCorpus');
+    const chkPrescRiskEl = document.getElementById('chkCriminalPrescriptionRisk');
+    const criminalExclusionAlertEl = document.getElementById('criminalIntakeExclusionAlert');
+
+    function updateCriminalExclusionAlert() {
+        if (!criminalExclusionAlertEl) return;
+        const reasons = [];
+        const impVal = parseFloat(offenseImpSelectEl?.value || '0') || 0;
+        if (impVal > 1.0) reasons.push('Imprisonment exceeds 1 year (§408(c))');
+        if (chkNoPrivPartyEl?.checked) reasons.push('No private offended party (§408(d))');
+        if (chkAccDetainedEl?.checked) reasons.push('Accused is under detention (§412(a))');
+        if (chkHabeasEl?.checked) reasons.push('Personal liberty / habeas corpus needed (§412(b))');
+        if (chkPrescRiskEl?.checked) reasons.push('Prescription risk (§412(d))');
+        if (reasons.length > 0) {
+            criminalExclusionAlertEl.textContent = 'Statutory Exclusion Flagged: ' + reasons.join(' · ') + ' — Outside mandatory KP conciliation.';
+            criminalExclusionAlertEl.style.display = 'block';
+        } else {
+            criminalExclusionAlertEl.textContent = '';
+            criminalExclusionAlertEl.style.display = 'none';
+        }
+    }
+
+    function syncCriminalIntakeFields() {
+        if (!criminalFieldsSectionEl || !caseTypeSelectEl) return;
+        const isCriminal = caseTypeSelectEl.value === 'Criminal';
+        criminalFieldsSectionEl.hidden = !isCriminal;
+        criminalFieldsSectionEl.style.display = isCriminal ? 'block' : 'none';
+        if (!isCriminal) {
+            // Clear stale criminal-only values when switching back to Civil
+            if (offenseImpSelectEl) offenseImpSelectEl.value = '0';
+            if (chkNoPrivPartyEl) chkNoPrivPartyEl.checked = false;
+            if (hasPrivatePartyHiddenEl) hasPrivatePartyHiddenEl.value = '1';
+            if (chkAccDetainedEl) chkAccDetainedEl.checked = false;
+            if (chkHabeasEl) chkHabeasEl.checked = false;
+            if (chkPrescRiskEl) chkPrescRiskEl.checked = false;
+        } else if (hasPrivatePartyHiddenEl && chkNoPrivPartyEl) {
+            hasPrivatePartyHiddenEl.value = chkNoPrivPartyEl.checked ? '0' : '1';
+        }
+        updateCriminalExclusionAlert();
+    }
+
+    chkNoPrivPartyEl?.addEventListener('change', () => {
+        if (hasPrivatePartyHiddenEl) {
+            hasPrivatePartyHiddenEl.value = chkNoPrivPartyEl.checked ? '0' : '1';
+        }
+        updateCriminalExclusionAlert();
+    });
+    [offenseImpSelectEl, chkAccDetainedEl, chkHabeasEl, chkPrescRiskEl].forEach(el => {
+        el?.addEventListener('change', updateCriminalExclusionAlert);
+    });
+    caseTypeSelectEl?.addEventListener('change', () => {
+        window.AgapCategoryClassification?.syncSegmentedGroupForSelect(caseTypeSelectEl);
+        syncCriminalIntakeFields();
+    });
+    syncCriminalIntakeFields();
+
+    window.addEventListener('pageshow', () => {
+        if (categorySelectEl && primaryCategoryInputEl) {
+            const selOpt = categorySelectEl.options[categorySelectEl.selectedIndex];
+            if (selOpt && selOpt.value) {
+                const optText = (selOpt.text || '').trim();
+                const spec = (otherCategoryInputEl?.value || '').trim();
+                primaryCategoryInputEl.value = (selOpt.dataset.isOther === '1' && spec) ? spec : optText;
+            }
+        }
+        if (caseTypeSelectEl) {
+            window.AgapCategoryClassification?.syncSegmentedGroupForSelect(caseTypeSelectEl);
+        }
+        syncOtherCategoryVisibility();
+        syncCriminalIntakeFields();
+    });
+
+    function autoSyncCaseTypeFromCategories() {
+        if (IS_RESIDENT_PORTAL || !caseTypeSelectEl) return;
+        const pId = categorySelectEl?.value || '';
+        const sId = secondaryCategoryIdEl?.value || '';
+        const pCustom = primaryCategoryInputEl?.value?.trim() || '';
+        const sCustom = secondaryCategoryInputEl?.value?.trim() || '';
+        let resolved = null;
+        if (pId && pId !== othersCategoryId && categoryCaseTypeMap[pId]) {
+            resolved = categoryCaseTypeMap[pId];
+        } else if (pCustom !== '' && pId === othersCategoryId) {
+            resolved = window.AgapCategoryClassification?.inferCaseTypeFromCategoryText(pCustom) || 'Civil';
+        }
+        if (sId && sId !== othersCategoryId && categoryCaseTypeMap[sId] === 'Criminal') {
+            resolved = 'Criminal';
+        } else if (sCustom !== '' && sId === othersCategoryId && window.AgapCategoryClassification?.inferCaseTypeFromCategoryText(sCustom) === 'Criminal') {
+            resolved = 'Criminal';
+        }
+        if (resolved === 'Civil' || resolved === 'Criminal') {
+            window.AgapCategoryClassification?.setCaseTypeSelectValue(caseTypeSelectEl, resolved);
+            if (caseTypeAutoHintEl) {
+                caseTypeAutoHintEl.textContent = `Auto-mapped to ${resolved} based on selected category (editable; LISO confirms final type).`;
             }
         }
     }
@@ -3191,8 +3355,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function autoUpdateComplaintTitle() {
         if (IS_RESIDENT_PORTAL || isTitleUserCustomized || !complaintTitleInputEl) return;
+        if (complaintTitleInputEl.value.trim() !== '') return;
         const cat1 = primaryCategoryInputEl?.value?.trim() || '';
         const cat2 = secondaryCategoryInputEl?.value?.trim() || '';
+        const resolvedId1 = categorySelectEl?.value || '';
+        if (!resolvedId1 && !cat2) return;
         if (cat1 && cat2) {
             complaintTitleInputEl.value = cat1 + ' & ' + cat2;
         } else if (cat1) {
@@ -3202,7 +3369,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function handlePrimaryCategoryInput() {
+    function handlePrimaryCategoryInput(commitCustom = true) {
         if (!primaryCategoryInputEl || !categorySelectEl) return;
         const val = primaryCategoryInputEl.value.trim();
         const lower = val.toLowerCase();
@@ -3210,23 +3377,27 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lower in categoriesMap) {
             categorySelectEl.value = categoriesMap[lower];
             categorySelectEl.dispatchEvent(new Event('change'));
-            if (categoriesMap[lower] !== '51') {
+            if (categoriesMap[lower] !== othersCategoryId) {
                 if (otherCategoryInputEl) otherCategoryInputEl.value = '';
             }
-        } else if (val !== '') {
-            // Custom typed category: set select to 51 (Others) and store specification
-            categorySelectEl.value = '51';
-            categorySelectEl.dispatchEvent(new Event('change'));
-            if (otherCategoryInputEl) otherCategoryInputEl.value = val;
-        } else {
+            autoSyncCaseTypeFromCategories();
+            autoUpdateComplaintTitle();
+        } else if (val === '') {
             categorySelectEl.value = '';
             categorySelectEl.dispatchEvent(new Event('change'));
             if (otherCategoryInputEl) otherCategoryInputEl.value = '';
+            autoSyncCaseTypeFromCategories();
+        } else if (commitCustom) {
+            // Custom typed category: set select to Others and store specification once user commits
+            categorySelectEl.value = othersCategoryId;
+            categorySelectEl.dispatchEvent(new Event('change'));
+            if (otherCategoryInputEl) otherCategoryInputEl.value = val;
+            autoSyncCaseTypeFromCategories();
+            autoUpdateComplaintTitle();
         }
-        autoUpdateComplaintTitle();
     }
 
-    function handleSecondaryCategoryInput() {
+    function handleSecondaryCategoryInput(commitCustom = true) {
         if (!secondaryCategoryInputEl || !secondaryCategoryIdEl) return;
         const val = secondaryCategoryInputEl.value.trim();
         const lower = val.toLowerCase();
@@ -3234,25 +3405,76 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lower in categoriesMap) {
             secondaryCategoryIdEl.value = categoriesMap[lower];
             if (secondaryOtherSpecificationEl) {
-                secondaryOtherSpecificationEl.value = (categoriesMap[lower] === '51') ? val : '';
+                secondaryOtherSpecificationEl.value = (categoriesMap[lower] === othersCategoryId) ? val : '';
             }
-        } else if (val !== '') {
-            secondaryCategoryIdEl.value = '51';
-            if (secondaryOtherSpecificationEl) secondaryOtherSpecificationEl.value = val;
-        } else {
+            autoSyncCaseTypeFromCategories();
+            autoUpdateComplaintTitle();
+        } else if (val === '') {
             secondaryCategoryIdEl.value = '';
             if (secondaryOtherSpecificationEl) secondaryOtherSpecificationEl.value = '';
+            autoSyncCaseTypeFromCategories();
+        } else if (commitCustom) {
+            secondaryCategoryIdEl.value = othersCategoryId;
+            if (secondaryOtherSpecificationEl) secondaryOtherSpecificationEl.value = val;
+            autoSyncCaseTypeFromCategories();
+            autoUpdateComplaintTitle();
         }
-        autoUpdateComplaintTitle();
     }
 
-    primaryCategoryInputEl?.addEventListener('input', handlePrimaryCategoryInput);
-    primaryCategoryInputEl?.addEventListener('change', handlePrimaryCategoryInput);
-    primaryCategoryInputEl?.addEventListener('blur', handlePrimaryCategoryInput);
+    document.getElementById('btnStaffSuggestCategory')?.addEventListener('click', async () => {
+        const btn = document.getElementById('btnStaffSuggestCategory');
+        const narText = (document.getElementById('narrative')?.value || '').trim();
+        if (narText.length < 10) {
+            window.agapNotify?.('Enter at least 10 characters in the Salaysay (Step 2) before auto-classifying.', 'warning', 'Auto-Classify');
+            return;
+        }
+        const consent = Boolean(document.querySelector('[data-ai-external-consent]')?.checked);
+        const origLabel = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = 'Classifying...'; }
+        try {
+            const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+            const res = await fetch('../../../backend/api/ai/classify-complaint.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({
+                    narrative: narText,
+                    requested_resolution: document.getElementById('requestedResolution')?.value?.trim() || '',
+                    processing_mode: consent ? 'gemini' : 'local_only',
+                    external_ai_consent: consent ? '1' : '0',
+                    csrf_token: csrfToken
+                })
+            });
+            const json = await res.json();
+            const sug = json?.suggestion;
+            if (res.ok && json.success && sug?.primary?.category_name) {
+                if (primaryCategoryInputEl) {
+                    primaryCategoryInputEl.value = sug.primary.category_name;
+                    handlePrimaryCategoryInput();
+                }
+                if (sug.case_type && caseTypeSelectEl) {
+                    window.AgapCategoryClassification?.setCaseTypeSelectValue(caseTypeSelectEl, sug.case_type);
+                }
+                if (complaintTitleInputEl && !isTitleUserCustomized && sug.suggested_title) {
+                    complaintTitleInputEl.value = sug.suggested_title;
+                }
+                window.agapNotify?.(`Suggested "${sug.primary.category_name}" (${sug.case_type}). Review before submitting.`, 'success', 'Auto-Classification');
+            } else {
+                window.agapNotify?.(json?.message || 'Could not auto-classify narrative.', 'warning', 'Auto-Classify');
+            }
+        } catch (_) {
+            window.agapNotify?.('Unable to connect to classification helper.', 'error', 'Auto-Classify');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = origLabel; }
+        }
+    });
 
-    secondaryCategoryInputEl?.addEventListener('input', handleSecondaryCategoryInput);
-    secondaryCategoryInputEl?.addEventListener('change', handleSecondaryCategoryInput);
-    secondaryCategoryInputEl?.addEventListener('blur', handleSecondaryCategoryInput);
+    primaryCategoryInputEl?.addEventListener('input', () => handlePrimaryCategoryInput(false));
+    primaryCategoryInputEl?.addEventListener('change', () => handlePrimaryCategoryInput(true));
+    primaryCategoryInputEl?.addEventListener('blur', () => handlePrimaryCategoryInput(true));
+
+    secondaryCategoryInputEl?.addEventListener('input', () => handleSecondaryCategoryInput(false));
+    secondaryCategoryInputEl?.addEventListener('change', () => handleSecondaryCategoryInput(true));
+    secondaryCategoryInputEl?.addEventListener('blur', () => handleSecondaryCategoryInput(true));
 
     btnAddSecondCategory?.addEventListener('click', () => {
         if (secondCategoryContainer) secondCategoryContainer.style.display = 'block';
@@ -3260,12 +3482,13 @@ document.addEventListener('DOMContentLoaded', () => {
         secondaryCategoryInputEl?.focus();
     });
 
-    btnRemoveSecondCategory?.addEventListener('click', () => {
+        btnRemoveSecondCategory?.addEventListener('click', () => {
         if (secondaryCategoryInputEl) secondaryCategoryInputEl.value = '';
         if (secondaryCategoryIdEl) secondaryCategoryIdEl.value = '';
         if (secondaryOtherSpecificationEl) secondaryOtherSpecificationEl.value = '';
         if (secondCategoryContainer) secondCategoryContainer.style.display = 'none';
         if (btnAddSecondCategory) btnAddSecondCategory.style.display = 'inline-flex';
+        autoSyncCaseTypeFromCategories();
         autoUpdateComplaintTitle();
     });
 
@@ -5102,7 +5325,15 @@ document.addEventListener('DOMContentLoaded', () => {
             setComp('complainantContactNo', comp.contact_no);
             setComp('complainantEmail', comp.email);
             setComp('complainantPreferredContact', comp.preferred_contact);
-            setComp('complainantPurok', comp.purok);
+            let compPurok = (comp.purok || '').trim();
+            if (!compPurok && comp.address) {
+                const purokMatch = String(comp.address).match(/\b(Purok\s*\d+|Do[ñn]a\s+Petra|Sitio|Non-Resident)\b/i);
+                if (purokMatch) {
+                    compPurok = purokMatch[1].replace(/\s+/g, ' ').replace(/^purok/i, 'Purok');
+                    comp.purok = compPurok;
+                }
+            }
+            setComp('complainantPurok', compPurok);
             setComp('complainantIsTenant', comp.is_tenant);
             setComp('complainantAddress', comp.address);
             setComp('complainantLatitude', comp.home_latitude ?? comp.latitude ?? '');
@@ -5975,6 +6206,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!complainantsList || complainantsList.length === 0) {
                 window.agapNotify?.(tr('Magdagdag ng kahit isang nagsusumbong.', 'Please add at least one complainant.'), 'error');
                 window.openPartyModal('complainant', 'add');
+                return false;
+            }
+            syncHiddenPartyInputs();
+            const compPurokVal = (document.getElementById('complainantPurok')?.value || '').trim();
+            const compAddrVal = (document.getElementById('complainantAddress')?.value || '').trim();
+            if (!compPurokVal || !compAddrVal) {
+                window.agapNotify?.(tr(
+                    'Pakilagay ang kumpletong detalye ng paninirahan ng nagsusumbong (Purok/Lugar at Address sa Kalye).',
+                    'Please complete the complainant residence details (Purok/Area and Street Address).'
+                ), 'error');
+                window.openPartyModal('complainant', 'edit', 0);
                 return false;
             }
             if (!respondentsList || respondentsList.length === 0) {
@@ -6963,15 +7205,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 1. Classification & Case Type
         const catSelect = document.getElementById('categoryId');
+        const primaryCatInput = document.getElementById('primaryCategoryInput');
         if (catSelect && data.category_id) {
             catSelect.value = String(data.category_id);
-            catSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            if (primaryCatInput && catSelect.selectedIndex > 0) {
+                primaryCatInput.value = catSelect.options[catSelect.selectedIndex].text.trim();
+                primaryCatInput.dispatchEvent(new Event('change', { bubbles: true }));
+                highlightEl(primaryCatInput);
+            } else {
+                catSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
             highlightEl(catSelect);
         } else if (catSelect && catSelect.options && data.category_name) {
             for (let i = 0; i < catSelect.options.length; i++) {
                 if (catSelect.options[i].text.toLowerCase().includes(data.category_name.toLowerCase())) {
                     catSelect.selectedIndex = i;
-                    catSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    if (primaryCatInput) {
+                        primaryCatInput.value = catSelect.options[i].text.trim();
+                        primaryCatInput.dispatchEvent(new Event('change', { bubbles: true }));
+                        highlightEl(primaryCatInput);
+                    } else {
+                        catSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
                     highlightEl(catSelect);
                     break;
                 }
@@ -6979,9 +7234,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const caseTypeSelect = document.getElementById('caseType');
-        if (caseTypeSelect && data.case_type) {
-            caseTypeSelect.value = data.case_type;
-            caseTypeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+        if (caseTypeSelect && data.case_type && ['Civil', 'Criminal'].includes(data.case_type)) {
+            window.AgapCategoryClassification?.setCaseTypeSelectValue(caseTypeSelect, data.case_type);
             highlightEl(caseTypeSelect);
         }
 

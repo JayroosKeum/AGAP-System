@@ -2373,6 +2373,107 @@ function renderStageOverview(data, stage) {
 
     `;
 
+    renderInheritedSalaysayCard(caseData);
+}
+
+/**
+ * Render Inherited Salaysay (Statement of Complaint) & Classification Card
+ * Kept strictly read-only and separate from session-specific hearing minutes.
+ */
+function renderInheritedSalaysayCard(caseData) {
+    if (!caseData) return;
+    let section = document.getElementById('wsSalaysaySection');
+    if (!section) {
+        const overviewGrid = document.getElementById('wsStageOverviewGrid');
+        if (!overviewGrid || !overviewGrid.parentNode) return;
+        section = document.createElement('div');
+        section.id = 'wsSalaysaySection';
+        section.className = 'stage-section-card';
+        section.style.cssText = 'border-left: 4px solid #2563eb; background: #ffffff; margin-bottom: 20px;';
+        section.innerHTML = `
+            <div class="stage-section-header" style="align-items: flex-start; gap: 12px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom: 4px;">
+                        <h3 style="margin:0;">Inherited Statement of Complaint (Salaysay)</h3>
+                        <span id="wsSalaysayCaseTypePill" style="display:inline-flex; align-items:center; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;">Civil</span>
+                        <span id="wsSalaysayCategoryText" style="display:inline-flex; align-items:center; padding: 2px 10px; border-radius: 999px; font-size: 0.74rem; font-weight: 600; background: #f8fafc; color: #334155; border: 1px solid #cbd5e1;"></span>
+                    </div>
+                    <p id="wsSalaysayTitleText" style="margin: 2px 0 0; font-size: 0.86rem; font-weight: 600; color: #1e293b;"></p>
+                    <p id="wsSalaysayIncidentText" style="margin: 2px 0 0; font-size: 0.78rem; color: #64748b;"></p>
+                </div>
+                <button type="button" id="wsCopySalaysayBtn" class="btn-secondary" style="font-size: 0.78rem; padding: 5px 11px; white-space: nowrap;">Copy Salaysay</button>
+            </div>
+            <div id="wsSalaysayBody" style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px; font-size: 0.91rem; line-height: 1.62; color: #0f172a; white-space: pre-wrap;"></div>
+            <div id="wsSalaysayResolutionWrap" style="display:none; margin-top: 10px; padding: 10px 14px; border-radius: 8px; background: #fffbeb; border: 1px solid #fde68a; font-size: 0.85rem; color: #78350f;">
+                <strong>Requested Resolution:</strong> <span id="wsSalaysayResolution"></span>
+            </div>
+        `;
+        overviewGrid.insertAdjacentElement('afterend', section);
+    }
+
+    const caseType = (caseData.case_type || 'Civil') === 'Criminal' ? 'Criminal' : 'Civil';
+    const pill = document.getElementById('wsSalaysayCaseTypePill');
+    if (pill) {
+        pill.textContent = caseType;
+        pill.style.background = caseType === 'Criminal' ? '#fef2f2' : '#eff6ff';
+        pill.style.color = caseType === 'Criminal' ? '#b91c1c' : '#1d4ed8';
+        pill.style.borderColor = caseType === 'Criminal' ? '#fecaca' : '#bfdbfe';
+    }
+    section.style.borderLeftColor = caseType === 'Criminal' ? '#dc2626' : '#2563eb';
+
+    const catEl = document.getElementById('wsSalaysayCategoryText');
+    if (catEl) {
+        catEl.textContent = caseData.category_display || caseData.category_name || 'Unclassified Dispute';
+    }
+
+    const titleEl = document.getElementById('wsSalaysayTitleText');
+    if (titleEl) {
+        titleEl.textContent = caseData.complaint_title || '';
+        titleEl.style.display = caseData.complaint_title ? 'block' : 'none';
+    }
+
+    const incParts = [];
+    if (caseData.incident_date) incParts.push(`Incident Date: ${caseData.incident_date}`);
+    if (caseData.incident_location) incParts.push(`Location: ${caseData.incident_location}`);
+    const incEl = document.getElementById('wsSalaysayIncidentText');
+    if (incEl) {
+        incEl.textContent = incParts.length
+            ? `${incParts.join(' · ')} · Preserved verbatim from initial intake (session hearing minutes stored separately).`
+            : 'Preserved verbatim from initial intake (session hearing minutes stored separately).';
+    }
+
+    const bodyEl = document.getElementById('wsSalaysayBody');
+    const narrativeText = (caseData.narrative || '').trim();
+    if (bodyEl) {
+        bodyEl.textContent = narrativeText || 'No Salaysay (Statement of Complaint) recorded.';
+    }
+
+    const resWrap = document.getElementById('wsSalaysayResolutionWrap');
+    const resEl = document.getElementById('wsSalaysayResolution');
+    const resText = (caseData.requested_resolution || '').trim();
+    if (resWrap && resEl) {
+        if (resText) {
+            resEl.textContent = resText;
+            resWrap.style.display = 'block';
+        } else {
+            resWrap.style.display = 'none';
+        }
+    }
+
+    const copyBtn = document.getElementById('wsCopySalaysayBtn');
+    if (copyBtn && copyBtn.dataset.bound !== '1') {
+        copyBtn.dataset.bound = '1';
+        copyBtn.addEventListener('click', () => {
+            const textToCopy = (document.getElementById('wsSalaysayBody')?.textContent || '').trim();
+            if (!textToCopy || !navigator.clipboard) return;
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => { copyBtn.textContent = 'Copy Salaysay'; }, 1500);
+            }).catch(() => {});
+        });
+    }
+
+    section.style.display = 'block';
 }
 
 
@@ -3940,7 +4041,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             <label for="minOutcome_${hId}" style="font-weight: 700; font-size: 0.82rem; color: #0f172a; margin-bottom: 4px; display: block;">
 
-                                Kinalabasan ng Pagdinig (Session Outcome) <span style="color: #dc2626;">*</span>
+                                Kinalabasan ng Pagdinig (Session Outcome) <span class="required-mark" style="color: #dc2626;">*</span>
 
                             </label>
 
@@ -9694,7 +9795,7 @@ function ensureInlineSettlementModal() {
                     </div>
                 </div>
                 <div>
-                    <label for="inlineSettleTerms" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Agreement Terms / Kasunduan Details <span style="color: #dc2626;">*</span></label>
+                    <label for="inlineSettleTerms" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Agreement Terms / Kasunduan Details <span class="required-mark" style="color: #dc2626;">*</span></label>
                     <textarea id="inlineSettleTerms" rows="4" required placeholder="Enter the agreed settlement terms between Complainant and Respondent..." style="width: 100%; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.88rem; box-sizing: border-box; resize: vertical;"></textarea>
                 </div>
                 <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
@@ -9705,15 +9806,15 @@ function ensureInlineSettlementModal() {
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
                         <input type="checkbox" id="inlineSettleCompSigned" required>
-                        <span>Complainant Signed <span style="color: #dc2626;">*</span></span>
+                        <span>Complainant Signed <span class="required-mark" style="color: #dc2626;">*</span></span>
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
                         <input type="checkbox" id="inlineSettleRespSigned" required>
-                        <span>Respondent Signed <span style="color: #dc2626;">*</span></span>
+                        <span>Respondent Signed <span class="required-mark" style="color: #dc2626;">*</span></span>
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
                         <input type="checkbox" id="inlineSettlePbAttested" required>
-                        <span>Punong Barangay Attested <span style="color: #dc2626;">*</span></span>
+                        <span>Punong Barangay Attested <span class="required-mark" style="color: #dc2626;">*</span></span>
                     </label>
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #1e293b; cursor: pointer;">
                         <input type="checkbox" id="inlineSettleSealed">
@@ -9764,7 +9865,7 @@ function openInlineSettlementModal(hearingId = null) {
 
     const termsInput = document.getElementById('inlineSettleTerms');
     if (termsInput) {
-        const agreedVal = (document.getElementById(`minAgreedTerms_${hId}`) || document.getElementById('minAgreedTerms'))?.value || '';
+        const agreedVal = (document.getElementById(`minAgreements_${hId}`) || document.getElementById(`minAgreedTerms_${hId}`) || document.getElementById('minAgreedTerms'))?.value || '';
         const remarksVal = (document.getElementById(`minOutcomeRemarks_${hId}`) || document.getElementById('minOutcomeRemarks') || document.getElementById('stageOutcomeRemarks'))?.value || '';
         const prefill = agreedVal.trim() || remarksVal.trim();
         if (prefill) {
@@ -10912,7 +11013,7 @@ async function submitReferPangkat(e) {
 
             alert('Please select both Chairperson and Secretary.');
 
-            if (btn) btn.disabled = false;
+            setAsyncButtonState(btn, false);
 
             return;
 
@@ -10922,7 +11023,7 @@ async function submitReferPangkat(e) {
 
             alert('Chairperson and Secretary must be different Lupon members.');
 
-            if (btn) btn.disabled = false;
+            setAsyncButtonState(btn, false);
 
             return;
 
@@ -10934,7 +11035,7 @@ async function submitReferPangkat(e) {
 
             alert('Please nominate all 3 distinct active Lupon Members for Chairperson, Secretary, and Member.');
 
-            if (btn) btn.disabled = false;
+            setAsyncButtonState(btn, false);
 
             return;
 
@@ -10944,7 +11045,7 @@ async function submitReferPangkat(e) {
 
             alert('Chairperson, Secretary, and Member must be different Lupon members.');
 
-            if (btn) btn.disabled = false;
+            setAsyncButtonState(btn, false);
 
             return;
 
@@ -10990,8 +11091,9 @@ async function submitReferPangkat(e) {
         venue: venue || null
     };
 
+    let redirected = false;
     try {
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || window.agapCsrfToken || '';
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || document.querySelector('meta[name="agap-csrf-token"]')?.getAttribute('content') || window.agapCsrfToken || '';
         const res = await fetch(getStageApiUrl('stages/refer-pangkat.php'), {
             method: 'POST',
             headers: {
@@ -11010,12 +11112,13 @@ async function submitReferPangkat(e) {
                 'success'
             );
             closeReferPangkatModal();
+            const targetCaseId = stageWorkspaceState.caseId || payload.case_id;
+            const targetComplaintId = stageWorkspaceState.complaintId || '';
+            const pangkatUrl = `pangkat-workspace.php?case_id=${encodeURIComponent(targetCaseId)}${targetComplaintId ? '&complaint_id=' + encodeURIComponent(targetComplaintId) : ''}`;
+            redirected = true;
             setTimeout(() => {
-                if (typeof openTriPanelPangkatModal === 'function') {
-                    openTriPanelPangkatModal(stageWorkspaceState.caseId);
-                }
-                loadStageData();
-            }, 300);
+                window.location.href = pangkatUrl;
+            }, 350);
         } else {
             notifyUser(json.message || 'Unable to refer case to Pangkat.', 'error');
         }
@@ -11023,7 +11126,9 @@ async function submitReferPangkat(e) {
         console.error('submitReferPangkat error:', err);
         notifyUser('Network error during referral.', 'error');
     } finally {
-        setAsyncButtonState(btn, false);
+        if (!redirected) {
+            setAsyncButtonState(btn, false);
+        }
     }
 
 }

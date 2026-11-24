@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/ValidationService.php';
 require_once __DIR__ . '/../services/ComplaintLifecycleService.php';
 require_once __DIR__ . '/../services/ComplaintInformationService.php';
+require_once __DIR__ . '/../services/ComplaintClassificationService.php';
 
 class Complaint
 {
@@ -254,9 +255,14 @@ class Complaint
                 session_start();
             }
 
-            $caseType = in_array(trim((string)($data['case_type'] ?? '')), ['Civil', 'Criminal'], true)
-                ? trim((string)$data['case_type'])
-                : 'Civil';
+            $requestedCaseType = trim((string)($data['case_type'] ?? ''));
+            $caseType = ComplaintClassificationService::resolveEffectiveCaseType(
+                $this->conn,
+                !empty($data['category_id']) ? (int) $data['category_id'] : null,
+                !empty($data['secondary_category_id']) ? (int) $data['secondary_category_id'] : null,
+                in_array($requestedCaseType, ['Civil', 'Criminal'], true) ? $requestedCaseType : null
+            );
+            $data['case_type'] = $caseType;
 
             if ($ownsTransaction) {
                 $this->conn->beginTransaction();
@@ -470,9 +476,14 @@ class Complaint
                 return ['success' => false, 'message' => 'The complaint could not be found.'];
             }
 
-            $caseType = in_array(trim((string)($data['case_type'] ?? '')), ['Civil', 'Criminal'], true)
-                ? trim((string)$data['case_type'])
-                : 'Civil';
+            $requestedCaseType = trim((string)($data['case_type'] ?? ''));
+            $caseType = ComplaintClassificationService::resolveEffectiveCaseType(
+                $this->conn,
+                !empty($data['category_id']) ? (int) $data['category_id'] : null,
+                !empty($data['secondary_category_id']) ? (int) $data['secondary_category_id'] : null,
+                in_array($requestedCaseType, ['Civil', 'Criminal'], true) ? $requestedCaseType : null
+            );
+            $data['case_type'] = $caseType;
 
             $this->conn->beginTransaction();
             $stmt =
@@ -562,6 +573,16 @@ class Complaint
                 } catch (Throwable $ne) {
                     error_log('Failed to dispatch new complaint notification: ' . $ne->getMessage());
                 }
+            } elseif ($caseType === 'Civil') {
+                $this->conn->prepare(
+                    'UPDATE complaint_intake_screenings
+                     SET offense_imprisonment_max = 0,
+                         has_private_offended_party = 1,
+                         accused_under_detention = 0,
+                         habeas_corpus_needed = 0,
+                         prescription_risk = 0
+                     WHERE complaint_id = ?'
+                )->execute([$complaintId]);
             }
 
             $this->conn->commit();
@@ -682,8 +703,16 @@ class Complaint
                     }
                 }
             }
-            $effectiveCaseType = (array_key_exists('case_type', $classification) && trim((string) $classification['case_type']) !== '')
+            $explicitCaseType = (array_key_exists('case_type', $classification) && in_array(trim((string) $classification['case_type']), ['Civil', 'Criminal'], true))
                 ? trim((string) $classification['case_type'])
+                : null;
+            $effectiveCaseType = ($hasClassificationInput || $explicitCaseType !== null)
+                ? ComplaintClassificationService::resolveEffectiveCaseType(
+                    $this->conn,
+                    $effectiveCategoryId ?: null,
+                    $effectiveSecCatId,
+                    $explicitCaseType
+                )
                 : (string) ($intake['case_type'] ?? 'Civil');
             $effectiveTitle = array_key_exists('complaint_title', $classification)
                 ? trim((string) $classification['complaint_title'])
@@ -797,8 +826,47 @@ class Complaint
                 $this->conn->prepare('UPDATE complaints SET liso_assigned_to = ?, liso_assigned_at = NOW() WHERE complaint_id = ?')
                     ->execute([$reviewerId, $id]);
             }
-            $this->conn->prepare('UPDATE complaint_intake_screenings SET screened_by = ?, screened_at = NOW() WHERE complaint_id = ?')
-                ->execute([$reviewerId ?: null, $id]);
+            $hasCriminalScreeningInput = array_intersect(
+                ['offense_imprisonment_max', 'has_private_offended_party', 'accused_under_detention', 'habeas_corpus_needed', 'prescription_risk'],
+                array_keys($classification)
+            ) !== [];
+            if ($effectiveCaseType === 'Civil') {
+                $this->conn->prepare(
+                    'UPDATE complaint_intake_screenings
+                     SET offense_imprisonment_max = 0,
+                         has_private_offended_party = 1,
+                         accused_under_detention = 0,
+                         habeas_corpus_needed = 0,
+                         prescription_risk = 0,
+                         screened_by = ?,
+                         screened_at = NOW()
+                     WHERE complaint_id = ?'
+                )->execute([$reviewerId ?: null, $id]);
+            } elseif ($hasCriminalScreeningInput) {
+                $impMax = max(0, (float) ($classification['offense_imprisonment_max'] ?? 0));
+                $hasPriv = array_key_exists('has_private_offended_party', $classification)
+                    ? (!empty($classification['has_private_offended_party']) ? 1 : 0)
+                    : 1;
+                $accDet = !empty($classification['accused_under_detention']) ? 1 : 0;
+                $habCorp = !empty($classification['habeas_corpus_needed']) ? 1 : 0;
+                $presc = !empty($classification['prescription_risk']) ? 1 : 0;
+                $this->conn->prepare(
+                    'INSERT INTO complaint_intake_screenings
+                        (complaint_id, offense_imprisonment_max, has_private_offended_party, accused_under_detention, habeas_corpus_needed, prescription_risk, screened_by)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)
+                     ON DUPLICATE KEY UPDATE
+                        offense_imprisonment_max = VALUES(offense_imprisonment_max),
+                        has_private_offended_party = VALUES(has_private_offended_party),
+                        accused_under_detention = VALUES(accused_under_detention),
+                        habeas_corpus_needed = VALUES(habeas_corpus_needed),
+                        prescription_risk = VALUES(prescription_risk),
+                        screened_by = VALUES(screened_by),
+                        screened_at = CURRENT_TIMESTAMP'
+                )->execute([$id, $impMax, $hasPriv, $accDet, $habCorp, $presc, $reviewerId ?: null]);
+            } else {
+                $this->conn->prepare('UPDATE complaint_intake_screenings SET screened_by = ?, screened_at = NOW() WHERE complaint_id = ?')
+                    ->execute([$reviewerId ?: null, $id]);
+            }
             if (!(new AuditService($this->conn))->log($reviewerId ?: null, 'Reviewed Complaint: ' . $status, 'Complaints', $id)) {
                 throw new RuntimeException('Unable to audit the screening decision.');
             }
@@ -1742,23 +1810,34 @@ class Complaint
             ];
         }
 
+        $effectiveCaseType = ComplaintClassificationService::resolveEffectiveCaseType(
+            $this->conn,
+            !empty($data['category_id']) ? (int) $data['category_id'] : null,
+            !empty($data['secondary_category_id']) ? (int) $data['secondary_category_id'] : null,
+            in_array(trim((string) ($data['case_type'] ?? '')), ['Civil', 'Criminal'], true) ? trim((string) $data['case_type']) : null
+        );
+        $isCriminalCase = ($effectiveCaseType === 'Criminal');
+
         $disputeContext = [];
 
         // 1. Explicit statutory exclusion flags passed from UI / API
         $disputeContext['party_is_government']        = !empty($data['party_is_government']);
         $disputeContext['party_is_public_officer']    = !empty($data['party_is_public_officer']) || !empty($data['involves_public_officer_official_capacity']);
-        $disputeContext['offense_imprisonment_max']   = (float) ($data['offense_imprisonment_max'] ?? 0);
+        // Ignore stale criminal-only fields when case type is Civil
+        $disputeContext['offense_imprisonment_max']   = $isCriminalCase ? (float) ($data['offense_imprisonment_max'] ?? 0) : 0.0;
         $disputeContext['offense_fine_max']           = (float) ($data['offense_fine_max'] ?? 0);
-        if (array_key_exists('has_private_offended_party', $data)) {
+        if ($isCriminalCase && array_key_exists('has_private_offended_party', $data)) {
             $disputeContext['has_private_offended_party'] = (bool) $data['has_private_offended_party'];
+        } else {
+            $disputeContext['has_private_offended_party'] = true;
         }
         $disputeContext['property_in_diff_lgu']       = !empty($data['property_in_diff_lgu']);
         $disputeContext['parties_in_diff_lgu']        = !empty($data['parties_in_diff_lgu']);
         $disputeContext['parties_same_barangay']      = !empty($data['parties_same_barangay']) || empty($data['parties_in_diff_lgu']);
-        $disputeContext['accused_under_detention']    = !empty($data['accused_under_detention']);
-        $disputeContext['habeas_corpus_needed']       = !empty($data['habeas_corpus_needed']);
+        $disputeContext['accused_under_detention']    = $isCriminalCase && !empty($data['accused_under_detention']);
+        $disputeContext['habeas_corpus_needed']       = $isCriminalCase && !empty($data['habeas_corpus_needed']);
         $disputeContext['provisional_remedy_needed']  = !empty($data['provisional_remedy_needed']);
-        $disputeContext['prescription_risk']          = !empty($data['prescription_risk']);
+        $disputeContext['prescription_risk']          = $isCriminalCase && !empty($data['prescription_risk']);
         $disputeContext['indigenous_community']       = !empty($data['indigenous_community']);
 
         // Check government entity keywords on names
@@ -1873,7 +1952,8 @@ class Complaint
     private function saveIntakeScreening(int $complaintId, array $data): void
     {
         $bool = static fn (string $field): int => !empty($data[$field]) ? 1 : 0;
-        $privateOffended = array_key_exists('has_private_offended_party', $data)
+        $isCriminalCase = (($data['case_type'] ?? 'Civil') === 'Criminal');
+        $privateOffended = ($isCriminalCase && array_key_exists('has_private_offended_party', $data))
             ? $bool('has_private_offended_party')
             : 1;
         $notes = trim((string) ($data['screening_notes'] ?? '')) ?: null;
@@ -1924,12 +2004,12 @@ class Complaint
             $bool('party_is_public_officer'),
             $bool('parties_in_diff_lgu'),
             $bool('property_in_diff_lgu'),
-            $bool('accused_under_detention'),
-            $bool('habeas_corpus_needed'),
+            $isCriminalCase ? $bool('accused_under_detention') : 0,
+            $isCriminalCase ? $bool('habeas_corpus_needed') : 0,
             $bool('provisional_remedy_needed'),
-            $bool('prescription_risk'),
+            $isCriminalCase ? $bool('prescription_risk') : 0,
             $bool('indigenous_community'),
-            max(0, (float) ($data['offense_imprisonment_max'] ?? 0)),
+            $isCriminalCase ? max(0, (float) ($data['offense_imprisonment_max'] ?? 0)) : 0.0,
             max(0, (float) ($data['offense_fine_max'] ?? 0)),
             $privateOffended,
             $bool('duplicate_acknowledged'),

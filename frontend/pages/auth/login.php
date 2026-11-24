@@ -12,6 +12,10 @@ $loginErrorMessage = match ($errorCode) {
     default => '',
 };
 $loginError = $loginErrorMessage !== '';
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+unset($_SESSION['complaint_flash'], $_SESSION['resident_flash'], $_SESSION['flash'], $_SESSION['paanyaya_preparation_flash']);
 $loggedOutNotice = ($_GET['logged_out'] ?? '') === '1';
 include '../../layouts/header.php';
 ?>

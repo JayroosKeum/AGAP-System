@@ -131,6 +131,8 @@
         if (!document.hidden) checkNow(true);
     });
     window.addEventListener('focus', () => checkNow(true));
+    window.addEventListener('pagehide', stop);
+    window.addEventListener('beforeunload', stop);
     document.addEventListener('DOMContentLoaded', start);
 })();
 
@@ -363,14 +365,29 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!document.getElementById('appSidebar')) return;
     const seenKey = 'agap-seen-notification-ids';
     const seen = new Set(JSON.parse(sessionStorage.getItem(seenKey) || '[]'));
+    let notifPollTimer = null;
+    const stopNotifPolling = () => {
+        if (notifPollTimer !== null) {
+            window.clearInterval(notifPollTimer);
+            notifPollTimer = null;
+        }
+    };
     const checkWorkflowNotifications = async () => {
-        if (window.agapSigningOut) return;
+        if (window.agapSigningOut || document.hidden) return;
         try {
             // This endpoint is idempotent: it only creates each due-soon/overdue alert once.
             if ([1, 2].includes(Number(document.querySelector('meta[name="agap-role-id"]')?.content))) {
-                await fetch('../../../backend/api/hearings/deadline-alerts.php', { method: 'POST' }).catch(() => null);
+                const alertRes = await fetch('../../../backend/api/hearings/deadline-alerts.php', { method: 'POST' }).catch(() => null);
+                if (alertRes && [401, 403, 419].includes(alertRes.status)) {
+                    stopNotifPolling();
+                    return;
+                }
             }
             const response = await fetch('../../../backend/api/notifications/list.php');
+            if ([401, 403, 419].includes(response.status)) {
+                stopNotifPolling();
+                return;
+            }
             const result = await response.json();
             if (!response.ok || result.success === false) return;
             if (typeof window.updateNavNotificationBadge === 'function') {
@@ -396,7 +413,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (_) { /* Notification polling must not interrupt page work. */ }
     };
     checkWorkflowNotifications();
-    window.setInterval(checkWorkflowNotifications, 45000);
+    notifPollTimer = window.setInterval(checkWorkflowNotifications, 45000);
+    window.addEventListener('pagehide', stopNotifPolling);
 });
 
 // Shared Form Input & Scheduling Validation Enforcer across AGAP flows

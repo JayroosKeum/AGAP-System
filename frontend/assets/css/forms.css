@@ -572,9 +572,15 @@ form.complaint-intake-form .intake-bottom-actions .btn-secondary:hover {
     font-weight: 600;
 }
 /* Full category labels remain readable at every form width. */
-.category-suggestions {
+.category-picker-wrap {
     position: relative;
-    z-index: 20;
+}
+.category-suggestions {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 2px);
+    z-index: 50;
     max-height: 260px;
     overflow-y: auto;
     background: #fff;
@@ -584,11 +590,47 @@ form.complaint-intake-form .intake-bottom-actions .btn-secondary:hover {
 }
 .category-suggestions[hidden] { display: none; }
 .category-suggestions [role="option"] {
-    padding: 10px 12px;
+    padding: 9px 12px;
     white-space: normal;
     overflow-wrap: anywhere;
     cursor: pointer;
     font-size: .85rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid #f1f5f9;
 }
+.category-suggestions [role="option"]:last-child { border-bottom: none; }
 .category-suggestions [role="option"]:hover,
 .category-suggestions [aria-selected="true"] { background: #ecfdf5; }
+.category-suggestions .cat-opt-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: #0f172a;
+    line-height: 1.35;
+}
+.category-suggestions .cat-type-pill {
+    flex: 0 0 auto;
+    font-size: .7rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+.category-suggestions .cat-type-pill.is-civil {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+.category-suggestions .cat-type-pill.is-criminal {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+.category-suggestions .cat-type-pill.is-custom {
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+}

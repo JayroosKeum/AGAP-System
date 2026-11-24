@@ -68,7 +68,7 @@ include '../../layouts/header.php';
 
                 <div class="form-group">
                     <label for="cfaPresetReason">Reason for Issuance <span class="required-mark" aria-hidden="true">*</span></label>
-                    <select id="cfaPresetReason" required>
+                    <select id="cfaPresetReason" required style="width: 100%; max-width: 100%; box-sizing: border-box;">
                         <option value="">Select a ground / reason</option>
                         <option value="Respondent summons unserved after documented delivery attempts (Delivery Failure).">Respondent summons unserved after documented delivery attempts (Delivery Failure)</option>
                         <option value="15-day statutory mediation period has lapsed without settlement or constitution of Pangkat Tagapagkasundo (RA 7160 Sec. 410(b)).">15-day statutory mediation period has lapsed (15-day limit reached)</option>
@@ -82,7 +82,7 @@ include '../../layouts/header.php';
 
                 <div class="form-group">
                     <label for="cfaReasonText">Reason / Specific Findings <span class="required-mark" aria-hidden="true">*</span></label>
-                    <textarea id="cfaReasonText" name="reason" rows="4" maxlength="2000" placeholder="Provide details justifying the issuance of the Certificate to File Action or Bar Certificate." required></textarea>
+                    <textarea id="cfaReasonText" name="reason" rows="4" maxlength="2000" style="width: 100%; box-sizing: border-box; resize: vertical;" placeholder="Provide details justifying the issuance of the Certificate to File Action or Bar Certificate." required></textarea>
                 </div>
 
                 <div class="modal-actions" style="margin-top: 1.5rem;">

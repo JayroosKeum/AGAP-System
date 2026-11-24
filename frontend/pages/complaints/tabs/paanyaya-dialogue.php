@@ -1,6 +1,7 @@
 <?php
 $dialogueEndpoint = '../../../backend/api/paanyaya/dialogue.php';
 $dialogueStatus = $preparation['complaint_status'];
+$canRecordPreparedDialogue = in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true);
 ?>
 <div class="paanyaya-dialogue" id="paanyaya-dialogue-<?= $invitationNumber ?>">
     <h3>Dialogue minutes</h3>
@@ -32,7 +33,7 @@ $dialogueStatus = $preparation['complaint_status'];
         </div>
         <?php if ($paanyayaMinutes['complainant_choice'] === 'Request_Paanyaya_2' && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
             <a href="#paanyaya-invitation-2">Continue to the second invitation</a>
-        <?php elseif ($paanyayaMinutes['complainant_choice'] === 'Escalate_Mediation' && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
+        <?php elseif ($canRecordPreparedDialogue && $paanyayaMinutes['complainant_choice'] === 'Escalate_Mediation' && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
             <form method="post" action="<?= $dialogueEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Creating formal docket...';}">
                 <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                 <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
@@ -40,6 +41,8 @@ $dialogueStatus = $preparation['complaint_status'];
                 <input type="hidden" name="action" value="docket">
                 <button type="submit" class="btn-case-primary">Create formal docket and continue to mediation</button>
             </form>
+        <?php elseif ($paanyayaMinutes['complainant_choice'] === 'Escalate_Mediation' && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
+            <p style="margin: 8px 0 0; font-size: 0.85rem; color: #475569;">Escalation requested — awaiting Lupon Clerk formal docketing for Mediation.</p>
         <?php elseif ($paanyayaMinutes['complainant_choice'] === 'Escalate_Mediation' && $preparation['case_id']): ?>
             <?php
             $caseIsClosed = in_array((string) ($dialogueStatus ?? ''), ['Settled', 'Amicable Settlement', 'Arbitration Award', 'Closed', 'Dismissed', 'Resolved at Paanyaya / Closed'], true)
@@ -49,7 +52,7 @@ $dialogueStatus = $preparation['complaint_status'];
                 <a class="btn-case-primary" href="?id=<?= $complaintId ?>&amp;tab=mediation">Open mediation on this complaint</a>
             <?php endif; ?>
         <?php endif; ?>
-    <?php elseif ($dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
+    <?php elseif ($canRecordPreparedDialogue && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
         <form method="post" action="<?= $dialogueEndpoint ?>" onsubmit="const out=this.querySelector('[name=outcome]')?.value;const terms=this.querySelector('[name=agreed_terms]');if(out==='Settled'&&terms&&!terms.value.trim()){event.preventDefault();terms.required=true;terms.focus();window.agapNotify?.('Enter the Agreed terms before saving an Agreement reached (Settled) outcome.','error','Agreed Terms Required');return false;}if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Saving dialogue minutes...';}">
             <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
             <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
@@ -100,5 +103,7 @@ $dialogueStatus = $preparation['complaint_status'];
             </div>
             <button type="submit" class="btn-case-primary">Save dialogue minutes</button>
         </form>
+    <?php elseif ($dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
+        <p style="margin: 8px 0 0; font-size: 0.86rem; color: #475569;">Dialogue minutes will be recorded by the Lupon Clerk/Admin using the Initial Salaysay above.</p>
     <?php endif; ?>
 </div>

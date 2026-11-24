@@ -258,8 +258,14 @@ class ComplaintController
             if (empty($data['category_id']) && !empty($source['preliminary_category_id'])) {
                 $data['category_id'] = (int) $source['preliminary_category_id'];
             }
+            if (empty($data['other_category_specification']) && !empty($source['preliminary_other_category_specification'])) {
+                $data['other_category_specification'] = (string) $source['preliminary_other_category_specification'];
+            }
             if (empty($data['case_type']) && !empty($source['preliminary_case_type'])) {
                 $data['case_type'] = (string) $source['preliminary_case_type'];
+            }
+            if (empty($data['narrative']) && !empty($source['salaysay'])) {
+                $data['narrative'] = (string) $source['salaysay'];
             }
             $result = $this->complaint->create($data, true);
             if (empty($result['success'])) {
@@ -402,7 +408,13 @@ class ComplaintController
         $isAssignedLisoReview = (int) ($_SESSION['role_id'] ?? 0) === 3;
         $requestMessage = is_string($data['request_message'] ?? null) ? trim($data['request_message']) : '';
         $classification = [];
-        foreach (['category_id', 'category_name', 'secondary_category_id', 'secondary_category_name', 'other_category_specification', 'secondary_other_category_specification', 'case_type', 'complaint_title'] as $field) {
+        foreach ([
+            'category_id', 'category_name', 'secondary_category_id', 'secondary_category_name',
+            'other_category_specification', 'secondary_other_category_specification',
+            'case_type', 'complaint_title',
+            'offense_imprisonment_max', 'has_private_offended_party',
+            'accused_under_detention', 'habeas_corpus_needed', 'prescription_risk'
+        ] as $field) {
             if (array_key_exists($field, $data)) {
                 $classification[$field] = $data[$field];
             }

@@ -37,19 +37,9 @@ if (!$complaint) {
     exit;
 }
 
-// Fetch categories
-$categoriesStmt = $db->query("
-    SELECT category_id, category_name 
-    FROM complaint_categories 
-    WHERE COALESCE(is_active, 1) = 1 
-    ORDER BY 
-        CASE 
-            WHEN category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' THEN 1 
-            ELSE 0 
-        END ASC, 
-        category_name ASC
-");
-$categories = $categoriesStmt ? $categoriesStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+// Fetch categories with Civil/Criminal default classification
+require_once __DIR__ . '/../../../backend/services/ComplaintClassificationService.php';
+$categories = ComplaintClassificationService::getCategories($db);
 
 // Fetch residents for selection / directory quickfill
 $residentsStmt = $db->query("
@@ -518,21 +508,58 @@ include __DIR__ . '/../../layouts/header.php';
                             </div>
 
                             <!-- Dispute Classification Grid -->
+                            <?php
+                                $effCategoryLabel = '';
+                                foreach ($categories as $cat) {
+                                    if ((string) $effCategoryId === (string) $cat['category_id']) {
+                                        $effCategoryLabel = (string) $cat['category_name'];
+                                        break;
+                                    }
+                                }
+                                $effSecCategoryLabel = '';
+                                foreach ($categories as $cat) {
+                                    if ((string) $effSecondaryCategoryId === (string) $cat['category_id']) {
+                                        $effSecCategoryLabel = (string) $cat['category_name'];
+                                        break;
+                                    }
+                                }
+                            ?>
+                            <datalist id="editCategoriesList">
+                                <?php foreach ($categories as $cat): ?>
+                                    <option value="<?php echo htmlspecialchars($cat['category_name']); ?>"
+                                            data-category-id="<?php echo (int) $cat['category_id']; ?>"
+                                            data-case-type="<?php echo htmlspecialchars((string) ($cat['default_case_type'] ?? 'Civil')); ?>"></option>
+                                <?php endforeach; ?>
+                            </datalist>
                             <div class="form-row-2" style="margin-top: 10px;">
                                 <div class="form-group">
-                                    <label for="categoryId">Complaint Category <span class="required-mark">*</span></label>
-                                    <select id="categoryId" name="category_id" required>
+                                    <label for="primaryCategoryInput">Complaint Category <span class="required-mark">*</span></label>
+                                    <div class="category-picker-wrap">
+                                        <input type="text"
+                                               id="primaryCategoryInput"
+                                               list="editCategoriesList"
+                                               data-category-picker
+                                               class="form-control"
+                                               placeholder="Search KP category or type Other / Custom..."
+                                               autocomplete="off"
+                                               value="<?php echo htmlspecialchars($effCategoryLabel); ?>">
+                                    </div>
+                                    <select id="categoryId" name="category_id" required style="display: none;">
                                         <option value="">Select Category</option>
                                         <?php foreach ($categories as $cat): ?>
-                                            <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)$effCategoryId === (string)$cat['category_id']) ? 'selected' : ''; ?>>
+                                            <option value="<?php echo (int)$cat['category_id']; ?>"
+                                                    data-case-type="<?php echo htmlspecialchars((string) ($cat['default_case_type'] ?? 'Civil')); ?>"
+                                                    data-is-other="<?php echo !empty($cat['is_other']) ? '1' : '0'; ?>"
+                                                    <?php echo ((string)$effCategoryId === (string)$cat['category_id']) ? 'selected' : ''; ?>>
                                                  <?php echo htmlspecialchars($cat['category_name']); ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
+                                    <small class="field-hint">Searchable KP categories; auto-maps Civil vs. Criminal classification.</small>
                                 </div>
 
                                 <div class="form-group">
-                                    <label for="caseType">Case Type <span class="required-mark">*</span></label>
+                                    <label for="caseType">Case Type (Auto-Mapped) <span class="required-mark">*</span></label>
                                     <div class="agap-segmented-group" data-seg-target="caseType" role="group" aria-label="Case Type">
                                         <button type="button" class="agap-seg-btn <?php echo ($effCaseType === 'Civil') ? 'is-active' : ''; ?>" data-seg-value="Civil">Civil</button>
                                         <button type="button" class="agap-seg-btn <?php echo ($effCaseType === 'Criminal') ? 'is-active' : ''; ?>" data-seg-value="Criminal">Criminal</button>
@@ -554,11 +581,24 @@ include __DIR__ . '/../../layouts/header.php';
                                 <small style="color: #64748b; font-size: 0.8rem; display: block; margin-top: 4px;">Specify the dispute details covered under Katarungang Pambarangay jurisdiction.</small>
                             </div>
                             <div class="form-group" style="margin-top: 8px; margin-bottom: 12px;">
-                                <label for="secondaryCategoryId">2nd Complaint Category / Ikalawang Reklamo (Optional &bull; Up to 2 categories)</label>
-                                <select id="secondaryCategoryId" name="secondary_category_id">
+                                <label for="secondaryCategoryInput">2nd Complaint Category / Ikalawang Reklamo (Optional &bull; Up to 2 categories)</label>
+                                <div class="category-picker-wrap">
+                                    <input type="text"
+                                           id="secondaryCategoryInput"
+                                           list="editCategoriesList"
+                                           data-category-picker
+                                           class="form-control"
+                                           placeholder="Search optional 2nd category..."
+                                           autocomplete="off"
+                                           value="<?php echo htmlspecialchars($effSecCategoryLabel); ?>">
+                                </div>
+                                <select id="secondaryCategoryId" name="secondary_category_id" style="display: none;">
                                     <option value="">None (Single category only)</option>
                                     <?php foreach ($categories as $cat): ?>
-                                        <option value="<?php echo (int)$cat['category_id']; ?>" <?php echo ((string)$effSecondaryCategoryId === (string)$cat['category_id']) ? 'selected' : ''; ?>>
+                                        <option value="<?php echo (int)$cat['category_id']; ?>"
+                                                data-case-type="<?php echo htmlspecialchars((string) ($cat['default_case_type'] ?? 'Civil')); ?>"
+                                                data-is-other="<?php echo !empty($cat['is_other']) ? '1' : '0'; ?>"
+                                                <?php echo ((string)$effSecondaryCategoryId === (string)$cat['category_id']) ? 'selected' : ''; ?>>
                                             <?php echo htmlspecialchars($cat['category_name']); ?>
                                         </option>
                                     <?php endforeach; ?>
@@ -1390,10 +1430,48 @@ document.addEventListener('DOMContentLoaded', () => {
     // Expose registered residents data for combobox components
     window.AGAP_RESIDENTS = <?php echo json_encode($residentsJsonData, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
 
-    // Dynamic "Others (Please Specify)" Category Handler
+    // Dynamic "Others (Please Specify)" & Searchable Category Auto-Classification Handler
     const categorySelectEl = document.getElementById('categoryId');
+    const primaryCategoryInputEl = document.getElementById('primaryCategoryInput');
     const otherCategoryWrapperEl = document.getElementById('otherCategoryWrapper');
     const otherCategoryInputEl = document.getElementById('otherCategorySpecification');
+    const editCaseTypeSelectEl = document.getElementById('caseType');
+    const secondaryCategorySelectEl = document.getElementById('secondaryCategoryId');
+    const secondaryCategoryInputEl = document.getElementById('secondaryCategoryInput');
+    const secondaryOtherWrapperEl = document.getElementById('secondaryOtherCategoryWrapper');
+    const secondaryOtherInputEl = document.getElementById('secondaryOtherCategorySpecification');
+
+    const editCatMap = {};
+    const editCatTypeMap = {};
+    let editOthersId = '';
+    if (categorySelectEl) {
+        Array.from(categorySelectEl.options).forEach(opt => {
+            if (!opt.value) return;
+            editCatMap[opt.text.trim().toLowerCase()] = opt.value;
+            editCatTypeMap[opt.value] = opt.dataset.caseType || 'Civil';
+            if (opt.dataset.isOther === '1' || /\b(others|iba pa)\b/i.test(opt.text)) {
+                editOthersId = opt.value;
+            }
+        });
+    }
+
+    function autoMapEditCaseType() {
+        if (!editCaseTypeSelectEl || !categorySelectEl) return;
+        const pId = categorySelectEl.value || '';
+        const sId = secondaryCategorySelectEl?.value || '';
+        let resolved = null;
+        if (pId && pId !== editOthersId && editCatTypeMap[pId]) {
+            resolved = editCatTypeMap[pId];
+        } else if (pId === editOthersId && otherCategoryInputEl?.value?.trim()) {
+            resolved = window.AgapCategoryClassification?.inferCaseTypeFromCategoryText(otherCategoryInputEl.value) || 'Civil';
+        }
+        if (sId && sId !== editOthersId && editCatTypeMap[sId] === 'Criminal') {
+            resolved = 'Criminal';
+        }
+        if (resolved === 'Civil' || resolved === 'Criminal') {
+            window.AgapCategoryClassification?.setCaseTypeSelectValue(editCaseTypeSelectEl, resolved);
+        }
+    }
 
     function syncOtherCategoryVisibility() {
         if (!categorySelectEl || !otherCategoryWrapperEl || !otherCategoryInputEl) return;
@@ -1410,15 +1488,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function syncEditPrimaryFromInput() {
+        if (!primaryCategoryInputEl || !categorySelectEl) return;
+        const val = primaryCategoryInputEl.value.trim();
+        const lower = val.toLowerCase();
+        if (lower in editCatMap) {
+            categorySelectEl.value = editCatMap[lower];
+            if (editCatMap[lower] !== editOthersId && otherCategoryInputEl) otherCategoryInputEl.value = '';
+        } else if (val !== '' && editOthersId) {
+            categorySelectEl.value = editOthersId;
+            if (otherCategoryInputEl) otherCategoryInputEl.value = val;
+        } else {
+            categorySelectEl.value = '';
+        }
+        categorySelectEl.dispatchEvent(new Event('change'));
+    }
+
+    function syncEditSecondaryFromInput() {
+        if (!secondaryCategoryInputEl || !secondaryCategorySelectEl) return;
+        const val = secondaryCategoryInputEl.value.trim();
+        const lower = val.toLowerCase();
+        if (lower in editCatMap) {
+            secondaryCategorySelectEl.value = editCatMap[lower];
+            if (editCatMap[lower] !== editOthersId && secondaryOtherInputEl) secondaryOtherInputEl.value = '';
+        } else if (val !== '' && editOthersId) {
+            secondaryCategorySelectEl.value = editOthersId;
+            if (secondaryOtherInputEl) secondaryOtherInputEl.value = val;
+        } else {
+            secondaryCategorySelectEl.value = '';
+            if (secondaryOtherInputEl) secondaryOtherInputEl.value = '';
+        }
+        secondaryCategorySelectEl.dispatchEvent(new Event('change'));
+    }
+
+    primaryCategoryInputEl?.addEventListener('change', syncEditPrimaryFromInput);
+    primaryCategoryInputEl?.addEventListener('blur', syncEditPrimaryFromInput);
+    secondaryCategoryInputEl?.addEventListener('change', syncEditSecondaryFromInput);
+    secondaryCategoryInputEl?.addEventListener('blur', syncEditSecondaryFromInput);
+
     categorySelectEl?.addEventListener('change', () => {
         syncOtherCategoryVisibility();
+        autoMapEditCaseType();
         if (otherCategoryWrapperEl?.style.display === 'block') {
             otherCategoryInputEl?.focus();
         }
     });
-    const secondaryCategorySelectEl = document.getElementById('secondaryCategoryId');
-    const secondaryOtherWrapperEl = document.getElementById('secondaryOtherCategoryWrapper');
-    const secondaryOtherInputEl = document.getElementById('secondaryOtherCategorySpecification');
     function syncSecondaryOtherCategoryVisibility() {
         if (!secondaryCategorySelectEl || !secondaryOtherWrapperEl || !secondaryOtherInputEl) return;
         const secOpt = secondaryCategorySelectEl.options[secondaryCategorySelectEl.selectedIndex];
@@ -1431,14 +1545,67 @@ document.addEventListener('DOMContentLoaded', () => {
         if (secondaryCategorySelectEl.value && categorySelectEl && secondaryCategorySelectEl.value === categorySelectEl.value) {
             window.agapNotify?.('Please choose a different 2nd complaint category from the primary category.', 'warning', 'Duplicate Category');
             secondaryCategorySelectEl.value = '';
+            if (secondaryCategoryInputEl) secondaryCategoryInputEl.value = '';
         }
         syncSecondaryOtherCategoryVisibility();
+        autoMapEditCaseType();
         if (secondaryOtherWrapperEl?.style.display === 'block') {
             secondaryOtherInputEl?.focus();
         }
     });
     syncSecondaryOtherCategoryVisibility();
     syncOtherCategoryVisibility();
+
+    document.querySelector('[data-classify-complaint]')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        const narText = (document.getElementById('narrative')?.value || '').trim();
+        if (narText.length < 10) {
+            window.agapNotify?.('Enter at least 10 characters in the Complaint Narrative first.', 'warning', 'Suggest Category & Title');
+            return;
+        }
+        const consent = Boolean(document.querySelector('[data-ai-external-consent]')?.checked);
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Suggesting...';
+        try {
+            const csrfToken = document.querySelector('input[name="csrf_token"]')?.value || '';
+            const resp = await fetch('../../../backend/api/ai/classify-complaint.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({
+                    narrative: narText,
+                    requested_resolution: document.getElementById('requestedResolution')?.value?.trim() || '',
+                    processing_mode: consent ? 'gemini' : 'local_only',
+                    external_ai_consent: consent ? '1' : '0',
+                    csrf_token: csrfToken
+                })
+            });
+            const json = await resp.json();
+            const sug = json?.suggestion;
+            if (resp.ok && json.success && sug?.primary?.category_id) {
+                if (categorySelectEl) {
+                    categorySelectEl.value = String(sug.primary.category_id);
+                    if (primaryCategoryInputEl) primaryCategoryInputEl.value = sug.primary.category_name || '';
+                    categorySelectEl.dispatchEvent(new Event('change'));
+                }
+                if (sug.case_type && editCaseTypeSelectEl) {
+                    window.AgapCategoryClassification?.setCaseTypeSelectValue(editCaseTypeSelectEl, sug.case_type);
+                }
+                const titleInput = document.getElementById('complaintTitle');
+                if (titleInput && sug.suggested_title) {
+                    titleInput.value = sug.suggested_title;
+                }
+                window.agapNotify?.(`Suggested "${sug.primary.category_name}" (${sug.case_type}).`, 'success', 'Category & Title Suggested');
+            } else {
+                window.agapNotify?.(json?.message || 'Unable to suggest category from narrative.', 'warning', 'Suggest Category & Title');
+            }
+        } catch (_) {
+            window.agapNotify?.('Unable to connect to classification service.', 'error', 'Suggest Category & Title');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    });
 
     // Distinct parties validation
     window.validateDistinctParties = function() {
@@ -4185,7 +4352,6 @@ document.addEventListener('DOMContentLoaded', () => {
             triggerBtn.textContent = originalLabel;
         }
     }
-});
 
     // ── Damages > ₱5,000 Statutory Jurisdiction Warning & Blotter Enforcement ──
     const offenseFineInput = document.getElementById('offenseFineMax');
@@ -4319,9 +4485,11 @@ document.addEventListener('DOMContentLoaded', () => {
         syncSafeSpacesOffenseUI();
     });
 
-    categorySelectEl?.addEventListener('change', syncSafeSpacesOffenseUI);
+    const catElForSafeSpaces = document.getElementById('categoryId');
+    catElForSafeSpaces?.addEventListener('change', syncSafeSpacesOffenseUI);
     syncSafeSpacesOffenseUI();
     window.isSafeSpacesCategorySelected = isSafeSpacesCategorySelected;
+});
 </script>
 
 <?php include __DIR__ . '/../../layouts/footer.php'; ?>

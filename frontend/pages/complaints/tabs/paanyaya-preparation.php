@@ -1,11 +1,18 @@
 <?php
 $escapePrep = static fn ($value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+$canManagePaanyayaPrep = in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true);
 $prepEndpoint = '../../../backend/api/paanyaya/preparation.php';
 $savedAppointment = $preparation['appointment_at'] ?? '';
 $formValues = $preparationFlash['old'] ?? [];
 $prepCsrf = $escapePrep(CsrfService::token());
 $serviceOutcome = $latestService['outcome'] ?? null;
 $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
+$prepCaseType = trim((string) ($preparation['case_type'] ?? 'Civil')) === 'Criminal' ? 'Criminal' : 'Civil';
+$prepCategoryText = trim((string) ($preparation['category_name'] ?? ''));
+if (strcasecmp($prepCategoryText, 'Others') === 0 && !empty($preparation['other_category_specification'])) {
+    $prepCategoryText = 'Others — ' . trim((string) $preparation['other_category_specification']);
+}
+$prepNarrative = trim((string) ($preparation['narrative'] ?? ''));
 ?>
 <section class="paanyaya-preparation" id="paanyaya-invitation-<?= $invitationNumber ?>" aria-labelledby="paanyaya-prep-title-<?= $invitationNumber ?>">
     <h2 id="paanyaya-prep-title-<?= $invitationNumber ?>"><?= $invitationNumber === 2 ? 'Second Paanyaya' : 'Paanyaya Preparation' ?></h2>
@@ -37,6 +44,25 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
             <p><strong>LISO screening notes</strong> <?= $escapePrep($preparation['review_notes']) ?></p>
         <?php endif; ?>
 
+        <?php if ($prepNarrative !== '' || $prepCategoryText !== ''): ?>
+            <div style="margin: 12px 0 16px; padding: 14px 16px; border-radius: 10px; background: #f8fafc; border: 1px solid #cbd5e1;">
+                <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px;">
+                    <strong style="font-size: 0.9rem; color: #0f172a;">Initial Salaysay (Statement of Complaint)</strong>
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                        <span style="display:inline-flex; align-items:center; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; <?= $prepCaseType === 'Criminal' ? 'background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;' : 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;' ?>"><?= $escapePrep($prepCaseType) ?></span>
+                        <?php if ($prepCategoryText !== ''): ?>
+                            <span style="display:inline-flex; align-items:center; padding: 2px 9px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; background:#ffffff; color:#334155; border:1px solid #cbd5e1;"><?= $escapePrep($prepCategoryText) ?></span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+                <?php if (!empty($preparation['complaint_title'])): ?>
+                    <div style="font-size: 0.84rem; font-weight: 600; color: #334155; margin-bottom: 6px;"><?= $escapePrep($preparation['complaint_title']) ?></div>
+                <?php endif; ?>
+                <div style="font-size: 0.88rem; color: #1e293b; line-height: 1.55; white-space: pre-wrap; background: #ffffff; padding: 10px 12px; border-radius: 8px; border: 1px solid #e2e8f0;"><?= $escapePrep($prepNarrative !== '' ? $prepNarrative : 'No Salaysay narrative recorded.') ?></div>
+                <p style="margin: 6px 0 0; font-size: 0.76rem; color: #64748b;">Preserved from initial intake for Lupon Member review and automatically inherited upon escalation to Mediation.</p>
+            </div>
+        <?php endif; ?>
+
         <h3><?= $preparation['ready_at'] ? 'Verified parties' : 'Verify the parties' ?></h3>
         <?php if (!$preparationParties): ?>
             <p>Add the complainant and respondent to this intake before generating the invitation.</p>
@@ -51,7 +77,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
             </ul>
         <?php endif; ?>
 
-        <?php if ($preparation['eligible'] && !$preparation['ready_at']): ?>
+        <?php if ($canManagePaanyayaPrep && $preparation['eligible'] && !$preparation['ready_at']): ?>
             <form method="post" action="<?= $prepEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Generating PDF...';}">
                 <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                 <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
@@ -97,7 +123,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
             </details>
             <?php if ($preparation['ready_at']): ?>
                 <p><strong>Marked ready</strong> <?= $escapePrep($preparation['ready_at']) ?> · <?= $escapePrep($preparation['ready_by_name'] ?: 'Staff account') ?></p>
-            <?php elseif ($preparation['eligible']): ?>
+            <?php elseif ($canManagePaanyayaPrep && $preparation['eligible']): ?>
                 <form method="post" action="<?= $prepEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Marking ready...';}">
                     <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                     <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
@@ -143,7 +169,7 @@ $serviceEndpoint = '../../../backend/api/paanyaya/service.php';
             <?php if ($serviceOutcome === 'Delivered'): ?>
                 <p>Delivery confirmed for the <?= $escapePrep(date('M j, Y, g:i a', strtotime($savedAppointment))) ?> dialogue.</p>
                 <?php include __DIR__ . '/paanyaya-dialogue.php'; ?>
-            <?php elseif ($preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $serviceOutcome === 'Not Delivered')): ?>
+            <?php elseif ($canManagePaanyayaPrep && $preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $serviceOutcome === 'Not Delivered')): ?>
                 <h3 id="paanyaya-service-<?= $invitationNumber ?>"><?= $latestService ? 'Coordinate another delivery attempt' : 'Release invitation' ?></h3>
                 <?php if (!$paanyayaServers): ?>
                     <p>No active summons servers are available.</p>

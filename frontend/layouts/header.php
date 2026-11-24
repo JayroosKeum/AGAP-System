@@ -105,7 +105,10 @@ $headerIsResident = (($_SESSION['role_name'] ?? '') === 'Resident' || (int) ($_S
         const url = new URL(input instanceof Request ? input.url : input, window.location.href);
         if (unsafe.has(method) && url.origin === window.location.origin) {
             const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
-            headers.set('X-CSRF-Token', token);
+            const activeToken = window.agapCsrfToken || document.querySelector('meta[name="agap-csrf-token"]')?.content || token;
+            if (activeToken && !headers.has('X-CSRF-Token')) {
+                headers.set('X-CSRF-Token', activeToken);
+            }
             init = { ...init, headers, credentials: init.credentials || 'same-origin' };
         }
         return nativeFetch(input, init);

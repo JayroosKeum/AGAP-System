@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/PDFService.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
+require_once __DIR__ . '/../services/ComplaintClassificationService.php';
 
 class Paanyaya
 {
@@ -61,6 +62,7 @@ class Paanyaya
                 'location_latitude' => 'DECIMAL(10,7) NULL',
                 'location_longitude' => 'DECIMAL(10,7) NULL',
                 'preliminary_category_id' => 'INT UNSIGNED NULL',
+                'preliminary_other_category_specification' => 'VARCHAR(255) NULL',
                 'preliminary_case_type' => "VARCHAR(20) NULL DEFAULT 'Civil'",
                 'tracking_reference' => 'VARCHAR(50) NULL',
             ];
@@ -300,6 +302,35 @@ class Paanyaya
                 $userId
             ]);
             $paanyayaId = (int) $this->conn->lastInsertId();
+            $prelimCatId = (!empty($data['preliminary_category_id']) && is_numeric($data['preliminary_category_id'])) ? (int) $data['preliminary_category_id'] : null;
+            $prelimOtherSpec = trim((string) ($data['preliminary_other_category_specification'] ?? '')) ?: null;
+            $prelimCatNameInput = trim((string) ($data['preliminary_category_name'] ?? ''));
+            if ($prelimCatId === null && $prelimCatNameInput !== '') {
+                $catMatchStmt = $this->conn->prepare('SELECT category_id, category_name FROM complaint_categories WHERE category_name = ? OR category_name LIKE ? LIMIT 1');
+                $catMatchStmt->execute([$prelimCatNameInput, '%' . $prelimCatNameInput . '%']);
+                $matchedCatRow = $catMatchStmt->fetch(PDO::FETCH_ASSOC);
+                if ($matchedCatRow) {
+                    $prelimCatId = (int) $matchedCatRow['category_id'];
+                    if (ComplaintClassificationService::isOtherCategoryName((string) $matchedCatRow['category_name']) && $prelimOtherSpec === null) {
+                        $prelimOtherSpec = $prelimCatNameInput;
+                    }
+                } else {
+                    $othersCatId = (int) ($this->conn->query(
+                        "SELECT category_id FROM complaint_categories WHERE category_name LIKE 'Others%' OR category_name LIKE 'Iba pa%' ORDER BY category_id ASC LIMIT 1"
+                    )->fetchColumn() ?: 0);
+                    if ($othersCatId > 0) {
+                        $prelimCatId = $othersCatId;
+                    }
+                    $prelimOtherSpec ??= $prelimCatNameInput;
+                }
+            }
+            $prelimCaseType = ComplaintClassificationService::resolveEffectiveCaseType(
+                $this->conn,
+                $prelimCatId,
+                null,
+                in_array($data['preliminary_case_type'] ?? '', ['Civil', 'Criminal'], true) ? (string) $data['preliminary_case_type'] : null
+            );
+
             try {
                 $updDetails = $this->conn->prepare("
                     UPDATE paanyayas
@@ -320,6 +351,7 @@ class Paanyaya
                         location_latitude = ?,
                         location_longitude = ?,
                         preliminary_category_id = ?,
+                        preliminary_other_category_specification = ?,
                         preliminary_case_type = ?,
                         tracking_reference = ?
                     WHERE paanyaya_id = ?
@@ -341,8 +373,9 @@ class Paanyaya
                     (isset($data['invitee_longitude']) && $data['invitee_longitude'] !== '' && is_numeric($data['invitee_longitude'])) ? (float) $data['invitee_longitude'] : null,
                     (isset($data['location_latitude']) && $data['location_latitude'] !== '' && is_numeric($data['location_latitude'])) ? (float) $data['location_latitude'] : null,
                     (isset($data['location_longitude']) && $data['location_longitude'] !== '' && is_numeric($data['location_longitude'])) ? (float) $data['location_longitude'] : null,
-                    (!empty($data['preliminary_category_id']) && is_numeric($data['preliminary_category_id'])) ? (int) $data['preliminary_category_id'] : null,
-                    in_array($data['preliminary_case_type'] ?? '', ['Civil', 'Criminal'], true) ? (string) $data['preliminary_case_type'] : 'Civil',
+                    $prelimCatId,
+                    $prelimOtherSpec,
+                    $prelimCaseType,
                     trim((string) ($data['tracking_reference'] ?? '')) !== '' ? trim((string) $data['tracking_reference']) : sprintf('PA-%s-%04d', date('Y'), $paanyayaId),
                     $paanyayaId
                 ]);
@@ -489,6 +522,10 @@ class Paanyaya
     {
         $sql = "
             SELECT p.*,
+                   COALESCE(NULLIF(TRIM(p.salaysay), ''), c.narrative, '') AS salaysay,
+                   COALESCE(c.case_type, p.preliminary_case_type, 'Civil') AS effective_case_type,
+                   COALESCE(cat_c.category_name, cat_p.category_name, '') AS category_name,
+                   COALESCE(NULLIF(TRIM(c.other_category_specification), ''), NULLIF(TRIM(p.preliminary_other_category_specification), ''), '') AS other_category_specification,
                    c.complaint_number,
                    c.complaint_title,
                    c.status AS complaint_workflow_status,
@@ -517,6 +554,8 @@ class Paanyaya
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
             LEFT JOIN complaints c ON c.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+            LEFT JOIN complaint_categories cat_c ON cat_c.category_id = c.category_id
+            LEFT JOIN complaint_categories cat_p ON cat_p.category_id = p.preliminary_category_id
             LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
             LEFT JOIN users u ON u.user_id = p.scheduled_by
             WHERE 1=1
@@ -568,7 +607,12 @@ class Paanyaya
                        DATE(pp.appointment_at) AS scheduled_date,
                        TIME(pp.appointment_at) AS scheduled_time,
                        COALESCE(pp.venue, 'Tanggapan ng Barangay Tumana') AS venue,
-                       '' AS salaysay,
+                       COALESCE(c.narrative, '') AS salaysay,
+                       c.category_id AS preliminary_category_id,
+                       c.other_category_specification AS preliminary_other_category_specification,
+                       c.case_type AS preliminary_case_type,
+                       c.case_type AS effective_case_type,
+                       COALESCE(cat.category_name, '') AS category_name,
                        '' AS dialogue_notes,
                        NULL AS attendance_recorded_at,
                        NULL AS complainant_attended,
@@ -585,6 +629,7 @@ class Paanyaya
                        1 AS is_complaint_preparation,
                        '' AS scheduled_by_name
                 FROM complaints c
+                LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
                 LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
                 LEFT JOIN paanyaya_preparations pp ON pp.complaint_id = c.complaint_id
                     AND pp.invitation_number = (
@@ -712,6 +757,10 @@ class Paanyaya
     {
         $stmt = $this->conn->prepare("
             SELECT p.*,
+                   COALESCE(NULLIF(TRIM(p.salaysay), ''), c.narrative, '') AS salaysay,
+                   COALESCE(c.case_type, p.preliminary_case_type, 'Civil') AS effective_case_type,
+                   COALESCE(cat_c.category_name, cat_p.category_name, '') AS category_name,
+                   COALESCE(NULLIF(TRIM(c.other_category_specification), ''), NULLIF(TRIM(p.preliminary_other_category_specification), ''), '') AS other_category_specification,
                    c.complaint_number,
                    c.complaint_title,
                    c.status AS complaint_workflow_status,
@@ -740,6 +789,8 @@ class Paanyaya
                    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS scheduled_by_name
             FROM paanyayas p
             LEFT JOIN complaints c ON c.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+            LEFT JOIN complaint_categories cat_c ON cat_c.category_id = c.category_id
+            LEFT JOIN complaint_categories cat_p ON cat_p.category_id = p.preliminary_category_id
             LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
             LEFT JOIN users u ON u.user_id = p.scheduled_by
             WHERE p.paanyaya_id = ?
@@ -1897,6 +1948,7 @@ class Paanyaya
         }
 
         require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
+require_once __DIR__ . '/../services/ComplaintClassificationService.php';
         if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)
             || PaanyayaPreparationService::requiresPreparation($this->conn, $complaintId)) {
             return [
@@ -3359,7 +3411,17 @@ class Paanyaya
                 $dialogueNotes !== '' ? $dialogueNotes : 'Walang naitalang kasunduan sa informal dialogue.'
             );
 
-            // 3. Create formal complaint
+            // 3. Create formal complaint inheriting Salaysay, category, and Civil/Criminal classification
+            $inheritedCategoryId = !empty($paanyaya['preliminary_category_id'])
+                ? (int) $paanyaya['preliminary_category_id']
+                : 1;
+            $inheritedOtherSpec = trim((string) ($paanyaya['preliminary_other_category_specification'] ?? '')) ?: null;
+            $inheritedCaseType = in_array($paanyaya['preliminary_case_type'] ?? '', ['Civil', 'Criminal'], true)
+                ? (string) $paanyaya['preliminary_case_type']
+                : (!empty($paanyaya['preliminary_category_id'])
+                    ? ComplaintClassificationService::resolveEffectiveCaseType($this->conn, $inheritedCategoryId, null, null)
+                    : 'Civil');
+
             $year = date('Y');
             $seqStmt = $this->conn->query("SELECT MAX(complaint_id) FROM complaints");
             $nextSeq = ((int)$seqStmt->fetchColumn()) + 1;
@@ -3369,9 +3431,9 @@ class Paanyaya
                 INSERT INTO complaints (
                     complaint_number, complaint_title, narrative, additional_details,
                     incident_date, incident_location, incident_city, incident_barangay,
-                    status, case_type, category_id,
+                    status, case_type, category_id, other_category_specification,
                     encoded_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'Barangay Tumana, Marikina City', 'Marikina City', 'Tumana', 'Accepted', 'Civil', 1, ?, NOW(), NOW())
+                ) VALUES (?, ?, ?, ?, ?, 'Barangay Tumana, Marikina City', 'Marikina City', 'Tumana', 'Accepted', ?, ?, ?, ?, NOW(), NOW())
             ");
             $title = "Usapin: {$complainantName} laban kay {$inviteeName}";
             $insComplaint->execute([
@@ -3380,6 +3442,9 @@ class Paanyaya
                 $complaintNarrative,
                 $compDetails,
                 $paanyaya['scheduled_date'],
+                $inheritedCaseType,
+                $inheritedCategoryId,
+                $inheritedOtherSpec,
                 $userId
             ]);
             $complaintId = (int)$this->conn->lastInsertId();
@@ -3569,8 +3634,10 @@ class Paanyaya
                     complainant_resident_id, complainant_address, complainant_purok, complainant_contact_no, complainant_email,
                     invitee_resident_id, invitee_address, invitee_purok, invitee_contact_no, invitee_email,
                     complainant_latitude, complainant_longitude, invitee_latitude, invitee_longitude,
-                    location_latitude, location_longitude, scheduled_by, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'Scheduled', 2, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    location_latitude, location_longitude,
+                    preliminary_category_id, preliminary_other_category_specification, preliminary_case_type, tracking_reference,
+                    scheduled_by, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 'Scheduled', 2, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
             ");
             $insSecond->execute([
                 $complaintId,
@@ -3597,6 +3664,10 @@ class Paanyaya
                 $paanyaya['invitee_longitude'] ?? null,
                 $paanyaya['location_latitude'] ?? null,
                 $paanyaya['location_longitude'] ?? null,
+                $paanyaya['preliminary_category_id'] ?? null,
+                $paanyaya['preliminary_other_category_specification'] ?? null,
+                $paanyaya['preliminary_case_type'] ?? 'Civil',
+                $paanyaya['tracking_reference'] ?? null,
                 $userId
             ]);
             $newPaanyayaId = (int)$this->conn->lastInsertId();
