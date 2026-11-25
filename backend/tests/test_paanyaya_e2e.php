@@ -253,9 +253,10 @@ try {
         $complaint = $complaintLookup->fetch();
         check($complaint['intake_source'] === $source, 'Intake source is recorded');
         if ($source === 'Walk-in') {
-            check((int) $complaint['liso_assigned_duty_session_id'] === $dutyId, 'Walk-in is tied to the active LISO duty session');
-            $review = request($base, $actors['luponhead'], 'complaints/review.php', ['complaint_id' => $id, 'status' => 'Accepted']);
-            check($review['status'] === 422, 'Another Lupon member cannot screen the assigned walk-in');
+            check($complaint['status'] === 'Accepted', 'Walk-in intake is immediately Accepted without LISO duty screening');
+            check($complaint['liso_assigned_duty_session_id'] === null, 'Walk-in intake bypasses LISO duty session assignment');
+            $review = request($base, $liso, 'complaints/review.php', ['complaint_id' => $id, 'status' => 'Accepted']);
+            check($review['status'] === 422, 'Already-accepted Walk-in does not accept duplicate LISO screening');
         } else {
             check((int) $complaint['submitted_by'] === $residentUserId && $complaint['liso_assigned_duty_session_id'] === null, 'Online intake belongs to the resident account');
             $details = "/frontend/pages/resident/complaint.php?id=$id";
@@ -297,12 +298,12 @@ try {
                 'LISO workspace shows both request and response rounds');
             check(request($base, $actors['luponhead'], 'complaints/review.php', ['complaint_id' => $id, 'status' => 'Accepted'])['status'] === 422,
                 'Another Lupon member cannot re-screen the assigned online intake');
+            $reviewData = ['complaint_id' => $id, 'status' => 'Accepted'];
+            $review = request($base, $liso, 'complaints/review.php', $reviewData);
+            check($review['status'] === 200 && ($review['json']['success'] ?? false),
+                "$source intake is marked eligible: " . ($review['json']['message'] ?? $review['body']));
+            check(request($base, $liso, 'complaints/review.php', $reviewData)['status'] === 422, 'Repeated eligibility is rejected');
         }
-        $reviewData = ['complaint_id' => $id, 'status' => 'Accepted'];
-        $review = request($base, $liso, 'complaints/review.php', $reviewData);
-        check($review['status'] === 200 && ($review['json']['success'] ?? false),
-            "$source intake is marked eligible: " . ($review['json']['message'] ?? $review['body']));
-        check(request($base, $liso, 'complaints/review.php', $reviewData)['status'] === 422, 'Repeated eligibility is rejected');
         check(!empty($preparations->intake($id)['eligible']), "$source intake enters the preparation queue");
         expectClerkAction($preparations, $id, 'Prepare invitation', 'paanyaya-invitation-1');
         expectKp7($base, $clerk, $id, false);
@@ -454,12 +455,19 @@ try {
         'complainant_attended' => 'Present',
         'invitee_attended' => 'Absent',
         'salaysay' => 'Debt collection dialogue',
+        'dialogue_notes' => 'P1 dialogue summary kept upon advancing.',
     ]);
     $p2Id = (int) ($p2Res['new_paanyaya_id'] ?? 0);
     if ($p2Id > 0) {
         $createdPaanyayaIds[] = $p2Id;
     }
     check(!empty($p2Res['success']) && $p2Id > 0, 'Standalone 2nd Paanyaya schedules cleanly');
+
+    $p1NotesCheck = $db->prepare('SELECT salaysay, dialogue_notes FROM paanyayas WHERE paanyaya_id = ?');
+    $p1NotesCheck->execute([$p1Id]);
+    $p1RowCheck = $p1NotesCheck->fetch();
+    check(($p1RowCheck['dialogue_notes'] ?? '') === 'P1 dialogue summary kept upon advancing.' && ($p1RowCheck['salaysay'] ?? '') === 'Debt collection dialogue',
+        'Advancing 1st Paanyaya to 2nd Paanyaya preserves both salaysay and dialogue_notes');
 
     $parentCheck = $db->prepare('SELECT parent_paanyaya_id, attempt_number FROM paanyayas WHERE paanyaya_id = ?');
     $parentCheck->execute([$p2Id]);
@@ -487,9 +495,38 @@ try {
         'paanyaya_id' => $p2Id,
         'complainant_attended' => 'Present',
         'invitee_attended' => 'Absent',
+        'salaysay' => 'Updated debt collection salaysay.',
         'dialogue_notes' => 'Respondent remained absent on 2nd Paanyaya.',
     ]);
     check($attendance['status'] === 200 && !empty($attendance['json']['success']), 'Clerk saves attendance before the formal complaint handoff');
+
+    $attendanceEdit = request($base, $clerk, 'paanyaya/attendance.php', [
+        'paanyaya_id' => $p2Id,
+        'complainant_attended' => 'Present',
+        'invitee_attended' => 'Absent',
+        'salaysay' => 'Updated debt collection salaysay.',
+        'dialogue_notes' => 'Edited: Respondent did not appear at 2nd Paanyaya.',
+    ]);
+    $p2NotesCheck = $db->prepare('SELECT salaysay, dialogue_notes FROM paanyayas WHERE paanyaya_id = ?');
+    $p2NotesCheck->execute([$p2Id]);
+    $p2RowAfter = $p2NotesCheck->fetch();
+    check($attendanceEdit['status'] === 200
+        && ($p2RowAfter['salaysay'] ?? '') === 'Updated debt collection salaysay.'
+        && ($p2RowAfter['dialogue_notes'] ?? '') === 'Edited: Respondent did not appear at 2nd Paanyaya.',
+        'Editing Paanyaya salaysay and dialogue_notes replaces cleanly without duplicating prior notes');
+
+    // Verify serving officer roster is restricted strictly to Summons Servers (#6)
+    require_once __DIR__ . '/../models/ProofOfService.php';
+    $posModel = new ProofOfService($db);
+    $serversList = $posModel->getSummonsServers();
+    $nonServerFound = false;
+    foreach ($serversList as $srv) {
+        $roleName = (string) ($db->query('SELECT r.role_name FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = ' . (int) $srv['user_id'])->fetchColumn() ?: '');
+        if ($roleName !== 'Summons Server') {
+            $nonServerFound = true;
+        }
+    }
+    check(count($serversList) >= 1 && !$nonServerFound, 'Serving officers list contains only active Summons Server accounts');
 
     $filing = [
         'complaint_title' => "Escalated $threadTag",

@@ -20,9 +20,9 @@ require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.ph
 $db = (new Database())->connect();
 if (PaanyayaPreparationService::requiresPreparation($db, $complaintId)
     || PaanyayaPreparationService::managesDialogue($db, $complaintId)) {
-    $destination = in_array($roleId, [1, 2], true)
-        ? '../complaints/complaint-details.php?id=' . $complaintId . '#paanyaya-preparation'
-        : ($roleId === 3 ? '../dashboard/lupon-dashboard.php' : '../gps/proof-service.php');
+    $destination = in_array($roleId, [1, 2, 3], true)
+        ? '../complaints/complaint-details.php?id=' . $complaintId . '&tab=paanyaya#paanyaya-preparation'
+        : '../gps/proof-service.php';
     header('Location: ' . $destination, true, 303);
     exit;
 }

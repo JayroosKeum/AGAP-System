@@ -197,31 +197,7 @@ class Complaint
 
             $assignedLisoId = null;
             $assignedDutySessionId = null;
-            // A complaint escalated from the existing Paanyaya workflow is not
-            // a new walk-in, so it must not be sent back through LISO intake.
-            $requiresLisoAssignment = !$isResidentPortal && !$paanyayaHandoff;
-            if ($requiresLisoAssignment) {
-                $assignedLisoId = filter_var($data['liso_assigned_to'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
-                if ($assignedLisoId === null) {
-                    return ['success' => false, 'message' => 'Select the Lupon Member who is currently on LISO duty for this walk-in.'];
-                }
-
-                $activeDuty = $this->conn->prepare(
-                    "SELECT d.duty_session_id
-                     FROM liso_duty_sessions d
-                     INNER JOIN users u ON u.user_id = d.user_id
-                     INNER JOIN roles r ON r.role_id = u.role_id
-                     WHERE d.user_id = ? AND d.active_marker = 1 AND d.ended_at IS NULL
-                       AND DATE(d.started_at) = CURDATE() AND u.status = 'Active'
-                       AND r.role_name = 'Lupon Member'
-                     LIMIT 1"
-                );
-                $activeDuty->execute([$assignedLisoId]);
-                $assignedDutySessionId = (int) $activeDuty->fetchColumn();
-                if ($assignedDutySessionId < 1) {
-                    return ['success' => false, 'message' => 'The selected Lupon Member is no longer timed in for LISO duty. Refresh the form and select an available LISO.'];
-                }
-            }
+            $isWalkInImmediateAccept = !$isResidentPortal && !$paanyayaHandoff;
 
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
@@ -300,19 +276,23 @@ class Complaint
                     encoded_by,
                     liso_assigned_to,
                     liso_assigned_duty_session_id,
-                    liso_assigned_at
+                    liso_assigned_at,
+                    liso_reviewed_by,
+                    liso_reviewed_at
                 )
                 VALUES
                 (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL,
+                    ?, ?
                 )
             ");
 
             $timeVal = !empty($data['is_time_unknown']) ? null : (trim((string) ($data['incident_time'] ?? '')) ?: null);
             $secCatId = filter_var($data['secondary_category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
             $secOtherSpec = trim((string)($data['secondary_other_category_specification'] ?? '')) ?: null;
+            $walkInActor = $actorId ?: ($data['clerk_id'] ?? $data['encoded_by'] ?? 1);
             $stmt->execute([
                 $data['category_id'],
                 $secCatId,
@@ -336,13 +316,15 @@ class Complaint
                 trim((string) ($data['requested_resolution'] ?? '')) ?: null,
                 $data['intake_source'],
                 $isResidentPortal ? $actorId : null,
-                'Pending',
-                'Submitted',
+                $isWalkInImmediateAccept ? 'Eligible' : 'Pending',
+                $isWalkInImmediateAccept ? 'Accepted' : 'Submitted',
                 'No Scan Uploaded',
                 0,
-                $isResidentPortal ? null : ($actorId ?: ($data['clerk_id'] ?? $data['encoded_by'] ?? 1)),
-                $assignedLisoId,
-                $assignedDutySessionId
+                $isResidentPortal ? null : $walkInActor,
+                null,
+                null,
+                $isWalkInImmediateAccept ? $walkInActor : null,
+                $isWalkInImmediateAccept ? date('Y-m-d H:i:s') : null
             ]);
 
             $complaintId = (int) $this->conn->lastInsertId();
@@ -356,20 +338,12 @@ class Complaint
                 require_once __DIR__ . '/../services/NotificationService.php';
                 $notifService = new NotificationService($this->conn);
                 $cNum = $intakeReference;
-                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId;
-                if ($assignedLisoId !== null) {
-                    $notifService->notifyUser(
-                        $assignedLisoId,
-                        'Walk-in screening assigned',
-                        "Walk-in intake {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ') is assigned to you for preliminary screening.',
-                        $actorId ?: null,
-                        'info',
-                        $actionUrl
-                    );
+                $actionUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId . ($isWalkInImmediateAccept ? '&tab=paanyaya' : '');
+                if ($isWalkInImmediateAccept) {
                     $notifService->notifyRoles(
                         ['Administrator', 'Lupon Clerk'],
-                        'Walk-in intake recorded',
-                        "Walk-in intake {$cNum} is assigned to a LISO for preliminary screening.",
+                        'Walk-in Complaint Ready for Paanyaya',
+                        "Walk-in intake {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ') was accepted and is ready for Paanyaya preparation.',
                         $actorId ?: null,
                         'info',
                         $actionUrl
@@ -393,10 +367,12 @@ class Complaint
             }
             return [
                 'success' => true,
-                'message' => 'Complaint intake submitted for preliminary screening by a Lupon Member.',
+                'message' => $isWalkInImmediateAccept
+                    ? 'Walk-in complaint accepted and ready for Paanyaya preparation.'
+                    : 'Complaint intake submitted for preliminary screening by a Lupon Member.',
                 'case_id' => null,
                 'case_number' => null,
-                'status' => 'Submitted',
+                'status' => $isWalkInImmediateAccept ? 'Accepted' : 'Submitted',
                 'complaint_id' => $complaintId,
                 'intake_reference' => $intakeReference,
                 'complaint_number' => null,
@@ -767,6 +743,9 @@ class Complaint
                 if (!in_array($effectiveCaseType, ['Civil', 'Criminal'], true)) {
                     throw new DomainException('Select a valid case type (Civil or Criminal).');
                 }
+                if ($effectiveTitle === '') {
+                    $effectiveTitle = $isOtherCat ? (string) $effectiveOtherSpec : (string) $catRow['category_name'];
+                }
                 if ($effectiveTitle === '' || mb_strlen($effectiveTitle) > 255 || !ValidationService::text($effectiveTitle)) {
                     throw new DomainException('Provide a valid complaint title / specific nature of 255 characters or fewer.');
                 }
@@ -1065,6 +1044,22 @@ class Complaint
             if (!ValidationService::text($otherSpec)) {
                 return ['success' => false, 'message' => 'Please remove unsupported control characters from the custom category specification.'];
             }
+        }
+        if ($title === '') {
+            $title = $isOtherCategory ? $otherSpec : (string) $catRow['category_name'];
+            if ($secCatId) {
+                $secStmt = $this->conn->prepare('SELECT category_name FROM complaint_categories WHERE category_id = ? LIMIT 1');
+                $secStmt->execute([$secCatId]);
+                $secRowName = (string) ($secStmt->fetchColumn() ?: '');
+                $secLabel = (stripos($secRowName, 'Others') !== false || stripos($secRowName, 'Iba pa') !== false)
+                    ? trim((string) ($data['secondary_other_category_specification'] ?? ''))
+                    : $secRowName;
+                if ($secLabel !== '') {
+                    $title .= ' & ' . $secLabel;
+                }
+            }
+            $title = mb_substr(trim($title), 0, 255);
+            $data['complaint_title'] = $title;
         }
         if ($title === '') return ['success' => false, 'message' => 'Complaint title is required.'];
         if (mb_strlen($title) > 255) return ['success' => false, 'message' => 'Complaint title must be 255 characters or fewer.'];
@@ -1823,21 +1818,17 @@ class Complaint
         // 1. Explicit statutory exclusion flags passed from UI / API
         $disputeContext['party_is_government']        = !empty($data['party_is_government']);
         $disputeContext['party_is_public_officer']    = !empty($data['party_is_public_officer']) || !empty($data['involves_public_officer_official_capacity']);
-        // Ignore stale criminal-only fields when case type is Civil
-        $disputeContext['offense_imprisonment_max']   = $isCriminalCase ? (float) ($data['offense_imprisonment_max'] ?? 0) : 0.0;
+        // Criminal jurisdiction warning/exclusion checks removed across intake & screening forms
+        $disputeContext['offense_imprisonment_max']   = 0.0;
         $disputeContext['offense_fine_max']           = (float) ($data['offense_fine_max'] ?? 0);
-        if ($isCriminalCase && array_key_exists('has_private_offended_party', $data)) {
-            $disputeContext['has_private_offended_party'] = (bool) $data['has_private_offended_party'];
-        } else {
-            $disputeContext['has_private_offended_party'] = true;
-        }
+        $disputeContext['has_private_offended_party'] = true;
         $disputeContext['property_in_diff_lgu']       = !empty($data['property_in_diff_lgu']);
         $disputeContext['parties_in_diff_lgu']        = !empty($data['parties_in_diff_lgu']);
         $disputeContext['parties_same_barangay']      = !empty($data['parties_same_barangay']) || empty($data['parties_in_diff_lgu']);
-        $disputeContext['accused_under_detention']    = $isCriminalCase && !empty($data['accused_under_detention']);
-        $disputeContext['habeas_corpus_needed']       = $isCriminalCase && !empty($data['habeas_corpus_needed']);
+        $disputeContext['accused_under_detention']    = false;
+        $disputeContext['habeas_corpus_needed']       = false;
         $disputeContext['provisional_remedy_needed']  = !empty($data['provisional_remedy_needed']);
-        $disputeContext['prescription_risk']          = $isCriminalCase && !empty($data['prescription_risk']);
+        $disputeContext['prescription_risk']          = false;
         $disputeContext['indigenous_community']       = !empty($data['indigenous_community']);
 
         // Check government entity keywords on names

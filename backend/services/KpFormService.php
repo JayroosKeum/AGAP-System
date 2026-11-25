@@ -2963,6 +2963,18 @@ class KpFormService
 
             $this->conn->commit();
 
+            require_once __DIR__ . '/PDFService.php';
+            PDFService::registerOfficersReturnDocument($this->conn, (int) $caseId, $actorUserId, [
+                'party_type' => $partyType,
+                'recipient_name' => $recipientName ?? ($partyType . ' Party'),
+                'delivery_status' => $serviceResult,
+                'service_method' => 'Personal',
+                'served_at' => $serviceDate,
+                'served_by_user_id' => $actorUserId,
+                'remarks' => $officerReturn,
+                'form_type' => 'KP Form 12 (Pangkat Notice)',
+            ]);
+
 
 
             return [

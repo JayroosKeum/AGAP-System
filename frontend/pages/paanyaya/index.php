@@ -1936,18 +1936,20 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                     ) use ($canEditPaanyaya): string {
                                         $pid = (int)($row['paanyaya_id'] ?? 0);
                                         $cid = (int)($row['complaint_id'] ?? $linkedCid);
+                                        $isPreparedComp = !empty($row['is_complaint_preparation']);
                                         $rawRowStatus = trim((string)($row['status'] ?? $actionStatus));
                                         $normRowStatus = strtolower($rawRowStatus);
                                         $hasRecorded = !empty($row['attendance_recorded_at'])
                                             || in_array($normRowStatus, ['completed', 'done', 'resolved', 'settled', 'dismissed', 'escalated'], true);
                                         $allowDialogueRecord = ($pid > 0
+                                            && !$isPreparedComp
                                             && !in_array($normRowStatus, ['resolved', 'settled', 'completed', 'done', 'dismissed', 'escalated', 'cancelled'], true));
                                         $attemptTitleLabel = $attemptNum >= 2 ? '2nd Paanyaya' : '1st Paanyaya';
                                         $rowLinkedCaseId = (int)($row['linked_case_id'] ?? 0);
                                         $rowCompNumber = (string)($row['complaint_number'] ?? '');
                                         ob_start();
                                         ?>
-                                        <?php if ($cid > 0 && $canEditPaanyaya): ?>
+                                        <?php if ($cid > 0 && $canEditPaanyaya && !$isPreparedComp): ?>
                                             <a href="stage.php?complaint_id=<?php echo $cid; ?>"
                                                class="agap-btn-act is-primary-soft is-icon-btn"
                                                title="Edit Paanyaya &amp; Schedule Details (Lupon Clerk / Secretary / Admin)"
@@ -1956,12 +1958,12 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                                             </a>
                                         <?php endif; ?>
-                                        <?php if (!empty($row['is_complaint_preparation']) && $cid > 0): ?>
+                                        <?php if ($isPreparedComp && $cid > 0): ?>
                                             <a href="../complaints/complaint-details.php?id=<?php echo $cid; ?>#paanyaya-preparation"
                                                class="agap-btn-act is-primary-soft"
-                                               title="Open Paanyaya Preparation &amp; Delivery Assignment"
+                                               title="Open Paanyaya Preparation, Delivery &amp; Dialogue on the Complaint"
                                                style="text-decoration: none;">
-                                                <span>Prepare / Track</span>
+                                                <span><?php echo $pid > 0 ? 'Manage / Dialogue' : 'Prepare / Track'; ?></span>
                                             </a>
                                         <?php endif; ?>
                                         <button type="button" class="agap-btn-act is-primary-soft btn-preview-modal"
@@ -2048,8 +2050,13 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                         $recordRefLabel = !empty($p['complaint_number'])
                                             ? (string)$p['complaint_number']
                                             : ('PY-' . str_pad((string)(int)($rootRecord['paanyaya_id'] ?? ($p['paanyaya_id'] ?? 0)), 4, '0', STR_PAD_LEFT));
-                                        $recordSubLabel = trim((string)($p['complaint_title'] ?? '')) !== ''
-                                            ? (string)$p['complaint_title']
+                                        $rowCatLabel = trim((string)($p['other_category_specification'] ?? '')) !== ''
+                                            ? ((trim((string)($p['category_name'] ?? '')) !== '' && !preg_match('/others|iba pa/i', (string)$p['category_name']))
+                                                ? (string)$p['category_name'] . ' — ' . trim((string)$p['other_category_specification'])
+                                                : 'Others: ' . trim((string)$p['other_category_specification']))
+                                            : trim((string)($p['category_name'] ?? ''));
+                                        $recordSubLabel = $rowCatLabel !== ''
+                                            ? $rowCatLabel
                                             : ($itemCount >= 2 ? '2 Invitations · Latest: ' . $latestStepLabel : ($latestAttempt >= 2 ? '2nd Invitation' : '1st Invitation'));
                                         $schedDateTimeText = trim($d . ($t !== '' ? ', ' . $t : ''));
                                         $schedSubLabel = trim((string)($p['venue'] ?? '')) !== ''
@@ -2194,11 +2201,12 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                                                             <?php
                                                                                 $dNotes = trim((string)($item['dialogue_notes'] ?? ($item['outcome_notes'] ?? '')));
                                                                                 $sNotes = trim((string)($item['salaysay'] ?? ''));
-                                                                                $stepNoteLabel = $dNotes !== '' ? 'Dialogue Notes' : 'Salaysay';
-                                                                                $stepNotes = $dNotes !== '' ? $dNotes : $sNotes;
-                                                                                if ($stepNotes !== ''):
+                                                                                if ($sNotes !== ''):
                                                                             ?>
-                                                                                <span><?php echo $stepNoteLabel; ?>: <?php echo htmlspecialchars(mb_strimwidth($stepNotes, 0, 220, '...', 'UTF-8')); ?></span>
+                                                                                <span>Salaysay: <?php echo htmlspecialchars(mb_strimwidth($sNotes, 0, 200, '...', 'UTF-8')); ?></span>
+                                                                            <?php endif; ?>
+                                                                            <?php if ($dNotes !== ''): ?>
+                                                                                <span>Dialogue Notes: <?php echo htmlspecialchars(mb_strimwidth($dNotes, 0, 200, '...', 'UTF-8')); ?></span>
                                                                             <?php endif; ?>
                                                                         </div>
                                                                     </div>
@@ -2595,59 +2603,22 @@ tr[data-paanyaya-row="1"].is-expanded td {
                                 <input type="text" id="schedVenue" name="venue" class="form-control" value="Tanggapan ng Barangay Tumana" required>
                             </div>
 
-                            <div class="form-row" style="margin-bottom: 14px;">
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="schedPrelimCategoryInput">Preliminary Category (Searchable — Carried on Escalation)</label>
-                                    <div class="category-picker-wrap">
-                                        <input type="text"
-                                               id="schedPrelimCategoryInput"
-                                               name="preliminary_category_name"
-                                               list="paanyayaCategoriesList"
-                                               data-category-picker
-                                               class="form-control"
-                                               placeholder="Search KP category or type Other / Custom..."
-                                               autocomplete="off">
-                                    </div>
-                                    <select id="schedPrelimCategory" name="preliminary_category_id" style="display: none;">
-                                        <option value="">— Select Category (Optional) —</option>
-                                        <?php foreach ($paanyayaCategories as $catItem): ?>
-                                            <option value="<?php echo (int) $catItem['category_id']; ?>"
-                                                    data-case-type="<?php echo htmlspecialchars((string) ($catItem['default_case_type'] ?? 'Civil'), ENT_QUOTES, 'UTF-8'); ?>"
-                                                    data-is-other="<?php echo !empty($catItem['is_other']) ? '1' : '0'; ?>"><?php echo htmlspecialchars($catItem['category_name'], ENT_QUOTES, 'UTF-8'); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <datalist id="paanyayaCategoriesList">
-                                        <?php foreach ($paanyayaCategories as $catItem): ?>
-                                            <option value="<?php echo htmlspecialchars($catItem['category_name'], ENT_QUOTES, 'UTF-8'); ?>"
-                                                    data-category-id="<?php echo (int) $catItem['category_id']; ?>"
-                                                    data-case-type="<?php echo htmlspecialchars((string) ($catItem['default_case_type'] ?? 'Civil'), ENT_QUOTES, 'UTF-8'); ?>"></option>
-                                        <?php endforeach; ?>
-                                    </datalist>
-                                </div>
-                                <div class="form-group" style="margin-bottom: 0;">
-                                    <label for="schedPrelimCaseType">Legal Classification (Auto-Mapped)</label>
-                                    <select id="schedPrelimCaseType" name="preliminary_case_type" class="form-control">
-                                        <option value="Civil">Civil</option>
-                                        <option value="Criminal">Criminal</option>
-                                    </select>
-                                    <div id="schedPrelimCaseTypeHint" style="font-size: 0.73rem; color: #64748b; margin-top: 4px;">
-                                        Auto-mapped from category (editable by LISO / Clerk).
-                                    </div>
-                                </div>
+                            <div class="form-group" style="margin-bottom: 14px;">
+                                <label for="schedPrelimCategory">Dispute Category</label>
+                                <select id="schedPrelimCategory" name="preliminary_category_id" class="form-control">
+                                    <option value="">— Select Category (Optional) —</option>
+                                    <?php foreach ($paanyayaCategories as $catItem): ?>
+                                        <option value="<?php echo (int) $catItem['category_id']; ?>"
+                                                data-case-type="<?php echo htmlspecialchars((string) ($catItem['default_case_type'] ?? 'Civil'), ENT_QUOTES, 'UTF-8'); ?>"
+                                                data-is-other="<?php echo !empty($catItem['is_other']) ? '1' : '0'; ?>"><?php echo htmlspecialchars($catItem['category_name'], ENT_QUOTES, 'UTF-8'); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <input type="hidden" id="schedPrelimCaseType" name="preliminary_case_type" value="Civil">
                             </div>
 
                             <div class="form-group" id="schedPrelimOtherWrap" style="display: none; margin-bottom: 14px;">
                                 <label for="schedPrelimOtherSpec">Specify Other / Custom Category <span style="color:#dc2626;">*</span></label>
                                 <input type="text" id="schedPrelimOtherSpec" name="preliminary_other_category_specification" class="form-control" maxlength="255" placeholder="Specify the custom dispute category...">
-                            </div>
-
-                            <div id="schedPrelimCriminalWrap" style="display: none; margin-bottom: 14px; padding: 12px 14px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; font-size: 0.8rem; color: #7f1d1d;">
-                                <div style="font-weight: 700; margin-bottom: 4px;">Criminal Classification Check (R.A. 7160 &sect;&sect;408(c)–(d), 412)</div>
-                                <p style="margin: 0 0 8px; line-height: 1.4;">Ensure the offense carries &le; 1 year imprisonment, has a private offended party, and the accused is not under detention before informal dialogue.</p>
-                                <label style="display: flex; align-items: center; gap: 7px; margin: 0; font-weight: 600; cursor: pointer;">
-                                    <input type="checkbox" id="schedPrelimCriminalVerified" value="1">
-                                    <span>Preliminary criminal offense verified within KP threshold (&le; 1 year imprisonment)</span>
-                                </label>
                             </div>
 
                             <div class="form-group" style="margin-bottom: 0;">
@@ -2688,12 +2659,11 @@ tr[data-paanyaya-row="1"].is-expanded td {
 
                             <div class="wiz-review-card" style="margin-bottom: 14px;">
                                 <div class="wiz-review-card-head">
-                                    <span class="wiz-review-card-title">Preliminary Category &amp; Classification</span>
+                                    <span class="wiz-review-card-title">Dispute Category</span>
                                     <button type="button" class="wiz-review-edit-btn" data-wiz-jump="3">Edit</button>
                                 </div>
                                 <div class="wiz-review-val" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                                     <span id="revPrelimCategory">—</span>
-                                    <span id="revPrelimCaseTypeBadge" style="display:inline-flex; align-items:center; padding:2px 9px; border-radius:999px; font-size:0.74rem; font-weight:700; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">Civil</span>
                                 </div>
                             </div>
 
@@ -2960,13 +2930,13 @@ tr[data-paanyaya-row="1"].is-expanded td {
                     </div>
                 </div>
 
-                <!-- Read-Only Initial Salaysay Inherited from Intake -->
+                <!-- Initial Salaysay Inherited from Intake (Editable while active) -->
                 <div class="att-field-group" id="attSalaysayCard" style="margin-bottom: 12px;">
-                    <label class="att-field-label">
+                    <label for="attSalaysayInput" class="att-field-label">
                         <span>Initial Salaysay (Statement of Complaint)</span>
                         <span id="attClassificationMeta" style="font-size: 0.72rem; font-weight: 700; color: #1e40af;"></span>
                     </label>
-                    <div id="attSalaysayText" class="prev-notes-box" style="background: #f8fafc; border: 1px solid #cbd5e1; color: #0f172a; max-height: 150px; overflow-y: auto; white-space: pre-wrap;">—</div>
+                    <textarea id="attSalaysayInput" name="salaysay" class="att-clean-textarea" rows="3" placeholder="Ilarawan ang maikling salaysay ng sumbong o dahilan ng pag-anyaya..."></textarea>
                 </div>
 
                 <!-- Session-Specific Dialogue Minutes (Separate from Initial Salaysay) -->
@@ -3626,81 +3596,32 @@ document.addEventListener('DOMContentLoaded', function() {
         updateSchedDateHint();
     }
 
-    // Preliminary Category Search + Auto Civil/Criminal Classification + Conditional Criminal Notice
-    const schedPrelimCatInput = document.getElementById('schedPrelimCategoryInput');
+    // Simple Dispute Category Selector
     const schedPrelimCatSelect = document.getElementById('schedPrelimCategory');
     const schedPrelimOtherWrap = document.getElementById('schedPrelimOtherWrap');
     const schedPrelimOtherSpec = document.getElementById('schedPrelimOtherSpec');
     const schedPrelimCaseTypeSel = document.getElementById('schedPrelimCaseType');
-    const schedPrelimCaseTypeHint = document.getElementById('schedPrelimCaseTypeHint');
-    const schedPrelimCriminalWrap = document.getElementById('schedPrelimCriminalWrap');
-    const schedPrelimCriminalChk = document.getElementById('schedPrelimCriminalVerified');
-
-    const syncSchedPrelimCriminalUI = () => {
-        const isCrim = (schedPrelimCaseTypeSel?.value || 'Civil') === 'Criminal';
-        if (schedPrelimCriminalWrap) {
-            schedPrelimCriminalWrap.style.display = isCrim ? 'block' : 'none';
-        }
-        if (!isCrim && schedPrelimCriminalChk) {
-            schedPrelimCriminalChk.checked = false;
-        }
-    };
 
     const syncSchedPrelimCategory = (autoUpdateType = true) => {
-        if (!schedPrelimCatInput || !schedPrelimCatSelect) return;
-        const val = schedPrelimCatInput.value.trim();
-        const lower = val.toLowerCase();
-        let matchedOpt = null;
-        let othersOpt = null;
-        Array.from(schedPrelimCatSelect.options).forEach(opt => {
-            if (!opt.value) return;
-            const txt = opt.text.trim().toLowerCase();
-            if (opt.dataset.isOther === '1' && !othersOpt) othersOpt = opt;
-            if (lower !== '' && txt === lower) matchedOpt = opt;
-        });
-
-        let isOther = false;
-        let mappedType = null;
-        if (matchedOpt) {
-            schedPrelimCatSelect.value = matchedOpt.value;
-            isOther = matchedOpt.dataset.isOther === '1';
-            mappedType = matchedOpt.dataset.caseType || 'Civil';
-            if (!isOther && schedPrelimOtherSpec) schedPrelimOtherSpec.value = '';
-        } else if (val !== '') {
-            schedPrelimCatSelect.value = othersOpt ? othersOpt.value : '';
-            isOther = true;
-            if (schedPrelimOtherSpec) schedPrelimOtherSpec.value = val;
-            mappedType = window.AgapCategoryClassification?.inferCaseTypeFromCategoryText(val) || 'Civil';
-        } else {
-            schedPrelimCatSelect.value = '';
-            if (schedPrelimOtherSpec) schedPrelimOtherSpec.value = '';
+        if (!schedPrelimCatSelect) return;
+        const opt = schedPrelimCatSelect.options[schedPrelimCatSelect.selectedIndex];
+        const isOther = Boolean(opt && opt.value && opt.dataset.isOther === '1');
+        if (!isOther && schedPrelimOtherSpec) {
+            schedPrelimOtherSpec.value = '';
         }
-
         if (schedPrelimOtherWrap) {
-            schedPrelimOtherWrap.style.display = (matchedOpt && isOther) ? 'block' : 'none';
+            schedPrelimOtherWrap.style.display = isOther ? 'block' : 'none';
         }
         if (schedPrelimOtherSpec) {
-            schedPrelimOtherSpec.required = Boolean(matchedOpt && isOther);
+            schedPrelimOtherSpec.required = isOther;
         }
-
-        if (autoUpdateType && mappedType && schedPrelimCaseTypeSel) {
-            schedPrelimCaseTypeSel.value = mappedType;
-            if (schedPrelimCaseTypeHint) {
-                schedPrelimCaseTypeHint.textContent = `Auto-classified as ${mappedType} (editable if needed).`;
-            }
+        if (autoUpdateType && schedPrelimCaseTypeSel) {
+            schedPrelimCaseTypeSel.value = (opt && opt.value && opt.dataset.caseType) ? opt.dataset.caseType : 'Civil';
         }
-        syncSchedPrelimCriminalUI();
     };
 
-    schedPrelimCatInput?.addEventListener('input', () => syncSchedPrelimCategory(true));
-    schedPrelimCatInput?.addEventListener('change', () => syncSchedPrelimCategory(true));
-    schedPrelimCaseTypeSel?.addEventListener('change', () => {
-        if (schedPrelimCaseTypeHint) {
-            schedPrelimCaseTypeHint.textContent = `Classification set to ${schedPrelimCaseTypeSel.value}.`;
-        }
-        syncSchedPrelimCriminalUI();
-    });
-    syncSchedPrelimCriminalUI();
+    schedPrelimCatSelect?.addEventListener('change', () => syncSchedPrelimCategory(true));
+    syncSchedPrelimCategory(true);
 
     const formatResidencyStatusLabel = (val) => {
         const s = String(val ?? '0');
@@ -3775,18 +3696,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const revPrelimCaseTypeBadge = document.getElementById('revPrelimCaseTypeBadge');
 
         if (revPrelimCategory) {
-            const rawCat = document.getElementById('schedPrelimCategoryInput')?.value.trim() || '';
+            const selOpt = document.getElementById('schedPrelimCategory')?.selectedOptions?.[0];
+            const rawCat = (selOpt && selOpt.value) ? selOpt.textContent.trim() : '';
             const rawOther = document.getElementById('schedPrelimOtherSpec')?.value.trim() || '';
-            const selOpt = document.getElementById('schedPrelimCategoryId')?.selectedOptions?.[0];
             const displayCat = (selOpt?.dataset?.isOther === '1' && rawOther) ? `Others — ${rawOther}` : (rawCat || rawOther || 'Not specified');
             revPrelimCategory.textContent = displayCat;
-        }
-        if (revPrelimCaseTypeBadge) {
-            const pCt = (document.getElementById('schedPrelimCaseType')?.value || 'Civil') === 'Criminal' ? 'Criminal' : 'Civil';
-            revPrelimCaseTypeBadge.textContent = pCt;
-            revPrelimCaseTypeBadge.style.background = pCt === 'Criminal' ? '#fef2f2' : '#eff6ff';
-            revPrelimCaseTypeBadge.style.color = pCt === 'Criminal' ? '#b91c1c' : '#1d4ed8';
-            revPrelimCaseTypeBadge.style.borderColor = pCt === 'Criminal' ? '#fecaca' : '#bfdbfe';
         }
 
         if (revCompName) revCompName.textContent = compFull;
@@ -4144,7 +4058,11 @@ document.addEventListener('DOMContentLoaded', function() {
                     venue: venue,
                     salaysay: salaysay,
                     preliminary_category_id: document.getElementById('schedPrelimCategory')?.value || '',
-                    preliminary_category_name: document.getElementById('schedPrelimCategoryInput')?.value.trim() || '',
+                    preliminary_category_name: (() => {
+                        const sel = document.getElementById('schedPrelimCategory');
+                        const opt = sel?.selectedOptions?.[0];
+                        return (opt && opt.value) ? opt.textContent.trim() : '';
+                    })(),
                     preliminary_other_category_specification: document.getElementById('schedPrelimOtherSpec')?.value.trim() || '',
                     preliminary_case_type: document.getElementById('schedPrelimCaseType')?.value || 'Civil',
                     require_party_details: 1,
@@ -4380,10 +4298,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const prevClassificationMeta = document.getElementById('prevClassificationMeta');
         if (prevClassificationMeta) {
             const catLabel = row.other_category_specification
-                ? (row.category_name && !/others|iba pa/i.test(row.category_name) ? row.category_name : `Others: ${row.other_category_specification}`)
+                ? (row.category_name && !/others|iba pa/i.test(row.category_name) ? `${row.category_name} — ${row.other_category_specification}` : `Others: ${row.other_category_specification}`)
                 : (row.category_name || '');
-            const typeLabel = row.effective_case_type || row.preliminary_case_type || '';
-            prevClassificationMeta.textContent = [typeLabel, catLabel].filter(Boolean).join(' · ');
+            prevClassificationMeta.textContent = catLabel || (row.effective_case_type || row.preliminary_case_type || '');
         }
         if (prevSalaysayText) {
             const sText = String(row.salaysay || '').trim();
@@ -4575,6 +4492,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const attInvNameDisplay = document.getElementById('attInvNameDisplay');
     const attCompInitials = document.getElementById('attCompInitials');
     const attInvInitials = document.getElementById('attInvInitials');
+    const attSalaysayInput = document.getElementById('attSalaysayInput');
     const attNotesInput = document.getElementById('attNotes');
     const attAttemptBadge = document.getElementById('attAttemptBadge');
     const attOutcomeSelect = document.getElementById('attOutcomeSelect');
@@ -4797,6 +4715,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const lockFields = () => {
             compRadios.forEach(r => { r.disabled = true; });
             invRadios.forEach(r => { r.disabled = true; });
+            if (attSalaysayInput) {
+                attSalaysayInput.readOnly = true;
+                attSalaysayInput.style.backgroundColor = '#f8fafc';
+                attSalaysayInput.style.color = '#475569';
+            }
             if (attNotesInput) {
                 attNotesInput.readOnly = true;
                 attNotesInput.style.backgroundColor = '#f8fafc';
@@ -4981,6 +4904,11 @@ document.addEventListener('DOMContentLoaded', function() {
             if (earlyEscEl) {
                 earlyEscEl.disabled = false;
             }
+            if (attSalaysayInput) {
+                attSalaysayInput.readOnly = false;
+                attSalaysayInput.style.backgroundColor = '';
+                attSalaysayInput.style.color = '';
+            }
             if (attNotesInput) {
                 attNotesInput.readOnly = false;
                 attNotesInput.style.backgroundColor = '';
@@ -5071,9 +4999,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const earlyEscReset = document.getElementById('attAllowImmediateEscalation');
             if (earlyEscReset) earlyEscReset.checked = false;
 
-            const attSalaysayReset = document.getElementById('attSalaysayText');
             const attClassReset = document.getElementById('attClassificationMeta');
-            if (attSalaysayReset) attSalaysayReset.textContent = 'Loading Salaysay...';
+            if (attSalaysayInput) {
+                attSalaysayInput.value = '';
+                attSalaysayInput.placeholder = 'Loading Salaysay...';
+            }
             if (attClassReset) attClassReset.textContent = '';
             if (attNotesInput) attNotesInput.value = '';
             setRadio('complainant_attended', 'Present');
@@ -5101,17 +5031,16 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
 
-                    const attSalaysayText = document.getElementById('attSalaysayText');
                     const attClassificationMeta = document.getElementById('attClassificationMeta');
                     if (attClassificationMeta) {
                         const catLabel = row.other_category_specification
-                            ? (row.category_name && !/others|iba pa/i.test(row.category_name) ? row.category_name : `Others: ${row.other_category_specification}`)
+                            ? (row.category_name && !/others|iba pa/i.test(row.category_name) ? `${row.category_name} — ${row.other_category_specification}` : `Others: ${row.other_category_specification}`)
                             : (row.category_name || '');
-                        const typeLabel = row.effective_case_type || row.preliminary_case_type || '';
-                        attClassificationMeta.textContent = [typeLabel, catLabel].filter(Boolean).join(' · ');
+                        attClassificationMeta.textContent = catLabel || (row.effective_case_type || row.preliminary_case_type || '');
                     }
-                    if (attSalaysayText) {
-                        attSalaysayText.textContent = String(row.salaysay || '').trim() || 'No initial Salaysay recorded.';
+                    if (attSalaysayInput) {
+                        attSalaysayInput.placeholder = 'Ilarawan ang maikling salaysay ng sumbong o dahilan ng pag-anyaya...';
+                        attSalaysayInput.value = String(row.salaysay || '').trim();
                     }
                     if (attNotesInput) {
                         attNotesInput.value = String(row.dialogue_notes || '').trim();
@@ -5162,12 +5091,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (attModal) attModal.dataset.submitting = '1';
 
+        const salaysayText = attSalaysayInput?.value.trim() || '';
         const notesText = attNotesInput?.value.trim() || '';
         const payload = {
             paanyaya_id: paanyayaId,
             complaint_id: parseInt(attComplaintIdInput.value || 0, 10),
             complainant_attended: getRadio('complainant_attended'),
             invitee_attended: getRadio('invitee_attended'),
+            salaysay: salaysayText,
             notes: notesText,
             dialogue_notes: notesText,
             action: actionType,
@@ -5206,9 +5137,11 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (attModal) delete attModal.dataset.submitting;
-            const attSalaysayReset = document.getElementById('attSalaysayText');
             const attClassReset = document.getElementById('attClassificationMeta');
-            if (attSalaysayReset) attSalaysayReset.textContent = 'Loading Salaysay...';
+            if (attSalaysayInput) {
+                attSalaysayInput.value = '';
+                attSalaysayInput.placeholder = 'Loading Salaysay...';
+            }
             if (attClassReset) attClassReset.textContent = '';
             if (attNotesInput) attNotesInput.value = '';
             closeAttModal();
@@ -5295,7 +5228,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const confirmed = confirm(
             'Magpatuloy sa Formal Complaint Details?\n\n' +
-            'Isi-save muna ang attendance at notes ng Paanyaya. Pagkatapos, ilagay ang mga kinakailangang detalye para sa pormal na reklamo tulad ng category, case type, incident details, at relief na hinihingi. Hindi pa ito mai-dodocket hangga\'t hindi naisusumite ang form.'
+            'Isi-save muna ang attendance, salaysay, at dialogue notes ng Paanyaya. Pagkatapos, makukumpleto mo ang detalye ng pormal na reklamo tulad ng insidente at relief na hinihingi bago ma-idoket sa Mediation.'
         );
         if (!confirmed) {
             if (btnConfirmOutcome) {
@@ -5312,6 +5245,7 @@ document.addEventListener('DOMContentLoaded', function() {
             btnConfirmOutcome.textContent = 'Saving Paanyaya...';
         }
 
+        const salaysayText = attSalaysayInput?.value.trim() || '';
         const notesText = attNotesInput?.value.trim() || '';
 
         try {
@@ -5327,6 +5261,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     complaint_id: linkedComplaintId,
                     complainant_attended: getRadio('complainant_attended'),
                     invitee_attended: getRadio('invitee_attended'),
+                    salaysay: salaysayText,
                     notes: notesText,
                     dialogue_notes: notesText,
                     allow_immediate_escalation: Boolean(document.getElementById('attAllowImmediateEscalation')?.checked),

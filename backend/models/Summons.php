@@ -452,7 +452,7 @@ class Summons
             $docKp9Stmt->execute([$caseId, $templateId, $userId, $kp9FilePath]);
             $documentId = (int) $this->conn->lastInsertId();
 
-            // Initialize summon_deliveries: Complainant notice is initialized as Pending until served
+            // Initialize summon_deliveries: KP Form 8 (Notice of Hearing) is automatically served upon issuance
             if ($primaryComplainant) {
                 $compDelivStmt = $this->conn->prepare("
                     INSERT INTO summon_deliveries (
@@ -461,17 +461,17 @@ class Summons
                         service_method, remarks
                     )
                     VALUES (
-                        ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Pending',
-                        ?, ?, NULL, NULL, NULL,
-                        'Personal', 'Notice of Hearing Attempt 1'
+                        ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Served Personal',
+                        ?, ?, NOW(), ?, ?,
+                        'Personal', 'KP Form 8 automatically marked served upon issuance'
                     )
                     ON DUPLICATE KEY UPDATE
-                        delivery_status = COALESCE(delivery_status, 'Pending'),
-                        served_at = served_at,
+                        delivery_status = 'Served Personal',
+                        served_at = COALESCE(served_at, NOW()),
                         served_by = COALESCE(served_by, VALUES(served_by)),
                         served_by_user_id = COALESCE(served_by_user_id, VALUES(served_by_user_id)),
                         service_method = COALESCE(service_method, 'Personal'),
-                        remarks = COALESCE(remarks, 'Notice of Hearing Attempt 1'),
+                        remarks = COALESCE(remarks, 'KP Form 8 automatically marked served upon issuance'),
                         document_id = COALESCE(VALUES(document_id), document_id),
                         recipient_name = COALESCE(VALUES(recipient_name), recipient_name)
                 ");
@@ -480,7 +480,10 @@ class Summons
                     $caseId,
                     (int) $primaryComplainant['resident_id'],
                     $kp8DocumentId,
-                    $primaryComplainant['full_name'] ?? null]);
+                    $primaryComplainant['full_name'] ?? null,
+                    $userId,
+                    $userId
+                ]);
             }
 
             if ($primaryRespondent) {

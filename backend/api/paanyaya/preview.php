@@ -60,7 +60,31 @@ try {
             $pdf = $pdfService->generatePaanyayaMinutes($complaintId, $options);
             $filename = sprintf('Paanyaya-Minutes-Complaint-%d.pdf', $complaintId);
         } else {
-            $pdf = $pdfService->generatePaanyaya($complaintId, $options);
+            $pdf = null;
+            if ($complaintId > 0
+                && empty($options['invitation_date'])
+                && empty($options['invitation_time'])
+                && empty($options['venue'])
+                && empty($options['salaysay'])) {
+                require_once __DIR__ . '/../../services/PaanyayaPreparationService.php';
+                $invNum = !empty($options['attempt_number'])
+                    ? (int) $options['attempt_number']
+                    : ((($options['stage_type'] ?? '') === 'Paanyaya 2') ? 2 : 0);
+                if ($invNum < 1) {
+                    $invStmt = $db->prepare('SELECT COALESCE(MAX(invitation_number), 0) FROM paanyaya_preparations WHERE complaint_id = ?');
+                    $invStmt->execute([$complaintId]);
+                    $invNum = (int) $invStmt->fetchColumn();
+                }
+                if ($invNum >= 1) {
+                    $prepPdf = (new PaanyayaPreparationService($db))->document($complaintId, null, $invNum);
+                    if (is_string($prepPdf) && $prepPdf !== '') {
+                        $pdf = $prepPdf;
+                    }
+                }
+            }
+            if ($pdf === null) {
+                $pdf = $pdfService->generatePaanyaya($complaintId, $options);
+            }
             $filename = sprintf('Paanyaya-Complaint-%d.pdf', $complaintId);
         }
 

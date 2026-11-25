@@ -654,11 +654,6 @@ include __DIR__ . '/../../layouts/header.php';
 
                             <div class="form-row-2">
                                 <div class="form-group">
-                                    <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
-                                    <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($effTitle); ?>">
-                                </div>
-
-                                <div class="form-group">
                                     <label for="incidentDateTime" id="lblIncidentDateTime">
                                         <?php echo !empty($effIsTimeUnknown) ? 'Incident Date (Exact Time Unknown)' : 'Incident Date &amp; Time'; ?> <span class="required-mark">*</span>
                                     </label>

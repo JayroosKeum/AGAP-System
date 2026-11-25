@@ -226,7 +226,7 @@ if (!$docKp8 || empty($docKp8['document_id'])) {
 
         $insDoc8 = $db->prepare("
             INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-            VALUES (?, ?, ?, NULL, 'For Service', 'Synchronized with current saved hearing schedule')
+            VALUES (?, ?, ?, NULL, 'Served', 'KP Form 8 automatically marked served with current hearing schedule')
         ");
         $insDoc8->execute([$caseId, $templateId8, $userId]);
         $newDocId8 = (int) $db->lastInsertId();

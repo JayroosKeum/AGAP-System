@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 function startTestLisoDuty(PDO $db, int $lisoId): int
 {
+    $db->prepare('DELETE FROM liso_duty_sessions WHERE user_id = ? AND active_marker = 1')
+        ->execute([$lisoId]);
     $db->prepare('INSERT INTO liso_duty_sessions (user_id, started_by) VALUES (?, ?)')
         ->execute([$lisoId, $lisoId]);
     $sessionId = (int) $db->lastInsertId();

@@ -513,6 +513,8 @@ class PDFService
             return $this->kp24Html($data);
         } elseif ($formCode === 'KP Form 25' || $formCode === 'Pormularyo ng KP Blg. 25') {
             return $this->kp25Html($data);
+        } elseif (stripos($formCode, "Officer's Return") !== false || stripos($formCode, 'Officers Return') !== false) {
+            return $this->renderOfficersReturnHtml($data, false);
         }
 
         $complainants = $this->partyLines($data['complainants'] ?? []);
@@ -4573,6 +4575,7 @@ class PDFService
         }
 
         // Check if specific Paanyaya stage is requested
+        $paanyaya = [];
         $stageType = $options['stage_type'] ?? null;
         if ($stageType) {
             $stStmt = $this->conn->prepare('SELECT * FROM paanyaya_stages WHERE complaint_id = ? AND stage_type = ? LIMIT 1');
@@ -4589,6 +4592,64 @@ class PDFService
             }
         }
 
+        // Check prepared Paanyaya invitation record (Walk-in / Online screened intakes)
+        $prepRecord = null;
+        if ($complaintId > 0) {
+            $prepAttemptHint = !empty($options['attempt_number'])
+                ? (int) $options['attempt_number']
+                : (($stageType === 'Paanyaya 2') ? 2 : (($stageType === 'Paanyaya 1') ? 1 : 0));
+            if ($prepAttemptHint > 0) {
+                $prStmt = $this->conn->prepare('SELECT * FROM paanyaya_preparations WHERE complaint_id = ? AND invitation_number = ? LIMIT 1');
+                $prStmt->execute([$complaintId, $prepAttemptHint]);
+            } else {
+                $prStmt = $this->conn->prepare('SELECT * FROM paanyaya_preparations WHERE complaint_id = ? ORDER BY invitation_number DESC LIMIT 1');
+                $prStmt->execute([$complaintId]);
+            }
+            $prepRecord = $prStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            if ($prepRecord) {
+                $apptAt = (string) ($prepRecord['appointment_at'] ?? '');
+                if ($apptAt !== '' && strlen($apptAt) >= 16) {
+                    if (empty($options['invitation_date'])) {
+                        $options['invitation_date'] = substr($apptAt, 0, 10);
+                    }
+                    if (empty($options['invitation_time'])) {
+                        $options['invitation_time'] = substr($apptAt, 11, 8);
+                    }
+                }
+                if (empty($options['venue']) && !empty($prepRecord['venue'])) {
+                    $options['venue'] = $prepRecord['venue'];
+                }
+                if (empty($options['attempt_number'])) {
+                    $options['attempt_number'] = (int) ($prepRecord['invitation_number'] ?? 1);
+                }
+                if (empty($options['issued_date']) && !empty($prepRecord['prepared_at'])) {
+                    $options['issued_date'] = substr((string) $prepRecord['prepared_at'], 0, 10);
+                }
+                if (!isset($options['has_e_signature'])) {
+                    $options['has_e_signature'] = false;
+                }
+                if ((empty($complainants) || empty($respondents)) && !empty($prepRecord['verified_parties'])) {
+                    $decodedParties = json_decode((string) $prepRecord['verified_parties'], true);
+                    if (is_array($decodedParties)) {
+                        $fillComplainants = empty($complainants);
+                        $fillRespondents = empty($respondents);
+                        foreach ($decodedParties as $vp) {
+                            $vpName = trim((string) ($vp['full_name'] ?? ''));
+                            $vpAddr = trim((string) ($vp['address'] ?? '')) ?: 'Barangay Tumana, Marikina City';
+                            if ($vpName === '') {
+                                continue;
+                            }
+                            if (($vp['party_type'] ?? '') === 'Complainant' && $fillComplainants) {
+                                $complainants[] = ['full_name' => $vpName, 'address' => $vpAddr];
+                            } elseif (($vp['party_type'] ?? '') === 'Respondent' && $fillRespondents) {
+                                $respondents[] = ['full_name' => $vpName, 'address' => $vpAddr];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Fetch from independent paanyayas table first
         $paaRecord = null;
         if (!empty($options['paanyaya_id'])) {
@@ -4601,10 +4662,12 @@ class PDFService
             $paaRecord = $paStmt->fetch(PDO::FETCH_ASSOC);
         }
 
-        // Fetch latest paanyaya session record if exists
-        $sessionStmt = $this->conn->prepare('SELECT * FROM paanyaya_sessions WHERE complaint_id = ? ORDER BY attempt_number DESC, session_id DESC LIMIT 1');
-        $sessionStmt->execute([$complaintId]);
-        $paanyaya = $sessionStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        // Fetch latest paanyaya session record if stageData was not already loaded
+        if (empty($paanyaya)) {
+            $sessionStmt = $this->conn->prepare('SELECT * FROM paanyaya_sessions WHERE complaint_id = ? ORDER BY attempt_number DESC, session_id DESC LIMIT 1');
+            $sessionStmt->execute([$complaintId]);
+            $paanyaya = $sessionStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        }
 
         if (empty($paanyaya)) {
             $paaStmt = $this->conn->prepare('SELECT * FROM complaint_paanyaya WHERE complaint_id = ? ORDER BY paanyaya_id DESC LIMIT 1');
@@ -5104,5 +5167,210 @@ class PDFService
 ' . ($forPdf ? '<div class="page-sheet">' . $sheetContent . '</div>' : '<div class="preview-canvas"><div class="page-sheet">' . $sheetContent . '</div></div>') . '
 </body>
 </html>';
+    }
+
+    /**
+     * Renders an official Officer's Return (Patotoo ng Paghahatid) HTML document.
+     */
+    public function renderOfficersReturnHtml(array $data, bool $forPdf = false): string
+    {
+        $caseNumber = $this->escape((string) ($data['case_number'] ?? '—'));
+        $formServed = $this->escape((string) ($data['form_type'] ?? ($data['template_name'] ?? 'KP Form 9 (Summons)')));
+        $partyType = $this->escape((string) ($data['party_type'] ?? 'Respondent'));
+        $recipientName = $this->escape((string) ($data['recipient_name'] ?? '—'));
+        $recipientRelation = $this->escape((string) ($data['relationship'] ?? 'Self'));
+        $serviceStatus = $this->escape((string) ($data['delivery_status'] ?? ($data['service_result'] ?? 'Served')));
+        $serviceMethod = $this->escape((string) ($data['service_method'] ?? 'Personal'));
+        $servedAtRaw = trim((string) ($data['served_at'] ?? date('Y-m-d H:i:s')));
+        $servedAtDisplay = $this->escape(date('F j, Y g:i A', strtotime($servedAtRaw) ?: time()));
+        $officerName = $this->escape((string) ($data['serving_officer_name'] ?? ($data['served_by'] ?? 'Summons Server')));
+        $remarks = $this->escape(trim((string) ($data['remarks'] ?? ($data['officer_return'] ?? 'Process served in accordance with Katarungang Pambarangay rules.'))));
+        $complainantsStr = $this->escape(implode(', ', $this->partyLines($data['complainants'] ?? [])) ?: '—');
+        $respondentsStr = $this->escape(implode(', ', $this->partyLines($data['respondents'] ?? [])) ?: '—');
+        $officialName = $this->escape($this->getAuthorizedCaptainName($data['official_name'] ?? null));
+        $marginCss = $forPdf ? '18mm 20mm' : '18mm 20mm';
+
+        return '<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Officer\'s Return — ' . $caseNumber . '</title>
+    <style>
+        @page { size: A4 portrait; margin: ' . $marginCss . '; }
+        body { font-family: "Times New Roman", "DejaVu Serif", Georgia, serif; font-size: 11pt; color: #111827; line-height: 1.5; margin: 0; background: ' . ($forPdf ? '#ffffff' : '#e2e8f0') . '; }
+        .sheet { ' . ($forPdf ? '' : 'max-width: 210mm; margin: 18px auto; padding: 20mm; background: #ffffff; box-shadow: 0 4px 16px rgba(15,23,42,0.18);') . ' }
+        .hdr { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 16px; }
+        .hdr-sub { font-size: 9.5pt; letter-spacing: 0.03em; }
+        .hdr-office { font-size: 11.5pt; font-weight: bold; margin-top: 3px; }
+        .doc-title { text-align: center; font-size: 13pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; margin: 14px 0 4px; }
+        .doc-sub { text-align: center; font-size: 9.5pt; color: #475569; margin-bottom: 16px; }
+        table.meta { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 10.5pt; }
+        table.meta td { padding: 7px 10px; border: 1px solid #cbd5e1; vertical-align: top; }
+        table.meta td.lbl { width: 34%; font-weight: bold; background: #f8fafc; color: #1e293b; }
+        .narr-box { border: 1px solid #cbd5e1; background: #f8fafc; padding: 12px 14px; margin-bottom: 22px; min-height: 60px; font-size: 10.5pt; }
+        .sigs { width: 100%; margin-top: 28px; border-collapse: collapse; }
+        .sigs td { width: 50%; vertical-align: bottom; text-align: center; padding: 0 14px; }
+        .sig-line { border-top: 1px solid #0f172a; margin-top: 38px; padding-top: 4px; font-weight: bold; font-size: 10.5pt; text-transform: uppercase; }
+        .sig-role { font-size: 9.5pt; color: #475569; }
+    </style>
+</head>
+<body>
+    <div class="sheet">
+        <div class="hdr">
+            <div class="hdr-sub">Republic of the Philippines &middot; City of Marikina &middot; Barangay Tumana</div>
+            <div class="hdr-office">OFFICE OF THE LUPONG TAGAPAMAYAPA</div>
+        </div>
+        <div class="doc-title">OFFICER\'S RETURN OF SERVICE</div>
+        <div class="doc-sub">Patotoo ng Paghahatid ng Opisyal na Proseso ng Katarungang Pambarangay</div>
+        <table class="meta">
+            <tr><td class="lbl">Barangay Case No.</td><td>' . $caseNumber . '</td></tr>
+            <tr><td class="lbl">Complainant(s)</td><td>' . $complainantsStr . '</td></tr>
+            <tr><td class="lbl">Respondent(s)</td><td>' . $respondentsStr . '</td></tr>
+            <tr><td class="lbl">Process / Form Served</td><td>' . $formServed . '</td></tr>
+            <tr><td class="lbl">Recipient (' . $partyType . ')</td><td>' . $recipientName . ' (' . $recipientRelation . ')</td></tr>
+            <tr><td class="lbl">Service Outcome / Result</td><td><strong>' . $serviceStatus . '</strong> &middot; Method: ' . $serviceMethod . '</td></tr>
+            <tr><td class="lbl">Date &amp; Time Recorded</td><td>' . $servedAtDisplay . '</td></tr>
+            <tr><td class="lbl">Serving Officer</td><td>' . $officerName . ' (Summons Server)</td></tr>
+        </table>
+        <div style="font-weight:bold; font-size:10.5pt; margin-bottom:6px;">Certification / Return Remarks:</div>
+        <div class="narr-box">' . nl2br($remarks) . '</div>
+        <table class="sigs">
+            <tr>
+                <td>
+                    <div class="sig-line">' . $officerName . '</div>
+                    <div class="sig-role">Summons Server / Serving Officer</div>
+                </td>
+                <td>
+                    <div class="sig-line">' . $officialName . '</div>
+                    <div class="sig-role">Punong Barangay / Lupon Chairman</div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>';
+    }
+
+    /**
+     * Generates and returns the binary Officer's Return PDF (or saves to $savePath).
+     */
+    public function generateOfficersReturnPdf(array $data, ?string $savePath = null): string
+    {
+        $options = new Options();
+        $options->set('isRemoteEnabled', false);
+        $options->set('isHtml5ParserEnabled', true);
+        $options->set('defaultFont', 'DejaVu Sans');
+
+        $dompdf = new Dompdf($options);
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->loadHtml($this->renderOfficersReturnHtml($data, true), 'UTF-8');
+        $dompdf->render();
+        $pdf = $dompdf->output();
+        if ($pdf === '') {
+            throw new RuntimeException('The PDF renderer returned an empty Officer\'s Return.');
+        }
+        if ($savePath !== null && $savePath !== '') {
+            $dir = dirname($savePath);
+            if (!is_dir($dir)) {
+                @mkdir($dir, 0750, true);
+            }
+            if (file_put_contents($savePath, $pdf, LOCK_EX) === false) {
+                throw new RuntimeException('Unable to write Officer\'s Return PDF to disk.');
+            }
+        }
+        return $pdf;
+    }
+
+    /**
+     * Generates an Officer's Return PDF and registers it inside generated_documents (Case Folder).
+     */
+    public static function registerOfficersReturnDocument(PDO $db, int $caseId, int $actorUserId, array $data): ?int
+    {
+        if ($caseId < 1) {
+            return null;
+        }
+        try {
+            $caseStmt = $db->prepare('SELECT case_id, case_number, complaint_id FROM cases WHERE case_id = ? LIMIT 1');
+            $caseStmt->execute([$caseId]);
+            $caseRow = $caseStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$caseRow) {
+                return null;
+            }
+            $complaintId = (int) ($caseRow['complaint_id'] ?? 0);
+            $caseNumber = (string) ($caseRow['case_number'] ?? ("CASE-{$caseId}"));
+
+            $complainants = [];
+            $respondents = [];
+            if ($complaintId > 0) {
+                $pStmt = $db->prepare(
+                    "SELECT cp.party_type, TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name
+                     FROM complaint_parties cp
+                     INNER JOIN residents r ON r.resident_id = cp.resident_id
+                     WHERE cp.complaint_id = ?"
+                );
+                $pStmt->execute([$complaintId]);
+                foreach ($pStmt->fetchAll(PDO::FETCH_ASSOC) as $p) {
+                    if ($p['party_type'] === 'Complainant') {
+                        $complainants[] = ['full_name' => $p['full_name']];
+                    } elseif ($p['party_type'] === 'Respondent') {
+                        $respondents[] = ['full_name' => $p['full_name']];
+                    }
+                }
+            }
+
+            $officerUserId = (int) ($data['served_by_user_id'] ?? $actorUserId);
+            $uStmt = $db->prepare("SELECT TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) FROM users WHERE user_id = ? LIMIT 1");
+            $uStmt->execute([$officerUserId]);
+            $officerFullName = trim((string) ($uStmt->fetchColumn() ?: ($data['served_by'] ?? 'Summons Server')));
+
+            $safeCase = preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber);
+            $relDir = 'storage/generated-documents/' . date('Y') . '/' . $safeCase;
+            $relPath = $relDir . '/Officers-Return-' . date('Ymd-His') . '-' . bin2hex(random_bytes(3)) . '.pdf';
+            $absPath = dirname(__DIR__, 2) . '/' . $relPath;
+
+            $pdfService = new self($db);
+            $pdfService->generateOfficersReturnPdf(array_merge($data, [
+                'case_number' => $caseNumber,
+                'complainants' => $complainants,
+                'respondents' => $respondents,
+                'serving_officer_name' => $officerFullName,
+            ]), $absPath);
+
+            $db->prepare(
+                "INSERT INTO document_templates (template_name, description)
+                 VALUES ('Officer\'s Return', 'Proof of Service / Officer\'s Return')
+                 ON DUPLICATE KEY UPDATE template_id = LAST_INSERT_ID(template_id)"
+            )->execute();
+            $tplId = (int) $db->lastInsertId();
+            if ($tplId < 1) {
+                $tQ = $db->query("SELECT template_id FROM document_templates WHERE template_name = 'Officer''s Return' LIMIT 1");
+                $tplId = (int) ($tQ ? $tQ->fetchColumn() : 0);
+            }
+            if ($tplId < 1) {
+                return null;
+            }
+
+            $statusStr = (string) ($data['delivery_status'] ?? ($data['service_result'] ?? 'Served'));
+            $docServiceStatus = (stripos($statusStr, 'Unserved') !== false || stripos($statusStr, 'Failed') !== false)
+                ? 'Service Failed'
+                : 'Served';
+
+            $ins = $db->prepare(
+                "INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+                 VALUES (?, ?, ?, ?, ?, ?)"
+            );
+            $ins->execute([
+                $caseId,
+                $tplId,
+                $actorUserId,
+                $relPath,
+                $docServiceStatus,
+                trim((string) ($data['form_type'] ?? "Officer's Return recorded by Summons Server"))
+            ]);
+            return (int) $db->lastInsertId();
+        } catch (Throwable $e) {
+            error_log("registerOfficersReturnDocument failed: " . $e->getMessage());
+            return null;
+        }
     }
 }

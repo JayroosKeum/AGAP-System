@@ -11,6 +11,7 @@ if (!in_array($roleId, [1, 2, 3, 4], true)) {
 require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/models/Paanyaya.php';
 require_once __DIR__ . '/../../../backend/models/Setting.php';
+require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.php';
 
 $sysSettings = Setting::all();
 $rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Tue';
@@ -49,6 +50,16 @@ $medVenue = $sysSettings['mediation_venue'] ?? 'Lupon Court Room';
 $complaintId = filter_var($_GET['id'] ?? ($_GET['complaint_id'] ?? null), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$complaintId) {
     header('Location: complaint-list.php');
+    exit;
+}
+
+$prepDb = (new Database())->connect();
+if (PaanyayaPreparationService::requiresPreparation($prepDb, (int) $complaintId)
+    || PaanyayaPreparationService::managesDialogue($prepDb, (int) $complaintId)) {
+    $destination = $roleId === 4
+        ? '../gps/proof-service.php'
+        : ('complaint-details.php?id=' . (int) $complaintId . '&tab=paanyaya#paanyaya-preparation');
+    header('Location: ' . $destination, true, 303);
     exit;
 }
 

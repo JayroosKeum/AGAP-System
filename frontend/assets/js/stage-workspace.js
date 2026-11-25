@@ -1580,6 +1580,8 @@ function renderWorkspaceUI() {
 
     renderSessionNavigation(data, stage);
 
+    renderStageWorkflowStepper(data, stage);
+
     renderAttendanceSection(data, stage);
 
     renderShowCauseSection(data, stage);
@@ -1588,9 +1590,127 @@ function renderWorkspaceUI() {
 
     renderOutcomeAndReferralSection(data, stage);
     renderWorkspaceOutcomesSummary(data);
+    applyStageWorkflowStep(stageWorkspaceState.activeWorkflowStep || 1);
     applyWorkspaceReadOnlyState(stage);
 
 }
+
+function inferDefaultWorkflowStep(data) {
+    const sessions = stageWorkspaceState.sessions || [];
+    const activeId = Number(stageWorkspaceState.activeSessionHearingId || sessions[0]?.hearing_id || 0);
+    const activeSession = sessions.find(s => Number(s.hearing_id) === activeId) || sessions[0];
+    if (!activeSession) return 1;
+    const hasAtt = Boolean(activeSession.attendance_recorded_at);
+    const hasMin = Boolean(activeSession.minutes_id && activeSession.minutes_status && activeSession.minutes_status !== 'Not Recorded');
+    const hasOutcome = Boolean(activeSession.session_outcome && activeSession.session_outcome !== 'Pending');
+    if (hasMin && (activeSession.minutes_status === 'Finalized' || hasOutcome)) return 3;
+    if (hasAtt) return 2;
+    return 1;
+}
+
+function renderStageWorkflowStepper(data, stage) {
+    let stepperEl = document.getElementById('wsWorkflowStepper');
+    const attSection = document.getElementById('attendanceSection');
+    if (!stepperEl && attSection && attSection.parentNode) {
+        stepperEl = document.createElement('div');
+        stepperEl.id = 'wsWorkflowStepper';
+        stepperEl.style.marginBottom = '18px';
+        attSection.parentNode.insertBefore(stepperEl, attSection);
+    }
+    if (!stepperEl) return;
+
+    const sessions = (stageWorkspaceState.sessions || []).filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
+    if (!sessions.length) {
+        stepperEl.innerHTML = '';
+        stepperEl.style.display = 'none';
+        return;
+    }
+
+    if (!stageWorkspaceState.activeWorkflowStep) {
+        stageWorkspaceState.activeWorkflowStep = inferDefaultWorkflowStep(data);
+    }
+
+    const activeId = Number(stageWorkspaceState.activeSessionHearingId || sessions[0]?.hearing_id || 0);
+    const activeSession = sessions.find(s => Number(s.hearing_id) === activeId) || sessions[0];
+    const step1Done = Boolean(activeSession?.attendance_recorded_at);
+    const step2Done = Boolean(activeSession?.minutes_id && (activeSession?.settlement_discussion_notes || activeSession?.session_minutes));
+    const step3Done = Boolean(activeSession?.minutes_status === 'Finalized' || (activeSession?.session_outcome && activeSession.session_outcome !== 'Pending'));
+    const cur = stageWorkspaceState.activeWorkflowStep;
+    const modeLabel = stageWorkspaceState.mode === 'Conciliation' ? 'Conciliation' : (stageWorkspaceState.mode === 'Arbitration' ? 'Arbitration' : 'Mediation');
+
+    const steps = [
+        { key: 1, title: 'Step 1 · Service & Attendance', sub: 'Verify summons & party appearance', done: step1Done },
+        { key: 2, title: 'Step 2 · Hearing Minutes', sub: 'Record statements & discussion', done: step2Done },
+        { key: 3, title: 'Step 3 · Outcome & Next Action', sub: modeLabel === 'Conciliation' ? 'Decision, Show-Cause / CFA / KP 16' : 'Decision, 2nd Session / KP 10 / KP 16', done: step3Done }
+    ];
+
+    stepperEl.style.display = 'block';
+    stepperEl.innerHTML = `
+        <div style="background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 12px 14px; box-shadow: 0 1px 2px rgba(15,23,42,0.04);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                <span style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #475569;">
+                    ${escapeHtml(modeLabel)} Step-by-Step Session Workflow
+                </span>
+                <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep('${cur === 'all' ? 1 : 'all'}')" style="font-size: 0.74rem; padding: 3px 10px;">
+                    ${cur === 'all' ? 'Switch to Guided Stepper' : 'Show All Steps'}
+                </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;">
+                ${steps.map(st => {
+                    const isActive = cur === st.key;
+                    const bg = isActive ? '#eff6ff' : (st.done ? '#f0fdf4' : '#f8fafc');
+                    const border = isActive ? '2px solid #2563eb' : (st.done ? '1px solid #86efac' : '1px solid #e2e8f0');
+                    const titleColor = isActive ? '#1d4ed8' : (st.done ? '#166534' : '#0f172a');
+                    return `
+                        <button type="button" data-readonly-exempt="true" onclick="setStageWorkflowStep(${st.key})"
+                                style="text-align: left; padding: 9px 12px; border-radius: 8px; background: ${bg}; border: ${border}; cursor: pointer; display: flex; flex-direction: column; gap: 2px;">
+                            <span style="font-size: 0.82rem; font-weight: 700; color: ${titleColor};">
+                                ${st.done ? '✓ ' : ''}${escapeHtml(st.title)}
+                            </span>
+                            <span style="font-size: 0.73rem; color: #64748b;">${escapeHtml(st.sub)}</span>
+                        </button>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function applyStageWorkflowStep(step) {
+    const stepVal = step || 1;
+    stageWorkspaceState.activeWorkflowStep = stepVal;
+    const sessions = (stageWorkspaceState.sessions || []).filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id);
+    if (!sessions.length) return;
+
+    const attSection = document.getElementById('attendanceSection');
+    const minSection = document.getElementById('minutesSection');
+    const scSection = document.getElementById('showCauseSection');
+    const detOutcome = document.getElementById('wsDeterminationsOutcome');
+    const activeId = Number(stageWorkspaceState.activeSessionHearingId || sessions[0]?.hearing_id || 0);
+    const procBlock = document.getElementById(`wsMinutesStepProceedings_${activeId}`);
+    const outBlock = document.getElementById(`wsMinutesStepOutcome_${activeId}`);
+    const showAll = (stepVal === 'all');
+
+    if (attSection) attSection.style.display = (showAll || stepVal === 1) ? 'block' : 'none';
+    if (minSection) minSection.style.display = (showAll || stepVal === 2 || stepVal === 3) ? 'block' : 'none';
+    if (procBlock) procBlock.style.display = (showAll || stepVal === 2) ? 'block' : 'none';
+    if (outBlock) outBlock.style.display = (showAll || stepVal === 3) ? 'block' : 'none';
+
+    if (scSection) {
+        const hasScItems = stageWorkspaceState.mode === 'Conciliation' && (stageWorkspaceState.stageData?.conciliation_show_cause_hearings || []).length > 0;
+        scSection.style.display = (hasScItems && (showAll || stepVal === 3)) ? 'block' : 'none';
+    }
+    if (detOutcome) {
+        detOutcome.style.display = (showAll || stepVal === 3) ? 'block' : 'none';
+    }
+}
+
+function setStageWorkflowStep(step) {
+    stageWorkspaceState.activeWorkflowStep = step;
+    renderStageWorkflowStepper(stageWorkspaceState.stageData || {}, stageWorkspaceState.stageData?.mediation || stageWorkspaceState.stageData?.conciliation || {});
+    applyStageWorkflowStep(step);
+}
+window.setStageWorkflowStep = setStageWorkflowStep;
 
 
 
@@ -3334,7 +3454,7 @@ function getOutcomeOptionsForSession(session, mode) {
 
         }
 
-        opts.push({ val: 'Party Absent', label: 'Non-Appearance / Certified for Show Cause' });
+        opts.push({ val: 'Party Absent', label: 'Party Absent / Non-Appearance Recorded' });
 
         opts.push({ val: 'Dismissed', label: 'Dismiss Complaint — Complainant Absent / Non-Appearance (KP Rules)' });
 
@@ -3520,13 +3640,14 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
     if (compAtt === 'Absent') {
 
-        if (mode === 'Conciliation') {
+        if (mode !== 'Conciliation') {
 
             compConsequenceHtml = `
 
                 <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
 
                     <span style="color: #991b1b; font-weight: 700;">Complainant Non-appearance (${escapeHtml(sessionLabel)})</span>
+                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 2px;">Proceed to reset / 2nd Mediation or dismiss complaint under KP Rules (no KP Form 18 in Mediation).</div>
 
                 </div>
 
@@ -3568,7 +3689,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     <span style="color: #475569; font-weight: 600;">Complainant Non-appearance (${escapeHtml(sessionLabel)}):</span>
 
-                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd session. KP Form 18 notice unlocks upon non-appearance in 2nd session.</span>
+                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd Conciliation. KP Form 18 unlocks upon non-appearance in 2nd Conciliation.</span>
 
                 </div>
 
@@ -3584,13 +3705,14 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
     if (respAtt === 'Absent') {
 
-        if (mode === 'Conciliation') {
+        if (mode !== 'Conciliation') {
 
             respConsequenceHtml = `
 
                 <div style="margin-top: 5px; font-size: 0.74rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 4px; padding: 5px 8px;">
 
                     <span style="color: #991b1b; font-weight: 700;">Respondent Non-appearance (${escapeHtml(sessionLabel)})</span>
+                    <div style="color: #64748b; font-size: 0.71rem; margin-top: 2px;">Proceed to 2nd Mediation or Endorse to Pangkat (KP Form 10) — no KP Form 19 in Mediation.</div>
 
                 </div>
 
@@ -3632,7 +3754,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     <span style="color: #475569; font-weight: 600;">Respondent Non-appearance (${escapeHtml(sessionLabel)}):</span>
 
-                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd session. KP Form 19 notice unlocks upon non-appearance in 2nd session.</span>
+                    <span style="color: #64748b; margin-left: 4px;">Proceed to book 2nd Conciliation. KP Form 19 unlocks upon non-appearance in 2nd Conciliation.</span>
 
                 </div>
 
@@ -3728,17 +3850,17 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                 <!-- ============================================================== -->
 
-                <!-- SECTION 1: SALAYSAY, BUOD NG USAPAN AT TALAKAYAN              -->
+                <!-- STEP 2: SALAYSAY, BUOD NG USAPAN AT TALAKAYAN                  -->
 
                 <!-- ============================================================== -->
 
-                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                <div id="wsMinutesStepProceedings_${hId}" class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
 
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
 
                         <div style="display: flex; align-items: center; gap: 8px;">
 
-                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">1</span>
+                            <span style="background: #2563eb; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">2</span>
 
                             <div>
 
@@ -3913,94 +4035,13 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     </div>
 
-                </div>
-
-
-
-                <!-- ============================================================== -->
-
-                <!-- SECTION 2: MGA MUNGKAHI, ALOK AT NAPAGKASUNDUANG KONDISYON   -->
-
-                <!-- ============================================================== -->
-
-                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
-
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
-
-                        <div style="display: flex; align-items: center; gap: 8px;">
-
-                            <span style="background: #16a34a; color: #fff; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700;">2</span>
-
-                            <div>
-
-                                <h4 style="margin: 0; font-size: 0.96rem; font-weight: 700; color: #0f172a;">Mga Mungkahi, Alok at Napagkasunduang Kondisyon (Agreed Terms &amp; Settlement)</h4>
-
-                                <span style="font-size: 0.76rem; color: #64748b;">Itala ang mga napagkasunduan, plano ng pagbabayad o pagtupad, o mga puntong hindi pa nareresolba</span>
-
-                            </div>
-
-                        </div>
-
-                    </div>
-
-
-
-                    <!-- Quick Pre-drafted Clause Chips -->
-
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; align-items: center;">
-
-                        <span style="font-size: 0.75rem; font-weight: 600; color: #475569;">Quick Insert:</span>
-
-                        <button type="button" class="btn-secondary" onclick="insertAgreedClause('Nagkasundo ang magkabilang panig na ayusin ang alitan sa pamamagitan ng...', ${hId})" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; background: #f8fafc;" ${readonlyAttr}>
-
-                            + Kasunduan sa Pag-aayos
-
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding-top: 12px; border-top: 1px solid #e2e8f0; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep(1)" style="font-size: 0.82rem; padding: 7px 14px;">
+                            &larr; Step 1: Attendance &amp; Service
                         </button>
-
-                        <button type="button" class="btn-secondary" onclick="insertAgreedClause('Nangangako ang ipinagsumbong na magbabayad ng halagang ₱________ sa o bago sumapit ang petsang ________.', ${hId})" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; background: #f8fafc;" ${readonlyAttr}>
-
-                            + Plano ng Pagbabayad
-
+                        <button type="button" class="btn-create" data-readonly-exempt="true" onclick="setStageWorkflowStep(3)" style="font-size: 0.82rem; padding: 7px 16px; background: #2563eb; border-color: #2563eb;">
+                            Step 3: Outcome &amp; Next Action &rarr;
                         </button>
-
-                        <button type="button" class="btn-secondary" onclick="insertAgreedClause('Pumapayag ang may sumbong na bigyan ng palugit ang ipinagsumbong hanggang ________ upang tuparin ang napag-usapan.', ${hId})" style="font-size: 0.72rem; padding: 2px 8px; border-radius: 12px; background: #f8fafc;" ${readonlyAttr}>
-
-                            + Takdang Araw ng Pagtupad
-
-                        </button>
-
-                    </div>
-
-
-
-                    <!-- Agreed Terms Textarea -->
-
-                    <div class="form-group" style="margin-bottom: 12px;">
-
-                        <label for="minAgreements_${hId}" style="font-weight: 700; font-size: 0.84rem; color: #166534; margin-bottom: 4px; display: block;">
-
-                            Napagkasunduang Kondisyon at Kasunduan (Agreed Terms / Action Items)
-
-                        </label>
-
-                        <textarea id="minAgreements_${hId}" name="minAgreements" rows="4" maxlength="4000" placeholder="Mga partikular na kondisyong pinagkasunduan, halaga ng bayarin, iskedyul ng pagbabayad, o mga gagawin..." ${readonlyAttr} style="width: 100%; padding: 10px 12px; font-size: 0.86rem; line-height: 1.5; border: 1px solid #86efac; background: #f0fdf4; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.agreements_action_items || '')}</textarea>
-
-                    </div>
-
-
-
-                    <!-- Contentious / Unresolved items -->
-
-                    <div class="form-group" style="margin-bottom: 0;">
-
-                        <label for="minUnresolved_${hId}" style="font-weight: 600; font-size: 0.82rem; color: #991b1b; margin-bottom: 4px; display: block;">
-
-                            Usaping Hindi Napagkasunduan (Issues Remaining Unresolved)
-
-                        </label>
-
-                        <textarea id="minUnresolved_${hId}" name="minUnresolved" rows="2" maxlength="3000" placeholder="Mga puntong hindi nagkasundo ang mga partido..." ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.unresolved_issues || (!session.minutes_id ? (session.carryover?.unresolved_issues || '') : ''))}</textarea>
-
                     </div>
 
                 </div>
@@ -4009,11 +4050,11 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                 <!-- ============================================================== -->
 
-                <!-- SECTION 3: KINALABASAN NG SESYON (Outcome Determination)        -->
+                <!-- STEP 3: KINALABASAN NG SESYON (Outcome Determination)          -->
 
                 <!-- ============================================================== -->
 
-                <div class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
+                <div id="wsMinutesStepOutcome_${hId}" class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
 
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
 
@@ -4107,7 +4148,13 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid #e2e8f0;">
 
-                    <div style="display: flex; gap: 8px;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+
+                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep(2)" style="font-size: 0.84rem; padding: 7px 14px;">
+
+                            &larr; Step 2: Hearing Minutes
+
+                        </button>
 
                         <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
 
@@ -4789,16 +4836,17 @@ function selectInlineMinutesSession(hearingId) {
 
 
 
-    // 4. Synchronize attendance section above
-
+    // 4. Synchronize attendance section and guided workflow stepper
     if (document.getElementById('wsAttCardBody')) {
-
         openAttendanceModal(targetId, false);
-
     }
 
+    const modeKey = (stageWorkspaceState.mode || 'Mediation').toLowerCase();
+    renderMinutesSection(stageWorkspaceState.stageData || {}, stageWorkspaceState.stageData?.[modeKey] || {});
+    renderStageWorkflowStepper(stageWorkspaceState.stageData || {}, stageWorkspaceState.stageData?.[modeKey] || {});
+    applyStageWorkflowStep(stageWorkspaceState.activeWorkflowStep || 1);
+
     if (stageWorkspaceState.readOnly) {
-        const modeKey = (stageWorkspaceState.mode || 'Mediation').toLowerCase();
         applyWorkspaceReadOnlyState(stageWorkspaceState.stageData?.[modeKey] || {});
     }
 
@@ -5102,7 +5150,7 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
             } else if (outcomeVal === 'Party Absent' || outcomeVal === 'Non-Appearance') {
 
-                if (stageWorkspaceState.mode === 'Conciliation') {
+                if (stageWorkspaceState.mode !== 'Conciliation') {
 
                     targetKpForm = null;
 
@@ -5130,7 +5178,7 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
             } else if (outcomeVal === 'Dismissed') {
 
-                targetKpForm = 'KP Form 21';
+                targetKpForm = (stageWorkspaceState.mode === 'Conciliation') ? 'KP Form 21' : null;
 
             } else if (outcomeVal === 'Rescheduled') {
 
@@ -7731,9 +7779,12 @@ function renderAttendanceModalForm(data) {
 
 
 
-                <div style="display: flex; justify-content: flex-end; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; order: 2;">
+                <div style="display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; order: 2;">
                     <button type="button" id="btnSaveAttendance" class="btn-create" onclick="saveStreamlinedAttendance(false)" ${gateDisabledAttr} style="font-size: 0.85rem; padding: 8px 18px; background: ${isLockedByService ? '#94a3b8' : '#16a34a'}; border-color: ${isLockedByService ? '#94a3b8' : '#16a34a'}; cursor: ${isLockedByService ? 'not-allowed' : 'pointer'};">
                         ${isLockedByService ? '🔒 Check-In Locked (Await Summons Return)' : (isSaved ? '💾 Update Attendance Check-In' : '💾 Save Attendance Check-In')}
+                    </button>
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep(2)" style="font-size: 0.84rem; padding: 8px 16px; border-color: #2563eb; color: #1d4ed8; background: #eff6ff; font-weight: 600;">
+                        Step 2: Hearing Minutes &rarr;
                     </button>
                 </div>
                 <div id="wsAttPartiesContainer" style="display: flex; flex-direction: column; gap: 10px; order: 1;">
@@ -7888,13 +7939,13 @@ function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
     });
 
     const currentMode = stageWorkspaceState.mode || stageWorkspaceState.stageType;
-    if (currentMode === 'Conciliation') {
+    if (currentMode !== 'Conciliation') {
         if (isCompAbsent && isRespAbsent) {
             bannerEl.innerHTML = `
                 <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
                     <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Magkabilang Panig Hindi Dumalo (Mutual Non-Appearance)</strong>
                     <p style="margin: 4px 0 0; font-size: 0.84rem; color: #7f1d1d;">
-                        Parehong hindi sumipot ang Nagrereklamo at Inirereklamo sa itinakdang sesyon ng conciliation.
+                        Parehong hindi sumipot ang Nagrereklamo at Inirereklamo sa itinakdang sesyon ng Mediation. Mag-iskedyul ng susunod na pagdinig o i-dismiss ang reklamo ayon sa KP Rules (walang KP Form 18/19 sa Mediation).
                     </p>
                 </div>
             `;
@@ -7903,7 +7954,7 @@ function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
                 <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
                     <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Inirereklamo Hindi Dumalo (Respondent Non-Appearance)</strong>
                     <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
-                        Hindi sumipot ang inirereklamo sa itinakdang pagdinig sa conciliation.
+                        Hindi sumipot ang inirereklamo sa pagdinig sa Mediation. Mag-iskedyul ng Ikalawang Mediation o i-endorso ang kaso sa Pangkat (<strong>KP Form 10</strong>) — walang KP Form 19 sa Mediation.
                     </div>
                 </div>
             `;
@@ -7912,7 +7963,7 @@ function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
                 <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
                     <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Nagrereklamo Hindi Dumalo (Complainant Non-Appearance)</strong>
                     <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
-                        Hindi sumipot ang nagrereklamo sa itinakdang pagdinig sa conciliation.
+                        Hindi sumipot ang nagrereklamo sa pagdinig sa Mediation. I-reset ang pagdinig o i-dismiss ang reklamo (walang KP Form 18 sa Mediation).
                     </div>
                 </div>
             `;
@@ -7925,7 +7976,7 @@ function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
             <div style="background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 8px; padding: 14px 18px;">
                 <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Magkabilang Panig Hindi Dumalo (Mutual Non-Appearance)</strong>
                 <p style="margin: 4px 0 10px; font-size: 0.84rem; color: #7f1d1d;">
-                    Parehong hindi sumipot ang Nagrereklamo at Inirereklamo sa itinakdang sesyon. Sa ilalim ng Katarungang Pambarangay rules (RA 7160), maglalabas ng Notice of Hearing / Show Cause para sa magkabilang panig (KP Form 18 at KP Form 19).
+                    Parehong hindi sumipot ang Nagrereklamo at Inirereklamo sa itinakdang sesyon ng Conciliation. Sa ilalim ng Katarungang Pambarangay rules (RA 7160 Sec. 410), maglalabas ng Notice of Hearing / Show Cause para sa magkabilang panig (KP Form 18 at KP Form 19).
                 </p>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button type="button" class="btn-secondary" onclick="openKpFormModal(${Number(caseId)}, 'KP Form 18', ${Number(activeHearingId)})" style="font-size: 0.82rem; padding: 7px 14px; background: #fff; border-color: #fca5a5; color: #991b1b; cursor: pointer;">
@@ -7944,7 +7995,7 @@ function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
                     <div>
                         <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Inirereklamo Hindi Dumalo (Respondent Non-Appearance)</strong>
                         <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
-                            Hindi sumipot ang inirereklamo sa itinakdang pagdinig. Sa ilalim ng RA 7160 Sec. 410(b), maglalabas ng <strong>KP Form 19 (Notice of Hearing / Show Cause)</strong> upang pagpaliwanagin ang respondent sa loob ng 5 araw.
+                            Hindi sumipot ang inirereklamo sa itinakdang pagdinig sa Conciliation. Sa ilalim ng RA 7160 Sec. 410(b), maglalabas ng <strong>KP Form 19 (Notice of Hearing / Show Cause)</strong> upang pagpaliwanagin ang respondent sa loob ng 5 araw.
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -7962,7 +8013,7 @@ function renderPartyAbsentOutcomeBanner(bannerEl, caseId, activeHearingId) {
                     <div>
                         <strong style="color: #991b1b; font-size: 0.95rem; display: block;">Nagrereklamo Hindi Dumalo (Complainant Non-Appearance)</strong>
                         <div style="font-size: 0.84rem; color: #7f1d1d; margin-top: 3px;">
-                            Hindi sumipot ang nagrereklamo. Sa ilalim ng RA 7160 Sec. 410(b), maglalabas ng <strong>KP Form 18 (Notice of Hearing / Show Cause)</strong> o i-dismiss ang reklamo (KP Form 21).
+                            Hindi sumipot ang nagrereklamo sa Conciliation. Sa ilalim ng RA 7160 Sec. 410(b), maglalabas ng <strong>KP Form 18 (Notice of Hearing / Show Cause)</strong> o i-dismiss ang reklamo (KP Form 21).
                         </div>
                     </div>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -9005,8 +9056,6 @@ function renderAiHearingMinutesDraft(hearingId, draft, model) {
             </div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:8px; font-size:.78rem; line-height:1.45;">
                 <div><strong>Main issue:</strong><br>${display(draft.main_dispute_identified)}</div>
-                <div><strong>Agreements / actions:</strong><br>${display(draft.agreements_action_items)}</div>
-                <div><strong>Unresolved issues:</strong><br>${display(draft.unresolved_issues)}</div>
                 <div><strong>Remarks:</strong><br>${display(draft.outcome_remarks)}</div>
             </div>
             <p style="margin:9px 0 0; font-size:.76rem; color:#6b21a8;"><strong>Officer check:</strong> ${display(draft.review_note)}</p>
@@ -9025,8 +9074,6 @@ function applyAiHearingMinutesDraft(hearingId) {
     };
     setValue('minDisputeSummary', draft.main_dispute_identified);
     setValue('session_minutes', draft.discussion_summary);
-    setValue('minAgreements', draft.agreements_action_items);
-    setValue('minUnresolved', draft.unresolved_issues);
     setValue('minOutcomeRemarks', draft.outcome_remarks);
     dismissAiHearingMinutesDraft(hearingId);
     window.agapNotify?.('AI draft copied into editable fields. Review and save the minutes when ready.', 'success', 'AI Draft Minutes');
@@ -9239,13 +9286,9 @@ function openPreviewMinutesModal(hearingId) {
 
                 <div style="margin-bottom: 12px;">
 
-                    <strong style="color: #0f172a; font-size: 0.88rem; border-bottom: 1px solid #cbd5e1; display: block; padding-bottom: 3px;">5. Agreed Terms &amp; Procedural Determination</strong>
+                    <strong style="color: #0f172a; font-size: 0.88rem; border-bottom: 1px solid #cbd5e1; display: block; padding-bottom: 3px;">5. Outcome &amp; Procedural Determination</strong>
 
-                    <div style="font-size: 0.84rem; margin-top: 6px;"><strong>Agreed Terms:</strong> ${escapeHtml(min.agreements_action_items || 'None')}</div>
-
-                    <div style="font-size: 0.84rem; margin-top: 4px;"><strong>Unresolved Issues:</strong> ${escapeHtml(min.unresolved_issues || 'None')}</div>
-
-                    <div style="font-size: 0.84rem; margin-top: 4px;"><strong>Session Outcome:</strong> <strong style="color: #15803d;">${escapeHtml(min.session_outcome || 'Pending')}</strong></div>
+                    <div style="font-size: 0.84rem; margin-top: 6px;"><strong>Session Outcome:</strong> <strong style="color: #15803d;">${escapeHtml(min.session_outcome || 'Pending')}</strong></div>
 
                     ${min.actual_end_time ? `<div style="font-size: 0.84rem; margin-top: 4px;"><strong>Actual End Time:</strong> ${formatDateTimeReadable(min.actual_end_time)}</div>` : ''}
 
@@ -9505,13 +9548,7 @@ function printHearingMinutes(hearingId) {
 
 
 
-            <div class="section-heading">II. Mga Mungkahi at Napagkasunduang Kondisyon (Agreed Terms &amp; Settlement)</div>
-
-            <div class="section-body">${escapeHtml(min.agreements_action_items || 'Walang pormal na kasunduang napagtibay sa sesyong ito.')}</div>
-
-
-
-            <div class="section-heading">III. Kinalabasan ng Pagdinig at Susunod na Hakbang (Session Outcome)</div>
+            <div class="section-heading">II. Kinalabasan ng Pagdinig at Susunod na Hakbang (Session Outcome)</div>
 
             <div class="section-body"><strong>Kinalabasan (Outcome):</strong> ${escapeHtml(min.session_outcome || 'Pending Evaluation')}${min.outcome_remarks ? ' — ' + escapeHtml(min.outcome_remarks) : ''}${min.actual_end_time ? ' (Natapos: ' + formatDateTimeReadable(min.actual_end_time) + ')' : ''}</div>
 
@@ -13103,9 +13140,9 @@ function renderShowCauseSection(data, stage) {
     const mode = stageWorkspaceState.mode === 'Conciliation' ? 'Conciliation' : 'Mediation';
     const items = mode === 'Conciliation'
         ? (data.conciliation_show_cause_hearings || [])
-        : (data.mediation_show_cause_hearings || []);
+        : [];
 
-    if (!items.length) {
+    if (mode !== 'Conciliation' || !items.length) {
         section.style.display = 'none';
         container.innerHTML = '';
         return;

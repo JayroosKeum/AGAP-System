@@ -247,6 +247,27 @@ if (!$isPreview) {
     }
 }
 
+if (stripos($formCode, "Officer's Return") !== false || stripos($formCode, 'Officers Return') !== false) {
+    $returnPayload = [
+        'case_number' => $formData['case_number'] ?? "CASE-{$caseId}",
+        'complainants' => $formData['complainants'] ?? [],
+        'respondents' => $formData['respondents'] ?? [],
+        'form_type' => $doc['regeneration_reason'] ?? 'KP Form Process',
+        'service_result' => $doc['service_status'] ?? 'Served',
+        'served_at' => $doc['generated_at'] ?? date('Y-m-d H:i:s'),
+    ];
+    if ($asPdf) {
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="officers-return-' . ($caseId ?: 'doc') . '.pdf"');
+        echo (new PDFService($conn))->noticePdf("Officer's Return", $returnPayload);
+        exit;
+    }
+    $html = (new PDFService($conn))->renderNoticeHtml("Officer's Return", $returnPayload);
+    header('Content-Type: text/html; charset=utf-8');
+    echo $html;
+    exit;
+}
+
 if ($asPdf) {
     try {
         $pdfPath = $kpFormService->generatePdf($formCode, $caseId, $hearingId);

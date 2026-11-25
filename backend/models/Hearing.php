@@ -1708,7 +1708,7 @@ class Hearing
             $kp8FilePath = '';
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'For Service', ?)
+                VALUES (?, ?, ?, ?, 'Served', ?)
             ");
             $doc8Stmt->execute([
                 $caseId,
@@ -1719,14 +1719,14 @@ class Hearing
             ]);
             $kp8DocId = (int) $this->conn->lastInsertId();
 
-            // Summon delivery for Complainant (KP Form 8)
+            // Summon delivery for Complainant (KP Form 8 auto-served upon issuance)
             $deliv8 = $this->conn->prepare("
                 INSERT INTO summon_deliveries (
                     hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
-                    document_id, recipient_name, created_by, service_method, remarks
+                    document_id, recipient_name, created_by, served_at, served_by, served_by_user_id, service_method, remarks
                 ) VALUES (
-                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Pending',
-                    ?, ?, ?, 'Personal', ?
+                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Served Personal',
+                    ?, ?, ?, NOW(), ?, ?, 'Personal', ?
                 )
             ");
             $deliv8->execute([
@@ -1735,6 +1735,8 @@ class Hearing
                 $primaryComp['resident_id'] ?: null,
                 $kp8DocId,
                 $primaryComp['full_name'],
+                $userId,
+                $userId,
                 $userId,
                 "Notice of Rescheduled Hearing (KP Form 8) issued due to presider unavailability: {$reason}."
             ]);
@@ -1965,6 +1967,10 @@ class Hearing
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
                 VALUES (?, ?, ?, ?, 'For Service', ?)
             ");
+            $doc8ServedStmt = $this->conn->prepare("
+                INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
+                VALUES (?, ?, ?, ?, 'Served', ?)
+            ");
 
             $delivStmt = $this->conn->prepare("
                 INSERT INTO summon_deliveries (
@@ -1973,6 +1979,15 @@ class Hearing
                 ) VALUES (
                     ?, ?, ?, ?, ?, 'Pending',
                     ?, ?, ?, 'Personal', ?
+                )
+            ");
+            $deliv8ServedStmt = $this->conn->prepare("
+                INSERT INTO summon_deliveries (
+                    hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
+                    document_id, recipient_name, created_by, served_at, served_by, served_by_user_id, service_method, remarks
+                ) VALUES (
+                    ?, ?, ?, ?, ?, 'Served Personal',
+                    ?, ?, ?, NOW(), ?, ?, 'Personal', ?
                 )
             ");
 
@@ -2073,7 +2088,7 @@ class Hearing
                 $kp8Path = "storage/documents/kp-forms/{$cId}/KP_Form_8-{$safeCase}-{$ts}.pdf";
                 $kp9Path = "storage/documents/kp-forms/{$cId}/KP_Form_9-{$safeCase}-{$ts}.pdf";
 
-                $docStmt->execute([
+                $doc8ServedStmt->execute([
                     $cId,
                     $kp8TemplateId,
                     $userId,
@@ -2082,7 +2097,7 @@ class Hearing
                 ]);
                 $doc8Id = (int) $this->conn->lastInsertId();
 
-                $delivStmt->execute([
+                $deliv8ServedStmt->execute([
                     $newHId,
                     $cId,
                     'Complainant',
@@ -2090,6 +2105,8 @@ class Hearing
                     'Notice of Hearing',
                     $doc8Id,
                     $primaryComp['full_name'],
+                    $userId,
+                    $userId,
                     $userId,
                     "Notice of Rescheduled Hearing (KP Form 8) issued due to Punong Barangay Unavailability."
                 ]);
@@ -2314,7 +2331,7 @@ class Hearing
             $kp8FilePath = '';
             $doc8Stmt = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'For Service', ?)
+                VALUES (?, ?, ?, ?, 'Served', ?)
             ");
             $doc8Stmt->execute([
                 $caseId,
@@ -2325,14 +2342,14 @@ class Hearing
             ]);
             $kp8DocId = (int) $this->conn->lastInsertId();
 
-            // Summon delivery for Complainant (KP Form 8)
+            // Summon delivery for Complainant (KP Form 8 auto-served upon issuance)
             $deliv8 = $this->conn->prepare("
                 INSERT INTO summon_deliveries (
                     hearing_id, case_id, party_type, resident_id, form_type, delivery_status,
-                    document_id, recipient_name, created_by, service_method, remarks
+                    document_id, recipient_name, created_by, served_at, served_by, served_by_user_id, service_method, remarks
                 ) VALUES (
-                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Pending',
-                    ?, ?, ?, 'Personal', ?
+                    ?, ?, 'Complainant', ?, 'Notice of Hearing', 'Served Personal',
+                    ?, ?, ?, NOW(), ?, ?, 'Personal', ?
                 )
             ");
             $deliv8->execute([
@@ -2341,6 +2358,8 @@ class Hearing
                 $primaryComp['resident_id'] ?: null,
                 $kp8DocId,
                 $primaryComp['full_name'],
+                $userId,
+                $userId,
                 $userId,
                 "Notice of Rescheduled Hearing (KP Form 8): {$reason}."
             ]);

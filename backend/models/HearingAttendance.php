@@ -217,28 +217,30 @@ class HearingAttendance
             }
         }
 
+        $isConciliation = (($hearing['hearing_type'] ?? '') === 'Conciliation');
+
         $partyFormRules = [
             'hearing_sequence' => $hearingSequence,
             'is_second_or_later' => $isSecondOrLaterMediation,
             'complainant' => [
-                'kp18_eligible' => ($isSecondOrLaterMediation && $compAbsent),
+                'kp18_eligible' => ($isConciliation && $compAbsent),
                 'kp18_generated' => (bool) $doc18,
                 'kp18_document_id' => $doc18 ? (int) $doc18['document_id'] : null,
-                'kp18_reason' => !$isSecondOrLaterMediation
-                    ? 'KP Form 18 is not applicable for 1st Mediation. Proceed to book the 2nd Mediation session.'
-                    : (!$compAbsent ? 'Complainant was not recorded absent in this 2nd Mediation session.' : 'Eligible for KP Form 18 Notice.'),
+                'kp18_reason' => !$isConciliation
+                    ? 'KP Form 18 is reserved for Pangkat Conciliation hearings; in Mediation, proceed to 2nd session or dismissal.'
+                    : (!$compAbsent ? 'Complainant was not recorded absent in this Conciliation session.' : 'Eligible for KP Form 18 Notice.'),
                 'kp21_unlocked' => ($compEval && (int) $compEval['is_justified'] === 0),
                 'kp21_reason' => !$compEval 
                     ? 'KP Form 21 (Bar Action) is locked: Requires a show-cause hearing evaluation ruling non-appearance as unjustified.'
                     : ((int) $compEval['is_justified'] === 1 ? 'KP Form 21 cannot be issued: Complainant absence was ruled justified.' : 'Eligible for KP Form 21 (Certificate to Bar Action).'),
             ],
             'respondent' => [
-                'kp19_eligible' => ($isSecondOrLaterMediation && $respAbsent),
+                'kp19_eligible' => ($isConciliation && $respAbsent),
                 'kp19_generated' => (bool) $doc19,
                 'kp19_document_id' => $doc19 ? (int) $doc19['document_id'] : null,
-                'kp19_reason' => !$isSecondOrLaterMediation
-                    ? 'KP Form 19 is not applicable for 1st Mediation. Proceed to book the 2nd Mediation session.'
-                    : (!$respAbsent ? 'Respondent was not recorded absent in this 2nd Mediation session.' : 'Eligible for KP Form 19 Notice.'),
+                'kp19_reason' => !$isConciliation
+                    ? 'KP Form 19 is reserved for Pangkat Conciliation hearings; in Mediation, proceed to 2nd session or Endorse to Pangkat (KP Form 10).'
+                    : (!$respAbsent ? 'Respondent was not recorded absent in this Conciliation session.' : 'Eligible for KP Form 19 Notice.'),
                 'kp22_unlocked' => ($respEval && (int) $respEval['is_justified'] === 0),
                 'kp22_reason' => !$respEval 
                     ? 'KP Form 22 (Bar Counterclaim) is locked: Requires a show-cause hearing evaluation ruling non-appearance as unjustified.'

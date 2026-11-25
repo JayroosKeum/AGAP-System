@@ -436,13 +436,21 @@ function activateRequestedCaseTab() {
     if (!requestedTab) return;
 
     let targetId = requestedTab.startsWith('tab-') ? requestedTab : ('tab-' + requestedTab);
+    if (requestedTab.startsWith('paanyaya-')) targetId = 'tab-paanyaya';
     if (targetId === 'tab-parties') targetId = 'tab-mediation';
     if (targetId === 'tab-documents') targetId = 'tab-conciliation';
 
     const targetBtn = document.querySelector(`.case-tab-item[data-tab="${targetId}"]`);
     if (targetBtn) {
         const access = canAccessTab(targetId);
-        switchCaseTab(access.allowed ? targetId : 'tab-overview');
+        const resolvedTab = access.allowed ? targetId : 'tab-overview';
+        switchCaseTab(resolvedTab);
+        if (hashTab && resolvedTab === 'tab-paanyaya') {
+            const anchorEl = document.getElementById(hashTab);
+            if (anchorEl) {
+                setTimeout(() => anchorEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+            }
+        }
     }
 }
 
@@ -468,15 +476,6 @@ function initialiseCaseTabs() {
 function switchCaseTab(tabId) {
     if (tabId === 'tab-parties') tabId = 'tab-mediation';
     if (tabId === 'tab-documents') tabId = 'tab-conciliation';
-
-    // Stage 0 is owned by the Paanyaya module, not Complaint Details.
-    if (tabId === 'tab-paanyaya') {
-        const complaintId = new URLSearchParams(window.location.search).get('id');
-        if (complaintId) {
-            window.location.href = `../paanyaya/stage.php?complaint_id=${encodeURIComponent(complaintId)}`;
-        }
-        return true;
-    }
 
     // Sequential stage locking verification
     const access = canAccessTab(tabId);
@@ -2204,6 +2203,10 @@ function renderOfficialKpForms(workspace, complaint) {
                         <button type="button" class="btn-small-link" onclick="openKp7DigitalPreviewModal(${Number(complaintId)})" style="color: #0284c7; border-color: #bae6fd; font-weight: 600;">
                             Preview / Print
                         </button>
+                        <a href="../../../backend/api/complaints/kp7-preview.php?id=${encodeURIComponent(complaintId)}&amp;download=1" class="btn-pdf-chip" download title="Download KP Form 7 PDF">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            <span>PDF</span>
+                        </a>
                         ${hasScan ? `
                             <a href="../../../backend/api/complaints/scanned-document.php?id=${encodeURIComponent(scanDoc.doc_id)}" target="_blank" class="btn-small-link" style="color: #15803d; border-color: #bbf7d0; text-decoration: none;" title="View scanned handwritten copy">
                                 View Scan
@@ -2248,10 +2251,8 @@ function renderOfficialKpForms(workspace, complaint) {
         const needsOfficerReturn = tNameLower.includes('summon') || 
                                    tNameLower.includes('patawag') || 
                                    tNameLower.includes('kp form 9') || 
-                                   tNameLower.includes('kp form 8') || 
                                    tNameLower.includes('kp form 18') || 
                                    tNameLower.includes('kp form 19') || 
-                                   tNameLower.includes('notice of hearing') || 
                                    tNameLower.includes('subpoena') || 
                                    tNameLower.includes('kp form 13') ||
                                    isKp12;
@@ -2295,7 +2296,7 @@ function renderOfficialKpForms(workspace, complaint) {
                             All Pangkat Notices
                         </button>
                     ` : ''}
-                    ${doc.file_path ? `
+                    ${(doc.file_path || doc.document_id) ? `
                         <a href="../../../backend/api/documents/download.php?id=${encodeURIComponent(doc.document_id)}&download=1" class="btn-pdf-chip" download title="Download official PDF">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                             <span>PDF</span>
@@ -7987,8 +7988,12 @@ function openKp7DigitalPreviewModal(complaintId) {
     }
     const modal = document.getElementById('kp7DigitalPreviewModal');
     const iframe = document.getElementById('kp7PreviewIframe');
+    const dlBtn = document.getElementById('btnDownloadKp7Pdf');
     if (!modal || !iframe) return;
     iframe.src = `../../../backend/api/complaints/kp7-preview.php?id=${encodeURIComponent(complaintId)}&_t=${Date.now()}`;
+    if (dlBtn) {
+        dlBtn.href = `../../../backend/api/complaints/kp7-preview.php?id=${encodeURIComponent(complaintId)}&download=1`;
+    }
     modal.style.display = 'flex';
 }
 window.openKp7DigitalPreviewModal = openKp7DigitalPreviewModal;

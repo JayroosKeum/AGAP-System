@@ -1191,7 +1191,7 @@ include '../../layouts/header.php';
                                     <span class="wizard-step-badge">5</span>
                                     <div class="wizard-step-meta">
                                         <span class="wizard-step-name"<?= $rEnAttr('Review and submit') ?>><?= $rOut('Suriin at isumite', 'Review and submit') ?></span>
-                                        <span class="wizard-step-desc"<?= $rEnAttr($isResidentPortal ? 'Summary & concern submission' : 'Classification & LISO screening') ?>><?= $rOut('Buod at pagsusumite ng sumbong', 'Classification & LISO screening') ?></span>
+                                        <span class="wizard-step-desc"<?= $rEnAttr($isResidentPortal ? 'Summary & concern submission' : 'Classification & submission') ?>><?= $rOut('Buod at pagsusumite ng sumbong', 'Classification & submission') ?></span>
                                     </div>
                                 </button>
                             </div>
@@ -2123,61 +2123,9 @@ include '../../layouts/header.php';
                                 </div>
                             </div>
 
-                            <!-- Conditional Criminal-Specific Intake Fields (Shown ONLY when Case Type is Criminal) -->
-                            <?php
-                                $initCaseType = $old['case_type'] ?? 'Civil';
-                                $initImpVal = (string) ($old['offense_imprisonment_max'] ?? '0');
-                                $initNoPriv = array_key_exists('has_private_offended_party', $old) && empty($old['has_private_offended_party']);
-                            ?>
-                            <div id="criminalIntakeFieldsSection" data-criminal-only="1" style="display: <?php echo ($initCaseType === 'Criminal') ? 'block' : 'none'; ?>; margin: 12px 0 14px; padding: 14px 16px; background: #fff5f5; border: 1.5px solid #fecaca; border-radius: 10px;" <?php echo ($initCaseType === 'Criminal') ? '' : 'hidden'; ?>>
-                                <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
-                                    <div>
-                                        <strong style="font-size: 0.92rem; color: #991b1b; display: block;">Criminal Offense Screening Fields (R.A. 7160 &sect;&sect;408(c)–(d), 412)</strong>
-                                        <span style="font-size: 0.78rem; color: #7f1d1d;">Shown only for Criminal cases to verify Katarungang Pambarangay statutory thresholds.</span>
-                                    </div>
-                                    <span style="background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; font-size: 0.72rem; font-weight: 700; padding: 2px 8px; border-radius: 9999px; text-transform: uppercase;">Criminal Intake</span>
-                                </div>
-
-                                <div class="form-group" style="margin-bottom: 10px;">
-                                    <label for="offenseImprisonmentMax" style="font-weight: 700; color: #1e293b; font-size: 0.85rem;">Maximum Statutory Imprisonment (&sect;408(c))</label>
-                                    <select id="offenseImprisonmentMax" name="offense_imprisonment_max" class="form-control">
-                                        <option value="0" <?php echo $initImpVal === '0' ? 'selected' : ''; ?>>Fine-only / Light felony without imprisonment (KP Eligible)</option>
-                                        <option value="0.5" <?php echo $initImpVal === '0.5' ? 'selected' : ''; ?>>Up to 6 months (Arresto Mayor — KP Eligible)</option>
-                                        <option value="1" <?php echo $initImpVal === '1' ? 'selected' : ''; ?>>Over 6 months up to 1 year (Max KP Limit)</option>
-                                        <option value="2" <?php echo $initImpVal === '2' ? 'selected' : ''; ?>>Exceeds 1 year (&gt; 1 Year — Outside KP Jurisdiction)</option>
-                                    </select>
-                                </div>
-
-                                <input type="hidden" id="hasPrivateOffendedParty" name="has_private_offended_party" value="<?php echo $initNoPriv ? '0' : '1'; ?>">
-
-                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px;">
-                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
-                                        <input type="checkbox" id="chkCriminalNoPrivateParty" value="1" <?php echo $initNoPriv ? 'checked' : ''; ?> style="margin-top: 2px;">
-                                        <span>Offense has no private offended party (&sect;408(d))</span>
-                                    </label>
-                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
-                                        <input type="checkbox" id="chkCriminalAccusedDetained" name="accused_under_detention" value="1" <?php echo !empty($old['accused_under_detention']) ? 'checked' : ''; ?> style="margin-top: 2px;">
-                                        <span>Accused is currently under detention (&sect;412(a))</span>
-                                    </label>
-                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
-                                        <input type="checkbox" id="chkCriminalHabeasCorpus" name="habeas_corpus_needed" value="1" <?php echo !empty($old['habeas_corpus_needed']) ? 'checked' : ''; ?> style="margin-top: 2px;">
-                                        <span>Personal liberty / habeas corpus needed (&sect;412(b))</span>
-                                    </label>
-                                    <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 0.82rem; color: #1e293b; cursor: pointer;">
-                                        <input type="checkbox" id="chkCriminalPrescriptionRisk" name="prescription_risk" value="1" <?php echo !empty($old['prescription_risk']) ? 'checked' : ''; ?> style="margin-top: 2px;">
-                                        <span>Criminal action at risk of prescription (&sect;412(d))</span>
-                                    </label>
-                                </div>
-
-                                <div id="criminalIntakeExclusionAlert" style="display: none; margin-top: 10px; padding: 9px 12px; background: #fef2f2; border: 1px solid #f87171; border-radius: 6px; font-size: 0.8rem; color: #991b1b; font-weight: 600;"></div>
-                            </div>
-                            <?php endif; ?>
-
-                            <?php if (!$isResidentPortal): ?>
-                            <div class="form-group">
-                                <label for="complaintTitle">Complaint Title / Specific Nature <span class="required-mark">*</span></label>
-                                <input type="text" id="complaintTitle" name="complaint_title" maxlength="255" required placeholder="e.g. Boundary dispute, Unpaid debt, Slander" value="<?php echo htmlspecialchars($old['complaint_title'] ?? ''); ?>">
-                            </div>
+                            <!-- Criminal jurisdiction warnings removed; defaults kept for server compatibility -->
+                            <input type="hidden" name="offense_imprisonment_max" value="0">
+                            <input type="hidden" name="has_private_offended_party" value="1">
                             <?php endif; ?>
 
                             <?php if (!$isResidentPortal): ?>
@@ -2189,26 +2137,6 @@ include '../../layouts/header.php';
                                     ⚠️ Required for damages > ₱5,000 (Police / Court Jurisdiction — Issue Blotter Reference Only).
                                 </div>
                             </div>
-                            <?php endif; ?>
-
-                            <?php if (!$isResidentPortal && empty($escalatePaanyaya)): ?>
-                                <div class="form-group" style="margin: 10px 0 18px; padding: 14px 16px; background: #eef7f0; border: 1px solid #c7dfcd; border-radius: 8px;">
-                                    <label for="lisoAssignedTo" style="color: #1f5138; font-weight: 750;">LISO assigned to screen this walk-in <span class="required-mark">*</span></label>
-                                    <select id="lisoAssignedTo" name="liso_assigned_to" required style="margin-top: 7px; width: 100%;">
-                                        <option value="">Select a Lupon Member currently on LISO duty</option>
-                                        <?php foreach ($activeLisos as $liso): ?>
-                                            <?php $lisoName = trim(($liso['first_name'] ?? '') . ' ' . ($liso['last_name'] ?? '')); ?>
-                                            <option value="<?= (int) $liso['user_id'] ?>" <?= ((string) ($old['liso_assigned_to'] ?? '') === (string) $liso['user_id']) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($lisoName !== '' ? $lisoName : 'Lupon Member') ?> · timed in <?= htmlspecialchars(date('g:i A', strtotime((string) $liso['started_at']))) ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <?php if (!$activeLisos): ?>
-                                        <p style="color: #9a5a10; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">No LISO is timed in. Ask a Lupon Member to start LISO duty before recording this walk-in.</p>
-                                    <?php else: ?>
-                                        <p style="color: #4d6e59; font-size: 0.8rem; line-height: 1.45; margin: 8px 0 0;">Only members currently timed in are listed. The assigned LISO will receive this intake in My Walk-in Screenings.</p>
-                                    <?php endif; ?>
-                                </div>
                             <?php endif; ?>
 
                             <!-- Real-time Duplicate Warning Banner -->
@@ -2226,9 +2154,6 @@ include '../../layouts/header.php';
                             </div>
 
                             <input type="hidden" name="jurisdiction_screened" id="jurisdictionScreened" value="1">
-                            <?php if ($isResidentPortal): ?>
-                            <input type="hidden" name="has_private_offended_party" value="1">
-                            <?php endif; ?>
                         </section>
                         </div><!-- /#wizardPanel5 -->
 
@@ -2250,7 +2175,7 @@ include '../../layouts/header.php';
                                         <?= $rOut('Susunod na Hakbang →', 'Next Step &rarr;') ?>
                                     </button>
                                     <button type="submit" form="createComplaintForm" class="btn-wizard-submit" id="btnSubmitComplaint" style="display: none;"<?= $isResidentPortal ? $rEnAttr('Submit Concern →') : '' ?>>
-                                        <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation &rarr;' : ($isResidentPortal ? 'Isumite ang Sumbong →' : 'Submit for LISO Screening &rarr;') ?>
+                                        <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation &rarr;' : ($isResidentPortal ? 'Isumite ang Sumbong →' : 'Submit &amp; Accept Complaint &rarr;') ?>
                                     </button>
                                 </div>
                             </div>
@@ -3015,66 +2940,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const caseTypeSelectEl = document.getElementById('caseType');
     const caseTypeAutoHintEl = document.getElementById('caseTypeAutoHint');
-    const criminalFieldsSectionEl = document.getElementById('criminalIntakeFieldsSection');
-    const offenseImpSelectEl = document.getElementById('offenseImprisonmentMax');
-    const hasPrivatePartyHiddenEl = document.getElementById('hasPrivateOffendedParty');
-    const chkNoPrivPartyEl = document.getElementById('chkCriminalNoPrivateParty');
-    const chkAccDetainedEl = document.getElementById('chkCriminalAccusedDetained');
-    const chkHabeasEl = document.getElementById('chkCriminalHabeasCorpus');
-    const chkPrescRiskEl = document.getElementById('chkCriminalPrescriptionRisk');
-    const criminalExclusionAlertEl = document.getElementById('criminalIntakeExclusionAlert');
 
-    function updateCriminalExclusionAlert() {
-        if (!criminalExclusionAlertEl) return;
-        const reasons = [];
-        const impVal = parseFloat(offenseImpSelectEl?.value || '0') || 0;
-        if (impVal > 1.0) reasons.push('Imprisonment exceeds 1 year (§408(c))');
-        if (chkNoPrivPartyEl?.checked) reasons.push('No private offended party (§408(d))');
-        if (chkAccDetainedEl?.checked) reasons.push('Accused is under detention (§412(a))');
-        if (chkHabeasEl?.checked) reasons.push('Personal liberty / habeas corpus needed (§412(b))');
-        if (chkPrescRiskEl?.checked) reasons.push('Prescription risk (§412(d))');
-        if (reasons.length > 0) {
-            criminalExclusionAlertEl.textContent = 'Statutory Exclusion Flagged: ' + reasons.join(' · ') + ' — Outside mandatory KP conciliation.';
-            criminalExclusionAlertEl.style.display = 'block';
-        } else {
-            criminalExclusionAlertEl.textContent = '';
-            criminalExclusionAlertEl.style.display = 'none';
-        }
-    }
-
-    function syncCriminalIntakeFields() {
-        if (!criminalFieldsSectionEl || !caseTypeSelectEl) return;
-        const isCriminal = caseTypeSelectEl.value === 'Criminal';
-        criminalFieldsSectionEl.hidden = !isCriminal;
-        criminalFieldsSectionEl.style.display = isCriminal ? 'block' : 'none';
-        if (!isCriminal) {
-            // Clear stale criminal-only values when switching back to Civil
-            if (offenseImpSelectEl) offenseImpSelectEl.value = '0';
-            if (chkNoPrivPartyEl) chkNoPrivPartyEl.checked = false;
-            if (hasPrivatePartyHiddenEl) hasPrivatePartyHiddenEl.value = '1';
-            if (chkAccDetainedEl) chkAccDetainedEl.checked = false;
-            if (chkHabeasEl) chkHabeasEl.checked = false;
-            if (chkPrescRiskEl) chkPrescRiskEl.checked = false;
-        } else if (hasPrivatePartyHiddenEl && chkNoPrivPartyEl) {
-            hasPrivatePartyHiddenEl.value = chkNoPrivPartyEl.checked ? '0' : '1';
-        }
-        updateCriminalExclusionAlert();
-    }
-
-    chkNoPrivPartyEl?.addEventListener('change', () => {
-        if (hasPrivatePartyHiddenEl) {
-            hasPrivatePartyHiddenEl.value = chkNoPrivPartyEl.checked ? '0' : '1';
-        }
-        updateCriminalExclusionAlert();
-    });
-    [offenseImpSelectEl, chkAccDetainedEl, chkHabeasEl, chkPrescRiskEl].forEach(el => {
-        el?.addEventListener('change', updateCriminalExclusionAlert);
-    });
     caseTypeSelectEl?.addEventListener('change', () => {
         window.AgapCategoryClassification?.syncSegmentedGroupForSelect(caseTypeSelectEl);
-        syncCriminalIntakeFields();
     });
-    syncCriminalIntakeFields();
 
     window.addEventListener('pageshow', () => {
         if (categorySelectEl && primaryCategoryInputEl) {
@@ -3089,7 +2958,6 @@ document.addEventListener('DOMContentLoaded', () => {
             window.AgapCategoryClassification?.syncSegmentedGroupForSelect(caseTypeSelectEl);
         }
         syncOtherCategoryVisibility();
-        syncCriminalIntakeFields();
     });
 
     function autoSyncCaseTypeFromCategories() {
@@ -6143,8 +6011,8 @@ document.addEventListener('DOMContentLoaded', () => {
             5: {
                 title: tr('Suriin at isumite', 'Review and submit'),
                 desc: tr(
-                    IS_RESIDENT_PORTAL ? 'Suriin ang iyong buod ng barangay blotter bago isumite.' : 'Check the details, select the complaint classification, and assign LISO screening.',
-                    IS_RESIDENT_PORTAL ? 'Review your barangay blotter summary before submitting.' : 'Check the details, select the complaint classification, and assign LISO screening.'
+                    IS_RESIDENT_PORTAL ? 'Suriin ang iyong buod ng barangay blotter bago isumite.' : 'Check the details, select the complaint classification, and submit the walk-in complaint.',
+                    IS_RESIDENT_PORTAL ? 'Review your barangay blotter summary before submitting.' : 'Check the details, select the complaint classification, and submit the walk-in complaint.'
                 )
             }
         };
@@ -6254,13 +6122,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     return false;
                 }
             }
-            const title = (document.getElementById('complaintTitle')?.value || '').trim();
-            if (!title) {
+            const titleEl = document.getElementById('complaintTitle');
+            const title = (titleEl?.value || '').trim();
+            if (titleEl && !title) {
                 if (IS_RESIDENT_PORTAL) {
                     window.setWizardStep?.(1);
                 }
                 window.agapNotify?.(tr('Pakilagay ang Paksa o Pamagat ng Sumbong.', 'Please enter the Complaint Title / Specific Nature.'), 'error');
-                document.getElementById('complaintTitle')?.focus();
+                titleEl.focus();
                 return false;
             }
             return true;

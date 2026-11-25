@@ -504,16 +504,16 @@ class CaseStage
             ];
         } elseif ($latestCompAtt === 'Absent') {
             $nextPermittedAction = [
-                'action' => 'Issue Show Cause Order (KP Form 18)',
-                'description' => 'Complainant was absent without verified excuse. Require justification or dismiss complaint.',
-                'action_type' => 'show_cause',
+                'action' => 'Address Complainant Non-Appearance',
+                'description' => 'Complainant did not appear. Book 2nd Mediation or dismiss complaint under KP Rules (no KP Form 18 in Mediation).',
+                'action_type' => 'record_minutes',
                 'badge' => 'badge-danger'
             ];
         } elseif ($latestRespAtt === 'Absent') {
             $nextPermittedAction = [
-                'action' => 'Issue Show Cause Notice (KP Form 19)',
-                'description' => 'Respondent was absent without verified excuse. Require justification or note CFA eligibility.',
-                'action_type' => 'show_cause',
+                'action' => 'Address Respondent Non-Appearance',
+                'description' => 'Respondent did not appear. Book 2nd Mediation or elevate/endorse case to Pangkat (KP Form 10).',
+                'action_type' => 'record_minutes',
                 'badge' => 'badge-danger'
             ];
         } elseif ($latestHearing && (($latestHearing['minutes_status'] ?? 'Not Recorded') !== 'Finalized')) {

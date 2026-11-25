@@ -531,6 +531,10 @@ class Paanyaya
                    c.status AS complaint_workflow_status,
                    cs.case_id AS linked_case_id,
                    cs.case_status AS linked_case_status,
+                   EXISTS (
+                       SELECT 1 FROM paanyaya_preparations pp_check
+                       WHERE pp_check.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                   ) AS is_complaint_preparation,
                    COALESCE(
                        NULLIF(TRIM(p.complainant_name), ''),
                        (
@@ -766,6 +770,10 @@ class Paanyaya
                    c.status AS complaint_workflow_status,
                    cs.case_id AS linked_case_id,
                    cs.case_status AS linked_case_status,
+                   EXISTS (
+                       SELECT 1 FROM paanyaya_preparations pp_check
+                       WHERE pp_check.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
+                   ) AS is_complaint_preparation,
                    COALESCE(
                        NULLIF(TRIM(p.complainant_name), ''),
                        (
@@ -1798,19 +1806,11 @@ class Paanyaya
     }
 
     /**
-     * Gets all serving officers (Summons Servers, Clerks, Admins).
+     * Gets all serving officers (strictly Summons Server role).
      */
     public function getServingOfficers(): array
     {
-        $stmt = $this->conn->query("
-            SELECT u.user_id, u.username, u.role_id, r.role_name,
-                   TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name
-            FROM users u
-            INNER JOIN roles r ON r.role_id = u.role_id
-            WHERE u.status = 'Active' AND u.role_id IN (1, 2, 4)
-            ORDER BY u.role_id DESC, u.last_name ASC
-        ");
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $this->getSummonsServers();
     }
 
     /**
@@ -1826,8 +1826,7 @@ class Paanyaya
             WHERE u.status = 'Active' AND (u.role_id = 4 OR r.role_name = 'Summons Server')
             ORDER BY u.last_name ASC
         ");
-        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        return !empty($results) ? $results : $this->getServingOfficers();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**
@@ -3063,12 +3062,15 @@ require_once __DIR__ . '/../services/ComplaintClassificationService.php';
         $invAttended = in_array($data['invitee_attended'] ?? '', ['Present', 'Absent'], true)
             ? $data['invitee_attended'] : 'Present';
         $existingSalaysay = trim((string)($paanyaya['salaysay'] ?? ''));
-        $salaysay = $existingSalaysay !== '' ? $existingSalaysay : trim((string)($data['salaysay'] ?? ''));
-        $incomingNotes = trim((string)($data['dialogue_notes'] ?? ($data['notes'] ?? '')));
+        $incomingSalaysay = trim((string)($data['salaysay'] ?? ''));
+        $salaysay = array_key_exists('salaysay', $data)
+            ? ($incomingSalaysay !== '' ? $incomingSalaysay : $existingSalaysay)
+            : $existingSalaysay;
+
         $existingNotes = trim((string)($paanyaya['dialogue_notes'] ?? ''));
-        $dialogueNotes = ($incomingNotes !== '' && $existingNotes !== '' && $incomingNotes !== $existingNotes && !str_contains($incomingNotes, $existingNotes))
-            ? ($existingNotes . "\n[" . date('Y-m-d H:i') . '] ' . $incomingNotes)
-            : ($incomingNotes !== '' ? $incomingNotes : $existingNotes);
+        $hasDialogueField = array_key_exists('dialogue_notes', $data) || array_key_exists('notes', $data);
+        $incomingNotes = trim((string)($data['dialogue_notes'] ?? ($data['notes'] ?? '')));
+        $dialogueNotes = $hasDialogueField ? $incomingNotes : $existingNotes;
         $action = trim((string)($data['action'] ?? 'save_attendance'));
 
         $currentStatus = (string)($paanyaya['status'] ?? '');
@@ -3608,20 +3610,29 @@ require_once __DIR__ . '/../services/ComplaintClassificationService.php';
             }
 
             $existingSalaysay = trim((string)($paanyaya['salaysay'] ?? ''));
-        $salaysay = $existingSalaysay !== '' ? $existingSalaysay : trim((string)($data['salaysay'] ?? ''));
+            $incomingSalaysay = trim((string)($data['salaysay'] ?? ''));
+            $salaysay = array_key_exists('salaysay', $data)
+                ? ($incomingSalaysay !== '' ? $incomingSalaysay : $existingSalaysay)
+                : $existingSalaysay;
 
-            // 1. Mark 1st Paanyaya as Completed
+            $existingNotes = trim((string)($paanyaya['dialogue_notes'] ?? ''));
+            $hasDialogueField = array_key_exists('dialogue_notes', $data) || array_key_exists('notes', $data);
+            $incomingNotes = trim((string)($data['dialogue_notes'] ?? ($data['notes'] ?? '')));
+            $dialogueNotes = $hasDialogueField ? $incomingNotes : $existingNotes;
+
+            // 1. Mark 1st Paanyaya as Completed and preserve dialogue notes & salaysay
             $updFirst = $this->conn->prepare("
                 UPDATE paanyayas
                 SET complainant_attended = ?,
                     invitee_attended = ?,
                     salaysay = ?,
+                    dialogue_notes = ?,
                     status = 'Completed',
                     attendance_recorded_at = NOW(),
                     updated_at = NOW()
                 WHERE paanyaya_id = ?
             ");
-            $updFirst->execute([$compAttended, $invAttended, $salaysay, $paanyayaId]);
+            $updFirst->execute([$compAttended, $invAttended, $salaysay, $dialogueNotes, $paanyayaId]);
 
             // 2. Insert 2nd Paanyaya linked cleanly under the 1st Paanyaya thread
             $venue = !empty($paanyaya['venue']) ? $paanyaya['venue'] : 'Tanggapan ng Barangay Tumana';

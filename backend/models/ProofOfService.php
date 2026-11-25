@@ -281,8 +281,8 @@ class ProofOfService
             "SELECT u.user_id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name, r.role_name
              FROM users u
              INNER JOIN roles r ON r.role_id = u.role_id
-             WHERE u.status = 'Active' AND r.role_name IN ('Summons Server', 'Lupon Clerk', 'Administrator')
-             ORDER BY FIELD(r.role_name, 'Summons Server', 'Lupon Clerk', 'Administrator'), u.last_name, u.first_name"
+             WHERE u.status = 'Active' AND (u.role_id = 4 OR r.role_name = 'Summons Server')
+             ORDER BY u.last_name, u.first_name"
         );
                 $stmt->execute();
         $formalCases = $stmt->fetchAll(PDO::FETCH_ASSOC);

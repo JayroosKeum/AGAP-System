@@ -50,7 +50,7 @@ class NotificationService
     // =========================================================================
     public function notifyPaanyayaOutcome(int $complaintId, string $complaintNum, string $outcome, ?int $actorUserId = null): void
     {
-        $actionUrl = "../complaints/paanyaya-workspace.php?id=" . $complaintId;
+        $actionUrl = "../complaints/complaint-details.php?id=" . $complaintId . "&tab=paanyaya";
         if ($outcome === 'Settled') {
             $title = "Paanyaya Settled (LTIA Win)";
             $msg = "Complaint {$complaintNum} was amicably settled at the Paanyaya dialogue level.";

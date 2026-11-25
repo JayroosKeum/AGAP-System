@@ -198,6 +198,17 @@ class GPSController
                         ->execute([$imagePath, $result['proof_id']]);
                 }
                 $db->commit();
+                PDFService::registerOfficersReturnDocument($db, (int) $caseId, $userId, [
+                    'party_type' => (string) ($input['party_type'] ?? 'Respondent'),
+                    'recipient_name' => (string) ($input['recipient_name'] ?? '—'),
+                    'relationship' => (string) ($input['relationship'] ?? 'Self'),
+                    'delivery_status' => (string) ($input['delivery_status'] ?? 'Served'),
+                    'service_method' => (string) ($input['service_method'] ?? 'Personal'),
+                    'served_at' => (string) ($input['served_at'] ?? date('Y-m-d H:i:s')),
+                    'served_by_user_id' => $userId,
+                    'remarks' => (string) ($input['remarks'] ?? ($input['failure_notes'] ?? '')),
+                    'form_type' => (string) ($input['form_type'] ?? 'KP Form 9 (Summons)'),
+                ]);
                 return $result;
             }
             return $result;
@@ -317,6 +328,16 @@ class GPSController
         if (!$result['success'] && $upload['path']) @unlink(dirname(__DIR__, 2) . '/' . $upload['path']);
         if ($result['success']) {
             $this->audit->log($userId, 'Recorded proof of service (' . $serviceResult . ')', 'GPS', (int) $result['proof_id']);
+            require_once __DIR__ . '/../services/PDFService.php';
+            require_once __DIR__ . '/../config/database.php';
+            $retDb = (new Database())->connect();
+            PDFService::registerOfficersReturnDocument($retDb, (int) $caseId, $userId, [
+                'delivery_status' => $serviceResult,
+                'served_at' => $date->format('Y-m-d H:i:s'),
+                'served_by_user_id' => (int) $servedBy,
+                'remarks' => $remarks !== '' ? $remarks : 'Proof of service recorded.',
+                'form_type' => 'KP Form Process',
+            ]);
         }
         return $result + ['message' => $result['success'] ? 'Proof of service recorded.' : null];
     }

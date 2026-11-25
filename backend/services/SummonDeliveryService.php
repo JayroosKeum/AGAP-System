@@ -1864,23 +1864,28 @@ class SummonDeliveryService
 
             $filePath = '';
 
+            $isKp8Notice = ($formCodeName === 'KP Form 8');
+            $docServiceStatus = $isKp8Notice ? 'Served' : 'For Service';
+            $delivInitStatus = $isKp8Notice ? 'Served Personal' : 'Pending';
+            $servedAtInit = $isKp8Notice ? date('Y-m-d H:i:s') : null;
+
             $insDoc = $this->conn->prepare("
                 INSERT INTO generated_documents (case_id, template_id, generated_by, file_path, service_status, regeneration_reason)
-                VALUES (?, ?, ?, ?, 'For Service', ?)
+                VALUES (?, ?, ?, ?, ?, ?)
             ");
-            $insDoc->execute([$caseId, $tplId, $actorUserId, $filePath, "{$formCodeName} delivery attempt #{$targetAttempt} issued."]);
+            $insDoc->execute([$caseId, $tplId, $actorUserId, $filePath, $docServiceStatus, "{$formCodeName} delivery attempt #{$targetAttempt} issued."]);
             $docId = (int) $this->conn->lastInsertId();
 
             // 8. Insert new delivery record in summon_deliveries for this attempt
             $insDeliv = $this->conn->prepare("
                 INSERT INTO summon_deliveries (
                     hearing_id, case_id, party_type, resident_id, form_type, attempt_number,
-                    delivery_status, recipient_name, document_id, created_by, remarks, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'Pending', ?, ?, ?, ?, NOW())
+                    delivery_status, served_at, recipient_name, document_id, created_by, remarks, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             $remarksText = $isConciliationStage
                 ? "KP Form 12 — Notice of Conciliation Hearing (Attempt {$targetAttempt})"
-                : ($partyType === 'Respondent' ? "KP Form 9 — Summons (Attempt {$targetAttempt})" : "KP Form 8 — Notice of Hearing (Attempt {$targetAttempt})");
+                : ($partyType === 'Respondent' ? "KP Form 9 — Summons (Attempt {$targetAttempt})" : "KP Form 8 — Notice of Hearing (Attempt {$targetAttempt}) — Automatically marked Served");
             $partyResId = $residentId;
             $partyName = $targetParty['resident_name'] ?? $partyType;
             $insDeliv->execute([
@@ -1890,6 +1895,8 @@ class SummonDeliveryService
                 $partyResId,
                 $formDeliverType,
                 $targetAttempt,
+                $delivInitStatus,
+                $servedAtInit,
                 $partyName,
                 $docId,
                 $actorUserId,

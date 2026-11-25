@@ -75,14 +75,13 @@ class HearingWorkflow
                 }
 
                 $officer = $roleId === 4 ? $userId : (int) ($d['serving_officer'] ?? $userId);
-                $check = $this->db->prepare("SELECT 1 FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = ? AND u.status = 'Active' AND r.role_name = 'Summons Server'");
+                $check = $this->db->prepare("SELECT 1 FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = ? AND u.status = 'Active' AND (u.role_id = 4 OR r.role_name = 'Summons Server')");
                 $check->execute([$officer]);
                 if (!$check->fetchColumn()) {
-                    // Fall back to finding an active Summons Server
-                    $findOfficer = $this->db->query("SELECT u.user_id FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.status = 'Active' AND r.role_name = 'Summons Server' LIMIT 1");
+                    $findOfficer = $this->db->query("SELECT u.user_id FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.status = 'Active' AND (u.role_id = 4 OR r.role_name = 'Summons Server') LIMIT 1");
                     $officer = (int) $findOfficer->fetchColumn();
                     if (!$officer) {
-                        $officer = $userId;
+                        return ['success' => false, 'message' => 'An active Summons Server account is required to record Officer\'s Return.'];
                     }
                 }
 
@@ -106,6 +105,17 @@ class HearingWorkflow
                 );
                 $syncRemarks = sprintf('Officer Return for %s (%s): %s%s', $p['party_type'], $p['resident_name'], $return, $reason ? ' [Reason: ' . $reason . ']' : '');
                 $syncPos->execute([$p['case_id'], $document, $result, $officer, $serviceDateTime, $syncRemarks, $file]);
+
+                PDFService::registerOfficersReturnDocument($this->db, (int) $p['case_id'], $userId, [
+                    'party_type' => $p['party_type'],
+                    'recipient_name' => $p['resident_name'],
+                    'delivery_status' => $result,
+                    'service_method' => 'Personal',
+                    'served_at' => $serviceDateTime,
+                    'served_by_user_id' => $officer,
+                    'remarks' => $return . ($reason ? " [Reason: {$reason}]" : ''),
+                    'form_type' => 'Hearing Notice / Summons',
+                ]);
 
                 // Case History
                 $histStmt = $this->db->prepare("INSERT INTO case_history (case_id, status, remarks, updated_by) SELECT case_id, case_status, ?, ? FROM cases WHERE case_id = ?");

@@ -270,10 +270,10 @@ include '../../layouts/header.php';
                 <div>
                     <h1 class="timeline-header-title">
                         <span>Cross-Case Dispute Timeline</span>
-                        <span class="timeline-badge">Module 5</span>
+                        <span class="timeline-badge">Party History Across All Cases</span>
                     </h1>
                     <p style="margin: 4px 0 0; font-size: 0.86rem; color: #64748b;">
-                        Pinagsamang kasaysayan at relational timeline ng mga partidong sangkot sa iba't ibang reklamo
+                        Shows milestones across all disputes involving the same parties. Check each card&apos;s Case / Complaint badge to distinguish other records from the current Case Folder.
                     </p>
                 </div>
 
@@ -325,10 +325,10 @@ include '../../layouts/header.php';
                                             <strong>Active in Other Cases:</strong>
                                             <?php foreach ($concurrentList as $c): ?>
                                                 <div style="margin-top: 3px;">
-                                                    &bull; <a href="complaint-details.php?id=<?php echo $c['complaint_id']; ?>" style="color: #92400e; font-weight: 700; text-decoration: underline;">
-                                                        Case #<?php echo htmlspecialchars($c['case_number'] ?: $c['complaint_number']); ?>
+                                                    &bull; <a href="complaint-details.php?id=<?php echo (int) ($c['complaint_id'] ?? 0); ?>" style="color: #92400e; font-weight: 700; text-decoration: underline;">
+                                                        <?php echo htmlspecialchars(!empty($c['case_number']) ? ('Case #' . $c['case_number']) : (!empty($c['complaint_number']) ? ('Complaint #' . $c['complaint_number']) : ('Intake #' . (int) ($c['complaint_id'] ?? 0))), ENT_QUOTES, 'UTF-8'); ?>
                                                     </a>
-                                                    as <strong><?php echo htmlspecialchars($c['resident_role']); ?></strong> (<?php echo htmlspecialchars($c['case_status'] ?: $c['complaint_status']); ?>)
+                                                    as <strong><?php echo htmlspecialchars((string) ($c['resident_role'] ?? 'Party'), ENT_QUOTES, 'UTF-8'); ?></strong> (<?php echo htmlspecialchars((string) ($c['case_status'] ?: ($c['complaint_status'] ?? 'Active')), ENT_QUOTES, 'UTF-8'); ?>)
                                                 </div>
                                             <?php endforeach; ?>
                                         </div>
@@ -369,9 +369,17 @@ include '../../layouts/header.php';
                                     <div class="timeline-event-header">
                                         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                                             <h4 class="timeline-event-title"><?php echo htmlspecialchars($event['title']); ?></h4>
-                                            <?php if (!empty($event['case_number'])): ?>
-                                                <a href="complaint-details.php?id=<?php echo (int)($event['complaint_id'] ?? 0); ?>" class="timeline-case-badge" title="View this case workspace">
-                                                    <span>Case #<?php echo htmlspecialchars($event['case_number']); ?></span>
+                                            <?php
+                                                $evRef = !empty($event['case_number'])
+                                                    ? ('Case #' . $event['case_number'])
+                                                    : (!empty($event['complaint_number'])
+                                                        ? ('Complaint #' . $event['complaint_number'])
+                                                        : (!empty($event['complaint_id']) ? ('Intake #' . (int) $event['complaint_id']) : ''));
+                                                $isCurrentTimelineComplaint = $complaintId > 0 && (int) ($event['complaint_id'] ?? 0) === $complaintId;
+                                            ?>
+                                            <?php if ($evRef !== ''): ?>
+                                                <a href="complaint-details.php?id=<?php echo (int)($event['complaint_id'] ?? 0); ?>" class="timeline-case-badge" style="<?php echo $isCurrentTimelineComplaint ? 'background:#dcfce7; color:#166534; border-color:#86efac;' : ''; ?>" title="View this record">
+                                                    <span><?php echo htmlspecialchars($evRef . ($isCurrentTimelineComplaint ? ' · Current Case' : ' · Related Record')); ?></span>
                                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
                                                 </a>
                                             <?php endif; ?>

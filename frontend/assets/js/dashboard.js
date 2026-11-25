@@ -2005,7 +2005,9 @@ document.addEventListener('DOMContentLoaded', () => {
         viewLink.className = 'btn-open-case';
         viewLink.style.cssText = 'padding: 5px 12px; font-size: 11.5px; font-weight: 600;';
         viewLink.textContent = 'Paanyaya';
-        viewLink.href = item.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : '../paanyaya/index.php';
+        viewLink.href = (item.is_prepared && item.dialogue_url)
+            ? item.dialogue_url
+            : (item.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(item.complaint_id)}` : '../paanyaya/index.php');
 
         actions.append(statusPill, viewLink);
         art.appendChild(actions);
@@ -2563,7 +2565,9 @@ document.addEventListener('DOMContentLoaded', () => {
         openCaseBtn.className = 'btn-open-case';
         openCaseBtn.textContent = isPaanyaya ? 'Paanyaya' : 'Open Case';
         openCaseBtn.href = isPaanyaya
-            ? (hearing.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(hearing.complaint_id)}` : '../paanyaya/index.php')
+            ? ((hearing.is_prepared && hearing.dialogue_url)
+                ? hearing.dialogue_url
+                : (hearing.complaint_id ? `../complaints/paanyaya-workspace.php?complaint_id=${encodeURIComponent(hearing.complaint_id)}` : '../paanyaya/index.php'))
             : (hearing.case_id
                 ? `../cases/case-details.php?id=${encodeURIComponent(hearing.case_id)}`
                 : (hearing.complaint_id ? `../complaints/complaint-details.php?id=${encodeURIComponent(hearing.complaint_id)}` : '#'));

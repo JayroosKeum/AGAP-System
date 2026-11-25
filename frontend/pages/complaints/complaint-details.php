@@ -120,19 +120,17 @@ if (in_array($roleId, [1, 2], true) && !$usesPaanyayaPreparation && !$preparatio
         $canFormallyDocket = false;
     }
 }
-$rawTab = trim((string)($_GET['tab'] ?? 'tab-overview'));
+$rawTab = trim((string)($_GET['tab'] ?? ''));
+if ($rawTab === '' && !empty($preparationFlash)) {
+    $rawTab = 'tab-paanyaya';
+}
+if ($rawTab === '') {
+    $rawTab = 'tab-overview';
+}
 if (!str_starts_with($rawTab, 'tab-')) {
     $rawTab = 'tab-' . $rawTab;
 }
-$validTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
-if ($rawTab === 'tab-paanyaya') {
-    if ($preparation || ($usesPaanyayaPreparation && in_array($roleId, [1, 2], true))) {
-        header('Location: complaint-details.php?id=' . $complaintId . '#paanyaya-preparation');
-        exit;
-    }
-    header('Location: ../paanyaya/stage.php?complaint_id=' . $complaintId);
-    exit;
-}
+$validTabs = ['tab-overview', 'tab-paanyaya', 'tab-mediation', 'tab-conciliation', 'tab-arbitration'];
 $activeTab = in_array($rawTab, $validTabs, true) ? $rawTab : 'tab-overview';
 $complaintFlash = $_SESSION['complaint_flash'] ?? null;
 unset($_SESSION['complaint_flash']);
@@ -345,20 +343,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         }
 
         function syncLisoCriminalFields() {
-            const caseTypeEl = document.getElementById('lisoScreenCaseType');
-            const wrap = document.getElementById('lisoCriminalFieldsWrap');
-            if (!caseTypeEl || !wrap) return;
-            const isCriminal = caseTypeEl.value === 'Criminal';
-            wrap.hidden = !isCriminal;
-            wrap.style.display = isCriminal ? 'block' : 'none';
-            if (!isCriminal) {
-                const impEl = document.getElementById('lisoOffenseImprisonmentMax');
-                if (impEl) impEl.value = '0';
-                ['lisoChkNoPrivateParty', 'lisoChkAccusedDetained', 'lisoChkHabeasCorpus', 'lisoChkPrescriptionRisk'].forEach(id => {
-                    const el = document.getElementById(id);
-                    if (el) el.checked = false;
-                });
-            }
+            // Criminal jurisdiction warnings removed across all intake & screening forms.
         }
 
         function autoMapLisoScreenCaseType() {
@@ -498,11 +483,6 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     caseTypeEl.focus();
                     return;
                 }
-                if (titleEl && !titleEl.value.trim()) {
-                    window.agapNotify?.('Enter the official Complaint Title / Specific Nature.', 'error');
-                    titleEl.focus();
-                    return;
-                }
             }
 
             window.__agapReviewIntakeSubmitting = true;
@@ -535,18 +515,6 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             if (secOtherEl) form.append('secondary_other_category_specification', secOtherEl.value.trim());
             if (caseTypeEl) form.append('case_type', caseTypeEl.value);
             if (titleEl) form.append('complaint_title', titleEl.value.trim());
-            if (caseTypeEl && caseTypeEl.value === 'Criminal') {
-                const lisoImp = document.getElementById('lisoOffenseImprisonmentMax');
-                const lisoNoPriv = document.getElementById('lisoChkNoPrivateParty');
-                const lisoDet = document.getElementById('lisoChkAccusedDetained');
-                const lisoHab = document.getElementById('lisoChkHabeasCorpus');
-                const lisoPresc = document.getElementById('lisoChkPrescriptionRisk');
-                if (lisoImp) form.append('offense_imprisonment_max', lisoImp.value);
-                form.append('has_private_offended_party', lisoNoPriv?.checked ? '0' : '1');
-                if (lisoDet?.checked) form.append('accused_under_detention', '1');
-                if (lisoHab?.checked) form.append('habeas_corpus_needed', '1');
-                if (lisoPresc?.checked) form.append('prescription_risk', '1');
-            }
             }
             if (status === 'Needs Information' && requestEl) {
                 form.append('request_message', requestEl.value.trim());
@@ -639,15 +607,15 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         </div>
 
         <!-- Horizontal Tabs Navigation Bar -->
-        <nav class="case-tabs-nav" aria-label="Case Sections" <?php echo ($isLuponReadOnly && $isUndocketedIntake) ? 'style="display: none;"' : ''; ?>>
+        <nav class="case-tabs-nav" aria-label="Case Sections" <?php echo ($isLuponReadOnly && $isUndocketedIntake && !$preparation) ? 'style="display: none;"' : ''; ?>>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
-                <span>Overview &amp; Workflow</span>
+                <span>Case Folder</span>
             </button>
-            <?php if (!$isLuponReadOnly && (!$usesPaanyayaPreparation || $preparation)): ?>
-            <a href="<?php echo $preparation ? 'complaint-details.php?id=' . $complaintId . '#paanyaya-preparation' : '../paanyaya/stage.php?complaint_id=' . $complaintId; ?>" class="case-tab-item" id="navTabPaanyayaLink" style="text-decoration:none;">
+            <?php if ($preparation || $preparationFlash || $usesPaanyayaPreparation || !$isLuponReadOnly): ?>
+            <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>" data-tab="tab-paanyaya" id="navTabPaanyayaLink" onclick="switchCaseTab('tab-paanyaya')">
                 <span>🤝 Paanyaya</span>
-            </a>
+            </button>
             <?php endif; ?>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-mediation' ? 'active' : ''; ?>" data-tab="tab-mediation" onclick="switchCaseTab('tab-mediation')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -720,55 +688,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         </div>
 
         <!-- ===================================================================
-             TAB PANE 1: OVERVIEW & WORKFLOW (Default Active Tab)
+             TAB PANE 1: CASE FOLDER (Default Active Tab)
              =================================================================== -->
         <div id="tab-overview" class="case-tab-pane <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>">
-
-            <?php if ($preparation || $preparationFlash): ?>
-                <div id="paanyaya-preparation">
-                    <?php
-                    require_once __DIR__ . '/../../../backend/services/PaanyayaServiceDelivery.php';
-                    $delivery = new PaanyayaServiceDelivery($preparationDb);
-                    $minutesModel = new Paanyaya($preparationDb);
-                    $intakeFlash = $preparationFlash;
-                    if (!$paanyayaInvitations) {
-                        $paanyayaInvitations[1] = null;
-                    }
-                    foreach ($paanyayaInvitations as $invitationNumber => $invitationRecord) {
-                        $preparation = $invitationRecord;
-                        $preparationFlash = (int) ($intakeFlash['invitation_number'] ?? 1) === $invitationNumber ? $intakeFlash : null;
-                        $preparationParties = [];
-                        $paanyayaServiceHistory = [];
-                        $latestService = null;
-                        $paanyayaServers = [];
-                        $paanyayaServiceUnavailable = false;
-                        $paanyayaMinutes = null;
-                        try {
-                            if ($preparation) {
-                                $preparationParties = $preparation['ready_at']
-                                    ? json_decode($preparation['verified_parties'], true, 512, JSON_THROW_ON_ERROR)
-                                    : $preparationService->parties($complaintId);
-                                if ($preparation['prepared_at']) {
-                                    $paanyayaServiceHistory = $delivery->history($complaintId, $invitationNumber);
-                                    $latestService = PaanyayaServiceDelivery::latestAttempt($preparationDb, $complaintId, $invitationNumber);
-                                    $latestOutcome = $latestService['outcome'] ?? null;
-                                    if ($preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $latestOutcome === 'Not Delivered')) {
-                                        $paanyayaServers = $delivery->servers();
-                                    }
-                                    if ($latestOutcome === 'Delivered') {
-                                        $paanyayaMinutes = $minutesModel->getStageMinutes($complaintId, 'Paanyaya ' . $invitationNumber);
-                                    }
-                                }
-                            }
-                        } catch (Throwable $exception) {
-                            error_log('Paanyaya service workspace: ' . $exception->getMessage());
-                            $paanyayaServiceUnavailable = true;
-                        }
-                        include __DIR__ . '/tabs/paanyaya-preparation.php';
-                    }
-                    ?>
-                </div>
-            <?php endif; ?>
 
             <!-- Celebratory Statutory Countdown Completion Alert Banner -->
             <div id="statutoryTransmittalAlertBanner" style="display: none; margin-bottom: 16px; background: #ecfdf5; border: 1px solid #6ee7b7; border-left: 5px solid #10b981; border-radius: 8px; padding: 14px 18px; color: #065f46; font-size: 0.9rem; align-items: center; justify-content: space-between; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
@@ -950,37 +872,6 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             </div>
                         </div>
 
-                        <div id="lisoCriminalFieldsWrap" data-criminal-only="1" style="display: <?= $currentCaseType === 'Criminal' ? 'block' : 'none' ?>; margin-bottom: 14px; padding: 12px 14px; background: #fff5f5; border: 1px solid #fecaca; border-radius: 8px;" <?= $currentCaseType === 'Criminal' ? '' : 'hidden' ?>>
-                            <div style="font-size: 0.82rem; font-weight: 700; color: #991b1b; margin-bottom: 8px;">Criminal Offense Jurisdiction Verification (R.A. 7160 &sect;&sect;408(c)–(d), 412)</div>
-                            <div style="margin-bottom: 8px;">
-                                <label for="lisoOffenseImprisonmentMax" style="display: block; font-size: 0.78rem; font-weight: 700; color: #334155; margin-bottom: 4px;">Maximum Statutory Imprisonment</label>
-                                <select id="lisoOffenseImprisonmentMax" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 10px; font-size: 0.84rem; background: #ffffff;">
-                                    <option value="0" <?= $lisoSelectedImp === '0' ? 'selected' : '' ?>>Fine-only / Light felony without imprisonment (KP Eligible)</option>
-                                    <option value="0.5" <?= $lisoSelectedImp === '0.5' ? 'selected' : '' ?>>Up to 6 months (Arresto Mayor — KP Eligible)</option>
-                                    <option value="1" <?= $lisoSelectedImp === '1' ? 'selected' : '' ?>>Over 6 months up to 1 year (Max KP Limit)</option>
-                                    <option value="2" <?= $lisoSelectedImp === '2' ? 'selected' : '' ?>>Exceeds 1 year (&gt; 1 Year — Outside KP Jurisdiction)</option>
-                                </select>
-                            </div>
-                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; font-size: 0.8rem; color: #1e293b;">
-                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                                    <input type="checkbox" id="lisoChkNoPrivateParty" <?= $lisoNoPriv ? 'checked' : '' ?>>
-                                    <span>No private offended party (&sect;408(d))</span>
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                                    <input type="checkbox" id="lisoChkAccusedDetained" <?= $lisoDetained ? 'checked' : '' ?>>
-                                    <span>Accused under detention (&sect;412(a))</span>
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                                    <input type="checkbox" id="lisoChkHabeasCorpus" <?= $lisoHabeas ? 'checked' : '' ?>>
-                                    <span>Habeas corpus / personal liberty (&sect;412(b))</span>
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                                    <input type="checkbox" id="lisoChkPrescriptionRisk" <?= $lisoPresc ? 'checked' : '' ?>>
-                                    <span>Criminal prescription risk (&sect;412(d))</span>
-                                </label>
-                            </div>
-                        </div>
-
                         <div id="lisoScreenOtherWrap" class="form-group" style="margin-bottom: 14px; display: none;">
                             <label for="lisoScreenOtherSpec" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Specify Category (Others) <span style="color:#dc2626;">*</span></label>
                             <input type="text" id="lisoScreenOtherSpec" maxlength="255" value="<?= htmlspecialchars($needsLisoClassification ? '' : $currentOtherSpec) ?>" placeholder="Specify the dispute category..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
@@ -989,11 +880,6 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         <div id="lisoScreenSecondaryOtherWrap" class="form-group" style="margin-bottom: 14px; display: none;">
                             <label for="lisoScreenSecondaryOtherSpec" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Specify 2nd Category (Others) <span style="color:#dc2626;">*</span></label>
                             <input type="text" id="lisoScreenSecondaryOtherSpec" maxlength="255" value="<?= htmlspecialchars($currentSecOtherSpec) ?>" placeholder="Specify the 2nd dispute category..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
-                        </div>
-
-                        <div class="form-group" style="margin-bottom: 14px;">
-                            <label for="lisoScreenComplaintTitle" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Complaint Title / Specific Nature <span style="color:#dc2626;">*</span></label>
-                            <input type="text" id="lisoScreenComplaintTitle" maxlength="255" value="<?= htmlspecialchars($currentTitle) ?>" placeholder="e.g. Boundary dispute, Unpaid debt, Slander" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
                         </div>
 
                         <div class="form-group" style="margin-bottom: 14px;">
@@ -1378,6 +1264,66 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </div>
             </div>
 
+        </div>
+        <!-- ===================================================================
+             TAB PANE 1B: PAANYAYA (Stage 0 Pre-Docketing & Dialogue)
+             =================================================================== -->
+        <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
+            <?php if ($preparation || $preparationFlash): ?>
+                <div id="paanyaya-preparation">
+                    <?php
+                    require_once __DIR__ . '/../../../backend/services/PaanyayaServiceDelivery.php';
+                    $delivery = new PaanyayaServiceDelivery($preparationDb);
+                    $minutesModel = new Paanyaya($preparationDb);
+                    $intakeFlash = $preparationFlash;
+                    if (!$paanyayaInvitations) {
+                        $paanyayaInvitations[1] = null;
+                    }
+                    foreach ($paanyayaInvitations as $invitationNumber => $invitationRecord) {
+                        $preparation = $invitationRecord;
+                        $preparationFlash = (int) ($intakeFlash['invitation_number'] ?? 1) === $invitationNumber ? $intakeFlash : null;
+                        $preparationParties = [];
+                        $paanyayaServiceHistory = [];
+                        $latestService = null;
+                        $paanyayaServers = [];
+                        $paanyayaServiceUnavailable = false;
+                        $paanyayaMinutes = null;
+                        try {
+                            if ($preparation) {
+                                $preparationParties = $preparation['ready_at']
+                                    ? json_decode($preparation['verified_parties'], true, 512, JSON_THROW_ON_ERROR)
+                                    : $preparationService->parties($complaintId);
+                                if ($preparation['prepared_at']) {
+                                    $paanyayaServiceHistory = $delivery->history($complaintId, $invitationNumber);
+                                    $latestService = PaanyayaServiceDelivery::latestAttempt($preparationDb, $complaintId, $invitationNumber);
+                                    $latestOutcome = $latestService['outcome'] ?? null;
+                                    if ($preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $latestOutcome === 'Not Delivered')) {
+                                        $paanyayaServers = $delivery->servers();
+                                    }
+                                    if ($latestOutcome === 'Delivered') {
+                                        $paanyayaMinutes = $minutesModel->getStageMinutes($complaintId, 'Paanyaya ' . $invitationNumber);
+                                    }
+                                }
+                            }
+                        } catch (Throwable $exception) {
+                            error_log('Paanyaya service workspace: ' . $exception->getMessage());
+                            $paanyayaServiceUnavailable = true;
+                        }
+                        include __DIR__ . '/tabs/paanyaya-preparation.php';
+                    }
+                    ?>
+                </div>
+            <?php elseif (!$isLuponReadOnly): ?>
+                <div class="sophos-card" style="margin: 0 30px 24px; padding: 24px;">
+                    <h3 style="margin: 0 0 8px; font-size: 1.05rem; color: #0f172a;">Stage 0 &middot; Paanyaya Workspace</h3>
+                    <p style="margin: 0 0 14px; font-size: 0.9rem; color: #475569;">
+                        This complaint is outside the prepared Paanyaya workflow (it may be awaiting LISO screening or already docketed directly for formal mediation).
+                    </p>
+                    <a href="../paanyaya/stage.php?complaint_id=<?php echo $complaintId; ?>" class="btn-case-primary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+                        Open Legacy Paanyaya Stage &rarr;
+                    </a>
+                </div>
+            <?php endif; ?>
         </div>
         <!-- ===================================================================
              TAB PANE 2: MEDIATION
@@ -1947,6 +1893,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 Official Katarungang Pambarangay Complaint Document
             </div>
             <div style="display: flex; gap: 8px; align-items: center;">
+                <a id="btnDownloadKp7Pdf" href="#" class="btn-pdf-chip" download style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; text-decoration: none; font-size: 0.85rem;">
+                    <span>PDF</span>
+                </a>
                 <button type="button" class="btn-create" onclick="printKp7Iframe()" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-weight: 600;">
                     Print Form
                 </button>
