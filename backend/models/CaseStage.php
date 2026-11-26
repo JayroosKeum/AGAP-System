@@ -24,6 +24,30 @@ class CaseStage
     }
 
     /**
+     * Starts or promotes a formal case stage row in case_stages.
+     */
+    public function startStage(int $caseId, string $stageType, string $initialStatus = 'In Progress'): bool
+    {
+        if ($caseId < 1 || !in_array($stageType, ['Mediation', 'Conciliation', 'Arbitration'], true)) {
+            return false;
+        }
+        $allowedStatuses = ['Locked', 'Ready for Referral', 'Not Started', 'In Progress', 'Awaiting Outcome', 'Completed', 'Referred to Pangkat'];
+        if (!in_array($initialStatus, $allowedStatuses, true)) {
+            $initialStatus = 'In Progress';
+        }
+
+        $stmt = $this->conn->prepare("
+            INSERT INTO case_stages (case_id, stage_type, stage_status, started_at)
+            VALUES (?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+                stage_status = IF(stage_status IN ('Locked', 'Not Started'), VALUES(stage_status), stage_status),
+                started_at = COALESCE(started_at, VALUES(started_at)),
+                updated_at = CURRENT_TIMESTAMP
+        ");
+        return $stmt->execute([$caseId, $stageType, $initialStatus]);
+    }
+
+    /**
      * Retrieves stage overview data for both Mediation and Pangkat Conciliation.
      */
     public function getStageOverview(int $caseId): array|false
@@ -417,6 +441,8 @@ class CaseStage
         } elseif ($canProceedToPangkat) {
             $stageStatus = 'Ready for Referral';
             $outcome = 'Unsuccessful';
+        } elseif ($stageRecord && ($stageRecord['stage_status'] ?? '') === 'In Progress') {
+            $stageStatus = 'In Progress';
         } elseif ($stageRecord && !empty($stageRecord['stage_status']) && !in_array($stageRecord['stage_status'], ['Not Started', 'Pending', 'In Progress', 'Awaiting Outcome', 'Ready for Referral'], true)) {
             $stageStatus = $stageRecord['stage_status'];
         } elseif ($completedMediationCount >= ($eligibility['required_mediation_sessions'] ?? 2) && !$hasFinalizedUnsuccessful) {

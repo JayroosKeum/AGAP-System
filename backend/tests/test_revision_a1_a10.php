@@ -194,7 +194,7 @@ try {
     }
     assertTrue($failClosed, 'PiiCryptoService::encrypt fails closed (throws) when APP_PII_KEY is missing');
 
-    $rawRes = $db->prepare('SELECT contact_no, contact_no_hash, contact_last4_hash, email, address FROM residents WHERE resident_id = ?');
+    $rawRes = $db->prepare('/* pii:raw */ SELECT contact_no, contact_no_hash, contact_last4_hash, email, address FROM residents WHERE resident_id = ?');
     $rawRes->execute([$compResId]);
     $rawRow = $rawRes->fetch(PDO::FETCH_ASSOC);
     assertTrue(PiiCryptoService::isEncrypted($rawRow['contact_no']) && $rawRow['contact_no'] !== '09171119876', 'residents.contact_no stored as AES-256-GCM ciphertext');
@@ -282,8 +282,10 @@ try {
     assertTrue(!empty($encUserRes['success']), 'A6: User::create succeeds with encrypted email and contact');
     $encUserId = (int) $encUserRes['id'];
     $createdUserIds[] = $encUserId;
-    $rawUser = $db->query("SELECT email, email_hash, contact_no FROM users WHERE user_id = {$encUserId}")->fetch(PDO::FETCH_ASSOC);
+    $rawUser = $db->query("/* pii:raw */ SELECT email, email_hash, contact_no FROM users WHERE user_id = {$encUserId}")->fetch(PDO::FETCH_ASSOC);
     assertTrue(PiiCryptoService::isEncrypted($rawUser['email']) && !empty($rawUser['email_hash']), 'A6: users.email stored as AES-256-GCM ciphertext with email_hash');
+    $decUserPdo = $db->query("SELECT email, contact_no FROM users WHERE user_id = {$encUserId}")->fetch(PDO::FETCH_ASSOC);
+    assertTrue($decUserPdo['email'] === "enc.{$token}@tumana.test" && $decUserPdo['contact_no'] === '09179998888', 'A6: Standard PDO reads dynamically decrypt enc:v1: PII fields without per-query decryption');
     $lookedUpUser = $userModel->findByUsernameOrEmail("enc.{$token}@tumana.test");
     assertTrue($lookedUpUser !== false && $lookedUpUser['email'] === "enc.{$token}@tumana.test", 'A6: findByUsernameOrEmail locates and decrypts encrypted user email cleanly');
 

@@ -150,7 +150,7 @@ class AuditService
      */
     public function verifyChain(?int $limit = null): array
     {
-        $sql = 'SELECT audit_id, user_id, action, module_name, affected_record, before_state, after_state, ip_address, prev_hash, entry_hash, audit_date
+        $sql = '/* pii:raw */ SELECT audit_id, user_id, action, module_name, affected_record, before_state, after_state, ip_address, prev_hash, entry_hash, audit_date
                 FROM audit_trails
                 WHERE entry_hash IS NOT NULL
                 ORDER BY audit_id ASC';

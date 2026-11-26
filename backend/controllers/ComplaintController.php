@@ -299,12 +299,25 @@ class ComplaintController
                 $this->conn->prepare("UPDATE complaints SET intake_reference = COALESCE(NULLIF(intake_reference, ''), ?) WHERE complaint_id = ?")
                     ->execute([$source['tracking_reference'], $complaintId]);
             }
-            $this->conn->prepare("UPDATE complaints SET paanyaya_1_outcome = 'Impasse_Escalate' WHERE complaint_id = ?")
-                ->execute([$complaintId]);
+            $attemptNo = (int) ($source['attempt_number'] ?? 1);
+            if ($attemptNo >= 2) {
+                $this->conn->prepare("
+                    UPDATE complaints
+                    SET paanyaya_1_outcome = COALESCE(paanyaya_1_outcome, 'Impasse_Escalate'),
+                        max_paanyaya_reached = 1
+                    WHERE complaint_id = ?
+                ")->execute([$complaintId]);
+            } else {
+                $this->conn->prepare("UPDATE complaints SET paanyaya_1_outcome = 'Impasse_Escalate' WHERE complaint_id = ?")
+                    ->execute([$complaintId]);
+            }
             if (!$this->audit->log($actorId, 'Created Complaint from Paanyaya', 'Complaints', $complaintId)) {
                 throw new RuntimeException('Could not audit the Paanyaya handoff.');
             }
             $docket = $paanyaya->escalateToFormalDocketing($complaintId, $actorId, "Formal complaint created from Paanyaya #{$sourceId}.", $data);
+            if (!empty($docket['success'])) {
+                $docket['redirect_url'] = '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=mediation';
+            }
             if (empty($docket['success']) || empty($docket['case_id'])) {
                 if (!empty($docket['message'])) {
                     throw new DomainException($docket['message']);

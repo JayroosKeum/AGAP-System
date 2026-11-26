@@ -47,7 +47,7 @@ foreach (['residents' => ['resident_id', ['first_name', 'middle_name', 'last_nam
 }
 
 // 1. Residents
-$resRows = $db->query('SELECT resident_id, contact_no, contact_no_hash, contact_last4_hash, email, email_hash, address, house_street FROM residents')->fetchAll(PDO::FETCH_ASSOC);
+$resRows = $db->query('/* pii:raw */ SELECT resident_id, contact_no, contact_no_hash, contact_last4_hash, email, email_hash, address, house_street FROM residents')->fetchAll(PDO::FETCH_ASSOC);
 $resUpd = $db->prepare(
     'UPDATE residents
      SET contact_no = ?, contact_no_hash = ?, contact_last4_hash = ?,
@@ -90,7 +90,7 @@ foreach ($resRows as $row) {
 }
 
 // 2. Complaint Parties (guardian fields)
-$cpRows = $db->query('SELECT party_id, guardian_name, guardian_contact, guardian_address FROM complaint_parties')->fetchAll(PDO::FETCH_ASSOC);
+$cpRows = $db->query('/* pii:raw */ SELECT party_id, guardian_name, guardian_contact, guardian_address FROM complaint_parties')->fetchAll(PDO::FETCH_ASSOC);
 $cpUpd = $db->prepare('UPDATE complaint_parties SET guardian_name = ?, guardian_contact = ?, guardian_address = ? WHERE party_id = ?');
 foreach ($cpRows as $row) {
     $gName = $crypto->decrypt($row['guardian_name']);
@@ -114,7 +114,7 @@ foreach ($cpRows as $row) {
 }
 
 // 3. Users (email & contact_no encrypted; email_hash & contact_no_hash blind-indexed)
-$userRows = $db->query('SELECT user_id, email, email_hash, contact_no, contact_no_hash FROM users')->fetchAll(PDO::FETCH_ASSOC);
+$userRows = $db->query('/* pii:raw */ SELECT user_id, email, email_hash, contact_no, contact_no_hash FROM users')->fetchAll(PDO::FETCH_ASSOC);
 $userUpd = $db->prepare('UPDATE users SET email = ?, email_hash = ?, contact_no = ?, contact_no_hash = ? WHERE user_id = ?');
 foreach ($userRows as $row) {
     $emailPlain = $crypto->decrypt($row['email']);

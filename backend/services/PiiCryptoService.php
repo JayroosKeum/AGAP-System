@@ -24,7 +24,7 @@ final class PiiCryptoService
     public const NON_PII_SKIP_KEYS = [
         'narrative', 'additional_details', 'requested_resolution',
         'description', 'agreement_details', 'salaysay',
-        'before_state', 'after_state', 'old_value', 'new_value',
+        'before_state', 'after_state', 'old_value', 'new_value', 'old_values', 'new_values',
         'metadata', 'audit_data', 'remarks', 'notes',
         'review_notes', 'resolution_notes', 'minutes_text',
         'agreed_terms', 'objection_reason', 'deletion_reason',

@@ -1351,6 +1351,12 @@ class Paanyaya
                 $caseId = (int) $existingCase['case_id'];
                 $caseNumber = $existingCase['case_number'];
                 $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ? AND case_status IN ('Docketed', 'Pre-Docketed (Paanyaya)')")->execute([$caseId]);
+                try {
+                    require_once __DIR__ . '/CaseStage.php';
+                    (new CaseStage($this->conn))->startStage($caseId, 'Mediation');
+                } catch (Throwable $se) {
+                    error_log('Could not start Mediation stage on escalation: ' . $se->getMessage());
+                }
             } else {
                 // Fetch complaint details to determine case_type
                 $cStmt = $this->conn->prepare('SELECT case_type FROM complaints WHERE complaint_id = ? LIMIT 1');
@@ -1621,7 +1627,16 @@ class Paanyaya
             }
 
             // 5. Update complaints status to Mediation
-            $this->conn->prepare("UPDATE complaints SET status = 'Mediation', complaint_number = ?, updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$caseNumber, $complaintId]);
+            $this->conn->prepare("
+                UPDATE complaints
+                SET status = 'Mediation',
+                    screening_decision = 'Eligible',
+                    docketed_by = COALESCE(docketed_by, ?),
+                    docketed_at = COALESCE(docketed_at, NOW()),
+                    complaint_number = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE complaint_id = ?
+            ")->execute([$userId ?: null, $caseNumber, $complaintId]);
             $this->conn->prepare("UPDATE paanyaya_stages SET status = 'Completed', review_status = 'Approved for Summons', updated_at = CURRENT_TIMESTAMP WHERE complaint_id = ?")->execute([$complaintId]);
 
             if ($userId) {
@@ -1698,11 +1713,10 @@ class Paanyaya
                 $lookup->execute([$complaintId]);
                 $case = $lookup->fetch(PDO::FETCH_ASSOC);
                 $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?")->execute([$case['case_id']]);
-                $this->conn->prepare("INSERT INTO case_stages (case_id, stage_type, stage_status)
-                    VALUES (?, 'Mediation', 'Not Started') ON DUPLICATE KEY UPDATE stage_type = VALUES(stage_type)")
-                    ->execute([$case['case_id']]);
-                $this->conn->prepare("UPDATE complaints SET status = 'Mediation', docketed_by = ?, docketed_at = NOW() WHERE complaint_id = ?")
-                    ->execute([$userId, $complaintId]);
+                require_once __DIR__ . '/CaseStage.php';
+                (new CaseStage($this->conn))->startStage((int) $case['case_id'], 'Mediation');
+                $this->conn->prepare("UPDATE complaints SET status = 'Mediation', screening_decision = 'Eligible', docketed_by = COALESCE(docketed_by, ?), docketed_at = COALESCE(docketed_at, NOW()) WHERE complaint_id = ?")
+                    ->execute([$userId ?: null, $complaintId]);
                 $this->conn->prepare("UPDATE paanyayas
                     SET escalated_to_complaint_id = ?,
                         status = CASE

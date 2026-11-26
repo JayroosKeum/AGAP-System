@@ -274,7 +274,13 @@ class ServerDashboardController
             ";
             $paStmt = $this->conn->prepare($paSql);
             $paStmt->execute($paParams);
-            $paTasks = $paStmt->fetchAll(PDO::FETCH_ASSOC);
+            $paTasks = PiiCryptoService::decryptPayload($paStmt->fetchAll(PDO::FETCH_ASSOC));
+            foreach ($paTasks as &$paTask) {
+                if (empty(trim((string) ($paTask['address'] ?? '')))) {
+                    $paTask['address'] = $paTask['purok'] ?? 'Barangay Tumana';
+                }
+            }
+            unset($paTask);
             if (!empty($paTasks)) {
                 $tasks = array_merge($paTasks, $tasks);
             }

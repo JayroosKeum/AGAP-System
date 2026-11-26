@@ -135,6 +135,9 @@ final class PiiNameStatement extends PDOStatement
                     || (preg_match('/^(?:trim|concat|concat_ws|coalesce)\s*\(/i', $field)
                         && preg_match('/\b(?:first_name|middle_name|last_name)\b/i', $field)));
             $kind = $directName ? 'name' : ($computedName ? 'caption' : null);
+            if ($kind === null && !in_array($field, PiiCryptoService::NON_PII_SKIP_KEYS, true)) {
+                $kind = 'enc';
+            }
             $this->readableColumns[$column] = $kind;
             // PDO associative rows keep the last column with a duplicate label.
             $this->readableColumns[$meta['name']] = $kind;
@@ -145,10 +148,17 @@ final class PiiNameStatement extends PDOStatement
     private function readableValue(mixed $value, string|int $column): mixed
     {
         $kind = $this->readableColumns()[$column] ?? null;
-        if ($kind === null || !is_string($value) || !str_contains($value, 'name:v1:')) return $value;
-        $crypto = new PiiCryptoService();
-        if ($kind === 'name') return $crypto->decrypt($value);
-        return preg_replace_callback('/name:v1:[A-Za-z0-9+\/=]+/', static fn ($match) => $crypto->decrypt($match[0]), $value);
+        if ($kind === null || !is_string($value)) return $value;
+        if (($kind === 'name' || $kind === 'caption') && str_contains($value, 'name:v1:')) {
+            $crypto = new PiiCryptoService();
+            $value = $kind === 'name'
+                ? $crypto->decrypt($value)
+                : preg_replace_callback('/name:v1:[A-Za-z0-9+\/=]+/', static fn ($match) => $crypto->decrypt($match[0]), $value);
+        }
+        if (is_string($value) && str_contains($value, 'enc:v1:')) {
+            return PiiCryptoService::decryptStringTokens($value);
+        }
+        return $value;
     }
 
     private function readableRow(mixed $value, int $columnOffset = 0): mixed

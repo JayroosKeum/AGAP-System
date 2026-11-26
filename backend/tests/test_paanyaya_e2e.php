@@ -611,8 +611,36 @@ try {
 
     $viewRes = request($base, $clerk, "complaints/view.php?id=$escalatedCid");
     $viewJson = json_decode($viewRes['body'], true);
-    check($viewRes['status'] === 200 && !empty($viewJson['case_id']) && ($viewJson['case_status'] ?? '') === 'Mediation',
-        'Complaint view returns formal case status after Paanyaya escalation');
+    $escCaseId = (int) ($viewJson['case_id'] ?? 0);
+    $escComplaintStmt = $db->prepare('SELECT status, screening_decision, docketed_by, docketed_at, paanyaya_1_outcome, max_paanyaya_reached FROM complaints WHERE complaint_id = ? LIMIT 1');
+    $escComplaintStmt->execute([$escalatedCid]);
+    $escComplaint = $escComplaintStmt->fetch(PDO::FETCH_ASSOC);
+    $escStageStmt = $db->prepare("SELECT stage_status, started_at FROM case_stages WHERE case_id = ? AND stage_type = 'Mediation' LIMIT 1");
+    $escStageStmt->execute([$escCaseId]);
+    $escStageRow = $escStageStmt->fetch(PDO::FETCH_ASSOC);
+    $groupedRows = (new Paanyaya($db))->getGroupedPaanyayaCases();
+    $escGroup = null;
+    foreach ($groupedRows as $g) {
+        if (($g['group_key'] ?? '') === 'complaint:' . $escalatedCid) {
+            $escGroup = $g;
+            break;
+        }
+    }
+    check($viewRes['status'] === 200
+        && $escCaseId > 0
+        && ($viewJson['case_status'] ?? '') === 'Mediation'
+        && ($viewJson['lifecycle_status'] ?? '') === 'Mediation'
+        && ($viewJson['case_workspace']['stages']['mediation']['stage_status'] ?? '') === 'In Progress'
+        && ($escComplaint['status'] ?? '') === 'Mediation'
+        && ($escComplaint['screening_decision'] ?? '') === 'Eligible'
+        && !empty($escComplaint['docketed_by'])
+        && !empty($escComplaint['docketed_at'])
+        && ($escComplaint['paanyaya_1_outcome'] ?? '') === 'Impasse_Escalate'
+        && (int) ($escComplaint['max_paanyaya_reached'] ?? 0) === 1
+        && ($escStageRow['stage_status'] ?? '') === 'In Progress'
+        && !empty($escStageRow['started_at'])
+        && ($escGroup['workflow_stage'] ?? '') === 'Stage 1 · Punong Barangay Mediation',
+        'Formal complaint escalated from Paanyaya updates complaint screening, case_stages (Mediation In Progress), lifecycle, and Paanyaya workflow stage');
 } catch (Throwable $exception) {
     fwrite(STDERR, file_get_contents($logPath));
     throw $exception;
