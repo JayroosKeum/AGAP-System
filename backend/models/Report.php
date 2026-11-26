@@ -284,10 +284,12 @@ class Report
 
         if ($period === 'all' || !$startDate || !$endDate) {
             $statusRows = $this->conn->query(
-                'SELECT case_status AS status, COUNT(*) AS total
-                 FROM cases
-                 GROUP BY case_status
-                 ORDER BY total DESC, case_status ASC'
+                'SELECT c.case_status AS status, COUNT(*) AS total
+                 FROM cases c
+                 INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+                 WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL
+                 GROUP BY c.case_status
+                 ORDER BY total DESC, c.case_status ASC'
             )->fetchAll(PDO::FETCH_ASSOC);
 
             $todayHearings = $this->conn->prepare(
@@ -313,6 +315,7 @@ class Report
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
                  LEFT JOIN users po ON po.user_id = h.presiding_officer_id
                  WHERE DATE(h.hearing_date) = ?
+                   AND c.deleted_at IS NULL AND co.deleted_at IS NULL
                    AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled')
                    AND h.status <> 'Completed'
                    AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
@@ -343,6 +346,7 @@ class Report
                  LEFT JOIN complaints co ON co.complaint_id = COALESCE(NULLIF(p.complaint_id, 0), p.escalated_to_complaint_id)
                  LEFT JOIN paanyaya_sessions ps ON ps.complaint_id = p.complaint_id AND ps.scheduled_date = p.scheduled_date
                  WHERE p.status NOT IN ('Completed', 'Cancelled', 'Resolved', 'Unresolved', 'Escalated')
+                   AND (co.complaint_id IS NULL OR co.deleted_at IS NULL)
                    AND (ps.session_id IS NULL OR COALESCE(ps.queue_status, 'Waiting') <> 'Concluded')
                  ORDER BY
                      CASE
@@ -414,6 +418,7 @@ class Report
                  FROM cases c
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
                  LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
+                 WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL
                  ORDER BY c.docket_date DESC, c.case_id DESC"
             );
             $casesList = $casesStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -440,7 +445,8 @@ class Report
                  INNER JOIN cases c ON c.case_id = h.case_id
                  INNER JOIN complaints co ON co.complaint_id = c.complaint_id
                  LEFT JOIN users po ON po.user_id = h.presiding_officer_id
-                 WHERE h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
+                 WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL
+                   AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Rescheduled', 'Completed')
                    AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
                    AND NOT EXISTS (
                        SELECT 1 FROM hearings nh
@@ -458,7 +464,7 @@ class Report
 
             $walkinsTodayStmt = $this->conn->prepare(
                 "SELECT (
-                    (SELECT COUNT(*) FROM complaints WHERE DATE(created_at) = ?)
+                    (SELECT COUNT(*) FROM complaints WHERE deleted_at IS NULL AND DATE(created_at) = ?)
                     +
                     (SELECT COUNT(*) FROM paanyayas WHERE DATE(created_at) = ? AND (complaint_id IS NULL OR complaint_id = 0) AND (escalated_to_complaint_id IS NULL OR escalated_to_complaint_id = 0))
                 )"
@@ -470,7 +476,7 @@ class Report
                 SELECT (
                     (SELECT COUNT(*) FROM paanyayas)
                     +
-                    (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (
+                    (SELECT COUNT(*) FROM complaints WHERE deleted_at IS NULL AND (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (
                         SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL
                         UNION
                         SELECT escalated_to_complaint_id FROM paanyayas WHERE escalated_to_complaint_id IS NOT NULL
@@ -482,7 +488,7 @@ class Report
                 SELECT (
                     (SELECT COUNT(*) FROM paanyayas WHERE status IN ("Scheduled", "Pending"))
                     +
-                    (SELECT COUNT(*) FROM complaints WHERE (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (
+                    (SELECT COUNT(*) FROM complaints WHERE deleted_at IS NULL AND (status LIKE "Pre-Docketed%" OR status LIKE "Paanyaya%") AND complaint_id NOT IN (
                         SELECT complaint_id FROM paanyayas WHERE complaint_id IS NOT NULL
                         UNION
                         SELECT escalated_to_complaint_id FROM paanyayas WHERE escalated_to_complaint_id IS NOT NULL
@@ -491,27 +497,27 @@ class Report
             ')->fetchColumn();
             $activePaanyaya = $activePaanyayaOnly > 0 ? $activePaanyayaOnly : $totalPaanyaya;
 
-            $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status IN ('Mediation', 'Conciliation') AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
-            $mediationOnlyCases = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Mediation'")->fetchColumn();
-            $pangkatConciliations = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation'")->fetchColumn();
-            $activeMediationsTotal = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE case_status IN ('Mediation', 'Conciliation')")->fetchColumn();
+            $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.deleted_at IS NULL AND c.case_status IN ('Mediation', 'Conciliation') AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
+            $mediationOnlyCases = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND case_status = 'Mediation'")->fetchColumn();
+            $pangkatConciliations = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND case_status = 'Conciliation'")->fetchColumn();
+            $activeMediationsTotal = (int) $this->conn->query("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND case_status IN ('Mediation', 'Conciliation')")->fetchColumn();
             $activeUsers = (int) $this->conn->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
 
             $settledCasesTotal = (int) $this->conn->query(
                 "SELECT COUNT(DISTINCT c.case_id) FROM cases c
                  LEFT JOIN settlements s ON s.case_id = c.case_id
-                 WHERE c.case_status = 'Settled' OR s.settlement_date IS NOT NULL"
+                 WHERE c.deleted_at IS NULL AND (c.case_status = 'Settled' OR s.settlement_date IS NOT NULL)"
             )->fetchColumn();
 
             $cfaCasesTotal = (int) $this->conn->query(
                 "SELECT COUNT(DISTINCT c.case_id) FROM cases c
                  LEFT JOIN cfa_records cf ON cf.case_id = c.case_id
-                 WHERE c.case_status = 'CFA Issued' OR cf.issuance_date IS NOT NULL"
+                 WHERE c.deleted_at IS NULL AND (c.case_status = 'CFA Issued' OR cf.issuance_date IS NOT NULL)"
             )->fetchColumn();
 
             $archivedCasesTotal = (int) $this->conn->query(
                 "SELECT COUNT(*) FROM cases
-                 WHERE case_status = 'Archived' OR archived_date IS NOT NULL"
+                 WHERE deleted_at IS NULL AND (case_status = 'Archived' OR archived_date IS NOT NULL)"
             )->fetchColumn();
 
             $auditStmt = $this->conn->query(
@@ -563,11 +569,12 @@ class Report
         $params = [$startDate, $endDate];
 
         $statusStmt = $this->conn->prepare(
-            'SELECT case_status AS status, COUNT(*) AS total
-             FROM cases
-             WHERE docket_date BETWEEN ? AND ?
-             GROUP BY case_status
-             ORDER BY total DESC, case_status ASC'
+            'SELECT c.case_status AS status, COUNT(*) AS total
+             FROM cases c
+             INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL AND c.docket_date BETWEEN ? AND ?
+             GROUP BY c.case_status
+             ORDER BY total DESC, c.case_status ASC'
         );
         $statusStmt->execute($params);
         $statusRows = $statusStmt->fetchAll(PDO::FETCH_ASSOC);
@@ -644,13 +651,14 @@ class Report
         $deadlineStmt->execute($params);
         $deadlineRows = $deadlineStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $totalCasesStmt = $this->conn->prepare("SELECT COUNT(*) FROM cases WHERE docket_date BETWEEN ? AND ?");
+        $totalCasesStmt = $this->conn->prepare("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND docket_date BETWEEN ? AND ?");
         $totalCasesStmt->execute($params);
 
         $settledStmt = $this->conn->prepare(
             "SELECT COUNT(DISTINCT c.case_id) FROM cases c
              LEFT JOIN settlements s ON s.case_id = c.case_id
-             WHERE (c.case_status = 'Settled' OR s.settlement_date IS NOT NULL)
+             WHERE c.deleted_at IS NULL
+               AND (c.case_status = 'Settled' OR s.settlement_date IS NOT NULL)
                AND (c.docket_date BETWEEN ? AND ? OR s.settlement_date BETWEEN ? AND ?)"
         );
         $settledStmt->execute([$startDate, $endDate, $startDate, $endDate]);
@@ -658,21 +666,24 @@ class Report
         $cfaStmt = $this->conn->prepare(
             "SELECT COUNT(DISTINCT c.case_id) FROM cases c
              LEFT JOIN cfa_records cf ON cf.case_id = c.case_id
-             WHERE (c.case_status = 'CFA Issued' OR cf.issuance_date IS NOT NULL)
+             WHERE c.deleted_at IS NULL
+               AND (c.case_status = 'CFA Issued' OR cf.issuance_date IS NOT NULL)
                AND (c.docket_date BETWEEN ? AND ? OR cf.issuance_date BETWEEN ? AND ?)"
         );
         $cfaStmt->execute([$startDate, $endDate, $startDate, $endDate]);
 
         $archivedStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM cases
-             WHERE (case_status = 'Archived' OR archived_date IS NOT NULL)
+             WHERE deleted_at IS NULL
+               AND (case_status = 'Archived' OR archived_date IS NOT NULL)
                AND (docket_date BETWEEN ? AND ? OR (archived_date IS NOT NULL AND archived_date BETWEEN ? AND ?))"
         );
         $archivedStmt->execute([$startDate, $endDate, $startDate, $endDate]);
 
         $pendingReviewStmt = $this->conn->prepare(
             "SELECT COUNT(*) FROM complaints
-             WHERE status IN ('Under Review', 'Needs Information')
+             WHERE deleted_at IS NULL
+               AND status IN ('Under Review', 'Needs Information')
                AND DATE(created_at) BETWEEN ? AND ?"
         );
         $pendingReviewStmt->execute($params);
@@ -756,7 +767,7 @@ class Report
              FROM cases c
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              LEFT JOIN complaint_categories cat ON cat.category_id = co.category_id
-             WHERE c.docket_date BETWEEN ? AND ?
+             WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL AND c.docket_date BETWEEN ? AND ?
              ORDER BY c.docket_date DESC, c.case_id DESC"
         );
         $casesStmt->execute($params);
@@ -799,7 +810,7 @@ class Report
 
         $walkinsStmt = $this->conn->prepare(
             "SELECT (
-                (SELECT COUNT(*) FROM complaints WHERE DATE(created_at) BETWEEN ? AND ?)
+                (SELECT COUNT(*) FROM complaints WHERE deleted_at IS NULL AND DATE(created_at) BETWEEN ? AND ?)
                 +
                 (SELECT COUNT(*) FROM paanyayas WHERE DATE(created_at) BETWEEN ? AND ? AND (complaint_id IS NULL OR complaint_id = 0) AND (escalated_to_complaint_id IS NULL OR escalated_to_complaint_id = 0))
             )"
@@ -807,12 +818,12 @@ class Report
         $walkinsStmt->execute([$startDate, $endDate, $startDate, $endDate]);
         $walkinsToday = (int) $walkinsStmt->fetchColumn();
 
-        $pangkatConciliationStmt = $this->conn->prepare("SELECT COUNT(*) FROM cases WHERE case_status = 'Conciliation' AND docket_date BETWEEN ? AND ?");
+        $pangkatConciliationStmt = $this->conn->prepare("SELECT COUNT(*) FROM cases WHERE deleted_at IS NULL AND case_status = 'Conciliation' AND docket_date BETWEEN ? AND ?");
         $pangkatConciliationStmt->execute($params);
         $pangkatConciliations = (int) $pangkatConciliationStmt->fetchColumn();
 
         $activeUsers = (int) $this->conn->query("SELECT COUNT(*) FROM users WHERE status = 'Active'")->fetchColumn();
-        $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.case_status IN ('Mediation', 'Conciliation') AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
+        $pendingForms = (int) $this->conn->query("SELECT COUNT(DISTINCT c.case_id) FROM cases c LEFT JOIN summon_deliveries sd ON sd.case_id = c.case_id WHERE c.deleted_at IS NULL AND c.case_status IN ('Mediation', 'Conciliation') AND (sd.delivery_id IS NULL OR sd.delivery_status = 'Pending')")->fetchColumn();
 
         $auditStmt = $this->conn->query(
             "SELECT a.audit_id, a.action, a.module_name, a.audit_date,
@@ -1135,20 +1146,20 @@ class Report
 
     public function getReport(?string $startDate = null, ?string $endDate = null): array
     {
-        $whereCases = '';
-        $whereFiled = '';
+        $whereCases = 'WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL';
+        $whereFiled = 'WHERE deleted_at IS NULL';
         $params = [];
         if (!empty($startDate) && !empty($endDate)) {
-            $whereCases = 'WHERE c.docket_date BETWEEN ? AND ?';
-            $whereFiled = 'WHERE DATE(created_at) BETWEEN ? AND ?';
+            $whereCases .= ' AND c.docket_date BETWEEN ? AND ?';
+            $whereFiled .= ' AND DATE(created_at) BETWEEN ? AND ?';
             $params = [$startDate, $endDate];
         } elseif (!empty($startDate)) {
-            $whereCases = 'WHERE c.docket_date >= ?';
-            $whereFiled = 'WHERE DATE(created_at) >= ?';
+            $whereCases .= ' AND c.docket_date >= ?';
+            $whereFiled .= ' AND DATE(created_at) >= ?';
             $params = [$startDate];
         } elseif (!empty($endDate)) {
-            $whereCases = 'WHERE c.docket_date <= ?';
-            $whereFiled = 'WHERE DATE(created_at) <= ?';
+            $whereCases .= ' AND c.docket_date <= ?';
+            $whereFiled .= ' AND DATE(created_at) <= ?';
             $params = [$endDate];
         }
 
@@ -1254,17 +1265,17 @@ class Report
      */
     public function getCaseRegister(?string $startDate = null, ?string $endDate = null): array
     {
-        $where = '';
+        $where = 'WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL';
         $params = [];
 
         if ($startDate && $endDate) {
-            $where = 'WHERE c.docket_date BETWEEN ? AND ?';
+            $where .= ' AND c.docket_date BETWEEN ? AND ?';
             $params = [$startDate, $endDate];
         } elseif ($startDate) {
-            $where = 'WHERE c.docket_date >= ?';
+            $where .= ' AND c.docket_date >= ?';
             $params = [$startDate];
         } elseif ($endDate) {
-            $where = 'WHERE c.docket_date <= ?';
+            $where .= ' AND c.docket_date <= ?';
             $params = [$endDate];
         }
 

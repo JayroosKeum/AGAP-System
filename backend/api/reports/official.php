@@ -3,17 +3,16 @@
 declare(strict_types=1);
 session_start();
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     header('Location: ../../../frontend/pages/auth/login.php?error=login_required');
     exit;
 }
-$roleId = (int) $_SESSION['role_id'];
-if (!in_array($roleId, [1, 2], true)) {
+if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk'])) {
     http_response_code(403);
     exit('Access denied for this role.');
 }
-
-require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../models/Setting.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 require_once __DIR__ . '/../../services/DocxTemplateService.php';
@@ -64,14 +63,14 @@ LEFT JOIN arbitration_records ar ON ar.case_id=c.case_id
 LEFT JOIN cfa_records cfa ON cfa.case_id=c.case_id";
 
 if ($type === 'certificate') {
-    $stmt = $db->prepare($caseSql . ' WHERE DATE(cfa.created_at) BETWEEN ? AND ? ORDER BY cfa.created_at, c.case_id');
+    $stmt = $db->prepare($caseSql . ' WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL AND DATE(cfa.created_at) BETWEEN ? AND ? ORDER BY cfa.created_at, c.case_id');
     $stmt->execute([$startDate, $endDate]);
 } elseif ($type === 'monitoring') {
     $monthPlaceholders = implode(',', array_fill(0, count($months), '?'));
-    $stmt = $db->prepare($caseSql . " WHERE YEAR(c.docket_date) = ? AND MONTH(c.docket_date) IN ($monthPlaceholders) ORDER BY c.docket_date, c.case_id");
+    $stmt = $db->prepare($caseSql . " WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL AND YEAR(c.docket_date) = ? AND MONTH(c.docket_date) IN ($monthPlaceholders) ORDER BY c.docket_date, c.case_id");
     $stmt->execute(array_merge([$year], $months));
 } else {
-    $stmt = $db->prepare($caseSql . ' WHERE c.docket_date BETWEEN ? AND ? ORDER BY c.docket_date, c.case_id');
+    $stmt = $db->prepare($caseSql . ' WHERE c.deleted_at IS NULL AND co.deleted_at IS NULL AND c.docket_date BETWEEN ? AND ? ORDER BY c.docket_date, c.case_id');
     $stmt->execute([$startDate, $endDate]);
 }
 $cases = $stmt->fetchAll(PDO::FETCH_ASSOC);

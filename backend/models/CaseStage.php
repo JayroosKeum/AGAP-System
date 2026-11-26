@@ -1052,6 +1052,12 @@ class CaseStage
             ");
             $memStmt->execute([(int) $group['pangkat_id']]);
             $members = $memStmt->fetchAll(PDO::FETCH_ASSOC);
+            require_once __DIR__ . '/../services/PiiCryptoService.php';
+            foreach ($members as &$memRow) {
+                $memRow['email'] = PiiCryptoService::decryptField($memRow['email'] ?? null);
+                $memRow['contact_number'] = PiiCryptoService::decryptField($memRow['contact_number'] ?? null);
+            }
+            unset($memRow);
         }
 
         // Fallback: check case_assignments if pangkat_members empty
@@ -1068,14 +1074,15 @@ class CaseStage
             ");
             $caStmt->execute([$caseId]);
             $caRows = $caStmt->fetchAll(PDO::FETCH_ASSOC);
+            require_once __DIR__ . '/../services/PiiCryptoService.php';
             foreach ($caRows as $row) {
                 $pos = $row['assignment_role'] === 'Head' ? 'Chairman' : $row['assignment_role'];
                 $members[] = [
                     'position' => $pos,
                     'member_id' => (int) $row['member_id'],
                     'member_name' => $row['member_name'],
-                    'email' => $row['email'],
-                    'contact_number' => $row['contact_number'],
+                    'email' => PiiCryptoService::decryptField($row['email'] ?? null),
+                    'contact_number' => PiiCryptoService::decryptField($row['contact_number'] ?? null),
                     'status' => 'Active'
                 ];
             }

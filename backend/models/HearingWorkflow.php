@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/PDFService.php';
 
 class HearingWorkflow
@@ -510,7 +511,6 @@ class HearingWorkflow
 
     private function audit(int $user, string $action, string $module, int $id): void
     {
-        $q = $this->db->prepare('INSERT INTO audit_trails (user_id, action, module_name, affected_record) VALUES (?, ?, ?, ?)');
-        $q->execute([$user, $action, $module, $id]);
+        (new AuditService($this->db))->log($user, $action, $module, $id);
     }
 }

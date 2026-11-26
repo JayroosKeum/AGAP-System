@@ -51,8 +51,8 @@ class AuditService
             $afterJson = array_key_exists('after', $context)
                 ? json_encode($context['after'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
                 : null;
-            $ipAddress = isset($context['ip_address'])
-                ? (string) $context['ip_address']
+            $ipAddress = array_key_exists('ip_address', $context)
+                ? ($context['ip_address'] === null ? null : (string) $context['ip_address'])
                 : $this->resolveClientIp();
             $auditDate = date('Y-m-d H:i:s');
 

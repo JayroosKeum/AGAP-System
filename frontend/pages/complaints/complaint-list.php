@@ -3,7 +3,7 @@
 session_start();
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2, 3], true)) {
+if (!in_array($roleId, [1, 2, 3, 6], true) && !in_array((string) ($_SESSION['role_name'] ?? ''), ['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'], true)) {
     $redirect = match ($roleId) {
         4 => '../dashboard/server-dashboard.php',
         default => '../auth/login.php',
@@ -17,6 +17,7 @@ unset($_SESSION['complaint_flash']);
 
 require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/services/CsrfService.php';
+require_once __DIR__ . '/../../../backend/services/ComplaintRoutingService.php';
 $categories = [];
 try {
     $db = (new Database())->connect();
@@ -182,6 +183,15 @@ include '../../layouts/header.php';
                                     <option value="Mediation">Mediation (Punong Barangay)</option>
                                     <option value="Conciliation">Conciliation (Pangkat)</option>
                                     <option value="Arbitration">Arbitration (Binding Agreement)</option>
+                                </select>
+                            </div>
+                            <div class="agap-drawer-field">
+                                <label for="searchQueue">Receiving Queue</label>
+                                <select id="searchQueue" name="assigned_queue">
+                                    <option value="">All Queues</option>
+                                    <?php foreach (ComplaintRoutingService::APPROVED_QUEUES as $qCode => $qLabel): ?>
+                                        <option value="<?php echo htmlspecialchars($qCode, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($qLabel . ' (' . $qCode . ')', ENT_QUOTES, 'UTF-8'); ?></option>
+                                    <?php endforeach; ?>
                                 </select>
                             </div>
                             <div class="agap-drawer-field">

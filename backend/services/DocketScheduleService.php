@@ -918,12 +918,8 @@ class DocketScheduleService
                 $auditAction = mb_substr($auditAction, 0, 247) . '...';
             }
 
-            $auditStmt = $this->conn->prepare("
-                INSERT INTO audit_trails (user_id, action, module_name, affected_record)
-                VALUES (?, ?, 'Hearings', ?)
-            ");
             $firstId = (int) ($validatedItems[0]['id'] ?? 0);
-            $auditStmt->execute([$userId, $auditAction, $firstId ?: null]);
+            $this->audit->logStrict($userId, $auditAction, 'Hearings', $firstId ?: null);
 
             $this->conn->commit();
 
@@ -1829,10 +1825,7 @@ class DocketScheduleService
             if (mb_strlen($auditAction) > 250) {
                 $auditAction = mb_substr($auditAction, 0, 247) . '...';
             }
-            $this->conn->prepare("
-                INSERT INTO audit_trails (user_id, action, module_name, affected_record)
-                VALUES (?, ?, 'Hearings', ?)
-            ")->execute([$userId, $auditAction, $hearingId]);
+            $this->audit->logStrict($userId, $auditAction, 'Hearings', $hearingId);
 
             $this->conn->commit();
 
@@ -2359,10 +2352,7 @@ class DocketScheduleService
                 $auditAction = mb_substr($auditAction, 0, 247) . '...';
             }
 
-            $this->conn->prepare("
-                INSERT INTO audit_trails (user_id, action, module_name, affected_record)
-                VALUES (?, ?, 'Paanyaya', ?)
-            ")->execute([$userId, $auditAction, $complaintId ?: $paanyayaId]);
+            $this->audit->logStrict($userId, $auditAction, 'Paanyaya', $complaintId ?: $paanyayaId);
 
             $this->conn->commit();
 

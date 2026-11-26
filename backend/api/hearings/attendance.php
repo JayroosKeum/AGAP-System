@@ -12,22 +12,22 @@ declare(strict_types=1);
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../models/HearingAttendance.php';
 require_once __DIR__ . '/../../services/SummonServiceGate.php';
 require_once __DIR__ . '/../../services/MediationCommencementService.php';
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized access.']);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'], $db);
 
-$canManage = in_array((int) $_SESSION['role_id'], [1, 2, 3], true);
+$canManage = true;
 $hearingAttendance = new HearingAttendance();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $hearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['hearing_id']) ? (int) $_GET['hearing_id'] : null);
     if ($hearingId) {
+        agapRequireHearingAccess($db, (int) $hearingId, 'read', true);
         $result = $hearingAttendance->getHearingAttendance((int) $hearingId);
         if (!$result['success']) {
             http_response_code(404);
@@ -108,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo json_encode(['success' => false, 'message' => 'A valid hearing ID is required.']);
         exit;
     }
+    agapRequireHearingAccess($db, (int) $hearingId, 'write', true);
 
     $serviceGate = (new SummonServiceGate())->forHearing((int) $hearingId);
     $allowGateOverride = !empty($inputData['override_service_gate'])

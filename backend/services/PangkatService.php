@@ -45,6 +45,12 @@ class PangkatService
         ");
         $memStmt->execute([$pangkatId]);
         $allMembers = $memStmt->fetchAll(PDO::FETCH_ASSOC);
+        require_once __DIR__ . '/PiiCryptoService.php';
+        foreach ($allMembers as &$pmRow) {
+            $pmRow['email'] = PiiCryptoService::decryptField($pmRow['email'] ?? null);
+            $pmRow['contact_number'] = PiiCryptoService::decryptField($pmRow['contact_number'] ?? null);
+        }
+        unset($pmRow);
 
         $activeMembers = [];
         $disqualifiedMembers = [];

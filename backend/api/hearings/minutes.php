@@ -2,17 +2,14 @@
 session_start();
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../models/HearingMinutes.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
-    exit;
-}
-
-$roleId = (int) ($_SESSION['role_id'] ?? 0);
-$userId = (int) $_SESSION['user_id'];
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'], $db);
+$userId = agapSessionUserId();
 $model = new HearingMinutes();
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -20,12 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $caseId = filter_var($_GET['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
     if ($hearingId) {
+        agapRequireHearingAccess($db, (int) $hearingId, 'read', true);
         $data = $model->getByHearing($hearingId);
         echo json_encode(['success' => true, 'data' => $data]);
         exit;
     }
 
     if ($caseId) {
+        agapRequireCaseAccess($db, (int) $caseId, 'read', true);
         $data = $model->getByCase($caseId);
         echo json_encode(['success' => true, 'data' => $data]);
         exit;
@@ -37,17 +36,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Only Admin (1), Clerk (2), Lupon Member (3) can record hearing minutes
-    if (!in_array($roleId, [1, 2, 3], true)) {
-        http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'Access denied. Only authorized personnel can record hearing minutes.']);
-        exit;
-    }
-
     $raw = file_get_contents('php://input');
     $input = json_decode($raw, true);
     if (!is_array($input) || empty($input)) {
         $input = $_POST;
+    }
+
+    $targetHearingId = filter_var($input['hearing_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($targetHearingId) {
+        agapRequireHearingAccess($db, (int) $targetHearingId, 'write', true);
     }
 
     $result = (($input['action'] ?? '') === 'book_next_hearing')

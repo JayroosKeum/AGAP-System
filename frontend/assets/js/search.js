@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const intakeSelect = document.getElementById('searchIntake');
     const stageSelect = document.getElementById('searchStage');
     const dispositionSelect = document.getElementById('searchDisposition');
+    const queueSelect = document.getElementById('searchQueue');
 
     // Sorting Elements
     const sortSelect = document.getElementById('searchSort');
@@ -89,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Auto-submit on primary dropdown filter changes
-    [caseTypeSelect, categorySelect].forEach(select => {
+    [caseTypeSelect, categorySelect, queueSelect].forEach(select => {
         if (select) {
             select.addEventListener('change', () => {
                 form.requestSubmit();
@@ -780,6 +781,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (row.document_status === 'Updated Scan Uploaded') {
             docBadgeHtml = `<span class="agap-pill-badge is-amber" style="padding:1px 7px; font-size:0.7rem;" title="Updated KP Form 7 scan uploaded">Updated Scan</span>`;
         }
+        const queueBadgeHtml = row.assigned_queue
+            ? `<span class="agap-pill-badge ${row.assigned_queue === 'REVIEW_EXCEPTION_QUEUE' ? 'is-amber' : 'is-slate'}" style="padding:1px 7px; font-size:0.7rem;" title="Assigned receiving queue">${escapeHtml(String(row.assigned_queue))}</span>`
+            : '';
 
         const complaintHtml = `
             <div class="cell-complaint-meta">
@@ -789,6 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="complaint-sub-meta">
                     <span class="badge-case-type ${caseTypeClass}">${escapeHtml(caseType)}</span>
                     <span class="agap-pill-badge ${sourceBadgeClass}" style="padding:1px 7px; font-size:0.7rem;">${escapeHtml(sourceLabel)}</span>
+                    ${queueBadgeHtml}
                     ${docBadgeHtml}
                 </div>
             </div>

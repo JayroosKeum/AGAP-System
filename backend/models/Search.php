@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ResidentNameLookup.php';
 require_once __DIR__ . '/../middleware/rbac.php';
 
 class Search
@@ -33,7 +34,9 @@ class Search
         $term = trim($filters['q'] ?? '');
 
         if ($term !== '') {
-            $where[] = "(c.case_number LIKE :term OR co.complaint_number LIKE :term OR co.complaint_title LIKE :term OR co.narrative LIKE :term OR EXISTS (SELECT 1 FROM complaint_parties cp_search INNER JOIN residents r_search ON r_search.resident_id = cp_search.resident_id WHERE cp_search.complaint_id = co.complaint_id AND CONCAT_WS(' ', r_search.first_name, r_search.middle_name, r_search.last_name) LIKE :term))";
+            $nameIds = ResidentNameLookup::matchingIds($this->conn, $filters['q']);
+            $nameMatch = $nameIds === [] ? '0 = 1' : 'cp_search.resident_id IN (' . implode(',', $nameIds) . ')';
+            $where[] = "(c.case_number LIKE :term OR co.complaint_number LIKE :term OR co.complaint_title LIKE :term OR co.narrative LIKE :term OR EXISTS (SELECT 1 FROM complaint_parties cp_search WHERE cp_search.complaint_id = co.complaint_id AND {$nameMatch}))";
             $params[':term'] = '%' . $term . '%';
         }
 
@@ -50,8 +53,8 @@ class Search
             } elseif ($filterStatus === 'Resolution / Closed') {
                 $where[] = "(EXISTS (SELECT 1 FROM settlements s_closed WHERE s_closed.case_id = c.case_id)
                     OR EXISTS (SELECT 1 FROM arbitration_records ar_closed WHERE ar_closed.case_id = c.case_id)
-                    OR c.case_status IN ('Settled','Dismissed','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
-                    OR co.status IN ('Settled','Dismissed','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT','Resolved at Paanyaya / Closed'))";
+                    OR c.case_status IN ('Closed','Settled','Dismissed','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
+                    OR co.status IN ('Resolution / Closed','Closed','Settled','Dismissed','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT','Resolved at Paanyaya / Closed'))";
             } elseif ($filterStatus === 'Under Review') {
                 $where[] = "(c.case_id IS NULL AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Accepted') AND co.status NOT IN ('Dismissed', 'Rejected', 'Settled'))";
             } elseif ($filterStatus === 'Docketed') {
@@ -78,6 +81,9 @@ class Search
         }
 
         $intakeFilter = trim((string)($filters['intake_status'] ?? ''));
+        if (in_array($filterStatus, ['Paanyaya', 'Mediation', 'Conciliation', 'in_progress'], true)) {
+            $where[] = "co.status NOT IN ('Resolution / Closed', 'Closed', 'Pending Close') AND COALESCE(c.case_status, '') NOT IN ('Closed', 'Pending Close')";
+        }
         if ($intakeFilter === 'Under Review') {
             $where[] = "(c.case_id IS NULL AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Accepted') AND NOT EXISTS (SELECT 1 FROM hearings h_rev WHERE h_rev.case_id = c.case_id))";
         } elseif ($intakeFilter === 'Docketed') {
@@ -119,6 +125,12 @@ class Search
             $params[':category_id'] = $categoryId;
         }
 
+        $queueFilter = trim((string) ($filters['assigned_queue'] ?? ''));
+        if ($queueFilter !== '') {
+            $where[] = 'co.assigned_queue = :assigned_queue';
+            $params[':assigned_queue'] = $queueFilter;
+        }
+
         if ($this->isDate($filters['date_from'] ?? '')) {
             $where[] = 'co.incident_date >= :date_from';
             $params[':date_from'] = $filters['date_from'];
@@ -129,7 +141,7 @@ class Search
             $params[':date_to'] = $filters['date_to'];
         }
 
-        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status, co.status AS complaint_status, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name, co.document_status, co.is_draft,
+        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status, co.status AS complaint_status, co.resolution_type, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, co.assigned_queue, co.routing_route, cc.category_name, co.document_status, co.is_draft,
         GROUP_CONCAT(DISTINCT CONCAT(cp.party_type, ': ', TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name))) ORDER BY cp.party_type SEPARATOR ' | ') AS parties,
         MAX(history.repeat_count) AS repeat_party_count,
         (SELECT COALESCE(MAX(ps.attempt_number), 1) FROM paanyaya_sessions ps WHERE ps.complaint_id = co.complaint_id) AS paanyaya_attempt,
@@ -197,7 +209,7 @@ class Search
 
         $orderClause = $sortColumns[$sortBy] ?? "co.incident_date DESC, c.case_id DESC, co.complaint_id DESC";
 
-        $sql .= " GROUP BY c.case_id, c.case_number, c.case_type, co.case_type, c.case_status, co.status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, cc.category_name, co.document_status, co.is_draft ORDER BY {$orderClause} LIMIT 250";
+        $sql .= " GROUP BY c.case_id, c.case_number, c.case_type, co.case_type, c.case_status, co.status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, co.assigned_queue, co.routing_route, cc.category_name, co.document_status, co.is_draft ORDER BY {$orderClause} LIMIT 250";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -231,7 +243,11 @@ class Search
         $hasArbFinalized = (int) ($row['arbitration_finalized_count'] ?? 0) > 0;
         $hasSettleRec = (int) ($row['settlement_count'] ?? 0) > 0;
 
-        if (in_array($cs, ['Dismissed', 'DISMISSED_BARRED'], true) || in_array($cos, ['Dismissed', 'DISMISSED_BARRED', 'Rejected'], true)) {
+        $verifiedClosed = $cs === 'Closed' || in_array($cos, ['Closed', 'Resolution / Closed'], true);
+        $pendingClose = $cs === 'Pending Close' || $cos === 'Pending Close';
+        if ($verifiedClosed) {
+            $disposition = trim((string) ($row['resolution_type'] ?? '')) ?: 'Closed';
+        } elseif (in_array($cs, ['Dismissed', 'DISMISSED_BARRED'], true) || in_array($cos, ['Dismissed', 'DISMISSED_BARRED', 'Rejected'], true)) {
             $disposition = 'Dismissed / Dropped';
         } elseif ($cs === 'Repudiated' || $cos === 'Repudiated') {
             $disposition = 'Repudiated';
@@ -255,7 +271,7 @@ class Search
         $complaintStatus = (string)($row['complaint_status'] ?? '');
         $hasCase = !empty($row['case_id']);
 
-        $isDisposed = in_array($caseStatus, ['Settled', 'CFA Issued', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Arbitration Award', 'Archived'], true)
+        $isDisposed = $verifiedClosed || in_array($caseStatus, ['Settled', 'CFA Issued', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Arbitration Award', 'Archived'], true)
             || in_array($complaintStatus, ['Settled', 'Dismissed', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Rejected', 'Resolved at Paanyaya / Closed'], true)
             || ($hasSettleRec && $caseStatus !== 'Arbitration')
             || $hasCfa;
@@ -298,7 +314,12 @@ class Search
 
         // Aggregate labels for tag/pill rendering
         $labels = [];
-        if ($caseStatus === 'Archived' || $complaintStatus === 'Archived') {
+        if ($pendingClose) {
+            $labels[] = 'Pending Close';
+        } elseif ($verifiedClosed) {
+            $labels[] = 'Closed';
+            if ($disposition !== 'Closed') $labels[] = $disposition;
+        } elseif ($caseStatus === 'Archived' || $complaintStatus === 'Archived') {
             $labels[] = 'Archived';
         } elseif ($disposition !== 'Pending') {
             if ($disposition === 'Amicable Settlement') {
@@ -336,6 +357,9 @@ class Search
     {
         $caseStatus = (string) ($row['case_status'] ?? '');
         $complaintStatus = (string) ($row['complaint_status'] ?? '');
+
+        if ($caseStatus === 'Closed' || in_array($complaintStatus, ['Closed', 'Resolution / Closed'], true)) return 'Resolution / Closed';
+        if ($caseStatus === 'Pending Close' || $complaintStatus === 'Pending Close') return 'Pending Close';
 
         $dismissedStatuses = ['Dismissed', 'DISMISSED_BARRED', 'Archived', 'Rejected'];
         if (in_array($caseStatus, $dismissedStatuses, true) || in_array($complaintStatus, $dismissedStatuses, true)) {

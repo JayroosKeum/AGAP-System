@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/Paanyaya.php';
 require_once __DIR__ . '/Setting.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 class PaanyayaModel
 {
@@ -52,7 +53,10 @@ class PaanyayaModel
             ORDER BY cp.party_id ASC
         ");
         $partyStmt->execute([$complaintId]);
-        $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+        $parties = PiiCryptoService::decryptRows(
+            $partyStmt->fetchAll(PDO::FETCH_ASSOC),
+            ['contact_number', 'contact_no', 'address', 'email']
+        );
 
         $complainants = [];
         $respondents = [];
@@ -596,17 +600,24 @@ class PaanyayaModel
                 ');
                 $checkP2->execute([$complaintId]);
                 if (!$checkP2->fetchColumn()) {
+                    // Resolve the encrypted source names before saving this
+                    // plain-text invitation snapshot in another table.
+                    $inviteeLookup = $this->conn->prepare('SELECT TRIM(CONCAT_WS(" ", r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name
+                        FROM complaint_parties cp JOIN residents r ON r.resident_id = cp.resident_id
+                        WHERE cp.complaint_id = ? AND cp.party_type = "Respondent" LIMIT 1');
+                    $inviteeLookup->execute([$complaintId]);
+                    $inviteeName = $inviteeLookup->fetchColumn() ?: 'Inanyayahan';
                     $insP2 = $this->conn->prepare('
                         INSERT INTO paanyaya_stages (
                             complaint_id, stage_type, invitee_name, status,
                             review_status, created_at, updated_at
                         ) VALUES (
                             ?, "Paanyaya 2",
-                            (SELECT COALESCE(TRIM(CONCAT_WS(" ", r.first_name, r.middle_name, r.last_name, r.suffix)), "Inanyayahan") FROM complaint_parties cp LEFT JOIN residents r ON r.resident_id = cp.resident_id WHERE cp.complaint_id = ? AND cp.party_type = "Respondent" LIMIT 1),
+                            ?,
                             "In Progress", "Approved for Paanyaya 2", NOW(), NOW()
                         )
                     ');
-                    $insP2->execute([$complaintId, $complaintId]);
+                    $insP2->execute([$complaintId, $inviteeName]);
                 }
             }
 
@@ -702,7 +713,10 @@ class PaanyayaModel
             ORDER BY cp.party_id ASC
         ");
         $partyStmt->execute([$complaintId]);
-        $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+        $parties = PiiCryptoService::decryptRows(
+            $partyStmt->fetchAll(PDO::FETCH_ASSOC),
+            ['contact_number', 'contact_no', 'address', 'email']
+        );
 
         $complainantNames = [];
         $respondentNames = [];

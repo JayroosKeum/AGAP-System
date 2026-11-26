@@ -10,12 +10,13 @@
 declare(strict_types=1);
 
 session_start();
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     header('Location: ../../../frontend/pages/auth/login.php?error=login_required');
     exit;
 }
-$roleId = (int) $_SESSION['role_id'];
-if (!in_array($roleId, [1, 2, 3], true)) {
+if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'])) {
     http_response_code(403);
     exit('Access denied for this role.');
 }
@@ -23,7 +24,6 @@ if (!in_array($roleId, [1, 2, 3], true)) {
 require_once __DIR__ . '/../../controllers/ReportController.php';
 require_once __DIR__ . '/../../models/Setting.php';
 require_once __DIR__ . '/../../services/DocxTemplateService.php';
-require_once __DIR__ . '/../../config/database.php';
 
 $year  = filter_var($_GET['year'] ?? date('Y'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 2000, 'max_range' => 2100]]) ?: (int) date('Y');
 $month = filter_var($_GET['month'] ?? date('n'), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 12]]) ?: (int) date('n');
@@ -74,17 +74,18 @@ $paanyayaSettled      = 0;
 $paanyayaPending      = 0;
 
 try {
-    $stmtFiled = $db->prepare("SELECT COUNT(*) FROM complaints WHERE DATE(created_at) BETWEEN ? AND ?");
+    $stmtFiled = $db->prepare("SELECT COUNT(*) FROM complaints WHERE deleted_at IS NULL AND DATE(created_at) BETWEEN ? AND ?");
     $stmtFiled->execute([$startDate, $endDate]);
     $totalComplaintsFiled = (int) $stmtFiled->fetchColumn();
 
-    $stmtPaa = $db->prepare("SELECT COUNT(DISTINCT complaint_id) FROM paanyayas WHERE scheduled_date BETWEEN ? AND ?");
+    $stmtPaa = $db->prepare("SELECT COUNT(DISTINCT p.complaint_id) FROM paanyayas p LEFT JOIN complaints co ON co.complaint_id = p.complaint_id WHERE (co.complaint_id IS NULL OR co.deleted_at IS NULL) AND p.scheduled_date BETWEEN ? AND ?");
     $stmtPaa->execute([$startDate, $endDate]);
     $paanyayaIssued = (int) $stmtPaa->fetchColumn();
 
     $stmtPaaSettled = $db->prepare(
         "SELECT COUNT(*) FROM complaints
-         WHERE (status IN ('Settled', 'Resolved at Paanyaya / Closed') OR paanyaya_1_outcome = 'Settled')
+         WHERE deleted_at IS NULL
+           AND (status IN ('Settled', 'Resolved at Paanyaya / Closed') OR paanyaya_1_outcome = 'Settled')
            AND DATE(created_at) BETWEEN ? AND ?"
     );
     $stmtPaaSettled->execute([$startDate, $endDate]);
@@ -92,7 +93,8 @@ try {
 
     $stmtPaaPending = $db->prepare(
         "SELECT COUNT(*) FROM complaints
-         WHERE status = 'Pre-Docketed (Paanyaya)'
+         WHERE deleted_at IS NULL
+           AND status = 'Pre-Docketed (Paanyaya)'
            AND DATE(created_at) BETWEEN ? AND ?"
     );
     $stmtPaaPending->execute([$startDate, $endDate]);

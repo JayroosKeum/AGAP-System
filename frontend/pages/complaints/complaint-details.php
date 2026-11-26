@@ -19,6 +19,9 @@ if ($roleId === 4) {
 }
 require_once __DIR__ . '/../../../backend/config/database.php';
 require_once __DIR__ . '/../../../backend/middleware/rbac.php';
+require_once __DIR__ . '/../../../backend/services/CsrfService.php';
+require_once __DIR__ . '/../../../backend/services/ComplaintRoutingService.php';
+require_once __DIR__ . '/../../../backend/services/ClosureEvidenceService.php';
 if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'])) {
     http_response_code(403);
     exit('Access denied for this role.');
@@ -268,6 +271,12 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                         <span>Edit Case</span>
                     </a>
+                    <button type="button" id="openRoutingOverrideBtn" class="btn-case-status" onclick="openRoutingOverrideModal()" title="Review or override automated receiving queue">
+                        <span>Queue / Routing</span>
+                    </button>
+                    <button type="button" id="openPendingCloseBtn" class="btn-case-status" onclick="openPendingCloseModal()" title="Request complainant-verified Pending Close">
+                        <span>Request Pending Close</span>
+                    </button>
                 <?php else: ?>
                     <span class="btn-case-status" style="background:#eef6f2; border-color:#cde2d6; color:#102b2d; cursor:default; pointer-events:none;">
                         Read-Only Screening View
@@ -2990,10 +2999,139 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 </div>
 
 
+<div id="routingOverrideModal" class="modal" style="display:none;">
+    <div class="modal-content" style="max-width:480px;">
+        <div class="modal-header">
+            <h2>Queue &amp; Routing Override</h2>
+            <button type="button" class="close-btn" onclick="closeRoutingOverrideModal()">&times;</button>
+        </div>
+        <form id="routingOverrideForm" onsubmit="submitRoutingOverride(event)">
+            <div class="form-group" style="margin-bottom:12px;">
+                <label for="overrideQueueSelect" style="font-weight:700;display:block;margin-bottom:4px;">Approved Receiving Queue</label>
+                <select id="overrideQueueSelect" required style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;">
+                    <?php foreach (ComplaintRoutingService::APPROVED_QUEUES as $qCode => $qLabel): ?>
+                        <option value="<?= htmlspecialchars($qCode, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($qCode . ' — ' . $qLabel, ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label for="overrideQueueReason" style="font-weight:700;display:block;margin-bottom:4px;">Override Reason *</label>
+                <textarea id="overrideQueueReason" rows="3" required placeholder="State why this queue assignment is being updated..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;"></textarea>
+            </div>
+            <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:10px;">
+                <button type="button" class="btn-secondary" onclick="closeRoutingOverrideModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitRoutingOverride">Save Queue Assignment</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="pendingCloseModal" class="modal" style="display:none;">
+    <div class="modal-content" style="max-width:500px;">
+        <div class="modal-header">
+            <h2>Request Pending Close</h2>
+            <button type="button" class="close-btn" onclick="closePendingCloseModal()">&times;</button>
+        </div>
+        <form id="pendingCloseForm" onsubmit="submitPendingCloseRequest(event)">
+            <div class="form-group" style="margin-bottom:12px;">
+                <label for="pendingCloseType" style="font-weight:700;display:block;margin-bottom:4px;">Resolution Type *</label>
+                <select id="pendingCloseType" required style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;">
+                    <option value="Administrative Closure">Administrative Closure</option>
+                    <option value="Signed Settlement">Signed Settlement</option>
+                    <option value="Obligation Compliance">Obligation Compliance</option>
+                    <option value="Dismissal">Dismissal</option>
+                    <option value="CFA Referral">CFA Referral</option>
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+                <label for="pendingCloseEvidence" style="font-weight:700;display:block;margin-bottom:4px;">Supporting Evidence / Record Reference</label>
+                <select id="pendingCloseEvidence" style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;">
+                    <option value="">Select a saved supporting record</option>
+                    <?php foreach ((new ClosureEvidenceService($preparationDb))->forComplaint($complaintId) as $closureEvidence): ?>
+                        <option value="<?= htmlspecialchars($closureEvidence['reference'], ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($closureEvidence['label'], ENT_QUOTES, 'UTF-8') ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <small>Upload supporting evidence or finalize the relevant proceeding before requesting closure.</small>
+            </div>
+            <div class="form-group" style="margin-bottom:14px;">
+                <label for="pendingCloseReason" style="font-weight:700;display:block;margin-bottom:4px;">Closure Request Reason *</label>
+                <textarea id="pendingCloseReason" rows="3" required placeholder="Explain the basis for requesting closure verification..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;"></textarea>
+            </div>
+            <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:10px;">
+                <button type="button" class="btn-secondary" onclick="closePendingCloseModal()">Cancel</button>
+                <button type="submit" class="btn-create" id="btnSubmitPendingClose">Submit Pending Close Request</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 window.openRecordReturnModal = function(stage) {
     const cId = <?= (int)($complaintId ?? 0) ?>;
     window.location.href = `../gps/proof-service.php?complaint_id=${encodeURIComponent(cId)}&stage=${encodeURIComponent(stage || 'Paanyaya 1')}&open_return=1`;
+};
+window.openRoutingOverrideModal = function() {
+    const el = document.getElementById('routingOverrideModal');
+    if (el) el.style.display = 'flex';
+};
+window.closeRoutingOverrideModal = function() {
+    const el = document.getElementById('routingOverrideModal');
+    if (el) el.style.display = 'none';
+};
+window.submitRoutingOverride = async function(ev) {
+    ev.preventDefault();
+    const res = await fetch('../../../backend/api/complaints/override-routing.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': <?= json_encode(CsrfService::token()) ?>
+        },
+        body: JSON.stringify({
+            complaint_id: <?= (int)($complaintId ?? 0) ?>,
+            assigned_queue: document.getElementById('overrideQueueSelect')?.value || '',
+            reason: document.getElementById('overrideQueueReason')?.value?.trim() || ''
+        })
+    });
+    const data = await res.json();
+    if (data.success) {
+        window.agapNotify?.(data.message || 'Queue updated.', 'success');
+        closeRoutingOverrideModal();
+    } else {
+        window.agapNotify?.(data.message || 'Unable to update queue.', 'error');
+    }
+};
+window.openPendingCloseModal = function() {
+    const el = document.getElementById('pendingCloseModal');
+    if (el) el.style.display = 'flex';
+};
+window.closePendingCloseModal = function() {
+    const el = document.getElementById('pendingCloseModal');
+    if (el) el.style.display = 'none';
+};
+window.submitPendingCloseRequest = async function(ev) {
+    ev.preventDefault();
+    const res = await fetch('../../../backend/api/complaints/closure-request.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': <?= json_encode(CsrfService::token()) ?>
+        },
+        body: JSON.stringify({
+            action: 'request',
+            complaint_id: <?= (int)($complaintId ?? 0) ?>,
+            resolution_type: document.getElementById('pendingCloseType')?.value || 'Administrative Closure',
+            evidence_path: document.getElementById('pendingCloseEvidence')?.value?.trim() || '',
+            request_reason: document.getElementById('pendingCloseReason')?.value?.trim() || ''
+        })
+    });
+    const data = await res.json();
+    if (data.success) {
+        window.agapNotify?.(data.message || 'Pending Close request submitted.', 'success');
+        closePendingCloseModal();
+        setTimeout(() => window.location.reload(), 600);
+    } else {
+        window.agapNotify?.(data.message || 'Unable to submit closure request.', 'error');
+    }
 };
 </script>
 

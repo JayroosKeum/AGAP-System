@@ -6,6 +6,7 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/AuditService.php';
 require_once __DIR__ . '/NotificationService.php';
 require_once __DIR__ . '/ComplaintLifecycleService.php';
+require_once __DIR__ . '/ClosureEvidenceService.php';
 
 /**
  * Implements A9 & A10:
@@ -18,14 +19,18 @@ require_once __DIR__ . '/ComplaintLifecycleService.php';
 final class ClosureWorkflowService
 {
     public const DEFAULT_TIMEOUT_DAYS = 5;
+    public const MAX_FAILED_VERIFICATION_ATTEMPTS = 5;
+    public const VERIFICATION_LOCKOUT_MINUTES = 15;
 
     private PDO $conn;
     private AuditService $audit;
+    private NotificationService $notifications;
 
-    public function __construct(?PDO $conn = null)
+    public function __construct(?PDO $conn = null, ?NotificationService $notifications = null)
     {
         $this->conn = $conn ?? (new Database())->connect();
         $this->audit = new AuditService($this->conn);
+        $this->notifications = $notifications ?? new NotificationService($this->conn);
     }
 
     /**
@@ -34,10 +39,32 @@ final class ClosureWorkflowService
      *
      * @return array{ready: bool, reason: string|null}
      */
-    public function validateResolutionReadiness(int $complaintId, string $resolutionType): array
+    public function validateResolutionReadiness(int $complaintId, string $resolutionType, ?string $evidencePath = null): array
     {
         if (!array_key_exists($resolutionType, ComplaintLifecycleService::RESOLUTION_DEFINITIONS)) {
             return ['ready' => false, 'reason' => 'Unsupported resolution type.'];
+        }
+
+        $evidence = new ClosureEvidenceService($this->conn);
+        $savedEvidence = trim((string) $evidencePath) !== '' ? $evidence->resolve($complaintId, $evidencePath) : null;
+        if (trim((string) $evidencePath) !== '' && $savedEvidence === null) {
+            return ['ready' => false, 'reason' => 'Choose a saved supporting record belonging to this complaint. The supplied reference is unavailable or belongs to another complaint.'];
+        }
+
+        if ($resolutionType === 'Signed Settlement') {
+            $stmt = $this->conn->prepare(
+                "SELECT s.settlement_status
+                 FROM cases c
+                 INNER JOIN settlements s ON s.case_id = c.case_id
+                 WHERE c.complaint_id = ?
+                 ORDER BY s.settlement_id DESC
+                 LIMIT 1"
+            );
+            $stmt->execute([$complaintId]);
+            $settlementStatus = (string) ($stmt->fetchColumn() ?: '');
+            if ($settlementStatus !== 'Signed and Attested') {
+                return ['ready' => false, 'reason' => 'Signed Settlement closure requires a Signed and Attested settlement agreement (Draft settlements are not accepted).'];
+            }
         }
 
         if ($resolutionType === 'Obligation Compliance') {
@@ -50,13 +77,14 @@ final class ClosureWorkflowService
             );
             $stmt->execute([$complaintId]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            if ($row) {
-                if (($row['repudiation_status'] ?? '') === 'Repudiated') {
-                    return ['ready' => false, 'reason' => 'Repudiated settlements cannot be closed as Obligation Compliance; use CFA Referral.'];
-                }
-                if (!in_array((string) ($row['compliance_status'] ?? ''), ['Complied', 'Fully Paid'], true)) {
-                    return ['ready' => false, 'reason' => 'Obligation Compliance requires settlement compliance status Complied or Fully Paid; a signed agreement alone does not prove fulfillment.'];
-                }
+            if (!$row || ($row['settlement_status'] ?? '') !== 'Signed and Attested') {
+                return ['ready' => false, 'reason' => 'Obligation Compliance requires a recorded settlement with Complied or Fully Paid status.'];
+            }
+            if (($row['repudiation_status'] ?? '') === 'Repudiated') {
+                return ['ready' => false, 'reason' => 'Repudiated settlements cannot be closed as Obligation Compliance; use CFA Referral.'];
+            }
+            if (!in_array((string) ($row['compliance_status'] ?? ''), ['Complied', 'Fully Paid'], true)) {
+                return ['ready' => false, 'reason' => 'Obligation Compliance requires settlement compliance status Complied or Fully Paid; a signed agreement alone does not prove fulfillment.'];
             }
         }
 
@@ -77,6 +105,12 @@ final class ClosureWorkflowService
             }
         }
 
+        if (in_array($resolutionType, ['Administrative Closure', 'Dismissal'], true)) {
+            if ($savedEvidence === null) {
+                return ['ready' => false, 'reason' => "{$resolutionType} requires a selected saved supporting record for this complaint."];
+            }
+        }
+
         return ['ready' => true, 'reason' => null];
     }
 
@@ -87,8 +121,12 @@ final class ClosureWorkflowService
      *
      * @param array<string, mixed> $data
      */
-    public function requestPendingClose(int $complaintId, int $actorUserId, array $data): array
-    {
+    public function requestPendingClose(
+        int $complaintId,
+        int $actorUserId,
+        array $data,
+        ?string $internalExpiryOverride = null
+    ): array {
         $reason = trim((string) ($data['request_reason'] ?? $data['reason'] ?? ''));
         $resolutionType = trim((string) ($data['resolution_type'] ?? 'Administrative Closure'));
         $evidencePath = trim((string) ($data['evidence_path'] ?? '')) ?: null;
@@ -100,10 +138,11 @@ final class ClosureWorkflowService
             return ['success' => false, 'message' => 'A valid complaint ID and closure request reason are required.'];
         }
 
-        $readiness = $this->validateResolutionReadiness($complaintId, $resolutionType);
+        $readiness = $this->validateResolutionReadiness($complaintId, $resolutionType, $evidencePath);
         if (!$readiness['ready']) {
             return ['success' => false, 'message' => $readiness['reason']];
         }
+        $evidencePath = $evidencePath !== null ? (new ClosureEvidenceService($this->conn))->resolve($complaintId, $evidencePath) : null;
 
         $rawToken = 'AGAP-CLOSE-' . bin2hex(random_bytes(20));
         $tokenHash = hash('sha256', $rawToken);
@@ -111,8 +150,8 @@ final class ClosureWorkflowService
         $otpHash = hash('sha256', $rawOtp);
 
         $now = date('Y-m-d H:i:s');
-        $expiresAt = isset($data['expires_at_override']) && is_string($data['expires_at_override'])
-            ? $data['expires_at_override']
+        $expiresAt = ($internalExpiryOverride !== null && trim($internalExpiryOverride) !== '')
+            ? trim($internalExpiryOverride)
             : date('Y-m-d H:i:s', strtotime("+{$timeoutDays} days"));
 
         $this->conn->beginTransaction();
@@ -133,16 +172,36 @@ final class ClosureWorkflowService
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
 
-            if ($comp['status'] === 'Pending Close') {
+            if (in_array($comp['status'], ['Closed', 'Resolution / Closed'], true) || $comp['case_status'] === 'Closed') {
                 $this->conn->rollBack();
-                return ['success' => false, 'message' => 'A Pending Close request is already active for this complaint.'];
+                return ['success' => false, 'message' => 'This complaint has already completed final closure.'];
             }
 
-            $existingPending = $this->conn->prepare("SELECT closure_request_id FROM closure_requests WHERE complaint_id = ? AND status = 'Pending' LIMIT 1");
+            $existingPending = $this->conn->prepare("SELECT * FROM closure_requests WHERE complaint_id = ? AND status = 'Pending' LIMIT 1 FOR UPDATE");
             $existingPending->execute([$complaintId]);
-            if ($existingPending->fetchColumn()) {
+            $previousRequest = $existingPending->fetch(PDO::FETCH_ASSOC);
+            if ($previousRequest && $previousRequest['notice_delivery_status'] === 'Unverified') {
+                // Older notices have no delivery proof. Supersede them only as
+                // part of a new, successfully delivered request in this transaction.
+                $this->conn->prepare("UPDATE closure_requests SET status = 'Cancelled' WHERE closure_request_id = ?")
+                    ->execute([(int) $previousRequest['closure_request_id']]);
+                $this->audit->logStrict($actorUserId, 'Superseded Unverified Closure Notice', 'Complaints', $complaintId, [
+                    'before' => ['closure_request_id' => (int) $previousRequest['closure_request_id'], 'status' => 'Pending'],
+                    'after' => ['status' => 'Cancelled', 'reason' => 'Replacement notice requires verified delivery.'],
+                ]);
+                $comp['status'] = $previousRequest['previous_complaint_status'];
+                $comp['case_status'] = $previousRequest['previous_case_status'];
+            } elseif ($previousRequest || $comp['status'] === 'Pending Close') {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'A Pending Close request is already pending verification.'];
+            }
+
+            // Recheck under the complaint and supporting-record locks so a
+            // concurrent evidence change cannot invalidate the saved reference.
+            $readiness = $this->validateResolutionReadiness($complaintId, $resolutionType, $evidencePath);
+            if (!$readiness['ready']) {
+                $this->conn->rollBack();
+                return ['success' => false, 'message' => $readiness['reason']];
             }
 
             $caseId = !empty($comp['case_id']) ? (int) $comp['case_id'] : null;
@@ -163,7 +222,7 @@ final class ClosureWorkflowService
                 $evidencePath,
                 $comp['status'],
                 $comp['case_status'] ?? null,
-                $now,
+                null,
                 $expiresAt,
                 $tokenHash,
                 $otpHash,
@@ -198,11 +257,13 @@ final class ClosureWorkflowService
                 ]
             );
 
-            // Notify registered resident owner if present
+            $deliveryChannel = [];
+            $refLabel = $comp['complaint_number'] ?: ($comp['intake_reference'] ?: ('#' . $complaintId));
+
+            // Notify registered resident owner in portal if present
             if (!empty($comp['submitted_by'])) {
                 try {
-                    $refLabel = $comp['complaint_number'] ?: ($comp['intake_reference'] ?: ('#' . $complaintId));
-                    (new NotificationService($this->conn))->notifyUser(
+                    $portalDelivered = $this->notifications->notifyUser(
                         (int) $comp['submitted_by'],
                         'Pending Close Verification Required',
                         "Staff requested closure ({$resolutionType}) for complaint {$refLabel}. Confirm or submit an objection before {$expiresAt}.",
@@ -211,10 +272,58 @@ final class ClosureWorkflowService
                         "../resident/complaint.php?id={$complaintId}",
                         $caseId
                     );
+                    if ($portalDelivered) $deliveryChannel[] = 'resident_portal';
                 } catch (Throwable $ne) {
                     error_log('Pending close notification warning: ' . $ne->getMessage());
                 }
             }
+
+            // Out-of-band email delivery when complainant email + SMTP are configured
+            try {
+                require_once __DIR__ . '/PiiCryptoService.php';
+                require_once __DIR__ . '/EmailVerificationMailer.php';
+                $emailStmt = $this->conn->prepare(
+                    "SELECT r.first_name, r.email
+                     FROM complaint_parties cp
+                     JOIN residents r ON r.resident_id = cp.resident_id
+                     WHERE cp.complaint_id = ? AND cp.party_type = 'Complainant'
+                     LIMIT 1"
+                );
+                $emailStmt->execute([$complaintId]);
+                $partyRow = $emailStmt->fetch(PDO::FETCH_ASSOC);
+                $recipientEmail = $partyRow ? PiiCryptoService::decryptField($partyRow['email'] ?? null) : null;
+                if (is_string($recipientEmail) && filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                    (new EmailVerificationMailer())->sendClosureVerification(
+                        $recipientEmail,
+                        (string) ($partyRow['first_name'] ?? 'Complainant'),
+                        (string) $refLabel,
+                        $resolutionType,
+                        $rawOtp,
+                        $expiresAt
+                    );
+                    $deliveryChannel[] = 'email_otp';
+                }
+            } catch (Throwable $me) {
+                error_log('Pending close email delivery notice: ' . $me->getMessage());
+            }
+
+            if ($deliveryChannel === []) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Pending Close requires at least one verified complainant delivery channel (a registered Resident Portal account or deliverable email address) before starting the verification window.',
+                ];
+            }
+
+            $deliveredAt = date('Y-m-d H:i:s');
+            $expiresAt = ($internalExpiryOverride !== null && PHP_SAPI === 'cli')
+                ? $internalExpiryOverride
+                : date('Y-m-d H:i:s', strtotime($deliveredAt . " +{$timeoutDays} days"));
+            $this->conn->prepare("UPDATE closure_requests SET notice_sent_at = ?, expires_at = ?, notice_delivery_status = 'Delivered', notice_delivery_channels = ? WHERE closure_request_id = ?")
+                ->execute([$deliveredAt, $expiresAt, json_encode($deliveryChannel), $requestId]);
+            $this->audit->logStrict($actorUserId, 'Delivered Closure Verification Notice', 'Complaints', $complaintId, [
+                'after' => ['closure_request_id' => $requestId, 'channels' => $deliveryChannel, 'notice_sent_at' => $deliveredAt, 'expires_at' => $expiresAt],
+            ]);
 
             $this->conn->commit();
 
@@ -224,6 +333,7 @@ final class ClosureWorkflowService
                 'closure_request_id' => $requestId,
                 'status' => 'Pending',
                 'expires_at' => $expiresAt,
+                'delivery_channels' => $deliveryChannel,
                 'verification_token' => $rawToken,
                 'verification_otp' => $rawOtp,
             ];
@@ -286,11 +396,33 @@ final class ClosureWorkflowService
                 $candidate = $stmt->fetch(PDO::FETCH_ASSOC);
 
                 if ($candidate) {
+                    if (!empty($candidate['locked_until']) && strtotime((string) $candidate['locked_until']) > time()) {
+                        $this->conn->rollBack();
+                        return ['success' => false, 'http_code' => 429, 'message' => 'Too many invalid verification attempts. Please try again later.'];
+                    }
                     $authorizedByOwner = ($ownerUserId !== null && $ownerUserId > 0 && (int) ($candidate['submitted_by'] ?? 0) === $ownerUserId);
-                    $authorizedByOtp = ($otp !== null && trim($otp) !== '' && !empty($candidate['otp_hash']) && hash_equals((string) $candidate['otp_hash'], hash('sha256', trim($otp))));
+                    $otpProvided = $otp !== null && trim($otp) !== '';
+                    $authorizedByOtp = ($otpProvided && !empty($candidate['otp_hash']) && hash_equals((string) $candidate['otp_hash'], hash('sha256', trim((string) $otp))));
                     if ($authorizedByOwner || $authorizedByOtp) {
                         $req = $candidate;
                     } else {
+                        if ($otpProvided) {
+                            $attempts = ((int) ($candidate['failed_verification_attempts'] ?? 0)) + 1;
+                            $lockedUntil = $attempts >= self::MAX_FAILED_VERIFICATION_ATTEMPTS
+                                ? date('Y-m-d H:i:s', time() + (self::VERIFICATION_LOCKOUT_MINUTES * 60))
+                                : null;
+                            $this->conn->prepare(
+                                'UPDATE closure_requests SET failed_verification_attempts = ?, locked_until = ? WHERE closure_request_id = ?'
+                            )->execute([$attempts, $lockedUntil, (int) $candidate['closure_request_id']]);
+                            $this->conn->commit();
+                            return [
+                                'success' => false,
+                                'http_code' => $lockedUntil !== null ? 429 : 403,
+                                'message' => $lockedUntil !== null
+                                    ? 'Too many invalid OTP attempts. Verification temporarily locked.'
+                                    : 'Invalid verification OTP.',
+                            ];
+                        }
                         $this->conn->rollBack();
                         return ['success' => false, 'http_code' => 403, 'message' => 'Only the complainant owner or holder of the one-time verification token/OTP can respond.'];
                     }
@@ -300,6 +432,22 @@ final class ClosureWorkflowService
             if (!$req || $req['deleted_at'] !== null) {
                 $this->conn->rollBack();
                 return ['success' => false, 'http_code' => 404, 'message' => 'No active Pending Close request was found for verification.'];
+            }
+
+            if (!empty($req['locked_until']) && strtotime((string) $req['locked_until']) > time()) {
+                $this->conn->rollBack();
+                return ['success' => false, 'http_code' => 429, 'message' => 'Too many invalid verification attempts. Please try again later.'];
+            }
+
+            if (!empty($req['expires_at']) && strtotime((string) $req['expires_at']) <= time()) {
+                $this->conn->rollBack();
+                return ['success' => false, 'http_code' => 410, 'message' => 'This Pending Close verification window has expired.'];
+            }
+
+            if ((int) ($req['failed_verification_attempts'] ?? 0) > 0 || !empty($req['locked_until'])) {
+                $this->conn->prepare(
+                    'UPDATE closure_requests SET failed_verification_attempts = 0, locked_until = NULL WHERE closure_request_id = ?'
+                )->execute([(int) $req['closure_request_id']]);
             }
 
             $reqId = (int) $req['closure_request_id'];
@@ -435,7 +583,7 @@ final class ClosureWorkflowService
         $dueStmt = $this->conn->prepare(
             "SELECT closure_request_id
              FROM closure_requests
-             WHERE status = 'Pending' AND expires_at <= ?
+             WHERE status = 'Pending' AND expires_at <= ? AND notice_delivery_status = 'Delivered' AND notice_sent_at IS NOT NULL
              ORDER BY closure_request_id ASC"
         );
         $dueStmt->execute([$cutoff]);
@@ -450,6 +598,7 @@ final class ClosureWorkflowService
                      FROM closure_requests cr
                      JOIN complaints c ON c.complaint_id = cr.complaint_id
                      WHERE cr.closure_request_id = ? AND cr.status = 'Pending' AND cr.expires_at <= ?
+                       AND cr.notice_delivery_status = 'Delivered' AND cr.notice_sent_at IS NOT NULL
                      FOR UPDATE"
                 );
                 $lock->execute([$reqId, $cutoff]);
@@ -532,7 +681,7 @@ final class ClosureWorkflowService
     {
         $stmt = $this->conn->prepare(
             'SELECT closure_request_id, complaint_id, case_id, requested_by, resolution_type, request_reason,
-                    evidence_path, notice_sent_at, expires_at, status, confirmed_at, objected_at, objection_reason,
+                    evidence_path, notice_sent_at, notice_delivery_status, notice_delivery_channels, expires_at, status, confirmed_at, objected_at, objection_reason,
                     closed_at, timeout_processed_at, created_at
              FROM closure_requests
              WHERE complaint_id = ?

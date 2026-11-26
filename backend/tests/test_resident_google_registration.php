@@ -83,7 +83,8 @@ try {
         JOIN resident_user_profiles p USING (user_id) JOIN residents r USING (resident_id) WHERE u.user_id = ?');
     $lookup->execute([$account['user_id']]);
     $profile = $lookup->fetch();
-    check($profile['email'] === $email && $profile['google_subject'] === $subject, 'Store the signed identity instead of the posted email');
+    require_once __DIR__ . '/../services/PiiCryptoService.php';
+    check(PiiCryptoService::decryptField($profile['email'] ?? null) === $email && $profile['google_subject'] === $subject, 'Store the signed identity instead of the posted email');
     check((int) $profile['residency_verified'] === 0, 'Email confirmation preserves separate residency review');
     check($auth->acceptResidentGoogleIdentity($identity) === 'signed_in', 'The same Google subject signs in');
     check((int) $_SESSION['user_id'] === (int) $account['user_id'], 'Google signs in to the matching account');

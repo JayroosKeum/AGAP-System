@@ -1,6 +1,8 @@
 <?php
 session_start();
 header('Content-Type: application/json; charset=utf-8');
+require_once '../../config/database.php';
+require_once '../../middleware/rbac.php';
 require_once '../../controllers/SettlementController.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -9,17 +11,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
-    exit;
-}
-
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Only authorized barangay officers may manage execution proceedings.']);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk'], $db);
 
 $input = $_POST;
 if (empty($input)) {
@@ -40,6 +33,7 @@ if (in_array($action, ['update_status', 'record_hearing', 'issue_notice'], true)
         echo json_encode(['success' => false, 'message' => 'Valid execution_id is required.']);
         exit;
     }
+    agapRequireCaseAccess($db, agapResolveExecutionCaseId($db, (int) $executionId), 'write', true);
     $result = match ($action) {
         'record_hearing' => $controller->recordExecutionHearing((int) $executionId, $input, (int) $_SESSION['user_id']),
         'issue_notice' => $controller->issueNoticeOfExecution((int) $executionId, $input, (int) $_SESSION['user_id']),
@@ -49,8 +43,10 @@ if (in_array($action, ['update_status', 'record_hearing', 'issue_notice'], true)
     $settlementId = filter_var($input['settlement_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     $arbitrationId = filter_var($input['arbitration_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if ($arbitrationId && !$settlementId) {
+        agapRequireCaseAccess($db, agapResolveArbitrationCaseId($db, (int) $arbitrationId), 'write', true);
         $result = $controller->fileArbitrationExecution((int) $arbitrationId, $input, (int) $_SESSION['user_id']);
     } elseif ($settlementId) {
+        agapRequireCaseAccess($db, agapResolveSettlementCaseId($db, (int) $settlementId), 'write', true);
         $result = $controller->fileExecution((int) $settlementId, $input, (int) $_SESSION['user_id']);
     } else {
         http_response_code(400);

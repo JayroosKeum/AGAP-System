@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     echo json_encode([
         'success' => true,
         'history' => $service->getHistoryForComplaint((int) $complaintId),
+        'evidence' => $roleName !== 'Resident' ? (new ClosureEvidenceService($db))->forComplaint((int) $complaintId) : [],
     ]);
     exit;
 }
@@ -54,7 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         agapRequireComplaintAccess($db, (int) $complaintId, 'write', true);
+        // Strip untrusted client-supplied expiry overrides and never expose complainant OTP/token to staff.
+        unset($input['expires_at_override']);
         $result = $service->requestPendingClose((int) $complaintId, $userId, $input);
+        unset($result['verification_token'], $result['verification_otp']);
         http_response_code(!empty($result['success']) ? 201 : 422);
         echo json_encode($result);
         exit;

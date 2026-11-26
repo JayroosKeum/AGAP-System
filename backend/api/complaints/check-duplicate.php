@@ -3,6 +3,7 @@
 session_start();
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../services/ResidentNameLookup.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -30,14 +31,10 @@ $excludeId = filter_var($_GET['exclude_complaint_id'] ?? $_POST['exclude_complai
 $db = (new Database())->connect();
 
 if (!$compId && !empty($_GET['complainant_first_name']) && !empty($_GET['complainant_last_name'])) {
-    $s = $db->prepare('SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
-    $s->execute([trim((string)$_GET['complainant_first_name']), trim((string)$_GET['complainant_last_name'])]);
-    $compId = $s->fetchColumn() ?: null;
+    $compId = ResidentNameLookup::find($db, trim((string) $_GET['complainant_first_name']), trim((string) $_GET['complainant_last_name']));
 }
 if (!$respId && !empty($_GET['respondent_first_name']) && !empty($_GET['respondent_last_name'])) {
-    $s = $db->prepare('SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
-    $s->execute([trim((string)$_GET['respondent_first_name']), trim((string)$_GET['respondent_last_name'])]);
-    $respId = $s->fetchColumn() ?: null;
+    $respId = ResidentNameLookup::find($db, trim((string) $_GET['respondent_first_name']), trim((string) $_GET['respondent_last_name']));
 }
 
 if (!$compId || !$respId) {

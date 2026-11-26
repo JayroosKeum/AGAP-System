@@ -17,7 +17,49 @@ final class EmailVerificationMailer
             'Resident Account Verification', 'Confirm email address', $link);
     }
 
+    /**
+     * Out-of-band A10 closure verification OTP delivery to complainant email.
+     */
+    public function sendClosureVerification(
+        string $email,
+        string $firstName,
+        string $referenceLabel,
+        string $resolutionType,
+        string $rawOtp,
+        string $expiresAt
+    ): void {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+        $safeName = htmlspecialchars($firstName ?: 'Complainant', ENT_QUOTES, 'UTF-8');
+        $safeRef = htmlspecialchars($referenceLabel, ENT_QUOTES, 'UTF-8');
+        $safeType = htmlspecialchars($resolutionType, ENT_QUOTES, 'UTF-8');
+        $safeOtp = htmlspecialchars($rawOtp, ENT_QUOTES, 'UTF-8');
+        $safeExp = htmlspecialchars($expiresAt, ENT_QUOTES, 'UTF-8');
+
+        $html = "<p>Hello {$safeName},</p>"
+            . "<p>Barangay Tumana staff requested <strong>Pending Close ({$safeType})</strong> for record <strong>{$safeRef}</strong>.</p>"
+            . "<p>Your one-time verification OTP is: <strong>{$safeOtp}</strong> (valid until {$safeExp}).</p>"
+            . "<p>Log in to the AGAP Resident Portal or present this OTP only if you confirm or wish to object to final closure.</p>";
+        $text = "Hello " . ($firstName ?: 'Complainant') . ",\n\n"
+            . "Barangay Tumana staff requested Pending Close ({$resolutionType}) for {$referenceLabel}.\n"
+            . "Verification OTP: {$rawOtp} (expires {$expiresAt}).\n"
+            . "Confirm or submit an objection in the AGAP Resident Portal before expiry.";
+
+        $this->dispatchMail($email, $firstName ?: 'Complainant', "Pending Close Verification ({$referenceLabel})", $html, $text);
+    }
+
     private function sendMessage(string $email, string $firstName, string $intro, string $subject, string $action, string $link): void
+    {
+        $safeFirstName = htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8');
+        $safeIntro = htmlspecialchars($intro, ENT_QUOTES, 'UTF-8');
+        $safeLink = htmlspecialchars($link, ENT_QUOTES, 'UTF-8');
+        $html = "<p>Hello {$safeFirstName},</p><p>{$safeIntro}</p><p><a href=\"{$safeLink}\">{$action}</a></p><p>This link expires in 24 hours.</p>";
+        $text = "Hello {$firstName},\n\n{$intro}\n\n{$action}: {$link}\n\nThis link expires in 24 hours.";
+        $this->dispatchMail($email, $firstName, $subject, $html, $text);
+    }
+
+    private function dispatchMail(string $email, string $firstName, string $subject, string $htmlBody, string $altBody): void
     {
         $autoload = __DIR__ . '/../../vendor/autoload.php';
         if (!is_file($autoload)) {
@@ -57,12 +99,8 @@ final class EmailVerificationMailer
         $mail->addAddress($email, $firstName);
         $mail->isHTML(true);
         $mail->Subject = 'Barangay Tumana Portal - ' . $subject;
-
-        $safeFirstName = htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8');
-        $safeIntro = htmlspecialchars($intro, ENT_QUOTES, 'UTF-8');
-        $safeLink = htmlspecialchars($link, ENT_QUOTES, 'UTF-8');
-        $mail->Body = "<p>Hello {$safeFirstName},</p><p>{$safeIntro}</p><p><a href=\"{$safeLink}\">{$action}</a></p><p>This link expires in 24 hours.</p>";
-        $mail->AltBody = "Hello {$firstName},\n\n{$intro}\n\n{$action}: {$link}\n\nThis link expires in 24 hours.";
+        $mail->Body = $htmlBody;
+        $mail->AltBody = $altBody;
         $mail->send();
     }
 

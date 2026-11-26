@@ -26,13 +26,17 @@ $paanyayas = $paanyayaModel->getGroupedPaanyayaCases($statusFilter !== '' ? $sta
 $dbConn = (new Database())->connect();
 $residentsForLookup = [];
 try {
+    require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
     $rStmt = $dbConn->query("
         SELECT resident_id, first_name, middle_name, last_name, suffix, purok, is_tenant, address, contact_no, email, home_latitude, home_longitude
         FROM residents
         ORDER BY last_name ASC, first_name ASC
     ");
     if ($rStmt) {
-        $residentsForLookup = $rStmt->fetchAll(PDO::FETCH_ASSOC);
+        $residentsForLookup = PiiCryptoService::decryptRows(
+            $rStmt->fetchAll(PDO::FETCH_ASSOC),
+            ['address', 'contact_no', 'email']
+        );
     }
 } catch (Throwable $re) {
     $residentsForLookup = [];

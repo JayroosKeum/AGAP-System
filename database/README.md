@@ -281,3 +281,9 @@ For an existing database, apply the missing migrations in this order. Check the 
 For an existing installation that already has the earlier Paanyaya preparation and invitation-numbering migrations, the release script can apply and verify migrations `002` through `005` as needed. Verify a current backup first, set `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS`, and `DB_SSL_CA` if required in the shell environment, then run `php .github/scripts/apply-release-migrations.php` from the repository root.
 
 The [Barangay News migration](migrations/20261111_002_barangay_news.sql) is independent and enables the news widget.
+
+## Capstone revision upgrade (November 26, 2026)
+
+After the preceding migrations, apply `20261126_001_revision_a1_a10.sql`, `20261126_002_closure_hardening.sql`, `20261126_003_closure_notice_delivery.sql`, and `20261126_004_encrypt_names.sql` in order. Fresh installations use the updated `schema.sql` instead. The release migration script checks the required columns.
+
+Set the application encryption/audit keys before serving requests, then run `php backend/cli/pii_backfill_and_rotate.php` against the intended database to encrypt existing names and contact fields. Preserve a verified backup and recovery keys. See [deployment notes](../DEPLOYMENT.md#november-26-closure-and-name-protection-upgrade) for notice reissue behavior, name search, and rotation. Migration 003 intentionally leaves historical notices unverified rather than claiming they were delivered.

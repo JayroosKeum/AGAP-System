@@ -221,6 +221,9 @@ final class AnonymousConcernService
         if ($cleanNote === '' || mb_strlen($cleanNote) > 500) {
             return ['success' => false, 'message' => 'Provide a safe public milestone note (1–500 characters, without PII).'];
         }
+        if (preg_match('/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i', $cleanNote) || preg_match('/(?:\+?63|0)9\d{2}[\s-]?\d{3}[\s-]?\d{4}/', $cleanNote)) {
+            return ['success' => false, 'message' => 'Public milestone notes must not contain email addresses or phone numbers.'];
+        }
 
         $this->conn->beginTransaction();
         try {
@@ -280,10 +283,9 @@ final class AnonymousConcernService
         $allowed = [
             'image/jpeg' => 'jpg',
             'image/png' => 'png',
-            'application/pdf' => 'pdf',
         ];
         if (!isset($allowed[$mime])) {
-            return ['success' => false, 'message' => 'Only JPEG, PNG, or PDF files are allowed.'];
+            return ['success' => false, 'message' => 'Only JPEG or PNG images are accepted for anonymous uploads so EXIF metadata can be stripped automatically.'];
         }
 
         $ext = $allowed[$mime];
@@ -297,7 +299,7 @@ final class AnonymousConcernService
         $relPath = $relDir . '/' . $randomName;
         $absPath = $absDir . '/' . $randomName;
 
-        // Re-encode JPEG/PNG through GD when available to strip EXIF GPS/camera/author metadata.
+        // Re-encode JPEG/PNG through GD to strip EXIF GPS/camera/author metadata; fail closed if GD is unavailable.
         if ($mime === 'image/jpeg' && function_exists('imagecreatefromjpeg') && function_exists('imagejpeg')) {
             $img = @imagecreatefromjpeg($tmpPath);
             if ($img !== false) {
@@ -319,14 +321,6 @@ final class AnonymousConcernService
             }
         }
 
-        if (is_uploaded_file($tmpPath)) {
-            if (!move_uploaded_file($tmpPath, $absPath)) {
-                return ['success' => false, 'message' => 'Failed to save sanitized attachment.'];
-            }
-        } elseif (!copy($tmpPath, $absPath)) {
-            return ['success' => false, 'message' => 'Failed to save sanitized attachment.'];
-        }
-
-        return ['success' => true, 'path' => $relPath];
+        return ['success' => false, 'message' => 'Unable to sanitize and re-encode uploaded image metadata.'];
     }
 }

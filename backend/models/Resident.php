@@ -375,21 +375,14 @@ class Resident
         $sql = "
             SELECT resident_id, first_name, middle_name, last_name, birth_date, contact_no, address, purok
             FROM residents
-            WHERE (
-                LOWER(TRIM(last_name)) = LOWER(:last_name)
-                OR SOUNDEX(last_name) = SOUNDEX(:last_name)
-                OR LOWER(TRIM(first_name)) = LOWER(:first_name)
-            )
+            WHERE 1 = 1
         ";
         if ($excludeId !== null) {
             $sql .= " AND resident_id != :exclude_id";
         }
 
         $stmt = $this->conn->prepare($sql);
-        $params = [
-            ':last_name' => $lastName,
-            ':first_name' => $firstName,
-        ];
+        $params = [];
         if ($excludeId !== null) {
             $params[':exclude_id'] = $excludeId;
         }

@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ResidentNameLookup.php';
 require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 /**
@@ -72,28 +73,8 @@ class PartyModel
         $contactNo = trim((string)($data['contact_no'] ?? '')) ?: null;
         $contactHash = $this->crypto->contactBlindIndex($contactNo);
 
-        $matchSql = "
-            SELECT resident_id FROM residents 
-            WHERE (
-                (LOWER(TRIM(first_name)) = LOWER(?) AND LOWER(TRIM(last_name)) = LOWER(?))
-                OR (TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) = ?)
-                OR (TRIM(CONCAT_WS(' ', first_name, last_name)) = ?)
-            )
-        ";
-        $params = [$firstName, $lastName, trim("$firstName $middleName $lastName"), trim("$firstName $lastName")];
-
-        if (!empty($contactNo)) {
-            $matchSql .= " OR ((contact_no_hash = ? OR contact_no = ?) AND LOWER(TRIM(last_name)) = LOWER(?))";
-            $params[] = $contactHash;
-            $params[] = $contactNo;
-            $params[] = $lastName;
-        }
-
-        $matchSql .= " ORDER BY resident_id ASC LIMIT 1";
-
-        $matchStmt = $this->conn->prepare($matchSql);
-        $matchStmt->execute($params);
-        $matchedId = $matchStmt->fetchColumn();
+        $matchedId = ResidentNameLookup::find($this->conn, $firstName, $lastName)
+            ?? ResidentNameLookup::find($this->conn, null, null, trim("$firstName $middleName $lastName"));
 
         if ($matchedId) {
             $residentId = (int)$matchedId;

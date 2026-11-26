@@ -14,6 +14,7 @@ setcookie('agap_portal', 'resident', ['expires' => time() + 86400, 'path' => '/'
 
 require_once __DIR__ . '/../../../backend/services/ResidentComplaintTimeline.php';
 require_once __DIR__ . '/../../../backend/services/CsrfService.php';
+require_once __DIR__ . '/../../../backend/services/ClosureWorkflowService.php';
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $residentUserId = (int) $_SESSION['user_id'];
@@ -22,32 +23,63 @@ $timeline = $id ? (new ResidentComplaintTimeline($db))->find($id, $residentUserI
 if (!$timeline) {
     http_response_code(404);
 }
+$closureService = new ClosureWorkflowService($db);
 $error = null;
 $message = '';
+$closureFeedback = null;
 if ($timeline && $_SERVER['REQUEST_METHOD'] === 'POST') {
-    $message = is_string($_POST['response'] ?? null) ? trim($_POST['response']) : '';
-    $requestId = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-    if (!CsrfService::validateRequest()) {
-        http_response_code(419);
-        $error = 'Your form expired. Please try again.';
-    } elseif (!$requestId) {
-        http_response_code(422);
-        $error = 'Select a valid request before replying.';
-    } else {
-        try {
-            (new ComplaintInformationService($db))->reply($id, $residentUserId, $requestId, $message);
-            $_SESSION['resident_reply_confirmation'] = $id;
-            header('Location: complaint.php?id=' . $id . '#timeline', true, 303);
-            exit;
-        } catch (DomainException $exception) {
-            http_response_code(422);
-            $error = $exception->getMessage();
-        } catch (Throwable $exception) {
-            error_log('Resident complaint reply: ' . $exception->getMessage());
-            http_response_code(500);
-            $error = 'Unable to save your reply. Please try again.';
+    $closureAction = is_string($_POST['closure_action'] ?? null) ? trim($_POST['closure_action']) : '';
+    if (in_array($closureAction, ['confirm', 'object'], true)) {
+        if (!CsrfService::validateRequest()) {
+            http_response_code(419);
+            $error = 'Your form expired. Please try again.';
+        } else {
+            $objectionReason = trim((string) ($_POST['objection_reason'] ?? ''));
+            $resp = $closureService->respond($closureAction, (int) $id, $residentUserId, null, null, $objectionReason);
+            if (!empty($resp['success'])) {
+                $_SESSION['resident_closure_feedback'] = $resp['message'] ?? 'Your closure response was saved.';
+                header('Location: complaint.php?id=' . $id . '#closure-verification', true, 303);
+                exit;
+            }
+            http_response_code((int) ($resp['http_code'] ?? 422));
+            $error = $resp['message'] ?? 'Unable to record your closure response.';
         }
-        $timeline = (new ResidentComplaintTimeline($db))->find($id, $residentUserId);
+    } else {
+        $message = is_string($_POST['response'] ?? null) ? trim($_POST['response']) : '';
+        $requestId = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!CsrfService::validateRequest()) {
+            http_response_code(419);
+            $error = 'Your form expired. Please try again.';
+        } elseif (!$requestId) {
+            http_response_code(422);
+            $error = 'Select a valid request before replying.';
+        } else {
+            try {
+                (new ComplaintInformationService($db))->reply($id, $residentUserId, $requestId, $message);
+                $_SESSION['resident_reply_confirmation'] = $id;
+                header('Location: complaint.php?id=' . $id . '#timeline', true, 303);
+                exit;
+            } catch (DomainException $exception) {
+                http_response_code(422);
+                $error = $exception->getMessage();
+            } catch (Throwable $exception) {
+                error_log('Resident complaint reply: ' . $exception->getMessage());
+                http_response_code(500);
+                $error = 'Unable to save your reply. Please try again.';
+            }
+            $timeline = (new ResidentComplaintTimeline($db))->find($id, $residentUserId);
+        }
+    }
+}
+$closureFeedback = $_SESSION['resident_closure_feedback'] ?? null;
+unset($_SESSION['resident_closure_feedback']);
+$pendingClosure = null;
+if ($timeline) {
+    foreach ($closureService->getHistoryForComplaint((int) $id) as $crRow) {
+        if (($crRow['status'] ?? '') === 'Pending') {
+            $pendingClosure = $crRow;
+            break;
+        }
     }
 }
 $confirmed = $id && ($_SESSION['resident_reply_confirmation'] ?? null) === $id;
@@ -89,6 +121,29 @@ $request = $timeline['request'] ?? null;
                 </div>
             </section>
             <?php if ($error): ?><p class="resident-detail-feedback tone-attention" role="alert"><?= $escape($error) ?></p><?php endif; ?>
+            <?php if ($closureFeedback): ?><p id="closure-verification" class="resident-detail-feedback tone-progress" role="status"><?= $escape($closureFeedback) ?></p><?php endif; ?>
+            <?php if ($pendingClosure): ?>
+                <section id="closure-verification" class="resident-panel resident-concerns-panel" aria-labelledby="closure-verify-title">
+                    <h2 id="closure-verify-title">Pending Close Verification</h2>
+                    <p class="resident-message">
+                        <strong>Proposed Resolution:</strong> <?= $escape($pendingClosure['resolution_type']) ?><br>
+                        <strong>Reason:</strong> <?= $escape($pendingClosure['request_reason']) ?><br>
+                        <strong>Response Deadline:</strong> <?= $escape(date('M j, Y · g:i A', strtotime((string) $pendingClosure['expires_at']))) ?>
+                    </p>
+                    <form method="post" action="complaint.php?id=<?= $id ?>#closure-verification" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
+                        <input type="hidden" name="csrf_token" value="<?= $escape(CsrfService::token()) ?>">
+                        <input type="hidden" name="closure_action" value="confirm">
+                        <button class="rd-hero-cta" type="submit" id="btnResidentConfirmClosure">Confirm Final Closure</button>
+                    </form>
+                    <form method="post" action="complaint.php?id=<?= $id ?>#closure-verification" class="resident-reply-form">
+                        <input type="hidden" name="csrf_token" value="<?= $escape(CsrfService::token()) ?>">
+                        <input type="hidden" name="closure_action" value="object">
+                        <label for="closure-objection-reason">If obligations are incomplete or inaccurate, submit an objection to reopen the case:</label>
+                        <textarea id="closure-objection-reason" name="objection_reason" rows="3" maxlength="1000" required placeholder="Explain why this complaint should remain active..."></textarea>
+                        <button class="resident-primary-action" type="submit" id="btnResidentObjectClosure">Object &amp; Block Closure</button>
+                    </form>
+                </section>
+            <?php endif; ?>
             <?php if ($confirmed): ?><p class="resident-detail-feedback tone-progress" role="status">Reply sent. Your concern is back with the screening officer.</p><?php endif; ?>
             <?php if ($request): ?>
                 <section id="reply" class="resident-panel resident-concerns-panel" aria-labelledby="reply-title">

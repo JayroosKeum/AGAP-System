@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ResidentNameLookup.php';
 require_once __DIR__ . '/../services/ValidationService.php';
 require_once __DIR__ . '/../services/ComplaintLifecycleService.php';
 require_once __DIR__ . '/../services/ComplaintInformationService.php';
@@ -359,7 +360,7 @@ class Complaint
                 'classifier_confidence' => $classifierConfidence,
             ]);
 
-            $privacyAcknowledged = !empty($data['privacy_notice_acknowledged']) || !$isResidentPortal ? 1 : 0;
+            $privacyAcknowledged = !empty($data['privacy_notice_acknowledged']) ? 1 : 0;
             $privacyVersion = $privacyAcknowledged ? 'RA10173-NPC2023-06-v1' : null;
             $privacyAt = $privacyAcknowledged ? date('Y-m-d H:i:s') : null;
             $routedAt = date('Y-m-d H:i:s');
@@ -1618,9 +1619,7 @@ class Complaint
         $residencyVerified = isset($data[$prefix . '_residency_verified']) ? (!empty($data[$prefix . '_residency_verified']) ? 1 : 0) : 1;
 
         // Check if an existing profile matches this name
-        $findStmt = $this->conn->prepare('SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
-        $findStmt->execute([$firstName, $lastName]);
-        $existingId = $findStmt->fetchColumn();
+        $existingId = ResidentNameLookup::find($this->conn, $firstName, $lastName) ?? 0;
         if ($existingId) {
             $existingId = (int)$existingId;
             $updFields = [];
@@ -1893,9 +1892,7 @@ class Complaint
                         $pLat = (isset($data['party_latitudes'][$index]) && $data['party_latitudes'][$index] !== '') ? (float)$data['party_latitudes'][$index] : null;
                         $pLng = (isset($data['party_longitudes'][$index]) && $data['party_longitudes'][$index] !== '') ? (float)$data['party_longitudes'][$index] : null;
 
-                        $findStmt = $this->conn->prepare('SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1');
-                        $findStmt->execute([$pFirst, $pLast]);
-                        $foundId = $findStmt->fetchColumn();
+                        $foundId = ResidentNameLookup::find($this->conn, $pFirst, $pLast) ?? 0;
                         if ($foundId) {
                             $pId = (int)$foundId;
                         } else {
@@ -2364,11 +2361,7 @@ class Complaint
         if ($firstName === '' || $lastName === '') {
             return null;
         }
-        $stmt = $this->conn->prepare(
-            'SELECT resident_id FROM residents WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) LIMIT 1'
-        );
-        $stmt->execute([$firstName, $lastName]);
-        $id = $stmt->fetchColumn();
+        $id = ResidentNameLookup::find($this->conn, $firstName, $lastName);
         return $id ? (int) $id : null;
     }
 
@@ -2388,15 +2381,8 @@ class Complaint
         }
 
         // Check existing resident by full name
-        $lookup = $this->conn->prepare("
-            SELECT resident_id FROM residents 
-            WHERE TRIM(CONCAT_WS(' ', first_name, last_name)) = ?
-               OR TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) = ?
-               OR TRIM(CONCAT(last_name, ', ', first_name)) = ?
-            LIMIT 1
-        ");
-        $lookup->execute([$name, $name, $name]);
-        $existingId = $lookup->fetchColumn();
+        $existingId = ResidentNameLookup::find($this->conn, null, null, $name);
+
         if ($existingId) {
             return (int) $existingId;
         }

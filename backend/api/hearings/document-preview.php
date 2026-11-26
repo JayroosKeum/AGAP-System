@@ -3,6 +3,7 @@
 session_start();
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 
 if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     http_response_code(401);
@@ -16,6 +17,12 @@ if (!$documentId) {
 }
 
 $db = (new Database())->connect();
+$userId = agapSessionUserId();
+$roleName = agapGetRoleName($db);
+if (!agapCanAccessHearingMinutesDocument($db, (int) $documentId, $userId, $roleName)) {
+    http_response_code(403);
+    exit('You are not authorized to access this hearing document.');
+}
 $stmt = $db->prepare('SELECT file_name, file_path, mime_type FROM hearing_minutes_documents WHERE id = ? LIMIT 1');
 $stmt->execute([$documentId]);
 $document = $stmt->fetch(PDO::FETCH_ASSOC);

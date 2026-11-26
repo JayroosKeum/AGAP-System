@@ -11,15 +11,16 @@ class NotificationService
         $this->notification = new Notification($conn);
     }
 
-    public function notifyUser(int $userId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null, ?int $caseId = null): void
+    public function notifyUser(int $userId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null, ?int $caseId = null): bool
     {
         try {
             if ($userId > 0 && $userId !== $excludeUserId) {
-                $this->notification->create($userId, $title, $message, $severity ?? 'info', $actionUrl, $caseId);
+                return $this->notification->create($userId, $title, $message, $severity ?? 'info', $actionUrl, $caseId);
             }
         } catch (Throwable $exception) {
             error_log('Notification delivery failed: ' . $exception->getMessage());
         }
+        return false;
     }
 
     public function notifyCaseMembers(int $caseId, string $title, string $message, ?int $excludeUserId = null, ?string $severity = null, ?string $actionUrl = null): void
@@ -317,7 +318,7 @@ class NotificationService
                 INNER JOIN residents r ON r.resident_id = cp.resident_id
                 INNER JOIN users u ON (u.email_hash IS NOT NULL AND u.email_hash != '' AND u.email_hash = r.email_hash)
                    OR (u.contact_no_hash IS NOT NULL AND u.contact_no_hash != '' AND u.contact_no_hash = r.contact_no_hash)
-                   OR (u.first_name = r.first_name AND u.last_name = r.last_name)
+                   OR EXISTS (SELECT 1 FROM resident_user_profiles rup WHERE rup.user_id = u.user_id AND rup.resident_id = r.resident_id)
                 WHERE cp.complaint_id = (SELECT complaint_id FROM cases WHERE case_id = ?)
                   AND u.status = 'Active'
             ");

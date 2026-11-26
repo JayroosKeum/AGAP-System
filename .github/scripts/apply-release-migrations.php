@@ -64,7 +64,9 @@ try {
             && $columnType('users', 'email_hash') !== ''
             && $columnType('users', 'contact_no_hash') !== ''
             && $columnType('audit_trails', 'entry_hash') !== ''
-            && $columnType('audit_trails', 'prev_hash') !== '';
+            && $columnType('audit_trails', 'prev_hash') !== ''
+            && $columnType('closure_requests', 'failed_verification_attempts') !== ''
+            && $columnType('closure_requests', 'locked_until') !== '';
         if (!$hasColumns) {
             return false;
         }
@@ -92,6 +94,9 @@ try {
             '20261116_001_link_resident_google_identity.sql' => true,
             '20261124_001_category_case_type_mapping_and_paanyaya_other.sql' => $columnType('complaint_categories', 'default_case_type') === '' || $columnType('paanyayas', 'preliminary_other_category_specification') === '',
             '20261126_001_revision_a1_a10.sql' => !$revisionA1A10Ready(),
+            '20261126_002_closure_hardening.sql' => $columnType('closure_requests', 'failed_verification_attempts') === '' || $columnType('closure_requests', 'locked_until') === '',
+            '20261126_003_closure_notice_delivery.sql' => $columnType('closure_requests', 'notice_delivery_status') === '',
+            '20261126_004_encrypt_names.sql' => $columnType('residents', 'first_name') !== 'varchar(512)' || $columnType('users', 'first_name') !== 'varchar(512)',
         ];
         $migrationDir = $argv[1] ?? dirname(__DIR__, 2) . '/database/migrations';
         foreach ($migrations as $file => $needed) {
@@ -111,7 +116,10 @@ try {
         }
     }
 
-    if (!$orderFourReady() || !$revisionA1A10Ready() || $columnType('paanyayas', 'parent_paanyaya_id') === ''
+    if (!$orderFourReady() || !$revisionA1A10Ready() || $columnType('closure_requests', 'notice_delivery_status') === ''
+        || $columnType('closure_requests', 'notice_delivery_channels') === ''
+        || $columnType('residents', 'first_name') !== 'varchar(512)' || $columnType('users', 'first_name') !== 'varchar(512)'
+        || $columnType('paanyayas', 'parent_paanyaya_id') === ''
         || $columnType('mediation_pause_decisions', 'decision_id') === ''
         || !str_contains($columnType('show_cause_evaluations', 'action_taken'), "'Excused'")
         || $columnType('cfa_records', 'resident_id') === ''

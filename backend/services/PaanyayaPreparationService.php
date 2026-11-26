@@ -164,7 +164,11 @@ final class PaanyayaPreparationService
              ORDER BY cp.party_id" . ($lock ? ' FOR SHARE' : '')
         );
         $statement->execute([$id]);
-        return $statement->fetchAll(PDO::FETCH_ASSOC);
+        $parties = $statement->fetchAll(PDO::FETCH_ASSOC);
+        require_once __DIR__ . '/PiiCryptoService.php';
+        foreach ($parties as &$party) $party['address'] = PiiCryptoService::decryptField($party['address']);
+        unset($party);
+        return $parties;
     }
 
     public static function partyVersion(array $parties): string

@@ -410,6 +410,7 @@ class Setting
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($user) {
             require_once __DIR__ . '/../services/PiiCryptoService.php';
+            $user['email'] = PiiCryptoService::decryptField($user['email'] ?? null);
             $user['contact_no'] = PiiCryptoService::decryptField($user['contact_no'] ?? null);
         }
         return $user ?: null;
@@ -478,19 +479,20 @@ class Setting
             return ['success' => false, 'message' => 'Invalid email address format.'];
         }
 
-        // Check duplicate email
+        require_once __DIR__ . '/../services/PiiCryptoService.php';
+        $crypto = new PiiCryptoService();
+
+        // Check duplicate email using blind index + legacy fallback
         if ($email !== null) {
-            $dup = $this->conn->prepare("SELECT COUNT(*) FROM users WHERE email = ? AND user_id != ?");
-            $dup->execute([$email, $userId]);
+            $eHash = $crypto->emailBlindIndex($email);
+            $dup = $this->conn->prepare("SELECT COUNT(*) FROM users WHERE ((? IS NOT NULL AND email_hash = ?) OR LOWER(email) = LOWER(?)) AND user_id != ?");
+            $dup->execute([$eHash, $eHash, $email, $userId]);
             if ($dup->fetchColumn() > 0) {
                 return ['success' => false, 'message' => 'Email address is already in use by another account.'];
             }
         }
 
         try {
-            require_once __DIR__ . '/../services/PiiCryptoService.php';
-            $crypto = new PiiCryptoService();
-
             $stmt = $this->conn->prepare("
                 UPDATE users
                 SET first_name = ?, middle_name = ?, last_name = ?, email = ?, email_hash = ?, contact_no = ?, contact_no_hash = ?,
@@ -501,7 +503,7 @@ class Setting
                 $fn,
                 $mn,
                 $ln,
-                $email,
+                $crypto->encrypt($email),
                 $crypto->emailBlindIndex($email),
                 $crypto->encrypt($contact),
                 $crypto->contactBlindIndex($contact),

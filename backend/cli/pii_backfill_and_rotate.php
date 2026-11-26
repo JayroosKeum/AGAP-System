@@ -29,6 +29,23 @@ if (!$crypto->isConfigured()) {
 
 $stats = ['residents' => 0, 'complaint_parties' => 0, 'users' => 0];
 
+// Names are read raw here; normal application statements transparently decode
+// encrypted names and captions only after database access has been authorized.
+$stats['names'] = 0;
+foreach (['residents' => ['resident_id', ['first_name', 'middle_name', 'last_name', 'suffix']], 'users' => ['user_id', ['first_name', 'middle_name', 'last_name']]] as $table => [$idColumn, $fields]) {
+    $rows = $db->query('/* pii:raw */ SELECT ' . $idColumn . ', ' . implode(', ', $fields) . ' FROM ' . $table)->fetchAll(PDO::FETCH_ASSOC);
+    $statement = $db->prepare('/* pii:raw */ UPDATE ' . $table . ' SET ' . implode(', ', array_map(static fn ($field) => $field . ' = ?', $fields)) . ' WHERE ' . $idColumn . ' = ?');
+    foreach ($rows as $row) {
+        $values = []; $needsUpdate = $rotate;
+        foreach ($fields as $field) {
+            $value = $row[$field];
+            $values[] = $crypto->encryptName($crypto->decrypt($value));
+            if ($value !== null && $value !== '' && !str_starts_with($value, 'name:v1:')) $needsUpdate = true;
+        }
+        if ($needsUpdate) { $values[] = (int) $row[$idColumn]; $statement->execute($values); $stats['names']++; }
+    }
+}
+
 // 1. Residents
 $resRows = $db->query('SELECT resident_id, contact_no, contact_no_hash, contact_last4_hash, email, email_hash, address, house_street FROM residents')->fetchAll(PDO::FETCH_ASSOC);
 $resUpd = $db->prepare(
@@ -96,21 +113,24 @@ foreach ($cpRows as $row) {
     }
 }
 
-// 3. Users (contact_no encrypted; email_hash & contact_no_hash blind-indexed)
+// 3. Users (email & contact_no encrypted; email_hash & contact_no_hash blind-indexed)
 $userRows = $db->query('SELECT user_id, email, email_hash, contact_no, contact_no_hash FROM users')->fetchAll(PDO::FETCH_ASSOC);
-$userUpd = $db->prepare('UPDATE users SET email_hash = ?, contact_no = ?, contact_no_hash = ? WHERE user_id = ?');
+$userUpd = $db->prepare('UPDATE users SET email = ?, email_hash = ?, contact_no = ?, contact_no_hash = ? WHERE user_id = ?');
 foreach ($userRows as $row) {
+    $emailPlain = $crypto->decrypt($row['email']);
     $contactPlain = $crypto->decrypt($row['contact_no']);
-    $emailHash = $crypto->emailBlindIndex($row['email']);
+    $emailHash = $crypto->emailBlindIndex($emailPlain);
     $contactHash = $crypto->contactBlindIndex($contactPlain);
 
     $needsUpdate = $rotate
+        || ($emailPlain !== null && $emailPlain !== '' && !PiiCryptoService::isEncrypted($row['email']))
         || ($contactPlain !== null && $contactPlain !== '' && !PiiCryptoService::isEncrypted($row['contact_no']))
         || $row['email_hash'] !== $emailHash
         || $row['contact_no_hash'] !== $contactHash;
 
     if ($needsUpdate) {
         $userUpd->execute([
+            $crypto->encrypt($emailPlain),
             $emailHash,
             $crypto->encrypt($contactPlain),
             $contactHash,

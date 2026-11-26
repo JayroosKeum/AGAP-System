@@ -39,6 +39,7 @@ if (!$complaint) {
 
 // Fetch categories with Civil/Criminal default classification
 require_once __DIR__ . '/../../../backend/services/ComplaintClassificationService.php';
+require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
 $categories = ComplaintClassificationService::getCategories($db);
 
 // Fetch residents for selection / directory quickfill
@@ -47,7 +48,10 @@ $residentsStmt = $db->query("
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
-$residents = $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+$residents = PiiCryptoService::decryptRows(
+    $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [],
+    ['contact_no', 'email', 'address']
+);
 
 $residentsJsonData = [];
 foreach ($residents as $res) {
@@ -157,7 +161,10 @@ $partyStmt = $db->prepare("
     ORDER BY cp.party_id ASC
 ");
 $partyStmt->execute([$complaintId]);
-$parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+$parties = PiiCryptoService::decryptRows(
+    $partyStmt->fetchAll(PDO::FETCH_ASSOC),
+    ['contact_no', 'email', 'address', 'guardian_name', 'guardian_contact', 'guardian_address']
+);
 
 $initialComplainants = [];
 $initialRespondents = [];

@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
+require_once __DIR__ . '/../services/ClosureWorkflowService.php';
 
 class CaseModel
 {
@@ -664,10 +665,23 @@ class CaseModel
             if (!$isNested) {
                 $this->conn->beginTransaction();
             }
-            $caseQuery = $this->conn->prepare('SELECT case_id, case_status FROM cases WHERE case_id = ? FOR UPDATE');
+            $caseQuery = $this->conn->prepare('SELECT case_id, complaint_id, case_status, deleted_at FROM cases WHERE case_id = ? FOR UPDATE');
             $caseQuery->execute([$caseId]);
             $currentCase = $caseQuery->fetch(PDO::FETCH_ASSOC);
-            if (!$currentCase) throw new InvalidArgumentException('Case not found.');
+            if (!$currentCase || $currentCase['deleted_at'] !== null) throw new InvalidArgumentException('Case not found.');
+            $complaintId = (int) ($currentCase['complaint_id'] ?? 0);
+            if ($caseStatus !== (string) $currentCase['case_status'] && in_array($caseStatus, ['Settled', 'Dismissed'], true)) {
+                $closureGate = new ClosureWorkflowService($this->conn);
+                $resType = $caseStatus === 'Settled' ? 'Signed Settlement' : 'Dismissal';
+                $readiness = $closureGate->validateResolutionReadiness(
+                    $complaintId,
+                    $resType,
+                    trim((string) ($data['evidence_path'] ?? '')) ?: null
+                );
+                if (!$readiness['ready']) {
+                    throw new InvalidArgumentException((string) $readiness['reason']);
+                }
+            }
 
             $updateCase = $this->conn->prepare('UPDATE cases SET case_type = ?, case_status = ? WHERE case_id = ?');
             $updateCase->execute([$caseType, $caseStatus, $caseId]);

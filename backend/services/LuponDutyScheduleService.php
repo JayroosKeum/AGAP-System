@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/AuditService.php';
+require_once __DIR__ . '/PiiCryptoService.php';
 
 /**
  * Direct Monday–Friday daily duty schedule assignment for active Lupon Members.
@@ -97,7 +98,10 @@ final class LuponDutyScheduleService
               AND r.role_name = 'Lupon Member'
             ORDER BY u.last_name ASC, u.first_name ASC, u.user_id ASC
         ");
-        $members = $membersStmt ? $membersStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+        $members = PiiCryptoService::decryptRows(
+            $membersStmt ? $membersStmt->fetchAll(PDO::FETCH_ASSOC) : [],
+            ['contact_no']
+        );
 
         $assignStmt = $this->conn->query("
             SELECT s.id,

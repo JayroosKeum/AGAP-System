@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/AuditService.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 class HearingAttendance
 {
@@ -93,7 +94,10 @@ class HearingAttendance
              ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name"
         );
         $partiesStmt->execute([$hearingId, $hearingId, $hearingId, $hearingId, $hearing['complaint_id']]);
-        $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+        $parties = PiiCryptoService::decryptRows(
+            $partiesStmt->fetchAll(PDO::FETCH_ASSOC),
+            ['contact_no', 'address']
+        );
 
         // Determine mediation hearing sequence
         $seqStmt = $this->conn->prepare("

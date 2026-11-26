@@ -27,7 +27,7 @@ class User {
         $stmt->execute([$username]);
 
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ? $this->crypto->decryptRow($row, ['contact_no']) : false;
+        return $row ? $this->crypto->decryptRow($row, ['email', 'contact_no']) : false;
     }
 
     public function findByUsernameOrEmail(string $identity): array|false
@@ -36,18 +36,20 @@ class User {
         if ($clean === '') {
             return false;
         }
+        $emailHash = $this->crypto->emailBlindIndex($clean);
         $stmt = $this->db->prepare(
             "SELECT u.*, r.role_name
              FROM users u
              INNER JOIN roles r ON r.role_id = u.role_id
              WHERE u.username = ?
+                OR (? IS NOT NULL AND u.email_hash = ?)
                 OR (u.email IS NOT NULL AND u.email <> '' AND LOWER(u.email) = LOWER(?))
              ORDER BY (u.username = ?) DESC, u.user_id ASC
              LIMIT 1"
         );
-        $stmt->execute([$clean, $clean, $clean]);
+        $stmt->execute([$clean, $emailHash, $emailHash, $clean, $clean]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        return $row ? $this->crypto->decryptRow($row, ['contact_no']) : false;
+        return $row ? $this->crypto->decryptRow($row, ['email', 'contact_no']) : false;
     }
 
     public function findResidentByGoogleSubject(string $subject): array|false
@@ -91,13 +93,14 @@ class User {
             )
         ");
 
+        $emailRaw = isset($data['email']) && trim((string) $data['email']) !== '' ? trim((string) $data['email']) : null;
         try {
             $stmt->execute([
                 $data['first_name'],
                 $data['last_name'],
                 $data['username'],
-                $data['email'],
-                $this->crypto->emailBlindIndex($data['email'] ?? null),
+                $this->crypto->encrypt($emailRaw),
+                $this->crypto->emailBlindIndex($emailRaw),
                 $this->crypto->encrypt($contactRaw),
                 $this->crypto->contactBlindIndex($contactRaw),
                 $passwordHash,
@@ -121,7 +124,8 @@ class User {
                AND u.password_hash IS NULL LIMIT 1'
         );
         $stmt->execute([$userId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $this->crypto->decryptRow($row, ['email']) : false;
     }
 
     public function replaceEmailVerificationToken(int $userId, string $tokenHash, string $expiresAt): bool
@@ -210,27 +214,32 @@ class User {
 
     public function findActiveByUsernameOrEmail(string $identity): array|false
     {
+        $clean = trim($identity);
+        $emailHash = $this->crypto->emailBlindIndex($clean);
         $stmt = $this->db->prepare(
             "SELECT user_id, username, email, first_name, last_name FROM users
-             WHERE status = 'Active' AND (username = ? OR email = ?) LIMIT 1"
+             WHERE status = 'Active' AND (username = ? OR (? IS NOT NULL AND email_hash = ?) OR LOWER(email) = LOWER(?)) LIMIT 1"
         );
-        $stmt->execute([$identity, $identity]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt->execute([$clean, $emailHash, $emailHash, $clean]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $this->crypto->decryptRow($row, ['email']) : false;
     }
 
     public function findActiveByGoogleSubjectOrEmail(string $googleSubject, string $email): array|false
     {
+        $emailHash = $this->crypto->emailBlindIndex($email);
         $stmt = $this->db->prepare(
             "SELECT u.user_id, u.username, u.email, u.first_name, u.last_name, u.role_id, r.role_name
              FROM users u
              INNER JOIN roles r ON r.role_id = u.role_id
              WHERE u.status = 'Active'
-               AND ((? <> '' AND u.google_subject = ?) OR LOWER(u.email) = LOWER(?))
+               AND ((? <> '' AND u.google_subject = ?) OR (? IS NOT NULL AND u.email_hash = ?) OR LOWER(u.email) = LOWER(?))
              ORDER BY (? <> '' AND u.google_subject = ?) DESC, u.user_id ASC
              LIMIT 1"
         );
-        $stmt->execute([$googleSubject, $googleSubject, $email, $googleSubject, $googleSubject]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt->execute([$googleSubject, $googleSubject, $emailHash, $emailHash, $email, $googleSubject, $googleSubject]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $this->crypto->decryptRow($row, ['email']) : false;
     }
 
     public function verifyPassword(int $userId, string $password): bool
@@ -308,9 +317,10 @@ class User {
         $stmt = $this->db->query($sql . ' ORDER BY u.last_name, u.first_name');
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as &$row) {
-            $row = $this->crypto->decryptRow($row, ['contact_no']);
+            $row = $this->crypto->decryptRow($row, ['email', 'contact_no']);
         }
         unset($row);
+        usort($rows, static fn ($a, $b) => strcasecmp($a['last_name'] . ' ' . $a['first_name'], $b['last_name'] . ' ' . $b['first_name']));
         return $rows;
     }
 
@@ -428,7 +438,7 @@ class User {
                 $data['first_name'],
                 $data['last_name'],
                 $data['username'],
-                $emailRaw,
+                $this->crypto->encrypt($emailRaw),
                 $this->crypto->emailBlindIndex($emailRaw),
                 $this->crypto->encrypt($contactRaw),
                 $this->crypto->contactBlindIndex($contactRaw),
@@ -485,8 +495,9 @@ class User {
 
     public function emailInUse(string $email, ?int $exceptUserId = null): bool
     {
-        $sql = 'SELECT 1 FROM users WHERE email = ?';
-        $values = [$email];
+        $emailHash = $this->crypto->emailBlindIndex($email);
+        $sql = 'SELECT 1 FROM users WHERE ((? IS NOT NULL AND email_hash = ?) OR LOWER(email) = LOWER(?))';
+        $values = [$emailHash, $emailHash, trim($email)];
         if ($exceptUserId !== null) {
             $sql .= ' AND user_id <> ?';
             $values[] = $exceptUserId;
@@ -506,7 +517,7 @@ class User {
                 $data['first_name'],
                 $data['last_name'],
                 $data['username'],
-                $emailRaw,
+                $this->crypto->encrypt($emailRaw),
                 $this->crypto->emailBlindIndex($emailRaw),
                 $this->crypto->encrypt($contactRaw),
                 $this->crypto->contactBlindIndex($contactRaw),

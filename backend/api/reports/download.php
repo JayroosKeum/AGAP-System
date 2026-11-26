@@ -2,9 +2,10 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../controllers/ReportController.php';
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') { http_response_code(405); exit('Method not allowed.'); }
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) { http_response_code(403); exit('Unauthorized.'); }
+if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk'])) { http_response_code(403); exit('Unauthorized.'); }
 $reportId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 $record = $reportId ? (new ReportController())->getDownload((int) $reportId) : null;
 $storage = realpath(dirname(__DIR__, 3) . '/storage/generated-reports');

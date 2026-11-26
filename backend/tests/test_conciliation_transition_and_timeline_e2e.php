@@ -91,7 +91,7 @@ try {
     echo "\n[TEST 2] Setting up Test Complaint & Completing 2 Mediation Sessions...\n";
 
     // Fetch 2 residents for Complainant and Respondent
-    $residents = $db->query("SELECT resident_id FROM residents LIMIT 2")->fetchAll(PDO::FETCH_ASSOC);
+    $residents = $db->query("SELECT resident_id FROM residents WHERE TRIM(COALESCE(NULLIF(address, ''), purok, '')) <> '' ORDER BY resident_id LIMIT 2")->fetchAll(PDO::FETCH_ASSOC);
     if (count($residents) < 2) {
         throw new RuntimeException("Test requires at least 2 resident records in agap_db.");
     }

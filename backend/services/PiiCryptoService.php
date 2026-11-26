@@ -110,7 +110,18 @@ final class PiiCryptoService
 
     public static function isEncrypted(?string $value): bool
     {
-        return is_string($value) && str_starts_with($value, self::PREFIX);
+        return is_string($value) && (str_starts_with($value, self::PREFIX) || str_starts_with($value, 'name:v1:'));
+    }
+
+    public function encryptName(?string $value): ?string
+    {
+        if ($value === null || $value === '') return $value;
+        if (self::isEncrypted($value)) {
+            // Never trust an input prefix without authenticating its payload.
+            $this->decrypt($value);
+            if (str_starts_with($value, 'name:v1:')) return $value;
+        }
+        return 'name:v1:' . substr((string) $this->encrypt($value), strlen(self::PREFIX));
     }
 
     /**
@@ -148,6 +159,7 @@ final class PiiCryptoService
 
     public function decrypt(?string $value): ?string
     {
+        if (is_string($value) && str_starts_with($value, 'name:v1:')) $value = self::PREFIX . substr($value, strlen('name:v1:'));
         if ($value === null || $value === '' || !self::isEncrypted($value)) {
             return $value;
         }
@@ -276,5 +288,35 @@ final class PiiCryptoService
             $shared = new self();
         }
         return $shared->decrypt($value);
+    }
+
+    /**
+     * Decrypts selected encrypted fields across a list of database rows, skipping any unreadable field safely.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @param array<int, string> $fields
+     * @return array<int, array<string, mixed>>
+     */
+    public static function decryptRows(array $rows, array $fields): array
+    {
+        if ($rows === [] || $fields === []) {
+            return $rows;
+        }
+        $crypto = new self();
+        foreach ($rows as $idx => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            foreach ($fields as $field) {
+                if (array_key_exists($field, $row) && is_string($row[$field]) && self::isEncrypted($row[$field])) {
+                    try {
+                        $rows[$idx][$field] = $crypto->decrypt($row[$field]);
+                    } catch (Throwable $e) {
+                        error_log('PII decrypt skipped for field ' . $field . ': ' . $e->getMessage());
+                    }
+                }
+            }
+        }
+        return $rows;
     }
 }

@@ -3,6 +3,8 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 header('Content-Type: application/json; charset=utf-8');
+require_once '../../config/database.php';
+require_once '../../middleware/rbac.php';
 require_once '../../controllers/SettlementController.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -11,17 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
-    exit;
-}
-
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Only the Punong Barangay or authorized clerk may record a settlement.']);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk'], $db);
 
 $input = $_POST;
 if (empty($input)) {
@@ -34,6 +27,12 @@ if (empty($input)) {
 
 $controller = new SettlementController();
 $action = (string) ($input['action'] ?? '');
+$targetCaseId = !empty($input['case_id'])
+    ? (int) $input['case_id']
+    : (!empty($input['settlement_id']) ? agapResolveSettlementCaseId($db, (int) $input['settlement_id']) : 0);
+if ($targetCaseId > 0) {
+    agapRequireCaseAccess($db, $targetCaseId, 'write', true);
+}
 if ($action === 'confirm_legacy_review') {
     $settlementId = filter_var($input['settlement_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
     if (!$settlementId) {

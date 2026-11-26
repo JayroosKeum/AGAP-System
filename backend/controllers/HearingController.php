@@ -361,6 +361,7 @@ class HearingController
             FROM hearings h
             LEFT JOIN cases c ON c.case_id = h.case_id
             WHERE DATE(h.hearing_date) = ?
+              AND (c.case_id IS NULL OR c.deleted_at IS NULL)
               AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
               AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
               " . ($excludeHearingId ? " AND h.hearing_id != {$excludeHearingId}" : "") . "
@@ -1030,6 +1031,7 @@ class HearingController
             LEFT JOIN complaints comp ON comp.complaint_id = c.complaint_id
             LEFT JOIN users u ON u.user_id = h.presiding_officer_id
             WHERE DATE(h.hearing_date) = ?
+              AND (c.case_id IS NULL OR c.deleted_at IS NULL)
               AND h.status NOT IN ('Cancelled', 'Office Cancelled', 'Completed', 'Rescheduled')
               AND COALESCE(h.queue_status, 'Waiting') <> 'Concluded'
         ";
@@ -1600,7 +1602,7 @@ class HearingController
                 SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.status, h.queue_status,
                        h.actual_start_time, h.complainant_attendance, h.respondent_attendance, c.case_status
                 FROM hearings h INNER JOIN cases c ON c.case_id = h.case_id
-                WHERE h.hearing_id = ? FOR UPDATE
+                WHERE h.hearing_id = ? AND c.deleted_at IS NULL FOR UPDATE
             ");
             $hStmt->execute([$hearingId]);
             $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);

@@ -1,6 +1,8 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../middleware/rbac.php';
+require_once __DIR__ . '/../services/AuditService.php';
 
 class Hearing
 {
@@ -34,6 +36,12 @@ class Hearing
     public function getAll(): array
     {
         $opCond = self::operativeReplacementCondition('next_h');
+        $visSql = 'co.deleted_at IS NULL AND c.deleted_at IS NULL';
+        $visParams = [];
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            [$scopedSql, $visParams] = agapBuildComplaintVisibilitySql('co', $this->conn);
+            $visSql = "c.deleted_at IS NULL AND ({$scopedSql})";
+        }
         $stmt = $this->conn->prepare(
             "SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date,
                     h.venue, h.remarks, h.rescheduled_from_id, h.reschedule_reason,
@@ -49,9 +57,10 @@ class Hearing
              FROM hearings h
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
+             WHERE {$visSql}
              ORDER BY h.hearing_date ASC"
         );
-        $stmt->execute();
+        $stmt->execute($visParams);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -72,7 +81,9 @@ class Hearing
              INNER JOIN cases c ON c.case_id = h.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              LEFT JOIN users po ON po.user_id = h.presiding_officer_id
-             WHERE h.hearing_id = ?"
+             WHERE h.hearing_id = ?
+               AND c.deleted_at IS NULL
+               AND co.deleted_at IS NULL"
         );
         $stmt->execute([$id]);
         $hearing = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1182,6 +1193,24 @@ class Hearing
         }
 
         $opCond = self::operativeReplacementCondition('next_h');
+        $softDeleteCond = 'c.deleted_at IS NULL AND co.deleted_at IS NULL';
+        $visCondH = $softDeleteCond;
+        $visCondD = $softDeleteCond;
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            [$rawVis, $rawVisParams] = agapBuildComplaintVisibilitySql('co', $this->conn);
+            $idxH = 0;
+            $visCondH = $softDeleteCond . ' AND (' . preg_replace_callback('/\?/', static function () use (&$params, $rawVisParams, &$idxH): string {
+                $key = ':vis_h_' . $idxH;
+                $params[$key] = $rawVisParams[$idxH++];
+                return $key;
+            }, $rawVis) . ')';
+            $idxD = 0;
+            $visCondD = $softDeleteCond . ' AND (' . preg_replace_callback('/\?/', static function () use (&$params, $rawVisParams, &$idxD): string {
+                $key = ':vis_d_' . $idxD;
+                $params[$key] = $rawVisParams[$idxD++];
+                return $key;
+            }, $rawVis) . ')';
+        }
         $baseSql = "
         SELECT
             'hearing' AS record_type,
@@ -1284,6 +1313,7 @@ class Hearing
         LEFT JOIN users po ON po.user_id = h.presiding_officer_id
         LEFT JOIN users sp ON sp.user_id = h.substitute_presider_id
         WHERE {$dateConditionHearing}
+          AND {$visCondH}
 
         UNION ALL
 
@@ -1337,6 +1367,7 @@ class Hearing
         LEFT JOIN cases c ON c.case_id = d.case_id
         LEFT JOIN complaints co ON co.complaint_id = c.complaint_id
         WHERE {$dateConditionDeadline}
+          AND {$visCondD}
         ";
 
         $where = [];
@@ -2153,15 +2184,12 @@ class Hearing
 
             // 6. Audit Trail for the entire batch operation
             $formattedTuesday = date('F j, Y', strtotime($nextHearingDay));
-            $auditStmt = $this->conn->prepare("
-                INSERT INTO audit_trails (user_id, action, module_name, affected_record)
-                VALUES (?, ?, 'Hearings', ?)
-            ");
-            $auditStmt->execute([
+            (new AuditService($this->conn))->logStrict(
                 $userId,
                 "Punong Barangay Unavailable: Batch rescheduled " . count($activeHearings) . " hearing(s) from {$targetDate} to {$nextHearingDay} ({$formattedTuesday}).",
-                $activeHearings[0]['hearing_id']
-            ]);
+                'Hearings',
+                (int) $activeHearings[0]['hearing_id']
+            );
 
             $this->conn->commit();
 

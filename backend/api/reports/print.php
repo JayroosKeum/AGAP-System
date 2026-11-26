@@ -15,12 +15,12 @@
 declare(strict_types=1);
 
 session_start();
+require_once __DIR__ . '/../../middleware/rbac.php';
 if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     header('Location: ../../../frontend/pages/auth/login.php?error=login_required');
     exit;
 }
-$roleId = (int) $_SESSION['role_id'];
-if (!in_array($roleId, [1, 2], true)) {
+if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk'])) {
     http_response_code(403);
     exit('Access denied for this role.');
 }

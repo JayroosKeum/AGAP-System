@@ -6,7 +6,7 @@
 2. Use PHP 8.2+ with the PDO MySQL, cURL, mbstring, fileinfo, OpenSSL, and ZIP extensions enabled.
 3. Set `APP_ENV=production`, disable `display_errors`, and enable server-side error logging.
 4. Configure HTTPS and redirect all HTTP traffic to HTTPS. Mark PHP session cookies `Secure`, `HttpOnly`, and `SameSite=Lax` (or stricter where compatible).
-5. Apply `database/schema.sql` for a new installation. For an existing installation, verify a current backup and use the [database guide](database/README.md) to select migrations for the installed schema. Apply the release migrations through `20261116_001_link_resident_google_identity.sql` before serving the new code. The Azure workflow performs a read-only schema check before deploying the application.
+5. Apply `database/schema.sql` for a new installation. For an existing installation, verify a current backup and use the [database guide](database/README.md) to select migrations for the installed schema. Apply the release migrations through `20261126_004_encrypt_names.sql` before serving the new code. The Azure workflow performs a read-only schema check before deploying the application.
 6. Give the web-service account write permission only to the necessary `storage/` subdirectories; keep application source read-only.
 
 ## Secrets
@@ -56,3 +56,15 @@ The GitHub Actions workflow (`.github/workflows/azure-webapp.yml`) gates Azure A
 Run the integration suite against an isolated local database using the [automated test setup](README.md#automated-tests).
 
 Before go-live, replace all development passwords, remove test accounts, confirm backup/restore works, and conduct an authenticated smoke test of login, dashboard, complaint intake, document generation, and one consented AI request.
+
+## November 26 closure and name protection upgrade
+
+Configure persistent `APP_PII_KEY` and `APP_AUDIT_HMAC_KEY` server secrets before enabling the revision release. Apply migrations `20261126_001` through `004` in order, then run `php backend/cli/pii_backfill_and_rotate.php` with the intended database environment. This also encrypts existing names; schema migration alone does not encrypt old rows. Re-run the backfill after importing plaintext seed data. Verify readable resident names, name searches, duplicate matching, and generated documents before opening access. Keep the encryption key with protected recovery material; changing it without the legacy key prevents decryption. For rotation, configure `APP_PII_KEYS_LEGACY` and use `--rotate` as documented in the CLI utility.
+
+Closure notices migrated without delivery proof remain `Unverified` and cannot time out. Staff can request closure again with a saved supporting record: the transaction cancels the unverified request, sends a new notice, and starts a new response window only after delivery succeeds. Delivery failure rolls back the replacement. Already delivered requests remain protected from duplicate requests.
+
+The staff evidence selector includes saved records belonging to the complaint. Administrative Closure and Dismissal require a selected record; typed text or another complaint's attachment is rejected. The retired `save-complaint.php` endpoint returns HTTP 410; clients must use the current intake/edit flow.
+
+Names in `residents` and `users` are encrypted by the shared PDO statement class for parameterized writes and decrypted for authorized reads, including SQL captions. Name lookup compares decrypted values on the server without a plaintext name index. Raw SQL literals and bulk SQL imports require the backfill. The `/* pii:raw */` marker is reserved for trusted migration/verification code; never derive SQL or this marker from request input. Large directories should be profiled because name lookup scans the name fields.
+
+Name reads use result-column metadata and approved computed person-name captions. Narratives, notes, and audit JSON retain their exact text, even when they contain an encryption-looking prefix. New computed name captions should use an approved alias in `PiiNameStatement::NAME_CAPTIONS`; names copied into a plain-text snapshot must be resolved through the application before insertion. Authentication failures in protected name columns still raise an error.

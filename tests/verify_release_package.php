@@ -26,6 +26,9 @@ $requiredPaths = [
     'backend/services/KpFormService.php',
     'backend/services/PDFService.php',
     'backend/services/ClosureWorkflowService.php',
+    'backend/services/ClosureEvidenceService.php',
+    'backend/services/PiiNameStatement.php',
+    'backend/services/ResidentNameLookup.php',
     'backend/services/AnonymousConcernService.php',
     'backend/services/PrivacyGovernanceService.php',
     'backend/cli/pii_backfill_and_rotate.php',
@@ -44,6 +47,9 @@ $requiredPaths = [
     'database/migrations/20261115_005_link_paanyaya_threads.sql',
     'database/migrations/20261116_001_link_resident_google_identity.sql',
     'database/migrations/20261126_001_revision_a1_a10.sql',
+    'database/migrations/20261126_002_closure_hardening.sql',
+    'database/migrations/20261126_003_closure_notice_delivery.sql',
+    'database/migrations/20261126_004_encrypt_names.sql',
 ];
 
 $missing = [];

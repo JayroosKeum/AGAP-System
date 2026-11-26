@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../middleware/rbac.php';
 require_once __DIR__ . '/../services/MediationDeadlineService.php';
 
 class Settlement
@@ -57,8 +58,19 @@ class Settlement
      */
     public function getAll(array $filters = [], int $page = 1, int $perPage = 25): array
     {
-        $where = [];
+        $where = ['c.deleted_at IS NULL', 'co.deleted_at IS NULL'];
         $params = [];
+
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            [$rawVis, $rawVisParams] = agapBuildComplaintVisibilitySql('co', $this->conn);
+            $visIdx = 0;
+            $visSql = preg_replace_callback('/\?/', static function () use (&$params, $rawVisParams, &$visIdx): string {
+                $key = ':vis_s_' . $visIdx;
+                $params[$key] = $rawVisParams[$visIdx++];
+                return $key;
+            }, $rawVis);
+            $where[] = "({$visSql})";
+        }
 
         $q = trim((string) ($filters['q'] ?? ''));
         if ($q !== '') {
@@ -178,6 +190,8 @@ class Settlement
             LEFT JOIN users pb ON pb.user_id = s.pb_attested_by
             LEFT JOIN residents rep ON rep.resident_id = s.repudiated_by
             WHERE s.settlement_id = ?
+              AND c.deleted_at IS NULL
+              AND co.deleted_at IS NULL
         ");
         $stmt->execute([$settlementId]);
         $record = $stmt->fetch(PDO::FETCH_ASSOC);

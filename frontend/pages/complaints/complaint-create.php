@@ -36,6 +36,7 @@ if (!$isResidentPortal) {
     }
 }
 require_once __DIR__ . '/../../../backend/services/ComplaintClassificationService.php';
+require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
 $categories = ComplaintClassificationService::getCategories($db);
 
 $residentSelect = "SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, home_latitude, home_longitude, is_tenant, residency_verified FROM residents";
@@ -47,7 +48,10 @@ if ($isResidentPortal) {
 } else {
     $residentsStmt = $db->query($residentSelect . ' ORDER BY last_name ASC, first_name ASC');
 }
-$residents = $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [];
+$residents = PiiCryptoService::decryptRows(
+    $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [],
+    ['contact_no', 'email', 'address']
+);
 
 $marikinaPath = __DIR__ . '/../../assets/images/marikina_logo.jpg';
 $tumanaPath = __DIR__ . '/../../assets/images/tumana_logo.jpg';
@@ -170,6 +174,12 @@ if ($escalatePaanyayaId > 0) {
     $epStmt = $db->prepare('SELECT * FROM paanyayas WHERE paanyaya_id = ? LIMIT 1');
     $epStmt->execute([$escalatePaanyayaId]);
     $escalatePaanyaya = $epStmt->fetch(PDO::FETCH_ASSOC);
+    if (is_array($escalatePaanyaya)) {
+        $escalatePaanyaya = PiiCryptoService::decryptRows(
+            [$escalatePaanyaya],
+            ['complainant_address', 'complainant_contact_no', 'invitee_address', 'invitee_contact_no']
+        )[0];
+    }
     $existingFormalComplaintId = $escalatePaanyaya
         ? (int)(($escalatePaanyaya['complaint_id'] ?? 0) ?: ($escalatePaanyaya['escalated_to_complaint_id'] ?? 0))
         : 0;
@@ -2150,6 +2160,13 @@ include '../../layouts/header.php';
                                 <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:0.8rem;color:#7c2d12;font-weight:600;">
                                     <input type="checkbox" name="duplicate_acknowledged" id="duplicateAcknowledged" value="1" style="margin-top:2px;">
                                     <span<?= $rEnAttr('I reviewed the possible duplicate record(s) and confirm that this filing should proceed.') ?>><?= $rOut('Nasuri ko ang posibleng kaparehong rekord at kinukumpirma kong dapat magpatuloy ang paghahain na ito.', 'I reviewed the possible duplicate record(s) and confirm that this filing should proceed.') ?></span>
+                                </label>
+                            </div>
+
+                            <div class="agap-privacy-consent-box" style="margin-top:16px;padding:12px 14px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc;">
+                                <label style="display:flex;align-items:flex-start;gap:8px;font-size:0.84rem;color:#1e293b;cursor:pointer;">
+                                    <input type="checkbox" name="privacy_notice_acknowledged" id="privacyNoticeAcknowledged" value="1" required style="margin-top:2px;">
+                                    <span><strong>Data Privacy Notice (R.A. 10173 / NPC Circular 2023-06):</strong> The complainant has been informed of the Barangay Tumana Lupon privacy notice, lawful dispute-resolution processing grounds, authorized case access, and data subject rights prior to filing.</span>
                                 </label>
                             </div>
 
@@ -6404,17 +6421,25 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         }
                     });
+                    const isRawCiphertext = (v) => typeof v === 'string' && /^(enc|name):v1:/.test(v.trim());
                     draftFieldIds.forEach((id) => {
                         const el = document.getElementById(id);
-                        if (el && typeof saved[id] === 'string' && saved[id] !== '' && el.value.trim() === '') {
+                        if (el && typeof saved[id] === 'string' && saved[id] !== '' && !isRawCiphertext(saved[id]) && el.value.trim() === '') {
                             el.value = saved[id];
                         }
                     });
+                    const stripCiphertextFields = (party) => {
+                        if (!party || typeof party !== 'object') return party;
+                        ['contact_no', 'email', 'address', 'guardian_name', 'guardian_contact', 'guardian_address'].forEach((k) => {
+                            if (isRawCiphertext(party[k])) party[k] = '';
+                        });
+                        return party;
+                    };
                     if (Array.isArray(saved.respondents) && saved.respondents.length > 0 && typeof respondentsList !== 'undefined' && respondentsList.length === 0) {
-                        respondentsList.push(...saved.respondents);
+                        respondentsList.push(...saved.respondents.map(stripCiphertextFields));
                     }
                     if (Array.isArray(saved.extraComplainants) && saved.extraComplainants.length > 0 && typeof complainantsList !== 'undefined' && complainantsList.length <= 1) {
-                        complainantsList.push(...saved.extraComplainants);
+                        complainantsList.push(...saved.extraComplainants.map(stripCiphertextFields));
                     }
                     if (typeof syncHiddenPartyInputs === 'function') syncHiddenPartyInputs();
                     if (typeof renderParties === 'function') renderParties();

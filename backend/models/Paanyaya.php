@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/ResidentNameLookup.php';
 require_once __DIR__ . '/../services/PDFService.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
@@ -3336,14 +3337,7 @@ require_once __DIR__ . '/../services/ComplaintClassificationService.php';
                 $clean = trim(preg_replace('/\s+/', ' ', $fullName));
                 if ($clean === '' || $clean === 'Nagpaanyaya' || $clean === 'Inanyayahan') return 1;
 
-                $stmt = $this->conn->prepare("
-                    SELECT resident_id FROM residents
-                    WHERE TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) = ?
-                       OR TRIM(CONCAT_WS(' ', first_name, last_name)) = ?
-                    LIMIT 1
-                ");
-                $stmt->execute([$clean, $clean]);
-                $rId = (int)$stmt->fetchColumn();
+                $rId = ResidentNameLookup::find($this->conn, null, null, $clean) ?? 0;
                 if ($rId > 0) return $rId;
 
                 $parts = explode(' ', $clean);

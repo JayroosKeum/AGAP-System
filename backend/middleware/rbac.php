@@ -136,9 +136,11 @@ if (!function_exists('agapCanAccessComplaint')) {
         }
 
         $stmt = $conn->prepare(
-            'SELECT complaint_id, submitted_by, liso_assigned_to, deleted_at
-             FROM complaints
-             WHERE complaint_id = ?
+            'SELECT c.complaint_id, c.submitted_by, c.liso_assigned_to, c.liso_reviewed_by,
+                    c.is_draft, c.screening_decision, c.status, c.deleted_at,
+                    EXISTS (SELECT 1 FROM cases cs_chk WHERE cs_chk.complaint_id = c.complaint_id) AS has_case
+             FROM complaints c
+             WHERE c.complaint_id = ?
              LIMIT 1'
         );
         $stmt->execute([$complaintId]);
@@ -164,7 +166,16 @@ if (!function_exists('agapCanAccessComplaint')) {
         }
 
         if ($roleName === 'Lupon Member') {
-            if ((int) ($complaint['liso_assigned_to'] ?? 0) === $userId) {
+            if ((int) ($complaint['liso_assigned_to'] ?? 0) === $userId
+                || (int) ($complaint['liso_reviewed_by'] ?? 0) === $userId) {
+                return true;
+            }
+            $isUnassignedPendingIntake = empty($complaint['liso_assigned_to'])
+                && empty($complaint['is_draft'])
+                && empty($complaint['has_case'])
+                && in_array((string) ($complaint['screening_decision'] ?? ''), ['Pending', 'Needs Information'], true)
+                && in_array((string) ($complaint['status'] ?? ''), ['Submitted', 'Filed', 'Under Review', 'Needs Information'], true);
+            if ($isUnassignedPendingIntake) {
                 return true;
             }
             $assignedStmt = $conn->prepare(
@@ -222,6 +233,158 @@ if (!function_exists('agapCanAccessCase')) {
             return false;
         }
         return agapCanAccessComplaint($conn, (int) $row['complaint_id'], $userId, $roleName, $mode);
+    }
+}
+
+if (!function_exists('agapCanAccessHearing')) {
+    function agapCanAccessHearing(PDO $conn, int $hearingId, int $userId, string $roleName, string $mode = 'read'): bool
+    {
+        if ($hearingId <= 0 || $userId <= 0 || $roleName === '') {
+            return false;
+        }
+        $stmt = $conn->prepare('SELECT case_id FROM hearings WHERE hearing_id = ? LIMIT 1');
+        $stmt->execute([$hearingId]);
+        $caseId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($caseId <= 0) {
+            return false;
+        }
+        return agapCanAccessCase($conn, $caseId, $userId, $roleName, $mode);
+    }
+}
+
+if (!function_exists('agapCanAccessHearingMinutesDocument')) {
+    function agapCanAccessHearingMinutesDocument(PDO $conn, int $documentId, int $userId, string $roleName): bool
+    {
+        if ($documentId <= 0 || $userId <= 0 || $roleName === '') {
+            return false;
+        }
+        $stmt = $conn->prepare(
+            'SELECT h.case_id
+             FROM hearing_minutes_documents d
+             INNER JOIN hearings h ON h.hearing_id = d.hearing_id
+             WHERE d.id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$documentId]);
+        $caseId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($caseId <= 0) {
+            return false;
+        }
+        return agapCanAccessCase($conn, $caseId, $userId, $roleName, 'read');
+    }
+}
+
+if (!function_exists('agapRequireHearingAccess')) {
+    function agapRequireHearingAccess(PDO $conn, int $hearingId, string $mode = 'read', bool $json = true): void
+    {
+        $userId = agapSessionUserId();
+        $roleName = agapGetRoleName($conn);
+        if ($userId <= 0 || $roleName === '') {
+            http_response_code(401);
+            if ($json) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Authentication required.']);
+            } else {
+                echo 'Authentication required.';
+            }
+            exit;
+        }
+        if (!agapCanAccessHearing($conn, $hearingId, $userId, $roleName, $mode)) {
+            http_response_code(403);
+            if ($json) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'You are not authorized to access this hearing.']);
+            } else {
+                echo 'Unauthorized.';
+            }
+            exit;
+        }
+    }
+}
+
+if (!function_exists('agapResolveSettlementCaseId')) {
+    function agapResolveSettlementCaseId(PDO $conn, int $settlementId): int
+    {
+        if ($settlementId <= 0) {
+            return 0;
+        }
+        $stmt = $conn->prepare('SELECT case_id FROM settlements WHERE settlement_id = ? LIMIT 1');
+        $stmt->execute([$settlementId]);
+        return (int) ($stmt->fetchColumn() ?: 0);
+    }
+}
+
+if (!function_exists('agapResolveExecutionCaseId')) {
+    function agapResolveExecutionCaseId(PDO $conn, int $executionId): int
+    {
+        if ($executionId <= 0) {
+            return 0;
+        }
+        $stmt = $conn->prepare('SELECT case_id FROM execution_proceedings WHERE execution_id = ? LIMIT 1');
+        $stmt->execute([$executionId]);
+        return (int) ($stmt->fetchColumn() ?: 0);
+    }
+}
+
+if (!function_exists('agapResolveInstallmentCaseId')) {
+    function agapResolveInstallmentCaseId(PDO $conn, int $installmentId): int
+    {
+        if ($installmentId <= 0) {
+            return 0;
+        }
+        $stmt = $conn->prepare(
+            'SELECT s.case_id
+             FROM settlement_installments si
+             INNER JOIN settlements s ON s.settlement_id = si.settlement_id
+             WHERE si.installment_id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$installmentId]);
+        return (int) ($stmt->fetchColumn() ?: 0);
+    }
+}
+
+if (!function_exists('agapResolveArbitrationCaseId')) {
+    function agapResolveArbitrationCaseId(PDO $conn, int $arbitrationId): int
+    {
+        if ($arbitrationId <= 0) {
+            return 0;
+        }
+        $stmt = $conn->prepare('SELECT case_id FROM arbitration_records WHERE arbitration_id = ? LIMIT 1');
+        $stmt->execute([$arbitrationId]);
+        return (int) ($stmt->fetchColumn() ?: 0);
+    }
+}
+
+if (!function_exists('agapCanAccessProofImage')) {
+    function agapCanAccessProofImage(PDO $conn, int $proofId, int $userId, string $roleName): bool
+    {
+        if ($proofId <= 0 || $userId <= 0 || $roleName === '') {
+            return false;
+        }
+        $stmt = $conn->prepare(
+            'SELECT pos.case_id, pos.served_by, cs.deleted_at AS case_deleted_at, c.deleted_at AS complaint_deleted_at
+             FROM proof_of_service pos
+             INNER JOIN cases cs ON cs.case_id = pos.case_id
+             INNER JOIN complaints c ON c.complaint_id = cs.complaint_id
+             WHERE pos.proof_id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$proofId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return false;
+        }
+        if (($row['case_deleted_at'] !== null || $row['complaint_deleted_at'] !== null) && $roleName !== 'Super Administrator') {
+            return false;
+        }
+        if ($roleName === 'Summons Server') {
+            if ((int) ($row['served_by'] ?? 0) === $userId) {
+                return true;
+            }
+            return agapCanAccessCase($conn, (int) $row['case_id'], $userId, $roleName, 'read');
+        }
+        return agapCanAccessCase($conn, (int) $row['case_id'], $userId, $roleName, 'read');
     }
 }
 
@@ -349,6 +512,17 @@ if (!function_exists('agapBuildComplaintVisibilitySql')) {
         if ($roleName === 'Lupon Member') {
             $sql = "{$deletedClause} AND (
                 {$complaintAlias}.liso_assigned_to = ?
+                OR {$complaintAlias}.liso_reviewed_by = ?
+                OR (
+                    {$complaintAlias}.liso_assigned_to IS NULL
+                    AND COALESCE({$complaintAlias}.is_draft, 0) = 0
+                    AND {$complaintAlias}.screening_decision IN ('Pending', 'Needs Information')
+                    AND {$complaintAlias}.status IN ('Submitted', 'Filed', 'Under Review', 'Needs Information')
+                    AND NOT EXISTS (
+                        SELECT 1 FROM cases cs_unassigned
+                        WHERE cs_unassigned.complaint_id = {$complaintAlias}.complaint_id
+                    )
+                )
                 OR EXISTS (
                     SELECT 1 FROM cases cs_vis
                     LEFT JOIN case_assignments ca_vis ON ca_vis.case_id = cs_vis.case_id AND ca_vis.member_id = ?
@@ -359,7 +533,7 @@ if (!function_exists('agapBuildComplaintVisibilitySql')) {
                       AND (ca_vis.assignment_id IS NOT NULL OR pm_vis.pangkat_member_id IS NOT NULL OR h_vis.hearing_id IS NOT NULL)
                 )
             )";
-            return [$sql, [$userId, $userId, $userId, $userId, $userId]];
+            return [$sql, [$userId, $userId, $userId, $userId, $userId, $userId]];
         }
 
         if ($roleName === 'Summons Server') {

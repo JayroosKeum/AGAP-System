@@ -75,6 +75,8 @@ class Database {
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_TIMEOUT => 4,
         ];
+        require_once __DIR__ . '/../services/PiiNameStatement.php';
+        $options[PDO::ATTR_STATEMENT_CLASS] = [PiiNameStatement::class];
         if ($this->sslCa !== '' && is_readable($this->sslCa) && defined('PDO::MYSQL_ATTR_SSL_CA')) {
             $options[PDO::MYSQL_ATTR_SSL_CA] = $this->sslCa;
             if (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT')) {
@@ -90,6 +92,7 @@ class Database {
                 $options
             );
             $pdo->exec("SET time_zone = '+08:00'");
+            $pdo->exec('SET SESSION group_concat_max_len = 1048576');
             return $pdo;
         } catch(PDOException $e) {
             $isAzure = $this->environment('WEBSITE_SITE_NAME', '') !== '';
@@ -103,6 +106,7 @@ class Database {
                         $options
                     );
                     $localPdo->exec("SET time_zone = '+08:00'");
+                    $localPdo->exec('SET SESSION group_concat_max_len = 1048576');
                     return $localPdo;
                 } catch(PDOException $localEx) {
                     // Keep original exception
