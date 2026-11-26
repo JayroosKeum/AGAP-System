@@ -1,19 +1,27 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 class Resident
 {
     private $conn;
+    private PiiCryptoService $crypto;
 
-    public function __construct(?PDO $conn = null)
+    public function __construct(?PDO $conn = null, ?PiiCryptoService $crypto = null)
     {
         if ($conn) {
             $this->conn = $conn;
-            return;
+        } else {
+            $database = new Database();
+            $this->conn = $database->connect();
         }
-        $database = new Database();
-        $this->conn = $database->connect();
+        $this->crypto = $crypto ?? new PiiCryptoService();
+    }
+
+    private function decryptResidentRow(array $row): array
+    {
+        return $this->crypto->decryptRow($row, ['contact_no', 'email', 'address', 'house_street']);
     }
 
     public function getAll()
@@ -27,7 +35,7 @@ class Resident
         $stmt = $this->conn->prepare($sql);
         $stmt->execute();
 
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return array_map([$this, 'decryptResidentRow'], $stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
     public function getPage(int $page = 1, int $perPage = 25): array
@@ -49,7 +57,7 @@ class Resident
         $stmt->execute();
 
         return [
-            'data' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+            'data' => array_map([$this, 'decryptResidentRow'], $stmt->fetchAll(PDO::FETCH_ASSOC)),
             'pagination' => [
                 'current_page' => $page,
                 'per_page' => $perPage,
@@ -70,13 +78,19 @@ class Resident
         $stmt = $this->conn->prepare($sql);
         $stmt->execute([$id]);
 
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $this->decryptResidentRow($row) : false;
     }
 
     public function create($data)
     {
         $homeLat = (isset($data['home_latitude']) && $data['home_latitude'] !== '') ? (float)$data['home_latitude'] : null;
         $homeLng = (isset($data['home_longitude']) && $data['home_longitude'] !== '') ? (float)$data['home_longitude'] : null;
+
+        $contactRaw = isset($data['contact_no']) && trim((string) $data['contact_no']) !== '' ? trim((string) $data['contact_no']) : null;
+        $emailRaw = isset($data['email']) && trim((string) $data['email']) !== '' ? trim((string) $data['email']) : null;
+        $addressRaw = isset($data['address']) && trim((string) $data['address']) !== '' ? trim((string) $data['address']) : null;
+        $houseStreetRaw = isset($data['house_street']) && trim((string) $data['house_street']) !== '' ? trim((string) $data['house_street']) : null;
 
         $sql = "
             INSERT INTO residents
@@ -88,8 +102,12 @@ class Resident
                 gender,
                 civil_status,
                 contact_no,
+                contact_no_hash,
+                contact_last4_hash,
                 email,
+                email_hash,
                 address,
+                house_street,
                 home_latitude,
                 home_longitude,
                 purok,
@@ -97,7 +115,7 @@ class Resident
             )
             VALUES
             (
-                ?,?,?,?,?,?,?,?,?,?,?,?,?
+                ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
             )
         ";
 
@@ -110,9 +128,13 @@ class Resident
             $data['birth_date'] ?? null,
             $data['gender'] ?? null,
             $data['civil_status'] ?? null,
-            $data['contact_no'] ?? null,
-            $data['email'] ?? null,
-            $data['address'] ?? null,
+            $this->crypto->encrypt($contactRaw),
+            $this->crypto->contactBlindIndex($contactRaw),
+            $this->crypto->contactLast4BlindIndex($contactRaw),
+            $this->crypto->encrypt($emailRaw),
+            $this->crypto->emailBlindIndex($emailRaw),
+            $this->crypto->encrypt($addressRaw),
+            $this->crypto->encrypt($houseStreetRaw),
             $homeLat,
             $homeLng,
             $data['purok'] ?? null,
@@ -383,6 +405,7 @@ class Resident
         ];
 
         foreach ($candidates as $cand) {
+            $cand = $this->decryptResidentRow($cand);
             // 1. Are names similar?
             if (!self::areNamesSimilar($cand, $inputPerson)) {
                 continue; // Different names are allowed regardless of address
@@ -411,6 +434,10 @@ class Resident
         $homeLat = (isset($data['home_latitude']) && $data['home_latitude'] !== '') ? (float)$data['home_latitude'] : (isset($data['latitude']) && $data['latitude'] !== '' ? (float)$data['latitude'] : null);
         $homeLng = (isset($data['home_longitude']) && $data['home_longitude'] !== '') ? (float)$data['home_longitude'] : (isset($data['longitude']) && $data['longitude'] !== '' ? (float)$data['longitude'] : null);
 
+        $contactRaw = isset($data['contact_no']) && trim((string) $data['contact_no']) !== '' ? trim((string) $data['contact_no']) : null;
+        $emailRaw = isset($data['email']) && trim((string) $data['email']) !== '' ? trim((string) $data['email']) : null;
+        $addressRaw = isset($data['address']) && trim((string) $data['address']) !== '' ? trim((string) $data['address']) : null;
+
         $sql = "
             UPDATE residents
             SET
@@ -421,7 +448,10 @@ class Resident
                 gender=?,
                 civil_status=?,
                 contact_no=?,
+                contact_no_hash=?,
+                contact_last4_hash=?,
                 email=?,
+                email_hash=?,
                 address=?,
                 home_latitude=COALESCE(?, home_latitude),
                 home_longitude=COALESCE(?, home_longitude),
@@ -439,9 +469,12 @@ class Resident
             $data['birth_date'] ?? null,
             $data['gender'] ?? null,
             $data['civil_status'] ?? null,
-            $data['contact_no'] ?? null,
-            $data['email'] ?? null,
-            $data['address'] ?? null,
+            $this->crypto->encrypt($contactRaw),
+            $this->crypto->contactBlindIndex($contactRaw),
+            $this->crypto->contactLast4BlindIndex($contactRaw),
+            $this->crypto->encrypt($emailRaw),
+            $this->crypto->emailBlindIndex($emailRaw),
+            $this->crypto->encrypt($addressRaw),
             $homeLat,
             $homeLng,
             $data['purok'] ?? null,

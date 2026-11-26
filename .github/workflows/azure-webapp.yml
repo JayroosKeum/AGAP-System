@@ -71,7 +71,7 @@ jobs:
           sed -e 's/`agap_db`/`agap_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_test/' -e 's/USE agap_db/USE agap_test/' database/schema.sql > /tmp/agap_test_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_test_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root -e "CREATE DATABASE IF NOT EXISTS agap_upgrade_test;"
-          sed -e 's/`agap_db`/`agap_upgrade_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_upgrade_test/' -e 's/USE agap_db/USE agap_upgrade_test/' -e '/parent_paanyaya_id INT UNSIGNED NULL,/d' -e '/KEY idx_paanyayas_parent (parent_paanyaya_id),/d' -e '/google_subject VARCHAR/d' -e '/UNIQUE KEY uq_users_google_subject/d' database/schema.sql > /tmp/agap_upgrade_schema.sql
+          sed -e 's/`agap_db`/`agap_upgrade_test`/g' -e 's/CREATE DATABASE IF NOT EXISTS agap_db/CREATE DATABASE IF NOT EXISTS agap_upgrade_test/' -e 's/USE agap_db/USE agap_upgrade_test/' -e '/parent_paanyaya_id INT UNSIGNED NULL,/d' -e '/KEY idx_paanyayas_parent (parent_paanyaya_id),/d' -e '/google_subject VARCHAR/d' -e '/UNIQUE KEY uq_users_google_subject/d' -e '/entry_hash CHAR(64) NULL,/d' database/schema.sql > /tmp/agap_upgrade_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root < /tmp/agap_upgrade_schema.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_002_mediation_pause_decisions.sql
           mysql -h 127.0.0.1 -P 3306 -u root agap_upgrade_test < database/migrations/20261115_003_preserve_show_cause_and_cfa_decisions.sql
@@ -96,6 +96,8 @@ jobs:
           DB_USER: 'root'
           DB_PASS: ''
           PHP_BINARY: 'php'
+          APP_PII_KEY: 'base64:Y2ktZGlzcG9zYWJsZS1hZ2FwLXBpaS1rZXktMzItYnk='
+          APP_AUDIT_HMAC_KEY: 'base64:Y2ktZGlzcG9zYWJsZS1hZ2FwLWF1ZGl0LWtleS0zMiE='
         run: npm test
 
       # Deploy only application code and runtime dependencies. Runtime user files

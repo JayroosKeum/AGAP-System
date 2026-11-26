@@ -6,6 +6,7 @@ require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 require_once __DIR__ . '/../../services/NotificationService.php';
+require_once __DIR__ . '/../../services/PiiCryptoService.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -43,10 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
         foreach ($users as $u) {
             $res = findMatchedResidentForUser($db, $u);
-            $email = trim((string) ($res['email'] ?? $u['email'] ?? ''));
-            $contactNo = trim((string) ($res['contact_no'] ?? $u['contact_no'] ?? ''));
+            $email = trim((string) (PiiCryptoService::decryptField($res['email'] ?? null) ?: ($u['email'] ?? '')));
+            $contactNo = trim((string) (PiiCryptoService::decryptField($res['contact_no'] ?? null) ?: PiiCryptoService::decryptField($u['contact_no'] ?? null) ?: ''));
             $purok = trim((string) ($res['purok'] ?? ''));
-            $address = trim((string) ($res['address'] ?? ''));
+            $address = trim((string) (PiiCryptoService::decryptField($res['address'] ?? null) ?: ''));
             $verified = !empty($res['residency_verified']) ? 1 : 0;
             $hasContact = ($contactNo !== '');
             $hasAddress = ($address !== '' || $purok !== '');
@@ -127,10 +128,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $res = findMatchedResidentForUser($db, $userRow);
-        $email = trim((string) ($res['email'] ?? $userRow['email'] ?? ''));
-        $contactNo = trim((string) ($res['contact_no'] ?? $userRow['contact_no'] ?? ''));
+        $email = trim((string) (PiiCryptoService::decryptField($res['email'] ?? null) ?: ($userRow['email'] ?? '')));
+        $contactNo = trim((string) (PiiCryptoService::decryptField($res['contact_no'] ?? null) ?: PiiCryptoService::decryptField($userRow['contact_no'] ?? null) ?: ''));
         $purok = trim((string) ($res['purok'] ?? ''));
-        $address = trim((string) ($res['address'] ?? ''));
+        $address = trim((string) (PiiCryptoService::decryptField($res['address'] ?? null) ?: ''));
 
         if ($verified === 1 && ($email === '' || $contactNo === '' || ($address === '' && $purok === ''))) {
             http_response_code(422);

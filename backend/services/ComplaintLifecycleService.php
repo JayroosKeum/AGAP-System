@@ -8,7 +8,45 @@ class ComplaintLifecycleService
     public const MEDIATION = 'Mediation';
     public const CONCILIATION = 'Conciliation';
     public const CFA = 'CFA';
+    public const PENDING_CLOSE = 'Pending Close';
     public const CLOSED = 'Resolution / Closed';
+
+    /**
+     * Explicit resolution definitions distinguishing signed settlement, obligation
+     * compliance, administrative closure, dismissal, and CFA referral (A9).
+     */
+    public const RESOLUTION_DEFINITIONS = [
+        'Signed Settlement' => [
+            'description' => 'Parties executed an attested amicable settlement or arbitration award (KP Form 16); obligation performance may still be ongoing.',
+            'required_evidence' => 'Signed and Punong Barangay-attested settlement record or arbitration award.',
+            'responsible_actor' => 'Punong Barangay / Pangkat Chairman / Lupon Clerk',
+            'dispute_reopen_route' => 'Repudiation within 10-day window or execution proceedings on breach.',
+        ],
+        'Obligation Compliance' => [
+            'description' => 'All monetary, property, or specific-performance obligations in a signed settlement have been verified as fulfilled.',
+            'required_evidence' => 'Settlement compliance status Complied/Fully Paid or complainant-verified closure.',
+            'responsible_actor' => 'Lupon Clerk + Complainant Verification',
+            'dispute_reopen_route' => 'Motion for execution or closure objection reopens compliance review.',
+        ],
+        'Administrative Closure' => [
+            'description' => 'Non-adjudicatory administrative closure following complainant verification or uncontested Pending Close timeout.',
+            'required_evidence' => 'Closure request reason, supporting evidence/note, and complainant confirmation or expired uncontested notice.',
+            'responsible_actor' => 'Administrator / Lupon Clerk (request) + Complainant or Policy Timeout (close)',
+            'dispute_reopen_route' => 'Complainant objection blocks closure and restores prior active stage.',
+        ],
+        'Dismissal' => [
+            'description' => 'Formal dismissal due to withdrawal, failure of complainant to appear, lack of jurisdiction, or bar to action.',
+            'required_evidence' => 'Dismissal minutes, non-appearance/show-cause evaluation, or written withdrawal.',
+            'responsible_actor' => 'Punong Barangay / Pangkat / Assigned LISO',
+            'dispute_reopen_route' => 'Complainant objection during Pending Close or administrative review.',
+        ],
+        'CFA Referral' => [
+            'description' => 'Issuance of Certificate to File Action (KP Form 20/20-A/20-B) or court/external referral after failed or repudiated settlement.',
+            'required_evidence' => 'Recorded CFA issuance or failed conciliation/repudiation record.',
+            'responsible_actor' => 'Lupon Secretary / Punong Barangay',
+            'dispute_reopen_route' => 'External judicial/prosecutorial filing; cannot be silently marked fulfilled.',
+        ],
+    ];
 
     private PDO $conn;
 
@@ -35,11 +73,11 @@ class ComplaintLifecycleService
     public static function allowedStatuses(): array
     {
         return [
-
             self::PAANYAYA,
             self::MEDIATION,
             self::CONCILIATION,
             self::CFA,
+            self::PENDING_CLOSE,
             self::CLOSED
         ];
     }
@@ -59,6 +97,9 @@ class ComplaintLifecycleService
 
             self::CFA =>
                 'Certificate to File Action.',
+
+            self::PENDING_CLOSE =>
+                'Closure requested by staff; awaiting complainant verification or approved uncontested timeout.',
 
             self::CLOSED =>
                 'Case resolved or officially closed.',
@@ -178,9 +219,10 @@ class ComplaintLifecycleService
         $caseStatus =
             trim((string) $caseStatus);
 
-        /*
-         * Resolution / Closed has the highest priority.
-         */
+        if ($complaintStatus === 'Pending Close' || $caseStatus === 'Pending Close') {
+            return self::PENDING_CLOSE;
+        }
+
         /*
          * Dismissed / Barred cases are closed; CFA and Repudiation take priority
          * over historical settlement rows so CFA queue and badges stay accurate.
@@ -205,6 +247,8 @@ class ComplaintLifecycleService
 
         $closedStatuses = [
             'Settled',
+            'Closed',
+            'Resolution / Closed',
             'Dismissed',
             'Archived',
             'Rejected',
@@ -231,24 +275,6 @@ class ComplaintLifecycleService
             return self::CLOSED;
         }
 
-        /*
-         * CFA overrides active mediation and conciliation.
-         */
-        if (
-            $hasCfa ||
-            $caseStatus === 'CFA Issued' ||
-            $complaintStatus === 'CFA Issued'
-        ) {
-            return self::CFA;
-        }
-
-        /*
-         * Conciliation is active only when:
-         *
-         * 1. The case status is Conciliation;
-         * 2. The complaint status is Conciliation; or
-         * 3. A Conciliation hearing exists.
-         */
         if (
             $caseStatus === 'Conciliation' ||
             $complaintStatus === 'Conciliation' ||
@@ -257,15 +283,6 @@ class ComplaintLifecycleService
             return self::CONCILIATION;
         }
 
-        /*
-         * Mediation is active when:
-         *
-         * 1. The case status is Mediation;
-         * 2. The complaint status is Mediation; or
-         * 3. A Mediation hearing exists.
-         *
-         * When mediation starts, the dispute is formally docketed.
-         */
         if (
             $caseStatus === 'Mediation' ||
             $caseStatus === 'Docketed' ||
@@ -276,15 +293,5 @@ class ComplaintLifecycleService
         }
 
         return self::PAANYAYA;
-
-        if (false
-        ) {
-            return self::MEDIATION;
-        }
-
-        /*
-         * Official complaints start directly in the Mediation stage (Stage 1).
-         */
-        return self::MEDIATION;
     }
 }

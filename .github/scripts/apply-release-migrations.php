@@ -52,6 +52,34 @@ try {
         }
         return true;
     };
+    $revisionA1A10Ready = static function () use ($db, $columnType): bool {
+        $hasColumns = $columnType('complaints', 'deleted_at') !== ''
+            && $columnType('complaints', 'assigned_queue') !== ''
+            && $columnType('complaints', 'routing_rule_version') !== ''
+            && $columnType('complaints', 'resolution_type') !== ''
+            && $columnType('cases', 'deleted_at') !== ''
+            && $columnType('residents', 'contact_no_hash') !== ''
+            && $columnType('residents', 'contact_last4_hash') !== ''
+            && $columnType('residents', 'email_hash') !== ''
+            && $columnType('users', 'email_hash') !== ''
+            && $columnType('users', 'contact_no_hash') !== ''
+            && $columnType('audit_trails', 'entry_hash') !== ''
+            && $columnType('audit_trails', 'prev_hash') !== '';
+        if (!$hasColumns) {
+            return false;
+        }
+        $hasTables = (bool) $db->query("SHOW TABLES LIKE 'anonymous_concerns'")->fetchColumn()
+            && (bool) $db->query("SHOW TABLES LIKE 'closure_requests'")->fetchColumn()
+            && (bool) $db->query("SHOW TABLES LIKE 'complaint_routing_logs'")->fetchColumn();
+        if (!$hasTables) {
+            return false;
+        }
+        $hasSuperAdmin = (bool) $db->query("SELECT 1 FROM roles WHERE role_name = 'Super Administrator' LIMIT 1")->fetchColumn();
+        $triggers = $db->query("SHOW TRIGGERS LIKE 'audit_trails'")->fetchAll(PDO::FETCH_COLUMN);
+        $hasTriggers = in_array('trg_audit_trails_no_update', $triggers, true)
+            && in_array('trg_audit_trails_no_delete', $triggers, true);
+        return $hasSuperAdmin && $hasTriggers;
+    };
     if (($argv[1] ?? null) !== '--check-only') {
         if (!(int) $db->query("SELECT GET_LOCK(CONCAT('agap-release:', SHA1(DATABASE())), 30)")->fetchColumn()) {
             throw new RuntimeException('Could not acquire the release migration lock.');
@@ -63,6 +91,7 @@ try {
             '20261115_005_link_paanyaya_threads.sql' => true,
             '20261116_001_link_resident_google_identity.sql' => true,
             '20261124_001_category_case_type_mapping_and_paanyaya_other.sql' => $columnType('complaint_categories', 'default_case_type') === '' || $columnType('paanyayas', 'preliminary_other_category_specification') === '',
+            '20261126_001_revision_a1_a10.sql' => !$revisionA1A10Ready(),
         ];
         $migrationDir = $argv[1] ?? dirname(__DIR__, 2) . '/database/migrations';
         foreach ($migrations as $file => $needed) {
@@ -82,7 +111,7 @@ try {
         }
     }
 
-    if (!$orderFourReady() || $columnType('paanyayas', 'parent_paanyaya_id') === ''
+    if (!$orderFourReady() || !$revisionA1A10Ready() || $columnType('paanyayas', 'parent_paanyaya_id') === ''
         || $columnType('mediation_pause_decisions', 'decision_id') === ''
         || !str_contains($columnType('show_cause_evaluations', 'action_taken'), "'Excused'")
         || $columnType('cfa_records', 'resident_id') === ''

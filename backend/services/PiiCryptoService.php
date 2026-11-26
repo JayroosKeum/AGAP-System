@@ -3,9 +3,10 @@
 declare(strict_types=1);
 
 /**
- * Authenticated AES-256-GCM PII encryption helper for sensitive resident and party fields.
- * Reads key material from APP_PII_KEY (env) and uses a versioned "enc:v1:" prefix so
- * plaintext legacy values and encrypted values can coexist safely.
+ * Authenticated AES-256-GCM PII encryption helper for sensitive resident, party, and account fields.
+ * Reads key material from APP_PII_KEY (env) and optional rotation fallback keys from
+ * APP_PII_KEYS_LEGACY (comma-separated). Uses a versioned "enc:v1:" prefix so
+ * legacy plaintext values and encrypted values can be migrated safely.
  */
 final class PiiCryptoService
 {
@@ -15,23 +16,91 @@ final class PiiCryptoService
     private const TAG_LENGTH = 16;
 
     private ?string $key;
+    /** @var array<int, string> */
+    private array $legacyKeys = [];
+    private static bool $envChecked = false;
 
-    public function __construct(?string $keyOverride = null)
+    public function __construct(?string $keyOverride = null, array $legacyKeyOverrides = [])
     {
-        $raw = $keyOverride ?? (getenv('APP_PII_KEY') ?: ($_ENV['APP_PII_KEY'] ?? ($_SERVER['APP_PII_KEY'] ?? '')));
-        $raw = trim((string) $raw);
+        if ($keyOverride === null) {
+            self::loadEnvIfMissing();
+            $raw = getenv('APP_PII_KEY') ?: ($_ENV['APP_PII_KEY'] ?? ($_SERVER['APP_PII_KEY'] ?? ''));
+        } else {
+            $raw = $keyOverride;
+        }
+
+        $this->key = self::deriveKey((string) $raw);
+
+        if ($legacyKeyOverrides !== []) {
+            foreach ($legacyKeyOverrides as $legacyRaw) {
+                $derived = self::deriveKey((string) $legacyRaw);
+                if ($derived !== null) {
+                    $this->legacyKeys[] = $derived;
+                }
+            }
+        } elseif ($keyOverride === null) {
+            $rawLegacy = getenv('APP_PII_KEYS_LEGACY') ?: ($_ENV['APP_PII_KEYS_LEGACY'] ?? ($_SERVER['APP_PII_KEYS_LEGACY'] ?? ''));
+            if (is_string($rawLegacy) && trim($rawLegacy) !== '') {
+                foreach (explode(',', $rawLegacy) as $part) {
+                    $derived = self::deriveKey($part);
+                    if ($derived !== null) {
+                        $this->legacyKeys[] = $derived;
+                    }
+                }
+            }
+        }
+    }
+
+    private static function deriveKey(string $raw): ?string
+    {
+        $raw = trim($raw);
         if ($raw === '') {
-            $this->key = null;
-            return;
+            return null;
         }
         if (str_starts_with($raw, 'base64:')) {
             $decoded = base64_decode(substr($raw, 7), true);
-            $this->key = $decoded !== false && strlen($decoded) === 32
+            return $decoded !== false && strlen($decoded) === 32
                 ? $decoded
                 : hash('sha256', $raw, true);
+        }
+        return hash('sha256', $raw, true);
+    }
+
+    private static function loadEnvIfMissing(): void
+    {
+        if (self::$envChecked) {
             return;
         }
-        $this->key = hash('sha256', $raw, true);
+        self::$envChecked = true;
+        $existing = getenv('APP_PII_KEY') ?: ($_ENV['APP_PII_KEY'] ?? ($_SERVER['APP_PII_KEY'] ?? ''));
+        if (is_string($existing) && trim($existing) !== '') {
+            return;
+        }
+        $envFile = dirname(__DIR__, 2) . '/.env';
+        if (!is_file($envFile) || !is_readable($envFile)) {
+            return;
+        }
+        $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        if ($lines === false) {
+            return;
+        }
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '' || str_starts_with($line, '#') || !str_contains($line, '=')) {
+                continue;
+            }
+            [$k, $v] = explode('=', $line, 2);
+            $k = trim($k);
+            $v = trim($v, " \t\n\r\0\x0B\"'");
+            if (in_array($k, ['APP_PII_KEY', 'APP_PII_KEYS_LEGACY', 'APP_AUDIT_HMAC_KEY'], true) && $v !== '') {
+                $cur = $_SERVER[$k] ?? ($_ENV[$k] ?? getenv($k));
+                if (!is_string($cur) || $cur === '') {
+                    putenv("$k=$v");
+                    $_ENV[$k] = $v;
+                    $_SERVER[$k] = $v;
+                }
+            }
+        }
     }
 
     public function isConfigured(): bool
@@ -44,13 +113,20 @@ final class PiiCryptoService
         return is_string($value) && str_starts_with($value, self::PREFIX);
     }
 
+    /**
+     * Encrypts a non-empty PII string with AES-256-GCM.
+     * Fails closed when APP_PII_KEY is missing or unusable.
+     */
     public function encrypt(?string $plaintext): ?string
     {
-        if ($plaintext === null || $plaintext === '' || !$this->isConfigured()) {
+        if ($plaintext === null || $plaintext === '') {
             return $plaintext;
         }
         if (self::isEncrypted($plaintext)) {
             return $plaintext;
+        }
+        if (!$this->isConfigured()) {
+            throw new RuntimeException('APP_PII_KEY is required to encrypt protected PII data (fail-closed).');
         }
         $iv = random_bytes(self::IV_LENGTH);
         $tag = '';
@@ -75,7 +151,7 @@ final class PiiCryptoService
         if ($value === null || $value === '' || !self::isEncrypted($value)) {
             return $value;
         }
-        if (!$this->isConfigured()) {
+        if (!$this->isConfigured() && $this->legacyKeys === []) {
             throw new RuntimeException('APP_PII_KEY is required to decrypt PII data.');
         }
         $payload = base64_decode(substr($value, strlen(self::PREFIX)), true);
@@ -85,18 +161,42 @@ final class PiiCryptoService
         $iv = substr($payload, 0, self::IV_LENGTH);
         $tag = substr($payload, self::IV_LENGTH, self::TAG_LENGTH);
         $ciphertext = substr($payload, self::IV_LENGTH + self::TAG_LENGTH);
-        $plaintext = openssl_decrypt(
-            $ciphertext,
-            self::CIPHER,
-            $this->key,
-            OPENSSL_RAW_DATA,
-            $iv,
-            $tag
-        );
-        if ($plaintext === false) {
-            throw new RuntimeException('PII decryption authentication check failed.');
+
+        $keysToTry = [];
+        if ($this->key !== null) {
+            $keysToTry[] = $this->key;
         }
-        return $plaintext;
+        foreach ($this->legacyKeys as $legacyKey) {
+            $keysToTry[] = $legacyKey;
+        }
+
+        foreach ($keysToTry as $candidateKey) {
+            $plaintext = openssl_decrypt(
+                $ciphertext,
+                self::CIPHER,
+                $candidateKey,
+                OPENSSL_RAW_DATA,
+                $iv,
+                $tag
+            );
+            if ($plaintext !== false) {
+                return $plaintext;
+            }
+        }
+
+        throw new RuntimeException('PII decryption authentication check failed.');
+    }
+
+    /**
+     * Re-encrypts an existing ciphertext (or legacy plaintext) under the active primary key.
+     */
+    public function rotate(?string $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return $value;
+        }
+        $plaintext = $this->decrypt($value);
+        return $this->encrypt($plaintext);
     }
 
     /**
@@ -108,5 +208,73 @@ final class PiiCryptoService
             throw new RuntimeException('APP_PII_KEY is required to compute a PII blind index.');
         }
         return hash_hmac('sha256', mb_strtolower(trim($value), 'UTF-8'), $this->key);
+    }
+
+    /**
+     * Computes a blind index for normalized contact numbers (digits + optional leading +).
+     */
+    public function contactBlindIndex(?string $contact): ?string
+    {
+        if ($contact === null || trim($contact) === '') {
+            return null;
+        }
+        $digits = preg_replace('/\D+/', '', $contact) ?? '';
+        $normalized = $digits !== '' ? $digits : mb_strtolower(trim($contact), 'UTF-8');
+        return $this->blindIndex('contact:' . $normalized);
+    }
+
+    /**
+     * Computes a blind index for the last 4 digits of a contact number (for public tracker verification).
+     */
+    public function contactLast4BlindIndex(?string $contact): ?string
+    {
+        if ($contact === null || trim($contact) === '') {
+            return null;
+        }
+        $digits = preg_replace('/\D+/', '', $contact) ?? '';
+        if (strlen($digits) < 4) {
+            return null;
+        }
+        return $this->blindIndex('last4:' . substr($digits, -4));
+    }
+
+    public function emailBlindIndex(?string $email): ?string
+    {
+        if ($email === null || trim($email) === '') {
+            return null;
+        }
+        return $this->blindIndex('email:' . mb_strtolower(trim($email), 'UTF-8'));
+    }
+
+    /**
+     * Decrypts selected keys in an associative database row in place.
+     *
+     * @param array<string, mixed> $row
+     * @param array<int, string> $fields
+     * @return array<string, mixed>
+     */
+    public function decryptRow(array $row, array $fields): array
+    {
+        foreach ($fields as $field) {
+            if (array_key_exists($field, $row) && is_string($row[$field]) && self::isEncrypted($row[$field])) {
+                $row[$field] = $this->decrypt($row[$field]);
+            }
+        }
+        return $row;
+    }
+
+    /**
+     * Convenience static helper for authorized read paths.
+     */
+    public static function decryptField(?string $value): ?string
+    {
+        if ($value === null || $value === '' || !self::isEncrypted($value)) {
+            return $value;
+        }
+        static $shared = null;
+        if ($shared === null) {
+            $shared = new self();
+        }
+        return $shared->decrypt($value);
     }
 }

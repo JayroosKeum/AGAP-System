@@ -4,6 +4,8 @@ session_start();
 
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../controllers/DocumentController.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
@@ -17,23 +19,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
-if (
-    !isset($_SESSION['role_id'])
-    || !in_array(
-        (int) $_SESSION['role_id'],
-        [1, 2, 3],
-        true
-    )
-) {
-    http_response_code(403);
-
-    echo json_encode([
-        'success' => false,
-        'message' => 'Unauthorized.',
-    ]);
-
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'Resident'], $db);
 
 $controller = new DocumentController();
 $result = $controller->index();

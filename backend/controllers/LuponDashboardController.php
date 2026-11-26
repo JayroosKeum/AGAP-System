@@ -424,6 +424,14 @@ class LuponDashboardController
         ");
         $partiesStmt->execute([$complaintId]);
         $parties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+        require_once __DIR__ . '/../services/PiiCryptoService.php';
+        foreach ($parties as &$partyRow) {
+            $partyRow['contact_no'] = PiiCryptoService::decryptField($partyRow['contact_no'] ?? null);
+            $partyRow['email'] = PiiCryptoService::decryptField($partyRow['email'] ?? null);
+            $partyRow['house_street'] = PiiCryptoService::decryptField($partyRow['house_street'] ?? null);
+            $partyRow['address'] = PiiCryptoService::decryptField($partyRow['address'] ?? null);
+        }
+        unset($partyRow);
 
         // 3. Hearing history & minutes
         $hearingsStmt = $this->conn->prepare("
@@ -464,6 +472,10 @@ class LuponDashboardController
             ");
             $pmStmt->execute([$pangkatId]);
             $pangkatMembers = $pmStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($pangkatMembers as &$pmRow) {
+                $pmRow['contact_no'] = PiiCryptoService::decryptField($pmRow['contact_no'] ?? null);
+            }
+            unset($pmRow);
         }
 
         return [

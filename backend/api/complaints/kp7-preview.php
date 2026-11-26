@@ -3,11 +3,13 @@
 session_start();
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../services/PDFService.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
+require_once __DIR__ . '/../../services/PiiCryptoService.php';
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server'])) {
     header('Content-Type: application/json; charset=utf-8');
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Authentication required.']);
@@ -23,6 +25,9 @@ if (!$complaintId) {
 }
 
 $db = (new Database())->connect();
+$isDownload = (string) ($_GET['download'] ?? '') === '1';
+$isJson = str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') || ($_GET['format'] ?? '') === 'json';
+agapRequireComplaintAccess($db, (int) $complaintId, 'read', $isDownload || $isJson);
 
 $stmt = $db->prepare("
     SELECT c.*, cat.category_name, cs.case_id, cs.case_number, cs.case_status,
@@ -31,7 +36,7 @@ $stmt = $db->prepare("
     LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
     LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
     LEFT JOIN users u ON u.user_id = c.encoded_by
-    WHERE c.complaint_id = ?
+    WHERE c.complaint_id = ? AND c.deleted_at IS NULL
 ");
 $stmt->execute([$complaintId]);
 $complaint = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -42,9 +47,6 @@ if (!$complaint) {
     echo json_encode(['success' => false, 'message' => 'Complaint not found.']);
     exit;
 }
-
-$isDownload = (string) ($_GET['download'] ?? '') === '1';
-$isJson = str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json') || ($_GET['format'] ?? '') === 'json';
 if (!ComplaintLifecycleService::canAccessKpForm7($complaint)) {
     if ($isDownload || $isJson) {
         header('Content-Type: application/json; charset=utf-8');
@@ -85,16 +87,17 @@ $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
 $complainants = [];
 $respondents = [];
 foreach ($parties as $p) {
+    $addressDec = PiiCryptoService::decryptField($p['address'] ?? null);
     $item = [
         'resident_id' => (int) $p['resident_id'],
         'party_type' => $p['party_type'],
         'full_name' => $p['full_name'],
-        'address' => trim(implode(', ', array_filter([$p['address'] ?? '', $p['purok'] ?? '']))),
+        'address' => trim(implode(', ', array_filter([$addressDec ?? '', $p['purok'] ?? '']))),
         'is_minor' => (int) ($p['is_minor'] ?? 0),
-        'guardian_name' => $p['guardian_name'] ?? null,
+        'guardian_name' => PiiCryptoService::decryptField($p['guardian_name'] ?? null),
         'guardian_relationship' => $p['guardian_relationship'] ?? null,
-        'guardian_contact' => $p['guardian_contact'] ?? null,
-        'guardian_address' => $p['guardian_address'] ?? null,
+        'guardian_contact' => PiiCryptoService::decryptField($p['guardian_contact'] ?? null),
+        'guardian_address' => PiiCryptoService::decryptField($p['guardian_address'] ?? null),
     ];
     if ($p['party_type'] === 'Complainant') {
         $complainants[] = $item;

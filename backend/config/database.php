@@ -17,6 +17,9 @@ if (PHP_SAPI !== 'cli' && str_contains($agapScriptPath, '/backend/api/')) {
         '/backend/api/auth/register-resident.php',
         '/backend/api/auth/resident-google.php',
         '/backend/api/public/track-complaint.php',
+        '/backend/api/public/anonymous-submit.php',
+        '/backend/api/public/anonymous-track.php',
+        '/backend/api/public/closure-verify.php',
     ];
     $isPublicAuth = false;
     foreach ($publicAuthEndpoints as $endpoint) {

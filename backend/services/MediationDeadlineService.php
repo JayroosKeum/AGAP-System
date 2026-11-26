@@ -16,7 +16,7 @@ class MediationDeadlineService
     public function __construct(?PDO $conn = null)
     {
         $this->conn = $conn ?? (new Database())->connect();
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->conn);
     }
 
     /**

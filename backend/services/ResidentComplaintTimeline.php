@@ -34,7 +34,7 @@ final class ResidentComplaintTimeline
                 c.status, c.screening_decision, c.created_at, c.updated_at, c.liso_reviewed_at,
                 cs.case_id, cs.case_status, cs.docket_date, cs.updated_at AS case_updated_at, c.docketed_at
             FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
-            WHERE c.complaint_id = ? AND c.submitted_by = ? AND c.is_draft = 0');
+            WHERE c.complaint_id = ? AND c.submitted_by = ? AND c.is_draft = 0 AND c.deleted_at IS NULL');
         $query->execute([$id, $residentUserId]);
         $complaint = $query->fetch();
         if (!$complaint) {
@@ -148,8 +148,30 @@ final class ResidentComplaintTimeline
             }
         }
 
+        $closureStmt = $this->db->prepare(
+            'SELECT closure_request_id, resolution_type, request_reason, expires_at, status,
+                    notice_sent_at, confirmed_at, objected_at, objection_reason, closed_at
+             FROM closure_requests
+             WHERE complaint_id = ?
+             ORDER BY closure_request_id ASC'
+        );
+        $closureStmt->execute([$id]);
+        $pendingClosure = null;
+        foreach ($closureStmt->fetchAll(PDO::FETCH_ASSOC) as $cr) {
+            $add($cr['notice_sent_at'], 'Closure confirmation requested (' . $cr['resolution_type'] . ')', (string) $cr['request_reason']);
+            if ($cr['status'] === 'Pending') {
+                $pendingClosure = $cr;
+            } elseif ($cr['status'] === 'Confirmed') {
+                $add($cr['confirmed_at'], 'Closure confirmed by complainant');
+            } elseif ($cr['status'] === 'Objected') {
+                $add($cr['objected_at'], 'Closure objection recorded', (string) ($cr['objection_reason'] ?? ''));
+            } elseif ($cr['status'] === 'TimedOutClosed') {
+                $add($cr['closed_at'], 'Closed after uncontested verification window');
+            }
+        }
+
         usort($events, static fn (array $left, array $right): int => strcmp(substr($left['date'], 0, 16), substr($right['date'], 0, 16)) ?: ($left['sequence'] <=> $right['sequence']));
-        return ['complaint' => $complaint, 'events' => $events, 'request' => $openRequest];
+        return ['complaint' => $complaint, 'events' => $events, 'request' => $openRequest, 'pending_closure' => $pendingClosure];
     }
 
     private static function appointmentDetails(string $date, string $venue): string

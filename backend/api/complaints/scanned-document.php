@@ -2,6 +2,8 @@
 
 session_start();
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../models/ComplaintScannedDocument.php';
 require_once __DIR__ . '/../../services/AuditService.php';
 require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
@@ -10,7 +12,7 @@ $isJson = (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT
     (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') ||
     (isset($_GET['format']) && $_GET['format'] === 'json');
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server'])) {
     if ($isJson) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(401);
@@ -21,8 +23,9 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
     exit;
 }
 
-$model = new ComplaintScannedDocument();
-$audit = new AuditService();
+$db = (new Database())->connect();
+$model = new ComplaintScannedDocument($db);
+$audit = new AuditService($db);
 
 // ==========================================
 // GET REQUESTS: PREVIEW, DOWNLOAD, HISTORY, CURRENT
@@ -40,6 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             echo 'Scanned complaint document not found.';
             exit;
         }
+        agapRequireComplaintAccess($db, (int) $record['complaint_id'], 'read', false);
         if (!ComplaintLifecycleService::canAccessKpForm7([
             'case_id' => $record['formal_case_id'],
             'status' => $record['status'],
@@ -77,6 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     // Version history for a complaint
     if ($complaintId && $action === 'history') {
+        agapRequireComplaintAccess($db, (int) $complaintId, 'read', true);
         header('Content-Type: application/json; charset=utf-8');
         $history = $model->getHistoryByComplaint($complaintId);
         echo json_encode([
@@ -89,6 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     // Current active scan for a complaint
     if ($complaintId) {
+        agapRequireComplaintAccess($db, (int) $complaintId, 'read', true);
         header('Content-Type: application/json; charset=utf-8');
         $current = $model->getCurrentByComplaint($complaintId);
         echo json_encode([

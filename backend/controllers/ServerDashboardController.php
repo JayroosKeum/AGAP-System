@@ -145,6 +145,16 @@ class ServerDashboardController
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($queryParams);
         $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        require_once __DIR__ . '/../services/PiiCryptoService.php';
+        foreach ($tasks as &$task) {
+            $task['contact_no'] = PiiCryptoService::decryptField($task['contact_no'] ?? null);
+            $task['house_street'] = PiiCryptoService::decryptField($task['house_street'] ?? null);
+            $task['address'] = PiiCryptoService::decryptField($task['address'] ?? null);
+            if ($task['address'] === null || trim((string) $task['address']) === '') {
+                $task['address'] = $task['purok'] ?? 'Barangay Tumana';
+            }
+        }
+        unset($task);
 
         // Include Paanyaya service attempts (Stage 0) in KPIs & tasks (latest operative attempt per complaint & invitation)
         try {

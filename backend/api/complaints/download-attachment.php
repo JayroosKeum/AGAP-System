@@ -1,21 +1,26 @@
 <?php
 
 session_start();
+require_once '../../config/database.php';
+require_once '../../middleware/rbac.php';
 require_once '../../controllers/ComplaintController.php';
 
 if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
     http_response_code(401);
     exit('Authentication required.');
 }
-if (!in_array((int) $_SESSION['role_id'], [1, 2], true)) {
-    http_response_code(403);
-    exit('Unauthorized.');
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'Resident'], $db);
 
 $attachmentId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$attachmentId) {
     http_response_code(422);
     exit('A valid attachment ID is required.');
+}
+
+if (!agapCanAccessAttachment($db, (int) $attachmentId, agapSessionUserId(), agapGetRoleName($db))) {
+    http_response_code(403);
+    exit('Unauthorized.');
 }
 
 $attachment = (new ComplaintController())->getAttachment((int) $attachmentId);

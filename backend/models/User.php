@@ -1,15 +1,18 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 class User {
 
     private PDO $db;
+    private PiiCryptoService $crypto;
 
-    public function __construct()
+    public function __construct(?PiiCryptoService $crypto = null)
     {
         $database = new Database();
         $this->db = $database->connect();
+        $this->crypto = $crypto ?? new PiiCryptoService();
     }
 
     public function findByUsername(string $username): array|false
@@ -23,7 +26,8 @@ class User {
 
         $stmt->execute([$username]);
 
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $this->crypto->decryptRow($row, ['contact_no']) : false;
     }
 
     public function findByUsernameOrEmail(string $identity): array|false
@@ -42,7 +46,8 @@ class User {
              LIMIT 1"
         );
         $stmt->execute([$clean, $clean, $clean]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? $this->crypto->decryptRow($row, ['contact_no']) : false;
     }
 
     public function findResidentByGoogleSubject(string $subject): array|false
@@ -63,6 +68,7 @@ class User {
         $token = $hasPassword ? null : ($data['email_verification_token'] ?? null);
         $expires = $hasPassword ? null : ($data['email_verification_expires_at'] ?? null);
 
+        $contactRaw = isset($data['contact_no']) && trim((string) $data['contact_no']) !== '' ? trim((string) $data['contact_no']) : null;
         $stmt = $this->db->prepare("
             INSERT INTO users
             (
@@ -70,7 +76,9 @@ class User {
                 last_name,
                 username,
                 email,
+                email_hash,
                 contact_no,
+                contact_no_hash,
                 password_hash,
                 role_id,
                 status,
@@ -79,7 +87,7 @@ class User {
             )
             VALUES
             (
-                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
         ");
 
@@ -89,7 +97,9 @@ class User {
                 $data['last_name'],
                 $data['username'],
                 $data['email'],
-                $data['contact_no'],
+                $this->crypto->emailBlindIndex($data['email'] ?? null),
+                $this->crypto->encrypt($contactRaw),
+                $this->crypto->contactBlindIndex($contactRaw),
                 $passwordHash,
                 $data['role_id'],
                 $status,
@@ -296,7 +306,12 @@ class User {
             $sql .= ' WHERE u.role_id IN (1, 2, 3, 4)';
         }
         $stmt = $this->db->query($sql . ' ORDER BY u.last_name, u.first_name');
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row = $this->crypto->decryptRow($row, ['contact_no']);
+        }
+        unset($row);
+        return $rows;
     }
 
     public function getStaffRoles(): array
@@ -362,8 +377,18 @@ class User {
     {
         try {
             $this->db->beginTransaction();
-            $resident = $this->db->prepare('INSERT INTO residents (first_name, last_name, contact_no, email, address, barangay, city_municipality, residency_verified) VALUES (?, ?, ?, ?, NULL, \'Tumana\', \'Marikina City\', 0)');
-            $resident->execute([$data['first_name'], $data['last_name'], $data['contact_no'] ?: null, $data['email']]);
+            $contactRaw = !empty($data['contact_no']) ? trim((string) $data['contact_no']) : null;
+            $emailRaw = !empty($data['email']) ? trim((string) $data['email']) : null;
+            $resident = $this->db->prepare('INSERT INTO residents (first_name, last_name, contact_no, contact_no_hash, contact_last4_hash, email, email_hash, address, barangay, city_municipality, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, \'Tumana\', \'Marikina City\', 0)');
+            $resident->execute([
+                $data['first_name'],
+                $data['last_name'],
+                $this->crypto->encrypt($contactRaw),
+                $this->crypto->contactBlindIndex($contactRaw),
+                $this->crypto->contactLast4BlindIndex($contactRaw),
+                $this->crypto->encrypt($emailRaw),
+                $this->crypto->emailBlindIndex($emailRaw),
+            ]);
             $residentId = (int) $this->db->lastInsertId();
             $this->db->prepare('INSERT INTO resident_user_profiles (user_id, resident_id) VALUES (?, ?)')->execute([$userId, $residentId]);
             $this->db->commit();
@@ -392,16 +417,21 @@ class User {
                 throw new RuntimeException('The Resident role has not been configured.');
             }
 
+            $contactRaw = !empty($data['contact_no']) ? trim((string) $data['contact_no']) : null;
+            $emailRaw = !empty($data['email']) ? trim((string) $data['email']) : null;
+
             $user = $this->db->prepare(
-                "INSERT INTO users (first_name, last_name, username, email, contact_no, password_hash, role_id, status, google_subject)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Active', ?)"
+                "INSERT INTO users (first_name, last_name, username, email, email_hash, contact_no, contact_no_hash, password_hash, role_id, status, google_subject)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Active', ?)"
             );
             $user->execute([
                 $data['first_name'],
                 $data['last_name'],
                 $data['username'],
-                $data['email'],
-                $data['contact_no'] ?: null,
+                $emailRaw,
+                $this->crypto->emailBlindIndex($emailRaw),
+                $this->crypto->encrypt($contactRaw),
+                $this->crypto->contactBlindIndex($contactRaw),
                 password_hash($data['password'], PASSWORD_DEFAULT),
                 $residentRoleId,
                 $data['google_subject'],
@@ -409,14 +439,17 @@ class User {
             $userId = (int) $this->db->lastInsertId();
 
             $resident = $this->db->prepare(
-                "INSERT INTO residents (first_name, last_name, contact_no, email, barangay, city_municipality, residency_verified)
-                 VALUES (?, ?, ?, ?, 'Tumana', 'Marikina City', 0)"
+                "INSERT INTO residents (first_name, last_name, contact_no, contact_no_hash, contact_last4_hash, email, email_hash, barangay, city_municipality, residency_verified)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'Tumana', 'Marikina City', 0)"
             );
             $resident->execute([
                 $data['first_name'],
                 $data['last_name'],
-                $data['contact_no'] ?: null,
-                $data['email'],
+                $this->crypto->encrypt($contactRaw),
+                $this->crypto->contactBlindIndex($contactRaw),
+                $this->crypto->contactLast4BlindIndex($contactRaw),
+                $this->crypto->encrypt($emailRaw),
+                $this->crypto->emailBlindIndex($emailRaw),
             ]);
             $residentId = (int) $this->db->lastInsertId();
 
@@ -466,8 +499,19 @@ class User {
     public function update(int $id, array $data): array
     {
         try {
-            $sql = 'UPDATE users SET first_name=?, last_name=?, username=?, email=?, contact_no=?, role_id=?';
-            $values = [$data['first_name'], $data['last_name'], $data['username'], $data['email'], $data['contact_no'], $data['role_id']];
+            $contactRaw = isset($data['contact_no']) && trim((string) $data['contact_no']) !== '' ? trim((string) $data['contact_no']) : null;
+            $emailRaw = isset($data['email']) && trim((string) $data['email']) !== '' ? trim((string) $data['email']) : null;
+            $sql = 'UPDATE users SET first_name=?, last_name=?, username=?, email=?, email_hash=?, contact_no=?, contact_no_hash=?, role_id=?';
+            $values = [
+                $data['first_name'],
+                $data['last_name'],
+                $data['username'],
+                $emailRaw,
+                $this->crypto->emailBlindIndex($emailRaw),
+                $this->crypto->encrypt($contactRaw),
+                $this->crypto->contactBlindIndex($contactRaw),
+                $data['role_id']
+            ];
             if ($data['password'] !== '') {
                 $sql .= ', password_hash=?, status=\'Active\', email_verification_token=NULL, email_verification_expires_at=NULL';
                 $values[] = password_hash($data['password'], PASSWORD_DEFAULT);

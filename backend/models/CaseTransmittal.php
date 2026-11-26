@@ -815,12 +815,14 @@ class CaseTransmittal
         $partiesStmt->execute([$caseInfo['complaint_id']]);
         $allParties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        require_once __DIR__ . '/../services/PiiCryptoService.php';
         $complainants = [];
         $respondents = [];
         $complainantsWithAddress = [];
         $respondentsWithAddress = [];
         foreach ($allParties as $p) {
-            $addr = !empty($p['address']) ? $p['address'] : 'Address not provided';
+            $decAddr = PiiCryptoService::decryptField($p['address'] ?? null);
+            $addr = !empty($decAddr) ? $decAddr : 'Address not provided';
             if ($p['party_type'] === 'Complainant') {
                 $complainants[] = $p['full_name'];
                 $complainantsWithAddress[] = $p['full_name'] . ' resident of ' . $addr;

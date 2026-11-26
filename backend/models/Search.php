@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../middleware/rbac.php';
 
 class Search
 {
@@ -13,8 +14,22 @@ class Search
 
     public function records(array $filters): array
     {
-        $where = [];
+        $where = ['co.deleted_at IS NULL'];
         $params = [];
+
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            [$visSql, $visParams] = agapBuildComplaintVisibilitySql('co', $this->conn);
+            $where[] = $visSql;
+            foreach ($visParams as $idx => $val) {
+                $k = ':vis_' . $idx;
+                $pos = strpos($where[count($where) - 1], '?');
+                if ($pos !== false) {
+                    $where[count($where) - 1] = substr_replace($where[count($where) - 1], $k, $pos, 1);
+                    $params[$k] = $val;
+                }
+            }
+        }
+
         $term = trim($filters['q'] ?? '');
 
         if ($term !== '') {

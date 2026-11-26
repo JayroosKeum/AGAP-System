@@ -2,6 +2,8 @@
 session_start();
 header('Content-Type: application/json; charset=utf-8');
 
+require_once '../../config/database.php';
+require_once '../../middleware/rbac.php';
 require_once '../../controllers/CaseController.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
 
@@ -14,16 +16,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'message' => 'Authentication required.']);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk'], $db);
 
-if (!in_array((int) $_SESSION['role_id'], [1, 2], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'You are not authorized to edit cases.']);
-    exit;
+$caseId = filter_var($_POST['case_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+if ($caseId) {
+    agapRequireCaseAccess($db, (int) $caseId, 'write', true);
 }
 
 $result = (new CaseController())->update($_POST['case_id'] ?? null, $_POST);

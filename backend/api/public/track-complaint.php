@@ -7,6 +7,7 @@ header('Content-Type: application/json');
 header('Cache-Control: private, no-store');
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../services/PiiCryptoService.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -56,7 +57,8 @@ try {
                cs.case_status
         FROM complaints c
         LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
-        WHERE (
+        WHERE c.deleted_at IS NULL
+          AND (
               UPPER(COALESCE(c.intake_reference, '')) = ?
               OR UPPER(COALESCE(c.complaint_number, '')) = ?
               OR UPPER(COALESCE(cs.case_number, '')) = ?
@@ -72,9 +74,9 @@ try {
         exit;
     }
 
-    // Verify against complainant's last 4 contact digits or complainant's last name (case-insensitive) without returning PII.
+    // Verify against complainant's last 4 contact digits (via blind index or decrypted PII) or complainant's last name without returning PII.
     $partyStmt = $db->prepare("
-        SELECT r.contact_no, r.last_name
+        SELECT r.contact_no, r.contact_last4_hash, r.last_name
         FROM complaint_parties cp
         JOIN residents r ON r.resident_id = cp.resident_id
         WHERE cp.complaint_id = ? AND cp.party_type = 'Complainant'
@@ -82,16 +84,25 @@ try {
     $partyStmt->execute([(int) $complaint['complaint_id']]);
     $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
 
+    $crypto = new PiiCryptoService();
     $verifierLower = mb_strtolower($verifier, 'UTF-8');
     $verifierDigits = preg_replace('/\D+/', '', $verifier) ?? '';
+    $verifierLast4Hash = (strlen($verifierDigits) === 4 && $crypto->isConfigured())
+        ? $crypto->contactLast4BlindIndex($verifierDigits)
+        : null;
     $verified = false;
     foreach ($parties as $party) {
         $lastName = mb_strtolower(trim((string) ($party['last_name'] ?? '')), 'UTF-8');
-        $contactDigits = preg_replace('/\D+/', '', (string) ($party['contact_no'] ?? '')) ?? '';
         if ($lastName !== '' && $verifierLower === $lastName) {
             $verified = true;
             break;
         }
+        if ($verifierLast4Hash !== null && !empty($party['contact_last4_hash']) && hash_equals((string) $party['contact_last4_hash'], $verifierLast4Hash)) {
+            $verified = true;
+            break;
+        }
+        $decryptedContact = PiiCryptoService::decryptField($party['contact_no'] ?? null);
+        $contactDigits = preg_replace('/\D+/', '', (string) $decryptedContact) ?? '';
         if (strlen($verifierDigits) === 4 && strlen($contactDigits) >= 4 && substr($contactDigits, -4) === $verifierDigits) {
             $verified = true;
             break;

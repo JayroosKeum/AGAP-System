@@ -2,6 +2,8 @@
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../controllers/DocumentController.php';
 require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
 
@@ -9,12 +11,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     http_response_code(405);
     exit('Method not allowed.');
 }
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4, 5, 6], true)) {
+$db = (new Database())->connect();
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'Resident'], $db)) {
     http_response_code(403);
     exit('Unauthorized.');
 }
 $documentId = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-$record = $documentId ? (new DocumentController())->getDownload((int) $documentId) : false;
+if (!$documentId || !agapCanAccessDocument($db, (int) $documentId, agapSessionUserId(), agapGetRoleName($db))) {
+    http_response_code(403);
+    exit('Unauthorized.');
+}
+$record = (new DocumentController())->getDownload((int) $documentId);
 if (!$record) {
     http_response_code(404);
     exit('Generated document not found.');

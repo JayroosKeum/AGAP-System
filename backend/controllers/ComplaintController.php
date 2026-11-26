@@ -6,6 +6,7 @@ require_once __DIR__ . '/../models/Attachment.php';
 require_once __DIR__ . '/../models/Location.php';
 require_once __DIR__ . '/../models/ComplaintScannedDocument.php';
 require_once __DIR__ . '/../services/AuditService.php';
+require_once __DIR__ . '/../middleware/rbac.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -34,7 +35,16 @@ class ComplaintController
 
     public function index(): array
     {
-        return $this->complaint->getAll();
+        $rows = $this->complaint->getAll();
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            $uid = agapSessionUserId();
+            $roleName = agapGetRoleName($this->conn);
+            $rows = array_values(array_filter(
+                $rows,
+                fn (array $row): bool => agapCanAccessComplaint($this->conn, (int) $row['complaint_id'], $uid, $roleName, 'read')
+            ));
+        }
+        return $rows;
     }
 
     public function show(int $id): array|false
@@ -42,7 +52,16 @@ class ComplaintController
         if ($id <= 0) {
             return false;
         }
-        $complaint = $this->complaint->getById($id);
+        $includeDeleted = false;
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            $uid = agapSessionUserId();
+            $roleName = agapGetRoleName($this->conn);
+            if (!agapCanAccessComplaint($this->conn, $id, $uid, $roleName, 'read')) {
+                return false;
+            }
+            $includeDeleted = ($roleName === 'Super Administrator');
+        }
+        $complaint = $this->complaint->getById($id, $includeDeleted);
         if (!$complaint) return false;
         $complaint['parties'] = $this->complaintParty->getByComplaint($id);
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
@@ -431,23 +450,42 @@ class ComplaintController
         return $result;
     }
 
-    public function destroy(int $id): bool
+    public function destroy(int $id, string $reason = 'Operational soft deletion'): bool
     {
         if ($id <= 0) {
             return false;
         }
-        $result = $this->complaint->delete($id);
-
-        if ($result) {
-            $this->audit->log(
-                $_SESSION['user_id'] ?? 1,
-                'Deleted Complaint',
-                'Complaints',
-                $id
-            );
+        if (isset($_SESSION['user_id'], $_SESSION['role_id']) && !agapIsSuperAdmin($this->conn)) {
+            return false;
         }
+        $actorId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null;
+        return $this->complaint->delete($id, $actorId, $reason);
+    }
 
-        return (bool) $result;
+    public function restore(int $id, string $reason = 'Restored by Super Administrator'): bool
+    {
+        if ($id <= 0) {
+            return false;
+        }
+        if (isset($_SESSION['user_id'], $_SESSION['role_id']) && !agapIsSuperAdmin($this->conn)) {
+            return false;
+        }
+        $actorId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 1;
+        return $this->complaint->restore($id, $actorId, $reason);
+    }
+
+    public function deletedList(): array
+    {
+        if (isset($_SESSION['user_id'], $_SESSION['role_id']) && !agapIsSuperAdmin($this->conn)) {
+            return [];
+        }
+        return $this->complaint->getDeleted();
+    }
+
+    public function overrideRouting(int $id, string $newQueue, string $reason, ?string $newRoute = null): array
+    {
+        $actorId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
+        return $this->complaint->overrideRouting($id, $newQueue, $reason, $actorId, $newRoute);
     }
 
     public function archive(int $id): bool

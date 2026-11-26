@@ -24,7 +24,7 @@ final class MediationCommencementService
     {
         $this->db = $db ?? (new Database())->connect();
         $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-        $this->audit = new AuditService();
+        $this->audit = new AuditService($this->db);
     }
 
     public function recordFromAttendance(

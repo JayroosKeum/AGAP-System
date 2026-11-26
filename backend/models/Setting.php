@@ -408,6 +408,10 @@ class Setting
         ");
         $stmt->execute([$userId]);
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($user) {
+            require_once __DIR__ . '/../services/PiiCryptoService.php';
+            $user['contact_no'] = PiiCryptoService::decryptField($user['contact_no'] ?? null);
+        }
         return $user ?: null;
     }
 
@@ -484,13 +488,28 @@ class Setting
         }
 
         try {
+            require_once __DIR__ . '/../services/PiiCryptoService.php';
+            $crypto = new PiiCryptoService();
+
             $stmt = $this->conn->prepare("
                 UPDATE users
-                SET first_name = ?, middle_name = ?, last_name = ?, email = ?, contact_no = ?,
+                SET first_name = ?, middle_name = ?, last_name = ?, email = ?, email_hash = ?, contact_no = ?, contact_no_hash = ?,
                     notification_audio = ?, notification_inbox = ?, preferred_language = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE user_id = ?
             ");
-            $stmt->execute([$fn, $mn, $ln, $email, $contact, $audio, $inbox, $lang, $userId]);
+            $stmt->execute([
+                $fn,
+                $mn,
+                $ln,
+                $email,
+                $crypto->emailBlindIndex($email),
+                $crypto->encrypt($contact),
+                $crypto->contactBlindIndex($contact),
+                $audio,
+                $inbox,
+                $lang,
+                $userId
+            ]);
 
             if (
                 session_status() === PHP_SESSION_ACTIVE
@@ -499,8 +518,9 @@ class Setting
             ) {
                 $targetResidentId = (int) ($_SESSION['resident_id'] ?? 0);
                 if ($targetResidentId <= 0 && $email !== null) {
-                    $findRes = $this->conn->prepare('SELECT resident_id FROM residents WHERE LOWER(email) = LOWER(?) LIMIT 1');
-                    $findRes->execute([$email]);
+                    $eHash = $crypto->emailBlindIndex($email);
+                    $findRes = $this->conn->prepare('SELECT resident_id FROM residents WHERE email_hash = ? OR LOWER(email) = LOWER(?) LIMIT 1');
+                    $findRes->execute([$eHash, $email]);
                     $targetResidentId = (int) ($findRes->fetchColumn() ?: 0);
                 }
                 if ($targetResidentId > 0) {
@@ -509,9 +529,21 @@ class Setting
                         'middle_name = ?',
                         'last_name = ?',
                         'email = ?',
+                        'email_hash = ?',
                         'contact_no = ?',
+                        'contact_no_hash = ?',
+                        'contact_last4_hash = ?',
                     ];
-                    $resParams = [$fn, $mn, $ln, $email, $contact];
+                    $resParams = [
+                        $fn,
+                        $mn,
+                        $ln,
+                        $crypto->encrypt($email),
+                        $crypto->emailBlindIndex($email),
+                        $crypto->encrypt($contact),
+                        $crypto->contactBlindIndex($contact),
+                        $crypto->contactLast4BlindIndex($contact),
+                    ];
                     if ($hasPurok) {
                         $resSets[] = 'purok = ?';
                         $resParams[] = $purok;
@@ -525,8 +557,9 @@ class Setting
                     if ($hasAddress) {
                         $resSets[] = 'address = ?';
                         $resSets[] = 'house_street = ?';
-                        $resParams[] = $address;
-                        $resParams[] = $address;
+                        $encAddr = $crypto->encrypt($address);
+                        $resParams[] = $encAddr;
+                        $resParams[] = $encAddr;
                     }
                     $resSets[] = 'updated_at = CURRENT_TIMESTAMP';
                     $resParams[] = $targetResidentId;
@@ -536,21 +569,26 @@ class Setting
                 } else {
                     $resolvedTenant = $isTenant ?? ((strcasecmp((string)$purok, 'Non-Resident') === 0) ? 2 : 0);
                     $resolvedBrgy = ($resolvedTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0) ? 'Outside Tumana' : 'Tumana';
+                    $encAddr = $crypto->encrypt($address);
                     $insRes = $this->conn->prepare("
                         INSERT INTO residents (
-                            first_name, middle_name, last_name, contact_no, email, preferred_contact,
+                            first_name, middle_name, last_name, contact_no, contact_no_hash, contact_last4_hash,
+                            email, email_hash, preferred_contact,
                             address, house_street, barangay, city_municipality, purok, is_tenant, residency_verified
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Marikina City', ?, ?, 0)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Marikina City', ?, ?, 0)
                     ");
                     $insRes->execute([
                         $fn,
                         $mn,
                         $ln,
-                        $contact,
-                        $email,
+                        $crypto->encrypt($contact),
+                        $crypto->contactBlindIndex($contact),
+                        $crypto->contactLast4BlindIndex($contact),
+                        $crypto->encrypt($email),
+                        $crypto->emailBlindIndex($email),
                         $contact ? 'SMS' : 'Email',
-                        $address,
-                        $address,
+                        $encAddr,
+                        $encAddr,
                         $resolvedBrgy,
                         $purok,
                         $resolvedTenant,

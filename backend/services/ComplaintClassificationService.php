@@ -210,7 +210,7 @@ final class ComplaintClassificationService
         $text = mb_strtolower(trim($narrative . ' ' . $requestedResolution));
 
         $rules = [
-            ['match' => 'non-payment of debt', 'pattern' => '/\b(utang|pautang|hindi\s*(pa\s*)?(na)?bayad|di\s*nagbayad|loan|debt|borrowed|singil|naniningil|promissory|pagkakautang)\b/iu', 'reason' => 'Narrative describes an unpaid loan or monetary debt.', 'title' => 'Hindi nabayarang utang / paniningil'],
+            ['match' => 'non-payment of debt', 'pattern' => '/\b(utang|umutang|pautang|hindi\s*(pa\s*)?(na)?bayad|hindi\s*(pa\s*)?nagbabayad|di\s*nagbayad|loan|debt|borrowed|singil|naniningil|promissory|pagkakautang)\b/iu', 'reason' => 'Narrative describes an unpaid loan or monetary debt.', 'title' => 'Hindi nabayarang utang / paniningil'],
             ['match' => 'collection of debts', 'pattern' => '/\b(koleksyon|paniningil|collection|installment|hulugan|overdue\s*payment)\b/iu', 'reason' => 'Narrative describes collection of overdue payments or obligations.', 'title' => 'Paglikom ng utang o bayarin'],
             ['match' => 'lease and rental', 'pattern' => '/\b(upa|upahan|paupahan|tenant|landlord|lessee|lessor|rent|rental|evict|papalayas)\b/iu', 'reason' => 'Narrative involves a landlord-tenant or rental/lease dispute.', 'title' => 'Alitan sa paupahan at upa'],
             ['match' => 'boundary dispute', 'pattern' => '/\b(hangganan|bakod|pader|boundary|encroach|lote|lupa|sakop|metro)\b/iu', 'reason' => 'Narrative describes boundary line or fence encroachment.', 'title' => 'Pagtatalo sa hangganan ng lupa at bakod'],

@@ -19,6 +19,7 @@ class Document
              FROM cases c
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              WHERE c.case_status <> 'Archived'
+               AND co.deleted_at IS NULL AND c.deleted_at IS NULL
              ORDER BY c.created_at DESC"
         );
         $stmt->execute();
@@ -65,9 +66,11 @@ class Document
         );
         $parties->execute([(int) $case['complaint_id']]);
 
+        require_once __DIR__ . '/../services/PiiCryptoService.php';
         $case['complainants'] = [];
         $case['respondents'] = [];
         foreach ($parties->fetchAll(PDO::FETCH_ASSOC) as $party) {
+            $party['address'] = PiiCryptoService::decryptField($party['address'] ?? null);
             if ($party['party_type'] === 'Complainant') {
                 $case['complainants'][] = $party;
             } else {
@@ -110,6 +113,7 @@ class Document
              INNER JOIN cases c ON c.case_id = gd.case_id
              INNER JOIN complaints co ON co.complaint_id = c.complaint_id
              LEFT JOIN users u ON u.user_id = gd.generated_by
+             WHERE co.deleted_at IS NULL AND c.deleted_at IS NULL
              ORDER BY gd.generated_at DESC, gd.document_id DESC"
         );
         $stmt->execute();

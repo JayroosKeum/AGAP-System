@@ -315,8 +315,8 @@ class NotificationService
                 SELECT DISTINCT u.user_id
                 FROM complaint_parties cp
                 INNER JOIN residents r ON r.resident_id = cp.resident_id
-                INNER JOIN users u ON (u.email IS NOT NULL AND u.email != '' AND u.email = r.email)
-                   OR (u.contact_no IS NOT NULL AND u.contact_no != '' AND u.contact_no = r.contact_no)
+                INNER JOIN users u ON (u.email_hash IS NOT NULL AND u.email_hash != '' AND u.email_hash = r.email_hash)
+                   OR (u.contact_no_hash IS NOT NULL AND u.contact_no_hash != '' AND u.contact_no_hash = r.contact_no_hash)
                    OR (u.first_name = r.first_name AND u.last_name = r.last_name)
                 WHERE cp.complaint_id = (SELECT complaint_id FROM cases WHERE case_id = ?)
                   AND u.status = 'Active'

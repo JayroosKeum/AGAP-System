@@ -2,21 +2,34 @@
 
 session_start();
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4], true)) {
-    http_response_code(403);
-    exit('Unauthorized access.');
-}
-
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../services/PDFService.php';
 require_once __DIR__ . '/../../services/KpFormService.php';
 require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
 
 $conn = (new Database())->connect();
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server'], $conn)) {
+    http_response_code(403);
+    exit('Unauthorized access.');
+}
 $documentId = filter_input(INPUT_GET, 'document_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['document_id']) ? (int) $_GET['document_id'] : null);
 $caseId = filter_input(INPUT_GET, 'case_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['case_id']) ? (int) $_GET['case_id'] : null);
 $complaintId = filter_input(INPUT_GET, 'complaint_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['complaint_id']) ? (int) $_GET['complaint_id'] : null);
 $hearingId = filter_input(INPUT_GET, 'hearing_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: (isset($_GET['hearing_id']) ? (int) $_GET['hearing_id'] : null);
+
+if ($documentId && !agapCanAccessDocument($conn, (int) $documentId, agapSessionUserId(), agapGetRoleName($conn))) {
+    http_response_code(403);
+    exit('Unauthorized access to this document.');
+}
+if ($caseId && !agapCanAccessCase($conn, (int) $caseId, agapSessionUserId(), agapGetRoleName($conn), 'read')) {
+    http_response_code(403);
+    exit('Unauthorized access to this case.');
+}
+if ($complaintId && !agapCanAccessComplaint($conn, (int) $complaintId, agapSessionUserId(), agapGetRoleName($conn), 'read')) {
+    http_response_code(403);
+    exit('Unauthorized access to this complaint.');
+}
 $formCode = trim((string) ($_GET['form_code'] ?? 'KP Form 10'));
 $asPdf = isset($_GET['pdf']) && $_GET['pdf'] == '1';
 $isPreview = isset($_GET['preview']) && in_array((string) $_GET['preview'], ['1', 'true'], true);

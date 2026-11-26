@@ -4350,10 +4350,11 @@ class PDFService
         $pStmt->execute([$complaintId]);
         $parties = $pStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        require_once __DIR__ . '/PiiCryptoService.php';
         $complainants = [];
         $respondents = [];
         foreach ($parties as $p) {
-            $addr = trim((string)($p['address'] ?? ''));
+            $addr = trim((string)(PiiCryptoService::decryptField($p['address'] ?? null) ?? ''));
             if ($addr === '' && !empty($p['purok'])) {
                 $addr = 'Purok ' . $p['purok'] . ', Barangay Tumana, Marikina City';
             } elseif ($addr === '') {
@@ -4554,10 +4555,11 @@ class PDFService
             $parties = $pStmt->fetchAll(PDO::FETCH_ASSOC);
         }
 
+        require_once __DIR__ . '/PiiCryptoService.php';
         $complainants = [];
         $respondents = [];
         foreach ($parties as $p) {
-            $addr = trim((string)($p['address'] ?? ''));
+            $addr = trim((string)(PiiCryptoService::decryptField($p['address'] ?? null) ?? ''));
             if ($addr === '' && !empty($p['purok'])) {
                 $addr = 'Purok ' . $p['purok'] . ', Barangay Tumana, Marikina City';
             } elseif ($addr === '') {

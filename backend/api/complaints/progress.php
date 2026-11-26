@@ -6,6 +6,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../models/CaseProgress.php';
 require_once __DIR__ . '/../../services/ComplaintLifecycleService.php';
 
@@ -40,6 +42,9 @@ if (!$complaintId) {
 
     exit;
 }
+
+$db = (new Database())->connect();
+agapRequireComplaintAccess($db, (int) $complaintId, 'read', true);
 
 $progress = (new CaseProgress())->getCaseProgress(
     (int) $complaintId

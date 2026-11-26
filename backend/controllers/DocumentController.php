@@ -4,27 +4,44 @@ require_once __DIR__ . '/../models/Document.php';
 require_once __DIR__ . '/../services/PDFService.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../services/NotificationService.php';
+require_once __DIR__ . '/../middleware/rbac.php';
 
 class DocumentController
 {
     private Document $document;
     private AuditService $audit;
     private NotificationService $notifications;
+    private PDO $conn;
 
     public function __construct()
     {
+        $this->conn = (new Database())->connect();
         $this->document = new Document();
-        $this->audit = new AuditService();
-        $this->notifications = new NotificationService();
+        $this->audit = new AuditService($this->conn);
+        $this->notifications = new NotificationService($this->conn);
     }
 
     public function cases(): array
     {
-        return ['success' => true, 'data' => $this->document->getAvailableCases()];
+        $rows = $this->document->getAvailableCases();
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            $uid = agapSessionUserId();
+            $roleName = agapGetRoleName($this->conn);
+            $rows = array_values(array_filter(
+                $rows,
+                fn (array $row): bool => agapCanAccessCase($this->conn, (int) $row['case_id'], $uid, $roleName, 'read')
+            ));
+        }
+        return ['success' => true, 'data' => $rows];
     }
 
     public function kp12Data(int $caseId): array
     {
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            if (!agapCanAccessCase($this->conn, $caseId, agapSessionUserId(), agapGetRoleName($this->conn), 'read')) {
+                return ['success' => false, 'message' => 'Unauthorized to access this case.'];
+            }
+        }
         $data = $this->document->getKp12Data($caseId);
         if (!$data) {
             return ['success' => false, 'message' => 'Case not found.'];
@@ -34,7 +51,16 @@ class DocumentController
 
     public function index(): array
     {
-        return ['success' => true, 'data' => $this->document->getAllGenerated()];
+        $rows = $this->document->getAllGenerated();
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            $uid = agapSessionUserId();
+            $roleName = agapGetRoleName($this->conn);
+            $rows = array_values(array_filter(
+                $rows,
+                fn (array $row): bool => agapCanAccessCase($this->conn, (int) $row['case_id'], $uid, $roleName, 'read')
+            ));
+        }
+        return ['success' => true, 'data' => $rows];
     }
 
     public function generateKp10(array $input, int $userId): array
@@ -140,6 +166,11 @@ class DocumentController
 
     public function getDownload(int $documentId): array|false
     {
+        if (isset($_SESSION['user_id'], $_SESSION['role_id'])) {
+            if (!agapCanAccessDocument($this->conn, $documentId, agapSessionUserId(), agapGetRoleName($this->conn))) {
+                return false;
+            }
+        }
         return $this->document->getGeneratedById($documentId);
     }
 

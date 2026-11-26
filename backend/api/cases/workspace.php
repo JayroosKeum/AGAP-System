@@ -6,6 +6,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
+require_once '../../config/database.php';
+require_once '../../middleware/rbac.php';
 require_once '../../controllers/CaseController.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
@@ -17,16 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
-if (!isset($_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
-    http_response_code(403);
-    echo json_encode([
-        'success' => false,
-        'message' => 'Unauthorized.'
-    ]);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'], $db);
 
-$id = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+$id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 
 if (!$id) {
     http_response_code(422);
@@ -36,6 +32,8 @@ if (!$id) {
     ]);
     exit;
 }
+
+agapRequireCaseAccess($db, (int) $id, 'read', true);
 
 $result = (new CaseController())->workspace((int) $id);
 

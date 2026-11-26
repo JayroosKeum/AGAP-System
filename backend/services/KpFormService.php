@@ -141,6 +141,12 @@ class KpFormService
         $partiesStmt->execute([$complaintId]);
 
         $allParties = $partiesStmt->fetchAll(PDO::FETCH_ASSOC);
+        require_once __DIR__ . '/PiiCryptoService.php';
+        foreach ($allParties as &$pDec) {
+            $pDec['address'] = PiiCryptoService::decryptField($pDec['address'] ?? null);
+            $pDec['contact_no'] = PiiCryptoService::decryptField($pDec['contact_no'] ?? null);
+        }
+        unset($pDec);
 
 
 
@@ -2957,7 +2963,7 @@ class KpFormService
 
             require_once __DIR__ . '/AuditService.php';
 
-            (new AuditService())->log($actorUserId, "Recorded Officer's Return for KP Form 12", 'Hearings', $hearingId ?: $caseId);
+            (new AuditService($this->conn))->log($actorUserId, "Recorded Officer's Return for KP Form 12", 'Hearings', $hearingId ?: $caseId);
 
 
 

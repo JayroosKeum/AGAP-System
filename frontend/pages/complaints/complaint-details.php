@@ -18,7 +18,8 @@ if ($roleId === 4) {
     exit;
 }
 require_once __DIR__ . '/../../../backend/config/database.php';
-if (!in_array($roleId, [1, 2, 3], true)) {
+require_once __DIR__ . '/../../../backend/middleware/rbac.php';
+if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'])) {
     http_response_code(403);
     exit('Access denied for this role.');
 }
@@ -44,6 +45,7 @@ if (($preparationFlash['complaint_id'] ?? null) === $complaintId) {
 
 require_once __DIR__ . '/../../../backend/services/PaanyayaPreparationService.php';
 $preparationDb = (new Database())->connect();
+agapRequireComplaintAccess($preparationDb, $complaintId, 'read', false);
 $usesPaanyayaPreparation = PaanyayaPreparationService::requiresPreparation($preparationDb, $complaintId);
 if (in_array($roleId, [1, 2, 3], true)) {
     try {

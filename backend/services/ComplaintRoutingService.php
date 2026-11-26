@@ -9,8 +9,21 @@ declare(strict_types=1);
  */
 final class ComplaintRoutingService
 {
+    public const RULE_VERSION = '2026.11-kp-v1';
     public const CIVIL_CLAIM_LIMIT = 200000.0;
     public const THEFT_KP_LIMIT = 5000.0;
+
+    /**
+     * Receiving units approved for Barangay Tumana grievance operations.
+     */
+    public const APPROVED_QUEUES = [
+        'LISO_SCREENING' => 'LISO Preliminary Screening Queue',
+        'LUPON_PAANYAYA_PREP' => 'Lupon Clerk Paanyaya Preparation Queue',
+        'VAWC_REFERRAL_DESK' => 'Barangay VAWC Desk (Referral Created)',
+        'BCPC_REFERRAL_DESK' => 'Barangay BCPC Desk (Referral Created)',
+        'PNP_PROSECUTOR_REFERRAL' => 'PNP / Prosecutor Referral Queue',
+        'REVIEW_EXCEPTION_QUEUE' => 'Manual Review Exception Queue',
+    ];
 
     private const VAWC_KEYWORDS = [
         'vawc', 'ra 9262', 'domestic violence', 'battered', 'physical abuse by husband',
@@ -127,6 +140,23 @@ final class ComplaintRoutingService
             );
         }
 
+        $distinctExternal = [];
+        if (!empty($data['is_repeat_offense_vawc']) || $vawcHits !== []) {
+            $distinctExternal[] = 'VAWC';
+        }
+        if ($pnpHits !== [] || ($theftHits !== [] && $amount !== null && $amount > self::THEFT_KP_LIMIT)) {
+            $distinctExternal[] = 'PNP';
+        }
+        if ($bcpcHits !== [] || $hasMinorParty) {
+            $distinctExternal[] = 'BCPC';
+        }
+        $ambiguous = count($distinctExternal) > 1;
+        if ($ambiguous) {
+            $reasons[] = 'Multiple conflicting statutory routing indicators detected (' . implode(', ', $distinctExternal) . '); held in exception queue for Lupon/LISO verification.';
+        }
+
+        $queueAssignment = self::resolveQueue($route, $ambiguous, $data);
+
         return [
             'route' => $route,
             'kp_eligible' => $kpEligible,
@@ -134,6 +164,46 @@ final class ComplaintRoutingService
             'reasons' => $reasons,
             'matched_keywords' => array_values(array_unique($matched)),
             'detected_amount' => $amount,
+            'rule_version' => self::RULE_VERSION,
+            'ambiguous' => $ambiguous,
+            'assigned_queue' => $queueAssignment['queue'],
+            'assigned_queue_label' => $queueAssignment['label'],
+            'external_referral_status' => $queueAssignment['external_referral_status'],
+        ];
+    }
+
+    /**
+     * Resolves the internal Barangay Tumana receiving queue and external referral state.
+     * Creating an external referral record is intentionally distinct from external dispatch.
+     *
+     * @param array<string, mixed> $data
+     * @return array{queue: string, label: string, external_referral_status: string}
+     */
+    public static function resolveQueue(string $route, bool $ambiguous = false, array $data = []): array
+    {
+        $isWalkInAccepted = !empty($data['is_walk_in_accepted']);
+        $classifierConfidence = (string) ($data['classifier_confidence'] ?? '');
+
+        if ($ambiguous || ($route === 'KP_ELIGIBLE' && $classifierConfidence === 'Low')) {
+            $queue = 'REVIEW_EXCEPTION_QUEUE';
+            $externalStatus = 'Pending Exception Review';
+        } else {
+            $queue = match ($route) {
+                'VAWC' => 'VAWC_REFERRAL_DESK',
+                'BCPC' => 'BCPC_REFERRAL_DESK',
+                'PNP' => 'PNP_PROSECUTOR_REFERRAL',
+                'OVER_LIMIT' => 'REVIEW_EXCEPTION_QUEUE',
+                default => $isWalkInAccepted ? 'LUPON_PAANYAYA_PREP' : 'LISO_SCREENING',
+            };
+            $externalStatus = in_array($route, ['VAWC', 'BCPC', 'PNP'], true)
+                ? 'Referral Created (Pending Manual Transmittal)'
+                : 'Not Applicable';
+        }
+
+        return [
+            'queue' => $queue,
+            'label' => self::APPROVED_QUEUES[$queue] ?? $queue,
+            'external_referral_status' => $externalStatus,
         ];
     }
 

@@ -25,9 +25,15 @@ $requiredPaths = [
     'backend/services/DocketScheduleService.php',
     'backend/services/KpFormService.php',
     'backend/services/PDFService.php',
+    'backend/services/ClosureWorkflowService.php',
+    'backend/services/AnonymousConcernService.php',
+    'backend/services/PrivacyGovernanceService.php',
+    'backend/cli/pii_backfill_and_rotate.php',
+    'backend/cli/process_closure_timeouts.php',
     'backend/libs/dompdf/autoload.inc.php',
     'vendor/autoload.php',
     'frontend/pages/landing/index.php',
+    'frontend/pages/landing/anonymous-concern.php',
     'frontend/assets/js/docket-drag-schedule.js',
     'frontend/assets/js/dashboard.js',
     'frontend/assets/js/clerk-dashboard.js',
@@ -37,6 +43,7 @@ $requiredPaths = [
     'database/migrations/20261115_004_order4_settlement_arbitration_transmittal.sql',
     'database/migrations/20261115_005_link_paanyaya_threads.sql',
     'database/migrations/20261116_001_link_resident_google_identity.sql',
+    'database/migrations/20261126_001_revision_a1_a10.sql',
 ];
 
 $missing = [];

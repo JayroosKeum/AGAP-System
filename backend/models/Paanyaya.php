@@ -3351,46 +3351,68 @@ require_once __DIR__ . '/../services/ComplaintClassificationService.php';
                 $last = (count($parts) > 1) ? end($parts) : 'Barangay';
                 $middle = (count($parts) > 2) ? implode(' ', array_slice($parts, 1, -1)) : null;
 
+                require_once __DIR__ . '/../services/PiiCryptoService.php';
+                $crypto = new PiiCryptoService();
                 $ins = $this->conn->prepare("
                     INSERT INTO residents (first_name, middle_name, last_name, birth_date, gender, civil_status, address, barangay, city_municipality)
-                    VALUES (?, ?, ?, '1990-01-01', 'Prefer not to say', 'Single', 'Barangay Tumana, Marikina City', 'Tumana', 'Marikina City')
+                    VALUES (?, ?, ?, '1990-01-01', 'Prefer not to say', 'Single', ?, 'Tumana', 'Marikina City')
                 ");
-                $ins->execute([$first, $middle, $last]);
+                $ins->execute([$first, $middle, $last, $crypto->encrypt('Barangay Tumana, Marikina City')]);
                 return (int)$this->conn->lastInsertId();
             };
 
             $compResidentId = !empty($paanyaya['complainant_resident_id']) ? (int)$paanyaya['complainant_resident_id'] : $findOrCreateResident($complainantName);
             $respResidentId = !empty($paanyaya['invitee_resident_id']) ? (int)$paanyaya['invitee_resident_id'] : $findOrCreateResident($inviteeName);
             try {
+                require_once __DIR__ . '/../services/PiiCryptoService.php';
+                $crypto = new PiiCryptoService();
                 if ($compResidentId > 1 && (!empty($paanyaya['complainant_address']) || !empty($paanyaya['complainant_purok']) || !empty($paanyaya['complainant_contact_no']))) {
+                    $cAddr = trim((string)($paanyaya['complainant_address'] ?? ''));
+                    $cContact = trim((string)($paanyaya['complainant_contact_no'] ?? ''));
+                    $cEmail = trim((string)($paanyaya['complainant_email'] ?? ''));
                     $this->conn->prepare("
                         UPDATE residents
                         SET address = COALESCE(NULLIF(?, ''), address),
                             purok = COALESCE(NULLIF(?, ''), purok),
                             contact_no = COALESCE(NULLIF(?, ''), contact_no),
-                            email = COALESCE(NULLIF(?, ''), email)
+                            contact_no_hash = COALESCE(?, contact_no_hash),
+                            contact_last4_hash = COALESCE(?, contact_last4_hash),
+                            email = COALESCE(NULLIF(?, ''), email),
+                            email_hash = COALESCE(?, email_hash)
                         WHERE resident_id = ?
                     ")->execute([
-                        trim((string)($paanyaya['complainant_address'] ?? '')),
+                        $cAddr !== '' ? $crypto->encrypt($cAddr) : '',
                         trim((string)($paanyaya['complainant_purok'] ?? '')),
-                        trim((string)($paanyaya['complainant_contact_no'] ?? '')),
-                        trim((string)($paanyaya['complainant_email'] ?? '')),
+                        $cContact !== '' ? $crypto->encrypt($cContact) : '',
+                        $crypto->contactBlindIndex($cContact),
+                        $crypto->contactLast4BlindIndex($cContact),
+                        $cEmail !== '' ? $crypto->encrypt($cEmail) : '',
+                        $crypto->emailBlindIndex($cEmail),
                         $compResidentId
                     ]);
                 }
                 if ($respResidentId > 1 && (!empty($paanyaya['invitee_address']) || !empty($paanyaya['invitee_purok']) || !empty($paanyaya['invitee_contact_no']))) {
+                    $rAddr = trim((string)($paanyaya['invitee_address'] ?? ''));
+                    $rContact = trim((string)($paanyaya['invitee_contact_no'] ?? ''));
+                    $rEmail = trim((string)($paanyaya['invitee_email'] ?? ''));
                     $this->conn->prepare("
                         UPDATE residents
                         SET address = COALESCE(NULLIF(?, ''), address),
                             purok = COALESCE(NULLIF(?, ''), purok),
                             contact_no = COALESCE(NULLIF(?, ''), contact_no),
-                            email = COALESCE(NULLIF(?, ''), email)
+                            contact_no_hash = COALESCE(?, contact_no_hash),
+                            contact_last4_hash = COALESCE(?, contact_last4_hash),
+                            email = COALESCE(NULLIF(?, ''), email),
+                            email_hash = COALESCE(?, email_hash)
                         WHERE resident_id = ?
                     ")->execute([
-                        trim((string)($paanyaya['invitee_address'] ?? '')),
+                        $rAddr !== '' ? $crypto->encrypt($rAddr) : '',
                         trim((string)($paanyaya['invitee_purok'] ?? '')),
-                        trim((string)($paanyaya['invitee_contact_no'] ?? '')),
-                        trim((string)($paanyaya['invitee_email'] ?? '')),
+                        $rContact !== '' ? $crypto->encrypt($rContact) : '',
+                        $crypto->contactBlindIndex($rContact),
+                        $crypto->contactLast4BlindIndex($rContact),
+                        $rEmail !== '' ? $crypto->encrypt($rEmail) : '',
+                        $crypto->emailBlindIndex($rEmail),
                         $respResidentId
                     ]);
                 }

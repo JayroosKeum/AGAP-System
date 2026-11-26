@@ -5,20 +5,25 @@ require_once __DIR__ . '/../services/ValidationService.php';
 require_once __DIR__ . '/../services/ComplaintLifecycleService.php';
 require_once __DIR__ . '/../services/ComplaintInformationService.php';
 require_once __DIR__ . '/../services/ComplaintClassificationService.php';
+require_once __DIR__ . '/../services/ComplaintRoutingService.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
+require_once __DIR__ . '/../services/AuditService.php';
 
 class Complaint
 {
     private PDO $conn;
+    private PiiCryptoService $crypto;
 
-    public function __construct(?PDO $conn = null)
+    public function __construct(?PDO $conn = null, ?PiiCryptoService $crypto = null)
     {
         $this->conn = $conn ?? (new Database())->connect();
+        $this->crypto = $crypto ?? new PiiCryptoService();
     }
 
-    public function getAll()
+    public function getAll(bool $includeDeleted = false)
     {
         try {
-
+            $deletedWhere = $includeDeleted ? '1 = 1' : 'c.deleted_at IS NULL';
             $stmt =
             $this->conn->prepare("
                 SELECT
@@ -34,6 +39,7 @@ class Complaint
                     ON c.secondary_category_id = cc2.category_id
                 LEFT JOIN cases cs
                     ON cs.complaint_id = c.complaint_id
+                WHERE {$deletedWhere}
                 ORDER BY c.created_at DESC
             ");
 
@@ -71,10 +77,10 @@ class Complaint
         }
     }
 
-    public function getById(int $id): array|false
+    public function getById(int $id, bool $includeDeleted = false): array|false
     {
         try {
-
+            $deletedWhere = $includeDeleted ? '' : ' AND c.deleted_at IS NULL';
             $stmt =
             $this->conn->prepare("
                 SELECT c.*, cs.case_id, cs.case_number, cs.case_status, cat.category_name, cat2.category_name AS secondary_category_name
@@ -82,7 +88,7 @@ class Complaint
                 LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
                 LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
                 LEFT JOIN complaint_categories cat2 ON cat2.category_id = c.secondary_category_id
-                WHERE c.complaint_id=?
+                WHERE c.complaint_id=?{$deletedWhere}
             ");
 
             $stmt->execute([$id]);
@@ -329,8 +335,77 @@ class Complaint
 
             $complaintId = (int) $this->conn->lastInsertId();
             $intakeReference = sprintf('INT-%s-%06d', date('Y'), $complaintId);
-            $this->conn->prepare('UPDATE complaints SET intake_reference = ? WHERE complaint_id = ?')
-                ->execute([$intakeReference, $complaintId]);
+
+            // A1 / A2: Automated classification & routing evaluation persisted on intake
+            $classificationSuggestion = ComplaintClassificationService::suggestFromNarrative(
+                $this->conn,
+                trim((string) $data['narrative']),
+                trim((string) ($data['requested_resolution'] ?? ''))
+            );
+            $proposedCategoryId = !empty($classificationSuggestion['primary']['category_id'])
+                ? (int) $classificationSuggestion['primary']['category_id']
+                : (!empty($data['category_id']) ? (int) $data['category_id'] : null);
+            $classifierConfidence = (string) ($classificationSuggestion['primary']['confidence'] ?? '');
+
+            $routingResult = ComplaintRoutingService::evaluate([
+                'complaint_title' => trim((string) $data['complaint_title']),
+                'description' => trim((string) $data['narrative']),
+                'category' => (string) ($classificationSuggestion['primary']['category_name'] ?? ($data['category_name'] ?? '')),
+                'case_type' => $caseType,
+                'claim_amount' => $data['claim_amount'] ?? null,
+                'is_repeat_offense_vawc' => !empty($data['is_repeat_offense_vawc']),
+                'has_minor_party' => !empty($data['has_minor_party']) || !empty($data['complainant_is_minor']) || !empty($data['respondent_is_minor']),
+                'is_walk_in_accepted' => $isWalkInImmediateAccept,
+                'classifier_confidence' => $classifierConfidence,
+            ]);
+
+            $privacyAcknowledged = !empty($data['privacy_notice_acknowledged']) || !$isResidentPortal ? 1 : 0;
+            $privacyVersion = $privacyAcknowledged ? 'RA10173-NPC2023-06-v1' : null;
+            $privacyAt = $privacyAcknowledged ? date('Y-m-d H:i:s') : null;
+            $routedAt = date('Y-m-d H:i:s');
+
+            $this->conn->prepare(
+                'UPDATE complaints
+                 SET intake_reference = ?,
+                     proposed_category_id = ?,
+                     routing_route = ?,
+                     assigned_queue = ?,
+                     routing_rule_version = ?,
+                     routing_reasons = ?,
+                     routed_at = ?,
+                     privacy_notice_acknowledged = ?,
+                     privacy_notice_version = ?,
+                     privacy_consented_at = ?
+                 WHERE complaint_id = ?'
+            )->execute([
+                $intakeReference,
+                $proposedCategoryId,
+                $routingResult['route'],
+                $routingResult['assigned_queue'],
+                $routingResult['rule_version'],
+                json_encode($routingResult['reasons'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                $routedAt,
+                $privacyAcknowledged,
+                $privacyVersion,
+                $privacyAt,
+                $complaintId,
+            ]);
+
+            $this->conn->prepare(
+                "INSERT INTO complaint_routing_logs
+                 (complaint_id, event_type, rule_version, proposed_category_id, routing_route, assigned_queue, reasons_json, matched_keywords_json, actor_user_id)
+                 VALUES (?, 'Automated', ?, ?, ?, ?, ?, ?, ?)"
+            )->execute([
+                $complaintId,
+                $routingResult['rule_version'],
+                $proposedCategoryId,
+                $routingResult['route'],
+                $routingResult['assigned_queue'],
+                json_encode($routingResult['reasons'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                json_encode($routingResult['matched_keywords'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                $actorId > 0 ? $actorId : null,
+            ]);
+
             $this->applyMapLocation($complaintId, $data);
             $this->applyParties($complaintId, $data);
             $this->saveIntakeScreening($complaintId, $data);
@@ -376,7 +451,8 @@ class Complaint
                 'complaint_id' => $complaintId,
                 'intake_reference' => $intakeReference,
                 'complaint_number' => null,
-                'is_draft' => false
+                'is_draft' => false,
+                'routing' => $routingResult,
             ];
 
         }
@@ -910,28 +986,229 @@ class Complaint
         }
     }
 
-    public function delete(mixed $id): bool
+    /**
+     * Soft-deletes a complaint and any linked formal case (A8).
+     * Hard DELETE is intentionally prohibited to preserve records and auditability.
+     */
+    public function delete(mixed $id, ?int $deletedBy = null, string $reason = 'Operational soft deletion'): bool
     {
-        try {
-
-            $stmt =
-            $this->conn->prepare("
-                DELETE FROM complaints
-                WHERE complaint_id=?
-            ");
-
-            return $stmt->execute([
-                $id
-            ]);
-
+        $complaintId = filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (!$complaintId) {
+            return false;
         }
-        catch(Exception $e)
-        {
-            error_log(
-                $e->getMessage()
+        $cleanReason = trim($reason) !== '' ? mb_substr(trim($reason), 0, 500) : 'Operational soft deletion';
+        $actorId = $deletedBy ?? (isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null);
+
+        $ownsTransaction = !$this->conn->inTransaction();
+        try {
+            if ($ownsTransaction) {
+                $this->conn->beginTransaction();
+            }
+
+            $beforeStmt = $this->conn->prepare('SELECT complaint_id, status, deleted_at, deleted_by, deletion_reason FROM complaints WHERE complaint_id = ? FOR UPDATE');
+            $beforeStmt->execute([$complaintId]);
+            $before = $beforeStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$before || $before['deleted_at'] !== null) {
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
+                return false;
+            }
+
+            $now = date('Y-m-d H:i:s');
+            $stmt = $this->conn->prepare(
+                'UPDATE complaints SET deleted_at = ?, deleted_by = ?, deletion_reason = ? WHERE complaint_id = ? AND deleted_at IS NULL'
+            );
+            $stmt->execute([$now, $actorId, $cleanReason, $complaintId]);
+            if ($stmt->rowCount() !== 1) {
+                throw new RuntimeException('Unable to soft-delete complaint.');
+            }
+
+            $this->conn->prepare(
+                'UPDATE cases SET deleted_at = ?, deleted_by = ?, deletion_reason = ? WHERE complaint_id = ? AND deleted_at IS NULL'
+            )->execute([$now, $actorId, $cleanReason, $complaintId]);
+
+            (new AuditService($this->conn))->logStrict(
+                $actorId,
+                'Soft Deleted Complaint',
+                'Complaints',
+                (int) $complaintId,
+                [
+                    'before' => $before,
+                    'after' => [
+                        'complaint_id' => (int) $complaintId,
+                        'status' => $before['status'],
+                        'deleted_at' => $now,
+                        'deleted_by' => $actorId,
+                        'deletion_reason' => $cleanReason,
+                    ],
+                ]
             );
 
+            if ($ownsTransaction) {
+                $this->conn->commit();
+            }
+            return true;
+        } catch (Throwable $e) {
+            if ($ownsTransaction && $this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Complaint soft delete error: ' . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Restores a soft-deleted complaint and any linked soft-deleted case (A8 Super-Admin workflow).
+     */
+    public function restore(int $complaintId, int $restoredBy, string $reason = 'Restored by Super Administrator'): bool
+    {
+        if ($complaintId <= 0 || $restoredBy <= 0) {
+            return false;
+        }
+        $cleanReason = trim($reason) !== '' ? mb_substr(trim($reason), 0, 500) : 'Restored by Super Administrator';
+        $ownsTransaction = !$this->conn->inTransaction();
+        try {
+            if ($ownsTransaction) {
+                $this->conn->beginTransaction();
+            }
+            $beforeStmt = $this->conn->prepare('SELECT complaint_id, status, deleted_at, deleted_by, deletion_reason FROM complaints WHERE complaint_id = ? FOR UPDATE');
+            $beforeStmt->execute([$complaintId]);
+            $before = $beforeStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$before || $before['deleted_at'] === null) {
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
+                return false;
+            }
+
+            $this->conn->prepare('UPDATE complaints SET deleted_at = NULL, deleted_by = NULL, deletion_reason = NULL WHERE complaint_id = ?')
+                ->execute([$complaintId]);
+            $this->conn->prepare('UPDATE cases SET deleted_at = NULL, deleted_by = NULL, deletion_reason = NULL WHERE complaint_id = ?')
+                ->execute([$complaintId]);
+
+            (new AuditService($this->conn))->logStrict(
+                $restoredBy,
+                'Restored Soft-Deleted Complaint',
+                'Complaints',
+                $complaintId,
+                [
+                    'before' => $before,
+                    'after' => [
+                        'complaint_id' => $complaintId,
+                        'deleted_at' => null,
+                        'restoration_reason' => $cleanReason,
+                    ],
+                ]
+            );
+
+            if ($ownsTransaction) {
+                $this->conn->commit();
+            }
+            return true;
+        } catch (Throwable $e) {
+            if ($ownsTransaction && $this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Complaint restore error: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    public function getDeleted(): array
+    {
+        $stmt = $this->conn->query(
+            "SELECT c.complaint_id, c.intake_reference, c.complaint_number, c.complaint_title,
+                    c.status, c.deleted_at, c.deleted_by, c.deletion_reason,
+                    TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS deleted_by_name
+             FROM complaints c
+             LEFT JOIN users u ON u.user_id = c.deleted_by
+             WHERE c.deleted_at IS NOT NULL
+             ORDER BY c.deleted_at DESC"
+        );
+        return $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : [];
+    }
+
+    /**
+     * Records a human override of automated queue/routing assignment (A1).
+     */
+    public function overrideRouting(int $complaintId, string $newQueue, string $reason, int $actorId, ?string $newRoute = null): array
+    {
+        $cleanReason = trim($reason);
+        if ($complaintId <= 0 || $actorId <= 0 || $cleanReason === '') {
+            return ['success' => false, 'message' => 'A valid complaint ID and override reason are required.'];
+        }
+        if (!array_key_exists($newQueue, ComplaintRoutingService::APPROVED_QUEUES)) {
+            return ['success' => false, 'message' => 'Select an approved Barangay Tumana receiving queue.'];
+        }
+
+        $ownsTransaction = !$this->conn->inTransaction();
+        try {
+            if ($ownsTransaction) {
+                $this->conn->beginTransaction();
+            }
+            $stmt = $this->conn->prepare('SELECT complaint_id, routing_route, assigned_queue, routing_rule_version FROM complaints WHERE complaint_id = ? AND deleted_at IS NULL FOR UPDATE');
+            $stmt->execute([$complaintId]);
+            $before = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$before) {
+                if ($ownsTransaction && $this->conn->inTransaction()) {
+                    $this->conn->rollBack();
+                }
+                return ['success' => false, 'message' => 'Complaint not found.'];
+            }
+
+            $effectiveRoute = $newRoute !== null && trim($newRoute) !== '' ? trim($newRoute) : ($before['routing_route'] ?: 'KP_ELIGIBLE');
+            $now = date('Y-m-d H:i:s');
+            $this->conn->prepare(
+                'UPDATE complaints
+                 SET assigned_queue = ?, routing_route = ?, routing_overridden_by = ?, routing_overridden_at = ?, routing_override_reason = ?
+                 WHERE complaint_id = ?'
+            )->execute([$newQueue, $effectiveRoute, $actorId, $now, mb_substr($cleanReason, 0, 500), $complaintId]);
+
+            $this->conn->prepare(
+                "INSERT INTO complaint_routing_logs
+                 (complaint_id, event_type, rule_version, routing_route, assigned_queue, previous_queue, override_reason, actor_user_id)
+                 VALUES (?, 'Override', ?, ?, ?, ?, ?, ?)"
+            )->execute([
+                $complaintId,
+                $before['routing_rule_version'] ?: ComplaintRoutingService::RULE_VERSION,
+                $effectiveRoute,
+                $newQueue,
+                $before['assigned_queue'],
+                mb_substr($cleanReason, 0, 500),
+                $actorId,
+            ]);
+
+            (new AuditService($this->conn))->logStrict(
+                $actorId,
+                'Overrode Complaint Routing Queue',
+                'Complaints',
+                $complaintId,
+                [
+                    'before' => $before,
+                    'after' => [
+                        'assigned_queue' => $newQueue,
+                        'routing_route' => $effectiveRoute,
+                        'override_reason' => $cleanReason,
+                    ],
+                ]
+            );
+
+            if ($ownsTransaction) {
+                $this->conn->commit();
+            }
+            return [
+                'success' => true,
+                'message' => 'Routing queue updated and override logged.',
+                'assigned_queue' => $newQueue,
+                'routing_route' => $effectiveRoute,
+            ];
+        } catch (Throwable $e) {
+            if ($ownsTransaction && $this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Routing override error: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to override routing queue.'];
         }
     }
 
@@ -1226,9 +1503,9 @@ class Complaint
 
                 if ($addressVal !== '') {
                     $updFields[] = "address = ?";
-                    $updParams[] = $addressVal;
+                    $updParams[] = $this->crypto->encrypt($addressVal);
                     $updFields[] = "house_street = ?";
-                    $updParams[] = $addressVal;
+                    $updParams[] = $this->crypto->encrypt($addressVal);
 
                     $isNonTumana = ($isTenantVal === 2 || strcasecmp($purokVal, 'Non-Resident') === 0 || (stripos($addressVal, 'tumana') === false && (stripos($addressVal, 'marikina') !== false || stripos($addressVal, 'quezon') !== false || stripos($addressVal, 'pasig') !== false || stripos($addressVal, 'cainta') !== false || stripos($addressVal, 'san mateo') !== false)));
                     $updFields[] = "barangay = ?";
@@ -1250,13 +1527,19 @@ class Complaint
                 $contactVal = trim((string)($data[$prefix . '_contact_no'] ?? $data[$prefix . '_contact'] ?? ''));
                 if ($contactVal !== '') {
                     $updFields[] = "contact_no = ?";
-                    $updParams[] = $contactVal;
+                    $updParams[] = $this->crypto->encrypt($contactVal);
+                    $updFields[] = "contact_no_hash = ?";
+                    $updParams[] = $this->crypto->contactBlindIndex($contactVal);
+                    $updFields[] = "contact_last4_hash = ?";
+                    $updParams[] = $this->crypto->contactLast4BlindIndex($contactVal);
                 }
 
                 $emailVal = trim((string)($data[$prefix . '_email'] ?? ''));
                 if ($emailVal !== '') {
                     $updFields[] = "email = ?";
-                    $updParams[] = $emailVal;
+                    $updParams[] = $this->crypto->encrypt($emailVal);
+                    $updFields[] = "email_hash = ?";
+                    $updParams[] = $this->crypto->emailBlindIndex($emailVal);
                 }
 
                 $civilStatusVal = in_array(trim((string)($data[$prefix . '_civil_status'] ?? '')), ['Single', 'Married', 'Widowed', 'Separated'], true)
@@ -1344,9 +1627,9 @@ class Complaint
             $updParams = [];
             if ($address !== null && $address !== '') {
                 $updFields[] = "address = ?";
-                $updParams[] = $address;
+                $updParams[] = $this->crypto->encrypt($address);
                 $updFields[] = "house_street = ?";
-                $updParams[] = $address;
+                $updParams[] = $this->crypto->encrypt($address);
                 $isNonTumana = ($isTenant === 2 || strcasecmp((string)$purok, 'Non-Resident') === 0 || (stripos($address, 'tumana') === false && (stripos($address, 'marikina') !== false || stripos($address, 'quezon') !== false)));
                 $updFields[] = "barangay = ?";
                 $updParams[] = $isNonTumana ? 'Outside Tumana' : 'Tumana';
@@ -1363,11 +1646,17 @@ class Complaint
             }
             if ($contactNo !== null && $contactNo !== '') {
                 $updFields[] = "contact_no = ?";
-                $updParams[] = $contactNo;
+                $updParams[] = $this->crypto->encrypt($contactNo);
+                $updFields[] = "contact_no_hash = ?";
+                $updParams[] = $this->crypto->contactBlindIndex($contactNo);
+                $updFields[] = "contact_last4_hash = ?";
+                $updParams[] = $this->crypto->contactLast4BlindIndex($contactNo);
             }
             if ($email !== null && $email !== '') {
                 $updFields[] = "email = ?";
-                $updParams[] = $email;
+                $updParams[] = $this->crypto->encrypt($email);
+                $updFields[] = "email_hash = ?";
+                $updParams[] = $this->crypto->emailBlindIndex($email);
             }
             if ($civilStatus !== null) {
                 $updFields[] = "civil_status = ?";
@@ -1411,10 +1700,10 @@ class Complaint
             INSERT INTO residents (
                 first_name, middle_name, last_name, suffix,
                 birth_date, gender, civil_status, occupation,
-                contact_no, email, preferred_contact,
+                contact_no, contact_no_hash, contact_last4_hash, email, email_hash, preferred_contact,
                 address, home_latitude, home_longitude, house_street, barangay, city_municipality,
                 purok, is_tenant, residency_verified
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $ins->execute([
             $firstName,
@@ -1425,13 +1714,16 @@ class Complaint
             $gender,
             $civilStatus,
             $occupation,
-            $contactNo,
-            $email,
+            $this->crypto->encrypt($contactNo),
+            $this->crypto->contactBlindIndex($contactNo),
+            $this->crypto->contactLast4BlindIndex($contactNo),
+            $this->crypto->encrypt($email),
+            $this->crypto->emailBlindIndex($email),
             $preferredContact,
-            $address,
+            $this->crypto->encrypt($address),
             $homeLat,
             $homeLng,
-            $address,
+            $this->crypto->encrypt($address),
             $calcBarangay,
             'Marikina City',
             $purok,
@@ -1502,10 +1794,10 @@ class Complaint
                 $compId,
                 'Complainant',
                 $compIsMinor,
-                trim((string) ($data['complainant_guardian_name'] ?? '')) ?: null,
+                $this->crypto->encrypt(trim((string) ($data['complainant_guardian_name'] ?? '')) ?: null),
                 trim((string) ($data['complainant_guardian_relationship'] ?? '')) ?: null,
-                trim((string) ($data['complainant_guardian_contact'] ?? '')) ?: null,
-                trim((string) ($data['complainant_guardian_address'] ?? '')) ?: null,
+                $this->crypto->encrypt(trim((string) ($data['complainant_guardian_contact'] ?? '')) ?: null),
+                $this->crypto->encrypt(trim((string) ($data['complainant_guardian_address'] ?? '')) ?: null),
                 $compLat,
                 $compLng,
                 $compPrefContact,
@@ -1546,10 +1838,10 @@ class Complaint
                 $respId,
                 'Respondent',
                 $respIsMinor,
-                trim((string) ($data['respondent_guardian_name'] ?? '')) ?: null,
+                $this->crypto->encrypt(trim((string) ($data['respondent_guardian_name'] ?? '')) ?: null),
                 trim((string) ($data['respondent_guardian_relationship'] ?? '')) ?: null,
-                trim((string) ($data['respondent_guardian_contact'] ?? '')) ?: null,
-                trim((string) ($data['respondent_guardian_address'] ?? '')) ?: null,
+                $this->crypto->encrypt(trim((string) ($data['respondent_guardian_contact'] ?? '')) ?: null),
+                $this->crypto->encrypt(trim((string) ($data['respondent_guardian_address'] ?? '')) ?: null),
                 $respLat,
                 $respLng,
                 null,
@@ -1609,8 +1901,24 @@ class Complaint
                         } else {
                             $pIsNonTumana = ($pIsTenant === 2 || strcasecmp($pPurok, 'Non-Resident') === 0 || ($pAddress !== '' && stripos($pAddress, 'tumana') === false));
                             $pBarangay = $pIsNonTumana ? 'Outside Tumana' : 'Tumana';
-                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, address, home_latitude, home_longitude, house_street, purok, barangay, city_municipality, is_tenant, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
-                            $ins->execute([$pFirst, $pMiddle ?: null, $pLast, $pSuffix ?: null, $pContact ?: null, $pAddress ?: null, $pLat, $pLng, $pAddress ?: null, $pPurok ?: null, $pBarangay, 'Marikina City', $pIsTenant]);
+                            $ins = $this->conn->prepare('INSERT INTO residents (first_name, middle_name, last_name, suffix, contact_no, contact_no_hash, contact_last4_hash, address, home_latitude, home_longitude, house_street, purok, barangay, city_municipality, is_tenant, residency_verified) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
+                            $ins->execute([
+                                $pFirst,
+                                $pMiddle ?: null,
+                                $pLast,
+                                $pSuffix ?: null,
+                                $this->crypto->encrypt($pContact ?: null),
+                                $this->crypto->contactBlindIndex($pContact ?: null),
+                                $this->crypto->contactLast4BlindIndex($pContact ?: null),
+                                $this->crypto->encrypt($pAddress ?: null),
+                                $pLat,
+                                $pLng,
+                                $this->crypto->encrypt($pAddress ?: null),
+                                $pPurok ?: null,
+                                $pBarangay,
+                                'Marikina City',
+                                $pIsTenant
+                            ]);
                             $pId = (int)$this->conn->lastInsertId();
                         }
                     }
@@ -1630,9 +1938,9 @@ class Complaint
                     $pParams = [];
                     if ($pAddressVal !== '') {
                         $pUpd[] = "address = ?";
-                        $pParams[] = $pAddressVal;
+                        $pParams[] = $this->crypto->encrypt($pAddressVal);
                         $pUpd[] = "house_street = ?";
-                        $pParams[] = $pAddressVal;
+                        $pParams[] = $this->crypto->encrypt($pAddressVal);
                         $isNonTum = ($pTenantVal === 2 || strcasecmp($pPurokVal, 'Non-Resident') === 0 || (stripos($pAddressVal, 'tumana') === false && (stripos($pAddressVal, 'marikina') !== false || stripos($pAddressVal, 'quezon') !== false || stripos($pAddressVal, 'pasig') !== false || stripos($pAddressVal, 'cainta') !== false || stripos($pAddressVal, 'san mateo') !== false)));
                         $pUpd[] = "barangay = ?";
                         $pParams[] = $isNonTum ? 'Outside Tumana' : 'Tumana';
@@ -1655,7 +1963,11 @@ class Complaint
                     }
                     if ($pContactVal !== '') {
                         $pUpd[] = "contact_no = ?";
-                        $pParams[] = $pContactVal;
+                        $pParams[] = $this->crypto->encrypt($pContactVal);
+                        $pUpd[] = "contact_no_hash = ?";
+                        $pParams[] = $this->crypto->contactBlindIndex($pContactVal);
+                        $pUpd[] = "contact_last4_hash = ?";
+                        $pParams[] = $this->crypto->contactLast4BlindIndex($pContactVal);
                     }
                     if (!empty($pUpd)) {
                         $pParams[] = $pId;

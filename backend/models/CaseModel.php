@@ -82,7 +82,7 @@ class CaseModel
             INNER JOIN complaints co
                 ON co.complaint_id = c.complaint_id
 
-            ORDER BY c.created_at DESC
+            WHERE co.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.created_at DESC
         ");
 
         $stmt->execute();
@@ -140,7 +140,7 @@ class CaseModel
     public function getPage(int $page, int $perPage = 25): array
     {
         $totalStmt = $this->conn->prepare(
-            'SELECT COUNT(*) FROM cases c INNER JOIN complaints co ON co.complaint_id = c.complaint_id'
+            'SELECT COUNT(*) FROM cases c INNER JOIN complaints co ON co.complaint_id = c.complaint_id WHERE co.deleted_at IS NULL AND c.deleted_at IS NULL'
         );
         $totalStmt->execute();
         $total = (int) $totalStmt->fetchColumn();
@@ -214,7 +214,7 @@ class CaseModel
             FROM cases c
             INNER JOIN complaints co
                 ON co.complaint_id = c.complaint_id
-            ORDER BY c.created_at DESC
+            WHERE co.deleted_at IS NULL AND c.deleted_at IS NULL ORDER BY c.created_at DESC
             LIMIT :limit OFFSET :offset
         ");
         $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
@@ -296,7 +296,7 @@ class CaseModel
             FROM cases c
             INNER JOIN complaints co
                 ON co.complaint_id = c.complaint_id
-            WHERE c.case_id=?
+            WHERE c.case_id=? AND co.deleted_at IS NULL AND c.deleted_at IS NULL
         ");
 
         $stmt->execute([$id]);

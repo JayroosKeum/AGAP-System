@@ -11,7 +11,9 @@ const suites = {
   regressions: 'test_cfa_and_service_verification_regressions.php',
   resident_google: 'test_resident_google_registration.php',
   new_features: 'test_new_features.php',
-  workflow_bugs: 'test_workflow_bug_regressions.php'
+  workflow_bugs: 'test_workflow_bug_regressions.php',
+  revision_a1_a10: 'test_revision_a1_a10.php',
+  routing_eval: 'evaluate_routing_classifier.php'
 };
 
 const requested = process.argv.slice(2);
@@ -56,6 +58,10 @@ const preflight = spawnSync(php, ['-r', [
   '$db->query("SELECT source_document_id FROM case_transmittals LIMIT 0");',
   '$db->query("SELECT arbitration_id FROM execution_proceedings LIMIT 0");',
   '$db->query("SELECT google_subject FROM users LIMIT 0");',
+  '$db->query("SELECT deleted_at, assigned_queue, routing_rule_version FROM complaints LIMIT 0");',
+  '$db->query("SELECT entry_hash, prev_hash FROM audit_trails LIMIT 0");',
+  '$db->query("SELECT 1 FROM anonymous_concerns LIMIT 0");',
+  '$db->query("SELECT 1 FROM closure_requests LIMIT 0");',
   'echo "AGAP test database ready (" . $selectedDb . ")";'
 ].join('\n')], options);
 if (preflight.error || preflight.status !== 0 || !preflight.stdout.trim().startsWith('AGAP test database ready')) {

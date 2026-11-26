@@ -2,6 +2,8 @@
 
 session_start();
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../controllers/ComplaintController.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -14,11 +16,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'Resident'], $db);
 
 $id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$id) {
@@ -26,6 +25,8 @@ if (!$id) {
     echo json_encode(['success' => false, 'message' => 'A valid complaint ID is required.']);
     exit;
 }
+
+agapRequireComplaintAccess($db, (int) $id, 'read', true);
 
 $complaint = (new ComplaintController())->show((int) $id);
 if ($complaint === false) {

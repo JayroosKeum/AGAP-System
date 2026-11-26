@@ -1,14 +1,17 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 class ComplaintParty
 {
     private PDO $conn;
+    private PiiCryptoService $crypto;
 
-    public function __construct()
+    public function __construct(?PDO $conn = null, ?PiiCryptoService $crypto = null)
     {
-        $this->conn = (new Database())->connect();
+        $this->conn = $conn ?? (new Database())->connect();
+        $this->crypto = $crypto ?? new PiiCryptoService();
     }
 
     public function create(int $complaintId, int $residentId, string $partyType): array
@@ -60,7 +63,19 @@ class ComplaintParty
              ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name"
         );
         $stmt->execute([$complaintId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row = $this->crypto->decryptRow($row, [
+                'resident_contact',
+                'email',
+                'address',
+                'guardian_name',
+                'guardian_contact',
+                'guardian_address',
+            ]);
+        }
+        unset($row);
+        return $rows;
     }
 
     public function getById(int $partyId): array|false

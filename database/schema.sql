@@ -43,8 +43,10 @@ CREATE TABLE IF NOT EXISTS users (
     middle_name VARCHAR(100) NULL,
     last_name VARCHAR(100) NOT NULL,
     username VARCHAR(100) NOT NULL,
-    email VARCHAR(150) NULL,
-    contact_no VARCHAR(20) NULL,
+    email VARCHAR(512) NULL,
+    email_hash CHAR(64) NULL,
+    contact_no VARCHAR(512) NULL,
+    contact_no_hash CHAR(64) NULL,
     password_hash VARCHAR(255) NULL,
     role_id INT UNSIGNED NOT NULL,
     status ENUM('Active', 'Inactive') NOT NULL DEFAULT 'Active',
@@ -61,6 +63,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_users_username (username),
     UNIQUE KEY uq_users_email (email),
+    UNIQUE KEY uq_users_email_hash (email_hash),
     UNIQUE KEY uq_users_activation_token (activation_token),
     UNIQUE KEY uq_users_email_verification_token (email_verification_token),
     UNIQUE KEY uq_users_google_subject (google_subject),
@@ -117,11 +120,14 @@ CREATE TABLE IF NOT EXISTS audit_trails (
     action VARCHAR(255) NOT NULL,
     module_name VARCHAR(100) NOT NULL,
     affected_record INT UNSIGNED NULL,
+    before_state LONGTEXT NULL,
+    after_state LONGTEXT NULL,
+    ip_address VARCHAR(45) NULL,
+    prev_hash CHAR(64) NULL,
+    entry_hash CHAR(64) NULL,
     audit_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_audit_trails_user_id_audit_date (user_id, audit_date),
-    KEY idx_audit_trails_module_record (module_name, affected_record),
-    CONSTRAINT fk_audit_trails_user
-        FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE SET NULL
+    KEY idx_audit_trails_module_record (module_name, affected_record)
 ) ENGINE=InnoDB;
 
 -- LISO is a Lupon Member operational duty. This table records who is currently
@@ -167,11 +173,14 @@ CREATE TABLE IF NOT EXISTS residents (
     gender VARCHAR(50) NULL,
     civil_status VARCHAR(50) NULL,
     occupation VARCHAR(100) NULL,
-    contact_no VARCHAR(20) NULL,
-    email VARCHAR(150) NULL,
+    contact_no VARCHAR(512) NULL,
+    contact_no_hash CHAR(64) NULL,
+    contact_last4_hash CHAR(64) NULL,
+    email VARCHAR(512) NULL,
+    email_hash CHAR(64) NULL,
     preferred_contact ENUM('SMS', 'Call', 'Email', 'In-Person') NULL DEFAULT 'SMS',
     address TEXT NULL,
-    house_street VARCHAR(255) NULL,
+    house_street VARCHAR(512) NULL,
     barangay VARCHAR(100) NOT NULL DEFAULT 'Tumana',
     city_municipality VARCHAR(100) NOT NULL DEFAULT 'Marikina City',
     home_latitude DECIMAL(10, 8) NULL,
@@ -182,7 +191,10 @@ CREATE TABLE IF NOT EXISTS residents (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_residents_name (last_name, first_name),
-    KEY idx_residents_jurisdiction (barangay, is_tenant)
+    KEY idx_residents_jurisdiction (barangay, is_tenant),
+    KEY idx_residents_contact_hash (contact_no_hash),
+    KEY idx_residents_contact_last4_hash (contact_last4_hash),
+    KEY idx_residents_email_hash (email_hash)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS resident_user_profiles (
@@ -212,6 +224,7 @@ CREATE TABLE IF NOT EXISTS complaints (
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
     complaint_number VARCHAR(50) NULL,
     category_id INT UNSIGNED NOT NULL,
+    proposed_category_id INT UNSIGNED NULL,
     secondary_category_id INT UNSIGNED NULL,
     other_category_specification VARCHAR(255) NULL,
     secondary_other_category_specification VARCHAR(255) NULL,
@@ -245,6 +258,9 @@ CREATE TABLE IF NOT EXISTS complaints (
     docketed_by INT UNSIGNED NULL,
     docketed_at DATETIME NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'Filed',
+    resolution_type VARCHAR(50) NULL,
+    resolution_notes TEXT NULL,
+    resolved_at DATETIME NULL,
     document_status ENUM('No Scan Uploaded', 'Scan Uploaded', 'Updated Scan Uploaded') NOT NULL DEFAULT 'No Scan Uploaded',
     is_draft TINYINT(1) NOT NULL DEFAULT 0,
     paanyaya_attempt_count TINYINT UNSIGNED DEFAULT 1,
@@ -253,9 +269,23 @@ CREATE TABLE IF NOT EXISTS complaints (
     paanyaya_1_outcome VARCHAR(50) NULL DEFAULT NULL,
     paanyaya_complainant_choice VARCHAR(50) NULL DEFAULT NULL,
     ltia_category VARCHAR(100) NULL,
+    routing_route VARCHAR(50) NULL,
+    assigned_queue VARCHAR(80) NULL,
+    routing_rule_version VARCHAR(32) NULL,
+    routing_reasons TEXT NULL,
+    routed_at DATETIME NULL,
+    routing_overridden_by INT UNSIGNED NULL,
+    routing_overridden_at DATETIME NULL,
+    routing_override_reason VARCHAR(500) NULL,
+    privacy_notice_acknowledged TINYINT(1) NOT NULL DEFAULT 0,
+    privacy_notice_version VARCHAR(32) NULL,
+    privacy_consented_at DATETIME NULL,
     encoded_by INT UNSIGNED NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL,
+    deleted_by INT UNSIGNED NULL,
+    deletion_reason VARCHAR(500) NULL,
     UNIQUE KEY uq_complaints_number (complaint_number),
     UNIQUE KEY uq_complaints_intake_reference (intake_reference),
     KEY idx_complaints_intake_queue (screening_decision, intake_source, created_at),
@@ -264,6 +294,8 @@ CREATE TABLE IF NOT EXISTS complaints (
     KEY idx_complaints_category_id (category_id),
     KEY idx_complaints_secondary_category_id (secondary_category_id),
     KEY idx_complaints_status_created_at (status, created_at),
+    KEY idx_complaints_deleted_at (deleted_at),
+    KEY idx_complaints_assigned_queue (assigned_queue, routing_route),
     CONSTRAINT fk_complaints_category
         FOREIGN KEY (category_id) REFERENCES complaint_categories (category_id) ON DELETE RESTRICT,
     CONSTRAINT fk_complaints_secondary_category
@@ -303,9 +335,9 @@ CREATE TABLE IF NOT EXISTS complaint_parties (
     resident_id INT UNSIGNED NOT NULL,
     party_type ENUM('Complainant', 'Respondent', 'Witness') NOT NULL,
     is_minor TINYINT(1) NOT NULL DEFAULT 0,
-    guardian_name VARCHAR(255) NULL,
+    guardian_name VARCHAR(512) NULL,
     guardian_relationship VARCHAR(100) NULL,
-    guardian_contact VARCHAR(50) NULL,
+    guardian_contact VARCHAR(512) NULL,
     guardian_address TEXT NULL,
     home_latitude DECIMAL(10, 8) NULL,
     home_longitude DECIMAL(11, 8) NULL,
@@ -660,7 +692,7 @@ CREATE TABLE IF NOT EXISTS cases (
     -- Assigned immediately after insert by the model so database-generated IDs remain race-safe.
     case_number VARCHAR(50) NULL,
     case_type ENUM('Civil', 'Criminal') NOT NULL,
-    case_status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated') NOT NULL DEFAULT 'Docketed',
+    case_status ENUM('Docketed', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'Dismissed', 'CFA Issued', 'Archived', 'DISMISSED_BARRED', 'RESPONDENT_DEFAULT', 'Repudiated', 'Pending Close', 'Closed') NOT NULL DEFAULT 'Docketed',
     docket_date DATE NOT NULL,
     archived_date DATE NULL,
     mediation_start_date DATE NULL,
@@ -672,6 +704,9 @@ CREATE TABLE IF NOT EXISTS cases (
     pause_notes TEXT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    deleted_at DATETIME NULL,
+    deleted_by INT UNSIGNED NULL,
+    deletion_reason VARCHAR(500) NULL,
     UNIQUE KEY uq_cases_complaint_id (complaint_id),
     UNIQUE KEY uq_cases_number (case_number),
     KEY idx_cases_status_docket_date (case_status, docket_date),
@@ -1487,7 +1522,8 @@ INSERT INTO roles (role_name) VALUES
     ('Lupon Clerk'),
     ('Lupon Member'),
     ('Summons Server'),
-    ('Resident')
+    ('Resident'),
+    ('Super Administrator')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
 -- Initial local accounts. Default strong seed password: PassTumana2026!
@@ -1707,5 +1743,86 @@ LEFT JOIN summon_deliveries sd ON sd.hearing_id = h.hearing_id OR (sd.case_id = 
 LEFT JOIN hearing_party_services hps ON hps.hearing_id = h.hearing_id OR (h.kp12_document_id IS NOT NULL AND hps.document_id = h.kp12_document_id)
 LEFT JOIN users u ON u.user_id = COALESCE(hps.serving_officer, sd.served_by, sd.served_by_user_id)
 WHERE h.hearing_type = 'Conciliation';
+
+CREATE TABLE IF NOT EXISTS complaint_routing_logs (
+    routing_log_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    complaint_id INT UNSIGNED NOT NULL,
+    event_type ENUM('Automated', 'Override') NOT NULL DEFAULT 'Automated',
+    rule_version VARCHAR(32) NOT NULL,
+    proposed_category_id INT UNSIGNED NULL,
+    routing_route VARCHAR(50) NOT NULL,
+    assigned_queue VARCHAR(80) NOT NULL,
+    reasons_json TEXT NULL,
+    matched_keywords_json TEXT NULL,
+    previous_queue VARCHAR(80) NULL,
+    override_reason VARCHAR(500) NULL,
+    actor_user_id INT UNSIGNED NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_routing_logs_complaint (complaint_id, created_at),
+    CONSTRAINT fk_routing_logs_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
+    CONSTRAINT fk_routing_logs_actor FOREIGN KEY (actor_user_id) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS anonymous_concerns (
+    concern_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    reference_code VARCHAR(32) NOT NULL,
+    token_hash CHAR(64) NOT NULL,
+    category_hint VARCHAR(120) NULL,
+    concern_title VARCHAR(255) NOT NULL,
+    narrative LONGTEXT NOT NULL,
+    barangay_area VARCHAR(120) NULL,
+    routing_route VARCHAR(50) NOT NULL DEFAULT 'KP_ELIGIBLE',
+    assigned_queue VARCHAR(80) NOT NULL DEFAULT 'LISO_SCREENING',
+    routing_rule_version VARCHAR(32) NULL,
+    status ENUM('Submitted', 'Under Review', 'Referred to Formal KP', 'Referred Externally', 'Action Taken', 'Closed') NOT NULL DEFAULT 'Submitted',
+    public_milestone_note VARCHAR(500) NULL,
+    attachment_path VARCHAR(1024) NULL,
+    failed_lookup_attempts INT UNSIGNED NOT NULL DEFAULT 0,
+    locked_until DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_anonymous_reference (reference_code),
+    UNIQUE KEY uq_anonymous_token_hash (token_hash),
+    KEY idx_anonymous_status_queue (status, assigned_queue)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS closure_requests (
+    closure_request_id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    complaint_id INT UNSIGNED NOT NULL,
+    case_id INT UNSIGNED NULL,
+    requested_by INT UNSIGNED NOT NULL,
+    resolution_type ENUM('Signed Settlement', 'Obligation Compliance', 'Administrative Closure', 'Dismissal', 'CFA Referral') NOT NULL DEFAULT 'Administrative Closure',
+    request_reason TEXT NOT NULL,
+    evidence_path VARCHAR(1024) NULL,
+    previous_complaint_status VARCHAR(50) NULL,
+    previous_case_status VARCHAR(50) NULL,
+    notice_sent_at DATETIME NULL,
+    expires_at DATETIME NOT NULL,
+    verification_token_hash CHAR(64) NOT NULL,
+    otp_hash CHAR(64) NULL,
+    status ENUM('Pending', 'Confirmed', 'Objected', 'TimedOutClosed', 'Cancelled') NOT NULL DEFAULT 'Pending',
+    confirmed_by_user_id INT UNSIGNED NULL,
+    confirmed_at DATETIME NULL,
+    objected_at DATETIME NULL,
+    objection_reason TEXT NULL,
+    closed_at DATETIME NULL,
+    timeout_processed_at DATETIME NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_closure_token_hash (verification_token_hash),
+    KEY idx_closure_complaint_status (complaint_id, status),
+    KEY idx_closure_pending_expiry (status, expires_at),
+    CONSTRAINT fk_closure_complaint FOREIGN KEY (complaint_id) REFERENCES complaints (complaint_id) ON DELETE CASCADE,
+    CONSTRAINT fk_closure_case FOREIGN KEY (case_id) REFERENCES cases (case_id) ON DELETE SET NULL,
+    CONSTRAINT fk_closure_requester FOREIGN KEY (requested_by) REFERENCES users (user_id) ON DELETE RESTRICT,
+    CONSTRAINT fk_closure_confirmer FOREIGN KEY (confirmed_by_user_id) REFERENCES users (user_id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DROP TRIGGER IF EXISTS trg_audit_trails_no_update;
+DROP TRIGGER IF EXISTS trg_audit_trails_no_delete;
+CREATE TRIGGER trg_audit_trails_no_update BEFORE UPDATE ON audit_trails FOR EACH ROW
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'audit_trails is append-only; UPDATE is prohibited.';
+CREATE TRIGGER trg_audit_trails_no_delete BEFORE DELETE ON audit_trails FOR EACH ROW
+SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'audit_trails is append-only; DELETE is prohibited.';
 
 SET FOREIGN_KEY_CHECKS = 1;

@@ -2,6 +2,8 @@
 
 session_start();
 
+require_once '../../config/database.php';
+require_once '../../middleware/rbac.php';
 require_once '../../controllers/ComplaintController.php';
 
 $isJson = (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) ||
@@ -19,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk'])) {
     if ($isJson) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(401);
@@ -31,6 +33,10 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESS
 }
 
 $complaintId = filter_var($_POST['complaint_id'] ?? null, FILTER_VALIDATE_INT) ?: 0;
+if ($complaintId > 0) {
+    $db = (new Database())->connect();
+    agapRequireComplaintAccess($db, (int) $complaintId, 'write', $isJson);
+}
 $controller = new ComplaintController();
 $result = $controller->update($complaintId, $_POST, $_FILES);
 

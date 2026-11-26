@@ -2,6 +2,8 @@
 
 session_start();
 
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../controllers/ComplaintController.php';
 require_once __DIR__ . '/../../services/CsrfService.php';
 
@@ -13,11 +15,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2], true)) {
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
-    exit;
-}
+$db = (new Database())->connect();
+agapRequireApiRoles(['Super Administrator'], $db);
 
 if (!CsrfService::validateRequest()) {
     http_response_code(419);
@@ -27,16 +26,26 @@ if (!CsrfService::validateRequest()) {
 
 $id = filter_input(INPUT_POST, 'id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
 if (!$id) {
+    $id = filter_input(INPUT_POST, 'complaint_id', FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+}
+if (!$id) {
     http_response_code(422);
     echo json_encode(['success' => false, 'message' => 'A valid complaint ID is required.']);
     exit;
 }
 
-$success = (new ComplaintController())->destroy((int) $id);
+$reason = trim((string) ($_POST['reason'] ?? $_POST['deletion_reason'] ?? ''));
+if ($reason === '') {
+    http_response_code(422);
+    echo json_encode(['success' => false, 'message' => 'A deletion reason is required for soft deletion.']);
+    exit;
+}
+
+$success = (new ComplaintController())->destroy((int) $id, $reason);
 http_response_code($success ? 200 : 422);
 echo json_encode([
     'success' => $success,
-    'message' => $success ? 'Complaint deleted successfully.' : 'Unable to delete complaint.'
+    'message' => $success ? 'Complaint soft-deleted successfully.' : 'Unable to soft-delete complaint.'
 ]);
 
 exit;

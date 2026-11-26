@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 /**
  * PartyModel - Manages resident profiles and relational party mappings across complaints and cases.
@@ -9,8 +10,9 @@ require_once __DIR__ . '/../config/database.php';
 class PartyModel
 {
     private PDO $conn;
+    private PiiCryptoService $crypto;
 
-    public function __construct(?PDO $conn = null)
+    public function __construct(?PDO $conn = null, ?PiiCryptoService $crypto = null)
     {
         if ($conn) {
             $this->conn = $conn;
@@ -18,6 +20,7 @@ class PartyModel
             $database = new Database();
             $this->conn = $database->connect();
         }
+        $this->crypto = $crypto ?? new PiiCryptoService();
     }
 
     /**
@@ -67,6 +70,7 @@ class PartyModel
         // 3. Match against existing residents to avoid duplicate profiles
         // We match by full name, or by contact_no + name
         $contactNo = trim((string)($data['contact_no'] ?? '')) ?: null;
+        $contactHash = $this->crypto->contactBlindIndex($contactNo);
 
         $matchSql = "
             SELECT resident_id FROM residents 
@@ -79,7 +83,8 @@ class PartyModel
         $params = [$firstName, $lastName, trim("$firstName $middleName $lastName"), trim("$firstName $lastName")];
 
         if (!empty($contactNo)) {
-            $matchSql .= " OR (contact_no = ? AND LOWER(TRIM(last_name)) = LOWER(?))";
+            $matchSql .= " OR ((contact_no_hash = ? OR contact_no = ?) AND LOWER(TRIM(last_name)) = LOWER(?))";
+            $params[] = $contactHash;
             $params[] = $contactNo;
             $params[] = $lastName;
         }
@@ -96,18 +101,22 @@ class PartyModel
             return $residentId;
         }
 
+        $emailRaw = trim((string)($data['email'] ?? '')) ?: null;
+        $addressRaw = trim((string)($data['address'] ?? '')) ?: null;
+        $houseStreetRaw = trim((string)($data['house_street'] ?? '')) ?: null;
+
         // 4. Create new resident record
         $insertStmt = $this->conn->prepare("
             INSERT INTO residents (
                 first_name, middle_name, last_name, suffix,
                 birth_date, gender, civil_status, occupation,
-                contact_no, email, preferred_contact,
+                contact_no, contact_no_hash, contact_last4_hash, email, email_hash, preferred_contact,
                 address, house_street, purok, barangay, city_municipality,
                 home_latitude, home_longitude, is_tenant, residency_verified
             ) VALUES (
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?
             )
@@ -122,11 +131,14 @@ class PartyModel
             trim((string)($data['gender'] ?? '')) ?: null,
             trim((string)($data['civil_status'] ?? '')) ?: null,
             trim((string)($data['occupation'] ?? '')) ?: null,
-            $contactNo,
-            trim((string)($data['email'] ?? '')) ?: null,
+            $this->crypto->encrypt($contactNo),
+            $contactHash,
+            $this->crypto->contactLast4BlindIndex($contactNo),
+            $this->crypto->encrypt($emailRaw),
+            $this->crypto->emailBlindIndex($emailRaw),
             in_array($data['preferred_contact'] ?? '', ['SMS', 'Call', 'Email', 'In-Person'], true) ? $data['preferred_contact'] : 'SMS',
-            trim((string)($data['address'] ?? '')) ?: null,
-            trim((string)($data['house_street'] ?? '')) ?: null,
+            $this->crypto->encrypt($addressRaw),
+            $this->crypto->encrypt($houseStreetRaw),
             trim((string)($data['purok'] ?? '')) ?: null,
             trim((string)($data['barangay'] ?? 'Tumana')) ?: 'Tumana',
             trim((string)($data['city_municipality'] ?? 'Marikina City')) ?: 'Marikina City',
@@ -154,10 +166,27 @@ class PartyModel
             'is_tenant', 'residency_verified', 'suffix'
         ];
 
+        $encryptedCols = ['contact_no', 'email', 'address', 'house_street'];
         foreach ($allowedUpdates as $field) {
             if (array_key_exists($field, $data) && $data[$field] !== null && $data[$field] !== '') {
-                $fields[] = "`$field` = ?";
-                $params[] = $data[$field];
+                $val = $data[$field];
+                if (in_array($field, $encryptedCols, true)) {
+                    $raw = trim((string) $val);
+                    $fields[] = "`$field` = ?";
+                    $params[] = $this->crypto->encrypt($raw);
+                    if ($field === 'contact_no') {
+                        $fields[] = '`contact_no_hash` = ?';
+                        $params[] = $this->crypto->contactBlindIndex($raw);
+                        $fields[] = '`contact_last4_hash` = ?';
+                        $params[] = $this->crypto->contactLast4BlindIndex($raw);
+                    } elseif ($field === 'email') {
+                        $fields[] = '`email_hash` = ?';
+                        $params[] = $this->crypto->emailBlindIndex($raw);
+                    }
+                } else {
+                    $fields[] = "`$field` = ?";
+                    $params[] = $val;
+                }
             }
         }
 
@@ -216,15 +245,19 @@ class PartyModel
                 residency_verified = VALUES(residency_verified)
         ");
 
+        $guardianName = trim((string)($meta['guardian_name'] ?? '')) ?: null;
+        $guardianContact = trim((string)($meta['guardian_contact'] ?? '')) ?: null;
+        $guardianAddress = trim((string)($meta['guardian_address'] ?? '')) ?: null;
+
         $stmt->execute([
             $complaintId,
             $residentId,
             $partyType,
             !empty($meta['is_minor']) ? 1 : 0,
-            trim((string)($meta['guardian_name'] ?? '')) ?: null,
+            $this->crypto->encrypt($guardianName),
             trim((string)($meta['guardian_relationship'] ?? '')) ?: null,
-            trim((string)($meta['guardian_contact'] ?? '')) ?: null,
-            trim((string)($meta['guardian_address'] ?? '')) ?: null,
+            $this->crypto->encrypt($guardianContact),
+            $this->crypto->encrypt($guardianAddress),
             isset($meta['home_latitude']) && $meta['home_latitude'] !== '' ? (float)$meta['home_latitude'] : null,
             isset($meta['home_longitude']) && $meta['home_longitude'] !== '' ? (float)$meta['home_longitude'] : null,
             $meta['preferred_contact'] ?? 'SMS',
@@ -278,7 +311,20 @@ class PartyModel
             ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name
         ");
         $stmt->execute([$complaintId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$row) {
+            $row = $this->crypto->decryptRow($row, [
+                'contact_no',
+                'email',
+                'address',
+                'house_street',
+                'guardian_name',
+                'guardian_contact',
+                'guardian_address',
+            ]);
+        }
+        unset($row);
+        return $rows;
     }
 
     /**
