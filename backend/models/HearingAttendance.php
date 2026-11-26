@@ -94,10 +94,7 @@ class HearingAttendance
              ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name, r.first_name"
         );
         $partiesStmt->execute([$hearingId, $hearingId, $hearingId, $hearingId, $hearing['complaint_id']]);
-        $parties = PiiCryptoService::decryptRows(
-            $partiesStmt->fetchAll(PDO::FETCH_ASSOC),
-            ['contact_no', 'address']
-        );
+        $parties = PiiCryptoService::decryptPayload($partiesStmt->fetchAll(PDO::FETCH_ASSOC));
 
         // Determine mediation hearing sequence
         $seqStmt = $this->conn->prepare("

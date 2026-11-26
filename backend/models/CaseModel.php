@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/PaanyayaPreparationService.php';
 require_once __DIR__ . '/../services/ClosureWorkflowService.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 class CaseModel
 {
@@ -135,7 +136,7 @@ class CaseModel
         }
         unset($caseItem);
 
-        return $cases;
+        return PiiCryptoService::decryptPayload($cases);
     }
 
     public function getPage(int $page, int $perPage = 25): array
@@ -274,7 +275,7 @@ class CaseModel
         $docketedStmt->execute();
 
         return [
-            'cases' => $cases,
+            'cases' => PiiCryptoService::decryptPayload($cases),
             'docketed_complaint_ids' => array_map('strval', $docketedStmt->fetchAll(PDO::FETCH_COLUMN)),
             'pagination' => [
                 'current_page' => $page,
@@ -302,7 +303,8 @@ class CaseModel
 
         $stmt->execute([$id]);
 
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $caseRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $caseRow ? PiiCryptoService::decryptPayload($caseRow) : false;
     }
 
     public function create(array $data): bool
@@ -570,7 +572,7 @@ class CaseModel
         $mediationShowCauseHearings = $stageModel->getShowCauseHearings($id, 'Mediation');
         $conciliationShowCauseHearings = $stageModel->getShowCauseHearings($id, 'Conciliation');
 
-        return [
+        return PiiCryptoService::decryptPayload([
             'case' => $case,
             'concurrent_disputes' => $concurrentDisputes,
             'assignments' => $assignments->fetchAll(PDO::FETCH_ASSOC),
@@ -590,7 +592,7 @@ class CaseModel
             'cfa_eligibility' => $cfaEligibility,
             'mediation_show_cause_hearings' => $mediationShowCauseHearings,
             'conciliation_show_cause_hearings' => $conciliationShowCauseHearings
-        ];
+        ]);
     }
 
     public function getDocketingError(mixed $complaintId): ?string

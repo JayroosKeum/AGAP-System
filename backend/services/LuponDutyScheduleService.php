@@ -98,10 +98,7 @@ final class LuponDutyScheduleService
               AND r.role_name = 'Lupon Member'
             ORDER BY u.last_name ASC, u.first_name ASC, u.user_id ASC
         ");
-        $members = PiiCryptoService::decryptRows(
-            $membersStmt ? $membersStmt->fetchAll(PDO::FETCH_ASSOC) : [],
-            ['contact_no']
-        );
+        $members = PiiCryptoService::decryptPayload($membersStmt ? $membersStmt->fetchAll(PDO::FETCH_ASSOC) : []);
 
         $assignStmt = $this->conn->query("
             SELECT s.id,

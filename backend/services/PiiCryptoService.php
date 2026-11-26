@@ -15,6 +15,23 @@ final class PiiCryptoService
     private const IV_LENGTH = 12;
     private const TAG_LENGTH = 16;
 
+    /**
+     * Free-text narrative, audit JSON, and hash columns that must never be transformed
+     * by dynamic read/write PII unwrapping.
+     *
+     * @var array<int, string>
+     */
+    public const NON_PII_SKIP_KEYS = [
+        'narrative', 'additional_details', 'requested_resolution',
+        'description', 'agreement_details', 'salaysay',
+        'before_state', 'after_state', 'old_value', 'new_value',
+        'metadata', 'audit_data', 'remarks', 'notes',
+        'review_notes', 'resolution_notes', 'minutes_text',
+        'agreed_terms', 'objection_reason', 'deletion_reason',
+        'pause_notes', 'justification_reason', 'attendance_remarks',
+        'entry_hash', 'prev_hash', 'password_hash', 'otp_hash', 'token_hash',
+    ];
+
     private ?string $key;
     /** @var array<int, string> */
     private array $legacyKeys = [];
@@ -318,5 +335,72 @@ final class PiiCryptoService
             }
         }
         return $rows;
+    }
+
+    /**
+     * Replaces any valid authenticated (enc|name):v1:... ciphertext tokens inside a string.
+     * Leaves unconfigured environments and unauthenticated literal strings untouched.
+     */
+    public static function decryptStringTokens(?string $value): ?string
+    {
+        if ($value === null || $value === '' || (!str_contains($value, 'enc:v1:') && !str_contains($value, 'name:v1:'))) {
+            return $value;
+        }
+        $crypto = new self();
+        if (!$crypto->isConfigured()) {
+            return $value;
+        }
+        return preg_replace_callback(
+            '/(?:enc|name):v1:[A-Za-z0-9+\/=]+/',
+            static function (array $match) use ($crypto): string {
+                try {
+                    return (string) $crypto->decrypt($match[0]);
+                } catch (Throwable) {
+                    return $match[0];
+                }
+            },
+            $value
+        ) ?? $value;
+    }
+
+    /**
+     * Dynamically decrypts PII ciphertext tokens across an entire row or nested payload,
+     * excluding narrative, audit, and hash keys.
+     *
+     * @param array<int, string> $skipKeys
+     */
+    public static function decryptPayload(mixed $data, array $skipKeys = self::NON_PII_SKIP_KEYS, string $currentKey = ''): mixed
+    {
+        if (is_string($data)) {
+            if ($currentKey !== '' && in_array(strtolower($currentKey), $skipKeys, true)) {
+                return $data;
+            }
+            return self::decryptStringTokens($data);
+        }
+        if (is_array($data)) {
+            foreach ($data as $key => $val) {
+                $nextKey = is_string($key) ? $key : '';
+                if ($nextKey !== '' && in_array(strtolower($nextKey), $skipKeys, true)) {
+                    continue;
+                }
+                $data[$key] = self::decryptPayload($val, $skipKeys, $nextKey);
+            }
+            return $data;
+        }
+        return $data;
+    }
+
+    /**
+     * Unwraps validly encrypted tokens accidentally posted back by stale/cached client forms
+     * before validation or persistence.
+     *
+     * @param array<string, mixed> $data
+     * @param array<int, string> $skipKeys
+     * @return array<string, mixed>
+     */
+    public static function unwrapSubmittedInputs(array $data, array $skipKeys = self::NON_PII_SKIP_KEYS): array
+    {
+        $unwrapped = self::decryptPayload($data, $skipKeys);
+        return is_array($unwrapped) ? $unwrapped : $data;
     }
 }

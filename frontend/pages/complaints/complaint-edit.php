@@ -17,6 +17,7 @@ if (!$complaintId || $complaintId <= 0) {
 }
 
 require_once __DIR__ . '/../../../backend/config/database.php';
+require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
 require_once __DIR__ . '/partials/kp-jurisdiction-ui.php';
 $db = (new Database())->connect();
 
@@ -24,6 +25,9 @@ $db = (new Database())->connect();
 $stmt = $db->prepare('SELECT * FROM complaints WHERE complaint_id = ?');
 $stmt->execute([$complaintId]);
 $complaint = $stmt->fetch(PDO::FETCH_ASSOC);
+if (is_array($complaint)) {
+    $complaint = PiiCryptoService::decryptPayload($complaint);
+}
 
 // Fetch intake screening for damages & jurisdiction checks
 $scrStmt = $db->prepare('SELECT * FROM complaint_intake_screenings WHERE complaint_id = ?');
@@ -48,9 +52,8 @@ $residentsStmt = $db->query("
     FROM residents 
     ORDER BY last_name ASC, first_name ASC
 ");
-$residents = PiiCryptoService::decryptRows(
-    $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [],
-    ['contact_no', 'email', 'address']
+$residents = PiiCryptoService::decryptPayload(
+    $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : []
 );
 
 $residentsJsonData = [];
@@ -144,7 +147,7 @@ $renderResidentOptions = function(?int $selectedId = null) use ($residents): str
 // Fetch location
 $locStmt = $db->prepare('SELECT latitude, longitude, address FROM incident_locations WHERE complaint_id = ? LIMIT 1');
 $locStmt->execute([$complaintId]);
-$location = $locStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+$location = PiiCryptoService::decryptPayload($locStmt->fetch(PDO::FETCH_ASSOC) ?: []);
 
 // Fetch parties with full demographic and guardian columns
 $partyStmt = $db->prepare("
@@ -161,10 +164,7 @@ $partyStmt = $db->prepare("
     ORDER BY cp.party_id ASC
 ");
 $partyStmt->execute([$complaintId]);
-$parties = PiiCryptoService::decryptRows(
-    $partyStmt->fetchAll(PDO::FETCH_ASSOC),
-    ['contact_no', 'email', 'address', 'guardian_name', 'guardian_contact', 'guardian_address']
-);
+$parties = PiiCryptoService::decryptPayload($partyStmt->fetchAll(PDO::FETCH_ASSOC));
 
 $initialComplainants = [];
 $initialRespondents = [];

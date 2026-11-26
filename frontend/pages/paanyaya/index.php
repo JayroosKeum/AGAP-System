@@ -21,7 +21,10 @@ $paanyayaModel = new Paanyaya();
 $statusFilter = isset($_GET['status']) ? trim((string)$_GET['status']) : '';
 $searchFilter = isset($_GET['search']) ? trim((string)$_GET['search']) : '';
 
-$paanyayas = $paanyayaModel->getGroupedPaanyayaCases($statusFilter !== '' ? $statusFilter : null, $searchFilter !== '' ? $searchFilter : null);
+require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
+$paanyayas = PiiCryptoService::decryptPayload(
+    $paanyayaModel->getGroupedPaanyayaCases($statusFilter !== '' ? $statusFilter : null, $searchFilter !== '' ? $searchFilter : null)
+);
 
 $dbConn = (new Database())->connect();
 $residentsForLookup = [];
@@ -33,10 +36,7 @@ try {
         ORDER BY last_name ASC, first_name ASC
     ");
     if ($rStmt) {
-        $residentsForLookup = PiiCryptoService::decryptRows(
-            $rStmt->fetchAll(PDO::FETCH_ASSOC),
-            ['address', 'contact_no', 'email']
-        );
+        $residentsForLookup = PiiCryptoService::decryptPayload($rStmt->fetchAll(PDO::FETCH_ASSOC));
     }
 } catch (Throwable $re) {
     $residentsForLookup = [];

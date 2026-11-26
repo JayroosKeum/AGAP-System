@@ -48,9 +48,8 @@ if ($isResidentPortal) {
 } else {
     $residentsStmt = $db->query($residentSelect . ' ORDER BY last_name ASC, first_name ASC');
 }
-$residents = PiiCryptoService::decryptRows(
-    $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : [],
-    ['contact_no', 'email', 'address']
+$residents = PiiCryptoService::decryptPayload(
+    $residentsStmt ? $residentsStmt->fetchAll(PDO::FETCH_ASSOC) : []
 );
 
 $marikinaPath = __DIR__ . '/../../assets/images/marikina_logo.jpg';
@@ -175,10 +174,7 @@ if ($escalatePaanyayaId > 0) {
     $epStmt->execute([$escalatePaanyayaId]);
     $escalatePaanyaya = $epStmt->fetch(PDO::FETCH_ASSOC);
     if (is_array($escalatePaanyaya)) {
-        $escalatePaanyaya = PiiCryptoService::decryptRows(
-            [$escalatePaanyaya],
-            ['complainant_address', 'complainant_contact_no', 'invitee_address', 'invitee_contact_no']
-        )[0];
+        $escalatePaanyaya = PiiCryptoService::decryptPayload($escalatePaanyaya);
     }
     $existingFormalComplaintId = $escalatePaanyaya
         ? (int)(($escalatePaanyaya['complaint_id'] ?? 0) ?: ($escalatePaanyaya['escalated_to_complaint_id'] ?? 0))

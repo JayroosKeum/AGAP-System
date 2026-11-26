@@ -22,6 +22,7 @@ require_once __DIR__ . '/../../../backend/middleware/rbac.php';
 require_once __DIR__ . '/../../../backend/services/CsrfService.php';
 require_once __DIR__ . '/../../../backend/services/ComplaintRoutingService.php';
 require_once __DIR__ . '/../../../backend/services/ClosureEvidenceService.php';
+require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
 if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'])) {
     http_response_code(403);
     exit('Access denied for this role.');
@@ -84,7 +85,8 @@ try {
          WHERE c.complaint_id = ? LIMIT 1'
     );
     $assignmentStatement->execute([$complaintId]);
-    $intakeScreeningMeta = $assignmentStatement->fetch(PDO::FETCH_ASSOC) ?: null;
+    $rawMeta = $assignmentStatement->fetch(PDO::FETCH_ASSOC) ?: null;
+    $intakeScreeningMeta = $rawMeta ? PiiCryptoService::decryptPayload($rawMeta) : null;
     if (!empty($intakeScreeningMeta['submitted_by'])
         && ($roleId !== 3 || (int) $intakeScreeningMeta['liso_assigned_to'] === (int) $_SESSION['user_id'])) {
         $informationRequests = (new ComplaintInformationService($preparationDb))->history($complaintId);

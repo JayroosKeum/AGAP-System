@@ -65,7 +65,7 @@ class Complaint
                 }
             }
             unset($row);
-            return $rows;
+            return PiiCryptoService::decryptPayload($rows);
 
         }
         catch(Exception $e)
@@ -119,7 +119,7 @@ class Complaint
                     }
                 }
             }
-            return $row;
+            return $row ? PiiCryptoService::decryptPayload($row) : false;
 
         }
         catch(Exception $e)
@@ -134,6 +134,7 @@ class Complaint
 
     public function create(array $data, bool $paanyayaHandoff = false): array
     {
+        $data = PiiCryptoService::unwrapSubmittedInputs($data);
         $ownsTransaction = !$this->conn->inTransaction();
         try {
             if (!empty($data['incident_datetime'])) {
@@ -474,6 +475,7 @@ class Complaint
     public function update(mixed $id, array $data): array
     {
         try {
+            $data = PiiCryptoService::unwrapSubmittedInputs($data);
 
             $complaintId = filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
             if (!$complaintId) {

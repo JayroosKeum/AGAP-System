@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 class Location
 {
@@ -35,7 +36,8 @@ class Location
     {
         $stmt = $this->conn->prepare('SELECT location_id, complaint_id, latitude, longitude, address, created_at, updated_at FROM incident_locations WHERE complaint_id = ?');
         $stmt->execute([$complaintId]);
-        return $stmt->fetch(PDO::FETCH_ASSOC);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ? PiiCryptoService::decryptPayload($row) : false;
     }
 
     public function getAll(): array
@@ -50,7 +52,7 @@ class Location
              ORDER BY l.updated_at DESC"
         );
         $stmt->execute();
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return PiiCryptoService::decryptPayload($stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 
     public function getComplaints(): array

@@ -64,18 +64,7 @@ class ComplaintParty
         );
         $stmt->execute([$complaintId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($rows as &$row) {
-            $row = $this->crypto->decryptRow($row, [
-                'resident_contact',
-                'email',
-                'address',
-                'guardian_name',
-                'guardian_contact',
-                'guardian_address',
-            ]);
-        }
-        unset($row);
-        return $rows;
+        return PiiCryptoService::decryptPayload($rows);
     }
 
     public function getById(int $partyId): array|false

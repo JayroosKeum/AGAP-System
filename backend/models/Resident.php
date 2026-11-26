@@ -21,7 +21,7 @@ class Resident
 
     private function decryptResidentRow(array $row): array
     {
-        return $this->crypto->decryptRow($row, ['contact_no', 'email', 'address', 'house_street']);
+        return PiiCryptoService::decryptPayload($row);
     }
 
     public function getAll()
@@ -84,6 +84,7 @@ class Resident
 
     public function create($data)
     {
+        $data = PiiCryptoService::unwrapSubmittedInputs((array) $data);
         $homeLat = (isset($data['home_latitude']) && $data['home_latitude'] !== '') ? (float)$data['home_latitude'] : null;
         $homeLng = (isset($data['home_longitude']) && $data['home_longitude'] !== '') ? (float)$data['home_longitude'] : null;
 
@@ -424,6 +425,7 @@ class Resident
 
     public function update($id, $data)
     {
+        $data = PiiCryptoService::unwrapSubmittedInputs((array) $data);
         $homeLat = (isset($data['home_latitude']) && $data['home_latitude'] !== '') ? (float)$data['home_latitude'] : (isset($data['latitude']) && $data['latitude'] !== '' ? (float)$data['latitude'] : null);
         $homeLng = (isset($data['home_longitude']) && $data['home_longitude'] !== '') ? (float)$data['home_longitude'] : (isset($data['longitude']) && $data['longitude'] !== '' ? (float)$data['longitude'] : null);
 

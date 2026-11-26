@@ -416,6 +416,17 @@ try {
 
     $unassignedScreenRead = httpCall($base, $actors['lupon_other'], "complaints/view.php?id={$ownedCid}");
     assertTrue($unassignedScreenRead['status'] === 200, 'A4: Active Lupon Member can open unassigned pending intake awaiting LISO screening');
+    $dynamicLocCheck = PiiCryptoService::decryptPayload([
+        'incident_street' => (new PiiCryptoService())->encrypt('101 Mabini St.'),
+        'location' => ['address' => (new PiiCryptoService())->encrypt('101 Mabini St.') . ', Tumana, Marikina City'],
+        'narrative' => 'Literal reference name:v1:AAAA',
+    ]);
+    assertTrue(
+        ($dynamicLocCheck['incident_street'] ?? '') === '101 Mabini St.'
+        && ($dynamicLocCheck['location']['address'] ?? '') === '101 Mabini St., Tumana, Marikina City'
+        && ($dynamicLocCheck['narrative'] ?? '') === 'Literal reference name:v1:AAAA',
+        'A6: Dynamic payload decryption resolves nested location ciphertext while preserving narrative text'
+    );
 
     $db->prepare("INSERT INTO cases (complaint_id, case_number, case_type, case_status, docket_date) VALUES (?, ?, 'Civil', 'Mediation', CURDATE())")
         ->execute([$ownedCid, 'CASE-' . $token]);

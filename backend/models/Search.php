@@ -2,6 +2,7 @@
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../services/ResidentNameLookup.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 require_once __DIR__ . '/../middleware/rbac.php';
 
 class Search
@@ -229,7 +230,7 @@ class Search
         }
         unset($row);
 
-        return $rows;
+        return PiiCryptoService::decryptPayload($rows);
     }
 
     public function resolveLifecycle(array $row): array

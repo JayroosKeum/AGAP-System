@@ -7,6 +7,7 @@ require_once __DIR__ . '/../models/Location.php';
 require_once __DIR__ . '/../models/ComplaintScannedDocument.php';
 require_once __DIR__ . '/../services/AuditService.php';
 require_once __DIR__ . '/../middleware/rbac.php';
+require_once __DIR__ . '/../services/PiiCryptoService.php';
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -163,7 +164,7 @@ class ComplaintController
         } else {
             $complaint['case_workspace'] = null;
         }
-        return $complaint;
+        return PiiCryptoService::decryptPayload($complaint);
     }
 
     public function store(array $data, array $files = []): array

@@ -53,10 +53,7 @@ class PaanyayaModel
             ORDER BY cp.party_id ASC
         ");
         $partyStmt->execute([$complaintId]);
-        $parties = PiiCryptoService::decryptRows(
-            $partyStmt->fetchAll(PDO::FETCH_ASSOC),
-            ['contact_number', 'contact_no', 'address', 'email']
-        );
+        $parties = PiiCryptoService::decryptPayload($partyStmt->fetchAll(PDO::FETCH_ASSOC));
 
         $complainants = [];
         $respondents = [];
@@ -713,10 +710,7 @@ class PaanyayaModel
             ORDER BY cp.party_id ASC
         ");
         $partyStmt->execute([$complaintId]);
-        $parties = PiiCryptoService::decryptRows(
-            $partyStmt->fetchAll(PDO::FETCH_ASSOC),
-            ['contact_number', 'contact_no', 'address', 'email']
-        );
+        $parties = PiiCryptoService::decryptPayload($partyStmt->fetchAll(PDO::FETCH_ASSOC));
 
         $complainantNames = [];
         $respondentNames = [];
