@@ -136,6 +136,25 @@ function nextWeekdayDate(OfficeLogisticsService $logistics, int $daysAhead = 1, 
     return $curr->format('Y-m-d');
 }
 
+function nextTargetDowAfterDate(OfficeLogisticsService $logistics, string $baseDate, int $targetDow = 2, int $minCalendarDays = 7): string
+{
+    $curr = new DateTime($baseDate);
+    for ($d = 1; $d <= 90; $d++) {
+        $curr->modify('+1 day');
+        $dow = (int) $curr->format('w');
+        if ($dow === 0 || $dow === 6) {
+            continue;
+        }
+        if ($logistics->isPhilippineHoliday($curr) !== null) {
+            continue;
+        }
+        if ($d >= $minCalendarDays && $dow === $targetDow) {
+            return $curr->format('Y-m-d');
+        }
+    }
+    return $curr->format('Y-m-d');
+}
+
 function nextWeekdaySlot(OfficeLogisticsService $logistics, int $offsetSeconds, string $fallbackTime = '09:00'): array
 {
     $ts = time() + $offsetSeconds;
@@ -1856,7 +1875,7 @@ $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_
 $case14 = (int) $db->lastInsertId();
 
 $tue14a = nextWeekdayDate($logistics, 2, 2);
-$tue14b = nextWeekdayDate($logistics, 9, 2);
+$tue14b = nextTargetDowAfterDate($logistics, $tue14a, 2, 7);
 $db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status, mediation_attempt) VALUES (?, 'Mediation', ?, 'Lupon Court Room', 'Completed', 1), (?, 'Mediation', ?, 'Lupon Court Room', 'Completed', 2)")
     ->execute([$case14, $tue14a . ' 13:00:00', $case14, $tue14b . ' 14:00:00']);
 $h14Rows = $db->query("SELECT hearing_id FROM hearings WHERE case_id = {$case14} ORDER BY hearing_id ASC")->fetchAll(PDO::FETCH_COLUMN);
@@ -1936,7 +1955,7 @@ $case15 = (int) $db->lastInsertId();
 
 $hearingModel15 = new Hearing($db);
 // Start at least a working week after the Show Cause fixture in Scenario 14.
-$tue15a = nextWeekdayDate($logistics, 10, 2);
+$tue15a = nextTargetDowAfterDate($logistics, $tue14a, 2, 7);
 $create15 = $hearingModel15->createProgression([
     'case_id' => $case15,
     'hearing_type' => 'Mediation',
@@ -2003,7 +2022,7 @@ try {
     );
 
     // Check Hearing::createProgression stops at 1 session when mediation_max_sessions=1
-    $tue16 = nextWeekdayDate($logistics, 16, 2);
+    $tue16 = nextTargetDowAfterDate($logistics, $tue15a, 2, 7);
     $db->prepare("INSERT INTO complaints (complaint_number, complaint_title, narrative, category_id, status, case_type, incident_date, encoded_by, created_at) VALUES (?, 'Cap Check', 'Test', ?, 'Mediation', 'Civil', CURDATE(), ?, NOW())")
         ->execute(["CMP-REG16-{$token}", $catId, $clerkId]);
     $comp16 = (int) $db->lastInsertId();
@@ -2019,7 +2038,7 @@ try {
     $secondCapRes = $hearingModel15->createProgression([
         'case_id' => $case16,
         'hearing_type' => 'Mediation',
-        'hearing_date' => nextWeekdayDate($logistics, 23, 2) . ' 14:00:00',
+        'hearing_date' => nextTargetDowAfterDate($logistics, $tue16, 2, 7) . ' 14:00:00',
         'venue' => 'Lupon Court Room',
     ], null, $clerkId);
     $elig16 = CaseStage::evaluateMediationReferralEligibility($db, $case16);
@@ -2171,7 +2190,7 @@ $db->prepare("INSERT INTO cases (complaint_id, case_number, case_status, docket_
 $case18a = (int) $db->lastInsertId();
 
 $tue18a = nextWeekdayDate($logistics, 1, 2);
-$tue18b = nextWeekdayDate($logistics, 8, 2);
+$tue18b = nextTargetDowAfterDate($logistics, $tue18a, 2, 7);
 $db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Mediation', ?, 'Lupon Hall', 'Completed')")
     ->execute([$case18a, "{$tue18a} 09:00:00"]);
 $h18aOrig = (int) $db->lastInsertId();
@@ -2220,7 +2239,7 @@ assertReg(
 );
 
 // Justified decision for Co-respondent 1 must excuse them and keep show-cause open for Co-respondent 2
-$replacementDay18 = nextWeekdayDate($logistics, 15, 2);
+$replacementDay18 = nextTargetDowAfterDate($logistics, $tue18b, 2, 7);
 $replacementDate18 = "{$replacementDay18} 14:00:00";
 $justData18 = [
     'hearing_id' => $h18aSc,
