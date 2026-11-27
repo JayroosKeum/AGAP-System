@@ -641,6 +641,79 @@ try {
         && !empty($escStageRow['started_at'])
         && ($escGroup['workflow_stage'] ?? '') === 'Stage 1 · Punong Barangay Mediation',
         'Formal complaint escalated from Paanyaya updates complaint screening, case_stages (Mediation In Progress), lifecycle, and Paanyaya workflow stage');
+
+    // Streamlined Editable Print/Preview + Auto-Dispatch + Pending Close Guard E2E
+    $streamRes = request($base, $clerk, 'complaints/create.php', [
+        'complaint_title' => "Streamlined Paanyaya $token",
+        'category_id' => 1,
+        'case_type' => 'Civil',
+        'incident_date' => date('Y-m-d', strtotime('-1 day')),
+        'incident_time' => '09:30',
+        'incident_street' => 'Tumana Test St',
+        'narrative' => 'Initial intake statement for streamlined preview test.',
+        'complainant_resident_id' => $residents[0],
+        'respondent_resident_id' => $residents[1],
+        'jurisdiction_screened' => '1',
+        'duplicate_acknowledged' => '1',
+    ]);
+    $streamId = (int) ($streamRes['json']['complaint_id'] ?? 0);
+    if ($streamId > 0) {
+        $cleanup->trackComplaint($streamId);
+    }
+    check($streamRes['status'] === 201 && $streamId > 0, 'Streamlined Paanyaya walk-in complaint created');
+
+    $streamPage = request($base, $clerk, '../../frontend/pages/complaints/complaint-details.php?id=' . $streamId . '&tab=paanyaya');
+    check(
+        $streamPage['status'] === 200
+        && !str_contains($streamPage['body'], 'Mark Ready for Release')
+        && !str_contains($streamPage['body'], 'Release and assign')
+        && str_contains($streamPage['body'], 'paanyayaEditablePreviewModal')
+        && preg_match('/id="openPendingCloseBtn"[^>]*style="display:none;"/', $streamPage['body']) === 1,
+        'Paanyaya complaint hides Request Pending Close and removes manual Mark Ready / Release controls'
+    );
+
+    $streamApptDate = date('Y-m-d', strtotime('+2 weekdays'));
+    $customBodyText = 'Kayo po ay inaaanyayahan sa custom edited paragraph test ' . $token . '.';
+    $previewHtml = request($base, $clerk, 'paanyaya/preparation.php', [
+        'action' => 'render_preview',
+        'complaint_id' => $streamId,
+        'invitation_number' => 1,
+        'appointment_date' => $streamApptDate,
+        'appointment_time' => '14:30',
+        'venue' => 'Barangay Session Hall',
+        'body_paragraph_1' => $customBodyText,
+    ]);
+    check(
+        $previewHtml['status'] === 200 && str_contains($previewHtml['body'], $customBodyText),
+        'Editable Paanyaya preview renders custom edited wording'
+    );
+
+    $dispatchRes = request($base, $clerk, 'paanyaya/preparation.php', [
+        'action' => 'confirm_and_dispatch',
+        'response_mode' => 'json',
+        'complaint_id' => $streamId,
+        'invitation_number' => 1,
+        'appointment_date' => $streamApptDate,
+        'appointment_time' => '14:30',
+        'venue' => 'Barangay Session Hall',
+        'verify_parties' => '1',
+        'party_version' => PaanyayaPreparationService::partyVersion($preparations->parties($streamId)),
+        'body_paragraph_1' => $customBodyText,
+    ]);
+    $dispatchAttempt = PaanyayaServiceDelivery::latestAttempt($db, $streamId, 1);
+    $dispatchPrep = $preparations->intake($streamId, 1);
+    $dispatchedServerId = (int) ($dispatchRes['json']['server_id'] ?? 0);
+    $serverQueue = $dispatchedServerId > 0 ? (new PaanyayaServiceDelivery($db))->assignments($dispatchedServerId) : [];
+    $inServerQueue = array_filter($serverQueue, fn ($row) => (int) ($row['complaint_id'] ?? 0) === $streamId);
+    check(
+        $dispatchRes['status'] === 200
+        && !empty($dispatchRes['json']['success'])
+        && !empty($dispatchPrep['ready_at'])
+        && $dispatchAttempt !== null
+        && $dispatchAttempt['outcome'] === null
+        && !empty($inServerQueue),
+        'Confirm & print automatically marks ready and dispatches Paanyaya to Summons Server Proof of Service queue'
+    );
 } catch (Throwable $exception) {
     fwrite(STDERR, file_get_contents($logPath));
     throw $exception;

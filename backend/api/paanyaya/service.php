@@ -74,14 +74,20 @@ if (!$isRelease && !$isReturn) {
 $flash = ['type' => 'success'];
 try {
     if ($isRelease) {
-        $serverId = filter_var($input['assigned_to'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+        $rawAssigned = $input['assigned_to'] ?? null;
+        $hasExplicitServer = is_string($rawAssigned) || is_int($rawAssigned) ? trim((string) $rawAssigned) !== '' : false;
+        if ($hasExplicitServer) {
+            $serverId = filter_var($rawAssigned, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: -1;
+        } else {
+            $serverId = 0;
+        }
         $version = is_string($input['document_version'] ?? null) ? $input['document_version'] : '';
         $number = filter_var($input['invitation_number'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 2]]);
         if (!$number) {
             throw new DomainException('Select a valid Paanyaya invitation.');
         }
         $service->release($complaintId, $userId, $serverId, $version, $number);
-        $flash['message'] = 'Paanyaya assigned for delivery.';
+        $flash['message'] = 'Paanyaya dispatched to Summons Server.';
     } else {
         $service->record($attemptId, $userId, $input, $_FILES['proof_image'] ?? []);
         $flash['message'] = 'Delivery result recorded.';

@@ -680,7 +680,18 @@ try {
     $closedRows = $search->records(['status' => 'Resolution / Closed']);
     assertTrue(in_array($ownedCid, array_map('intval', array_column($closedRows, 'complaint_id')), true), 'A10: Closed filter includes complainant-confirmed closures');
 
-    // A10 step 4: Notice-delivery gating rejects complaints without a portal owner or deliverable email; once deliverable, expired Pending Close auto-closes idempotently
+    // A10 step 4: Pre-docketed complaints cannot request Pending Close; once formally docketed, notice-delivery gating and expired timeout work idempotently
+    $preDocketReq = $closureSvc->requestPendingClose($ambigId, $actors['clerk']['user_id'], [
+        'resolution_type' => 'Administrative Closure',
+        'request_reason' => 'Attempted Pending Close prior to formal docketing.',
+        'evidence_path' => $ambigEvidencePath,
+    ]);
+    assertTrue(empty($preDocketReq['success']), 'A10: Pre-docketed intake/Paanyaya complaint is rejected from Pending Close');
+
+    $db->prepare("INSERT INTO cases (complaint_id, case_number, case_type, case_status, docket_date) VALUES (?, ?, 'Civil', 'Mediation', CURDATE())")
+        ->execute([$ambigId, 'CASE-AMBIG-' . $token]);
+    $db->prepare("UPDATE complaints SET status = 'Mediation' WHERE complaint_id = ?")->execute([$ambigId]);
+
     $db->prepare('UPDATE residents SET email = NULL, email_hash = NULL WHERE resident_id = ?')->execute([$compResId]);
     $db->prepare('UPDATE complaints SET submitted_by = ? WHERE complaint_id = ?')->execute([$actors['resident_owner']['user_id'], $ambigId]);
     $beforeFailedNotice = (int) $db->query('SELECT COUNT(*) FROM closure_requests')->fetchColumn();

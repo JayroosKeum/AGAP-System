@@ -35,18 +35,45 @@ $deliveryStatusText = match (true) {
     $paanyayaMinutes !== null => 'Naitala ang Katitikan at Pagdinig',
     $serviceOutcome === 'Delivered' => 'Naihatid at Natanggap (Delivered)',
     $serviceOutcome === 'Not Delivered' => 'Hindi Naihatid (Retry Required)',
-    $latestService !== null => 'Na-dispatch para sa Paghahatid',
-    !empty($preparation['ready_at']) => 'Handa para sa Pagpapadala',
-    !empty($preparation['prepared_at']) => 'Nabuo ang Paanyaya PDF',
+    $latestService !== null => 'Na-dispatch sa Summons Server',
+    !empty($preparation['ready_at']) => 'Nakumpirma at Handa sa Paghahatid',
+    !empty($preparation['prepared_at']) => 'May Draft ng Paanyaya (I-preview at I-print)',
     default => 'Hindi pa naihanda',
 };
-$serverDisplayText = $latestService['server_name'] ?? 'Barangay Summons Server / Tanod';
+$serverDisplayText = $latestService['server_name'] ?? 'Auto-assigned Summons Server';
 $latestProofUrl = ($latestService && !empty($latestService['proof_mime']))
     ? $serviceEndpoint . '?view=proof&attempt_id=' . (int) $latestService['attempt_id']
     : null;
 $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
     ? $serviceEndpoint . '?view=invitation&attempt_id=' . (int) $latestService['attempt_id']
     : (!empty($preparation['prepared_at']) ? $prepEndpoint . '?complaint_id=' . $complaintId . '&invitation_number=' . $invitationNumber . '&version=' . $preparation['document_version'] : null);
+$compAddrItems = [];
+$respAddrItems = [];
+foreach ($preparationParties as $ptAddr) {
+    $addrTxt = trim((string) ($ptAddr['address'] ?? ''));
+    if ($addrTxt === '') continue;
+    if (strcasecmp((string) ($ptAddr['party_type'] ?? ''), 'Respondent') === 0) {
+        $respAddrItems[] = $addrTxt;
+    } else {
+        $compAddrItems[] = $addrTxt;
+    }
+}
+$compAddrDisplay = $compAddrItems ? implode(', ', array_unique($compAddrItems)) : 'Barangay Tumana, Marikina City';
+$respAddrDisplay = $respAddrItems ? implode(', ', array_unique($respAddrItems)) : 'Barangay Tumana, Marikina City';
+$modalSeedPayload = [
+    'complaint_id' => $complaintId,
+    'invitation_number' => $invitationNumber,
+    'party_version' => PaanyayaPreparationService::partyVersion($preparationParties),
+    'doc_title' => $invitationNumber === 2 ? 'I K A L A W A N G   P A A N Y A Y A' : 'P A A N Y A Y A',
+    'complainant_display' => implode(' / ', $compNames) ?: $compDisplay,
+    'complainant_address' => $compAddrDisplay,
+    'respondent_display' => implode(' / ', $respNames) ?: $respDisplay,
+    'respondent_address' => $respAddrDisplay,
+    'salaysay' => $prepNarrative !== '' ? $prepNarrative : 'naisin nilang magkausap at magkaliwanagan.',
+    'mode' => (!empty($preparation['ready_at']) && (!$latestService || $serviceOutcome !== 'Not Delivered')) ? 'reprint' : 'dispatch',
+    'rescheduled' => !empty($preparation['rescheduled']),
+];
+$modalSeedJson = htmlspecialchars(json_encode($modalSeedPayload, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP), ENT_QUOTES, 'UTF-8');
 ?>
 <section class="cd-p-panel <?= $isPanelVisible ? '' : 'is-hidden' ?>" id="paanyaya-invitation-<?= $invitationNumber ?>" aria-labelledby="paanyaya-prep-title-<?= $invitationNumber ?>">
     <h2 id="paanyaya-prep-title-<?= $invitationNumber ?>" style="position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0);"><?= $invitationNumber === 2 ? 'Second Paanyaya' : 'Paanyaya Preparation' ?></h2>
@@ -79,10 +106,12 @@ $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
                     <?= match (true) {
                         $paanyayaMinutes !== null => 'Dialogue recorded',
                         $serviceOutcome === 'Delivered' => 'Delivered',
-                        !$preparation['ready_at'] => $preparation['rescheduled'] ? 'Revised invitation awaiting review' : ($preparation['prepared_at'] ? 'Invitation generated' : 'Awaiting preparation'),
                         $serviceOutcome === 'Not Delivered' => 'Delivery unsuccessful',
-                        $latestService !== null => 'Assigned for delivery',
-                        default => 'Ready for Release',
+                        $latestService !== null => 'Dispatched to Summons Server',
+                        !empty($preparation['ready_at']) => 'Confirmed for Service',
+                        !empty($preparation['rescheduled']) => 'Revised invitation awaiting confirmation',
+                        !empty($preparation['prepared_at']) => 'Draft saved · Preview & Confirm',
+                        default => 'Awaiting Schedule & Print Confirmation',
                     } ?>
                 </span>
                 <?php if ($canManagePaanyayaPrep && $preparation['eligible'] && !empty($preparation['ready_at']) && $serviceOutcome !== 'Delivered'): ?>
@@ -170,7 +199,7 @@ $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
                     </div>
                 <?php endif; ?>
                 <?php if (!$preparationParties): ?>
-                    <p style="font-size:0.84rem; color:#64748b; margin:0;">Add the complainant and respondent to this intake before generating the invitation.</p>
+                    <p style="font-size:0.84rem; color:#64748b; margin:0;">Add the complainant and respondent to this intake before preparing the invitation.</p>
                 <?php else: ?>
                     <ul class="paanyaya-prep-list">
                         <?php foreach ($preparationParties as $party): ?>
@@ -194,11 +223,11 @@ $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
             </p>
 
             <?php if ($canManagePaanyayaPrep && $preparation['eligible'] && !$preparation['ready_at']): ?>
-                <form method="post" action="<?= $prepEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Generating PDF...';}">
+                <form method="post" action="<?= $prepEndpoint ?>" data-pny-seed="<?= $modalSeedJson ?>" onsubmit="return window.openPaanyayaPreviewModalFromForm ? window.openPaanyayaPreviewModalFromForm(event, this) : false;">
                     <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                     <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                     <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
-                    <input type="hidden" name="action" value="generate">
+                    <input type="hidden" name="action" value="confirm_and_dispatch">
                     <input type="hidden" name="party_version" value="<?= PaanyayaPreparationService::partyVersion($preparationParties) ?>">
                     <?php
                     $todayDow = (int) date('N');
@@ -224,7 +253,7 @@ $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
                         <input type="checkbox" name="verify_parties" value="1" required>
                         I verified the complainant and respondent names and addresses for this invitation.
                     </label>
-                    <button type="submit" class="cd-btn-green"><?= $preparation['prepared_at'] ? 'Regenerate invitation PDF' : 'Generate invitation PDF' ?></button>
+                    <button type="submit" class="cd-btn-green">Preview, Edit &amp; Print Invitation</button>
                 </form>
             <?php endif; ?>
 
@@ -232,19 +261,21 @@ $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
                 <?php $pdfUrl = $prepEndpoint . '?complaint_id=' . $complaintId . '&invitation_number=' . $invitationNumber . '&version=' . $preparation['document_version']; ?>
                 <details class="paanyaya-prep-preview" <?= !$preparation['ready_at'] ? 'open' : '' ?>>
                     <summary>Preview and print invitation (<?= $escapePrep(date('M j, Y, g:i A', strtotime($savedAppointment))) ?>)</summary>
-                    <p>Use the PDF viewer’s print control. <a href="<?= $escapePrep($pdfUrl) ?>" target="_blank" rel="noopener">Open PDF separately</a></p>
+                    <p style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span><a href="<?= $escapePrep($pdfUrl) ?>" target="_blank" rel="noopener">Open saved PDF</a></span>
+                        <?php if ($canManagePaanyayaPrep && $preparation['eligible']): ?>
+                            <button type="button" class="cd-btn-soft" data-pny-seed="<?= $modalSeedJson ?>"
+                                    data-pny-date="<?= $escapePrep(substr($savedAppointment, 0, 10)) ?>"
+                                    data-pny-time="<?= $escapePrep(substr($savedAppointment, 11, 5)) ?>"
+                                    data-pny-venue="<?= $escapePrep($preparation['venue'] ?? 'Tanggapan ng Barangay Tumana') ?>"
+                                    onclick="window.openPaanyayaPreviewModalFromButton && window.openPaanyayaPreviewModalFromButton(this)"
+                                    style="padding:4px 10px; font-size:0.78rem;">
+                                <?= $preparation['ready_at'] ? 'Open Print / Preview' : 'Edit &amp; Print Letter' ?>
+                            </button>
+                        <?php endif; ?>
+                    </p>
                     <iframe title="Prepared Paanyaya invitation PDF" src="<?= $escapePrep($pdfUrl) ?>" loading="lazy"></iframe>
                 </details>
-                <?php if (!$preparation['ready_at'] && $canManagePaanyayaPrep && $preparation['eligible']): ?>
-                    <form method="post" action="<?= $prepEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Marking ready...';}">
-                        <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
-                        <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
-                        <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
-                        <input type="hidden" name="action" value="ready">
-                        <input type="hidden" name="document_version" value="<?= $escapePrep($preparation['document_version']) ?>">
-                        <button type="submit" class="cd-btn-green">Mark Ready for Release</button>
-                    </form>
-                <?php endif; ?>
             <?php endif; ?>
 
             <?php if ($paanyayaServiceUnavailable): ?>
@@ -260,7 +291,7 @@ $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
                                         <strong><?= $escapePrep($attempt['outcome'] ?? 'Assigned for delivery') ?></strong>
                                         <?php if (!$attempt['is_current']): ?> · Superseded invitation<?php endif; ?>
                                         <div><?= $escapePrep(date('M j, Y, g:i a', strtotime($attempt['appointment_at']))) ?><?= $attempt['venue'] ? ' · ' . $escapePrep($attempt['venue']) : '' ?></div>
-                                        <div><?= $escapePrep($attempt['server_name']) ?> · Released <?= $escapePrep($attempt['released_at']) ?> by <?= $escapePrep($attempt['released_by_name'] ?: 'Staff account') ?></div>
+                                        <div><?= $escapePrep($attempt['server_name']) ?> · Dispatched <?= $escapePrep($attempt['released_at']) ?> by <?= $escapePrep($attempt['released_by_name'] ?: 'Staff account') ?></div>
                                         <?php if ($attempt['recorded_at']): ?>
                                             <div>Result recorded <?= $escapePrep($attempt['recorded_at']) ?></div>
                                         <?php endif; ?>
@@ -282,32 +313,22 @@ $latestPdfUrl = ($latestService && !empty($latestService['has_pdf']))
 
                 <?php if ($serviceOutcome === 'Delivered'): ?>
                     <?php include __DIR__ . '/paanyaya-dialogue.php'; ?>
-                <?php elseif ($canManagePaanyayaPrep && $preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $serviceOutcome === 'Not Delivered')): ?>
+                <?php elseif ($canManagePaanyayaPrep && $preparation['eligible'] && $preparation['ready_at'] && $serviceOutcome === 'Not Delivered'): ?>
                     <div id="paanyaya-service-<?= $invitationNumber ?>" style="margin-top:10px;">
-                        <h4 style="margin:0 0 8px; font-size:0.88rem; color:#0f172a;"><?= $latestService ? 'Coordinate another delivery attempt' : 'Release invitation' ?></h4>
+                        <h4 style="margin:0 0 8px; font-size:0.88rem; color:#0f172a;">Coordinate another delivery attempt</h4>
                         <?php if (!$paanyayaServers): ?>
                             <p style="font-size:0.84rem; color:#64748b;">No active summons servers are available.</p>
                         <?php elseif (strtotime($savedAppointment) > time()): ?>
-                            <form method="post" action="<?= $serviceEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Assigning delivery...';}">
+                            <form method="post" action="<?= $serviceEndpoint ?>" onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Dispatching retry...';}">
                                 <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                                 <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                                 <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
                                 <input type="hidden" name="action" value="release">
                                 <input type="hidden" name="document_version" value="<?= $escapePrep($preparation['document_version']) ?>">
-                                <div class="paanyaya-prep-fields" style="margin:8px 0 12px;">
-                                    <label>Summons server
-                                        <select name="assigned_to" required>
-                                            <option value="">Select a summons server</option>
-                                            <?php foreach ($paanyayaServers as $server): ?>
-                                                <option value="<?= (int) $server['user_id'] ?>"><?= $escapePrep($server['full_name']) ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </label>
-                                </div>
-                                <button type="submit" class="cd-btn-green"><?= $latestService ? 'Assign next attempt' : 'Release and assign' ?></button>
+                                <button type="submit" class="cd-btn-green">Retry Delivery to Summons Server</button>
                             </form>
                         <?php else: ?>
-                            <p style="font-size:0.84rem; color:#b45309;"><?= $preparation['rescheduled'] ? 'The appointment has passed. Reschedule it from the docket before assigning delivery.' : 'The appointment has passed. Revise the invitation before assigning delivery.' ?></p>
+                            <p style="font-size:0.84rem; color:#b45309;"><?= $preparation['rescheduled'] ? 'The appointment has passed. Reschedule it from the docket before retrying delivery.' : 'The appointment has passed. Revise the schedule and re-confirm before retrying delivery.' ?></p>
                         <?php endif; ?>
                     </div>
                 <?php endif; ?>

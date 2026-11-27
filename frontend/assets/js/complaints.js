@@ -3369,6 +3369,18 @@ function syncUnifiedComplaintHeader(data, docketNum, displayStage, hasFormalDock
     if (outBadge) {
         outBadge.textContent = isClosed ? 'CONCLUDED' : 'PENDING';
     }
+
+    const pendingCloseBtn = document.getElementById('openPendingCloseBtn');
+    if (pendingCloseBtn) {
+        const formalStage = hasFormalDocket
+            && !isClosed
+            && !isReadOnly
+            && cStatus !== 'Pending Close'
+            && String(data.status || '') !== 'Pending Close'
+            && !['Pending Screening', 'Needs Information', 'Accepted', 'Pre-Docketed (Paanyaya)'].includes(cStatus);
+        pendingCloseBtn.style.display = formalStage ? '' : 'none';
+        pendingCloseBtn.disabled = !formalStage;
+    }
 }
 window.syncUnifiedComplaintHeader = syncUnifiedComplaintHeader;
 
@@ -12454,3 +12466,271 @@ async function submitLisoReviewDecision(decision) {
     }
 }
 window.submitLisoReviewDecision = submitLisoReviewDecision;
+
+// =========================================================================
+// EDITABLE PAANYAYA PRINT / PREVIEW MODAL & AUTOMATED SUMMONS SERVER DISPATCH
+// =========================================================================
+let paanyayaModalRenderTimer = null;
+
+function buildDefaultFilipinoBody1(dateStr, timeStr, venueStr, compNameStr, salaysayStr) {
+    const months = ['Enero', 'Pebrero', 'Marso', 'Abril', 'Mayo', 'Hunyo', 'Hulyo', 'Agosto', 'Setyembre', 'Oktubre', 'Nobyembre', 'Disyembre'];
+    const days = ['Linggo', 'Lunes', 'Martes', 'Miyerkules', 'Huwebes', 'Biyernes', 'Sabado'];
+    let dayNum = '___';
+    let monthName = '________';
+    let yearNum = '____';
+    let dayName = '________';
+    if (dateStr) {
+        const dt = new Date(`${dateStr}T00:00:00`);
+        if (!Number.isNaN(dt.getTime())) {
+            dayNum = String(dt.getDate());
+            monthName = (months[dt.getMonth()] || '').toUpperCase();
+            yearNum = String(dt.getFullYear());
+            dayName = (days[dt.getDay()] || '').toUpperCase();
+        }
+    }
+    let timeFormatted = '2:00 NG HAPON';
+    if (timeStr && timeStr.includes(':')) {
+        const [hRaw, mRaw] = timeStr.split(':');
+        const h24 = parseInt(hRaw, 10);
+        const mins = String(parseInt(mRaw || '0', 10)).padStart(2, '0');
+        if (!Number.isNaN(h24)) {
+            const h12 = h24 % 12 || 12;
+            let suffix = 'NG UMAGA';
+            if (h24 >= 12 && h24 < 18) suffix = 'NG HAPON';
+            else if (h24 >= 18) suffix = 'NG GABI';
+            timeFormatted = `${h12}:${mins} ${suffix}`;
+        }
+    }
+    let salaysayClean = (salaysayStr || 'naisin nilang magkausap at magkaliwanagan').trim();
+    if (salaysayClean && !/[.!?]$/.test(salaysayClean)) salaysayClean += '.';
+    const comp = (compNameStr || 'NAGPAANYAYA').trim();
+    const niNina = comp.includes('/') || comp.includes(',') ? 'nina' : 'ni';
+    const pronoun = comp.includes('/') || comp.includes(',') ? 'sila' : 'siya';
+    const v = (venueStr || 'Tanggapan ng Barangay Tumana').trim();
+    return `Kayo po ay malugod na inaanyayahan sa ${v}, sa ika ${dayNum} ng ${monthName}, ${yearNum} araw ng ${dayName} sa ganap na ${timeFormatted} upang pagusapan at mabigyang linaw ukol sa inihaing alintana o usapin ${niNina} ${comp}. Dahil ayon sa kanila {${salaysayClean}} Kung kaya't ${pronoun} ay dumulog sa Barangay upang kayo ay Paanyayahan.`;
+}
+
+function collectPaanyayaModalPayload(actionName) {
+    return {
+        action: actionName,
+        response_mode: 'json',
+        complaint_id: Number(document.getElementById('pnyModalComplaintId')?.value || 0),
+        invitation_number: Number(document.getElementById('pnyModalInvNum')?.value || 1),
+        party_version: document.getElementById('pnyModalPartyVersion')?.value || '',
+        verify_parties: '1',
+        appointment_date: document.getElementById('pnyEditDate')?.value || '',
+        appointment_time: document.getElementById('pnyEditTime')?.value || '',
+        venue: document.getElementById('pnyEditVenue')?.value?.trim() || '',
+        doc_title: document.getElementById('pnyEditDocTitle')?.value?.trim() || '',
+        complainant_display: document.getElementById('pnyEditCompName')?.value?.trim() || '',
+        complainant_address: document.getElementById('pnyEditCompAddr')?.value?.trim() || '',
+        respondent_display: document.getElementById('pnyEditRespName')?.value?.trim() || '',
+        respondent_address: document.getElementById('pnyEditRespAddr')?.value?.trim() || '',
+        salutation: document.getElementById('pnyEditSalutation')?.value?.trim() || '',
+        salaysay: document.getElementById('pnyEditSalaysay')?.value?.trim() || '',
+        body_paragraph_1: document.getElementById('pnyEditBody1')?.value?.trim() || '',
+        body_paragraph_2: document.getElementById('pnyEditBody2')?.value?.trim() || '',
+        body_paragraph_3: document.getElementById('pnyEditBody3')?.value?.trim() || '',
+        captain_name: document.getElementById('pnyEditCaptain')?.value?.trim() || ''
+    };
+}
+
+function openPaanyayaEditableModal(seed, dateVal, timeVal, venueVal) {
+    const modal = document.getElementById('paanyayaEditablePreviewModal');
+    if (!modal || !seed) return;
+
+    const invNum = Number(seed.invitation_number || 1);
+    const mode = seed.mode === 'reprint' ? 'reprint' : 'dispatch';
+    document.getElementById('pnyModalComplaintId').value = String(seed.complaint_id || 0);
+    document.getElementById('pnyModalInvNum').value = String(invNum);
+    document.getElementById('pnyModalPartyVersion').value = String(seed.party_version || '');
+    document.getElementById('pnyModalMode').value = mode;
+
+    const invBadge = document.getElementById('pnyModalInvBadge');
+    if (invBadge) invBadge.textContent = invNum === 2 ? '2nd Paanyaya' : '1st Paanyaya';
+
+    const confirmBtn = document.getElementById('pnyModalConfirmPrintBtn');
+    if (confirmBtn) {
+        confirmBtn.style.display = mode === 'reprint' ? 'none' : '';
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm, Print & Dispatch to Summons Server';
+    }
+
+    const dateInp = document.getElementById('pnyEditDate');
+    const timeInp = document.getElementById('pnyEditTime');
+    const venueInp = document.getElementById('pnyEditVenue');
+    if (dateInp) {
+        dateInp.value = dateVal || '';
+        dateInp.readOnly = Boolean(seed.rescheduled || mode === 'reprint');
+    }
+    if (timeInp) {
+        timeInp.value = timeVal || '';
+        timeInp.readOnly = Boolean(seed.rescheduled || mode === 'reprint');
+    }
+    if (venueInp) {
+        venueInp.value = venueVal || 'Tanggapan ng Barangay Tumana';
+        venueInp.readOnly = Boolean(seed.rescheduled || mode === 'reprint');
+    }
+
+    document.getElementById('pnyEditDocTitle').value = seed.doc_title || (invNum === 2 ? 'I K A L A W A N G   P A A N Y A Y A' : 'P A A N Y A Y A');
+    document.getElementById('pnyEditCompName').value = seed.complainant_display || '';
+    document.getElementById('pnyEditCompAddr').value = seed.complainant_address || '';
+    document.getElementById('pnyEditRespName').value = seed.respondent_display || '';
+    document.getElementById('pnyEditRespAddr').value = seed.respondent_address || '';
+    document.getElementById('pnyEditSalaysay').value = seed.salaysay || '';
+
+    const body1El = document.getElementById('pnyEditBody1');
+    if (body1El) {
+        delete body1El.dataset.userEdited;
+        body1El.value = buildDefaultFilipinoBody1(dateVal, timeVal, venueVal, seed.complainant_display, seed.salaysay);
+    }
+
+    modal.style.display = 'flex';
+    renderPaanyayaModalHtmlPreview();
+}
+
+window.openPaanyayaPreviewModalFromForm = function(ev, formEl) {
+    if (ev) ev.preventDefault();
+    if (!formEl || !formEl.reportValidity()) return false;
+    let seed = {};
+    try {
+        seed = JSON.parse(formEl.dataset.pnySeed || '{}');
+    } catch (e) {
+        seed = {};
+    }
+    const dateVal = formEl.querySelector('input[name="appointment_date"]')?.value || '';
+    const timeVal = formEl.querySelector('input[name="appointment_time"]')?.value || '';
+    const venueVal = formEl.querySelector('input[name="venue"]')?.value || 'Tanggapan ng Barangay Tumana';
+    const d = dateVal ? new Date(`${dateVal}T00:00:00`).getDay() : 1;
+    if (d === 0 || d === 6) {
+        window.agapNotify?.('Paanyaya appointments can only be scheduled on weekdays (Monday to Friday).', 'warning', 'Paanyaya Schedule');
+        return false;
+    }
+    openPaanyayaEditableModal(seed, dateVal, timeVal, venueVal);
+    return false;
+};
+
+window.openPaanyayaPreviewModalFromButton = function(btnEl) {
+    if (!btnEl) return;
+    let seed = {};
+    try {
+        seed = JSON.parse(btnEl.dataset.pnySeed || '{}');
+    } catch (e) {
+        seed = {};
+    }
+    openPaanyayaEditableModal(seed, btnEl.dataset.pnyDate || '', btnEl.dataset.pnyTime || '', btnEl.dataset.pnyVenue || 'Tanggapan ng Barangay Tumana');
+};
+
+window.closePaanyayaPreviewModal = function() {
+    const modal = document.getElementById('paanyayaEditablePreviewModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.syncPaanyayaModalBodyPreview = function() {
+    const body1El = document.getElementById('pnyEditBody1');
+    if (body1El && body1El.dataset.userEdited !== '1') {
+        body1El.value = buildDefaultFilipinoBody1(
+            document.getElementById('pnyEditDate')?.value || '',
+            document.getElementById('pnyEditTime')?.value || '',
+            document.getElementById('pnyEditVenue')?.value || '',
+            document.getElementById('pnyEditCompName')?.value || '',
+            document.getElementById('pnyEditSalaysay')?.value || ''
+        );
+    }
+    schedulePaanyayaModalRender();
+};
+
+window.resetPaanyayaModalBody1 = function() {
+    const body1El = document.getElementById('pnyEditBody1');
+    if (body1El) {
+        delete body1El.dataset.userEdited;
+    }
+    window.syncPaanyayaModalBodyPreview();
+};
+
+window.schedulePaanyayaModalRender = function() {
+    if (paanyayaModalRenderTimer) clearTimeout(paanyayaModalRenderTimer);
+    paanyayaModalRenderTimer = setTimeout(renderPaanyayaModalHtmlPreview, 240);
+};
+
+async function renderPaanyayaModalHtmlPreview() {
+    const statusEl = document.getElementById('pnyModalPreviewStatus');
+    const frame = document.getElementById('paanyayaModalPreviewFrame');
+    if (!frame) return;
+    if (statusEl) statusEl.textContent = 'Updating preview...';
+    try {
+        const res = await fetch('../../../backend/api/paanyaya/preparation.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(collectPaanyayaModalPayload('render_preview'))
+        });
+        const html = await res.text();
+        if (res.ok && html) {
+            frame.srcdoc = html;
+            if (statusEl) statusEl.textContent = 'Updated';
+        } else if (statusEl) {
+            statusEl.textContent = 'Preview error';
+        }
+    } catch (err) {
+        if (statusEl) statusEl.textContent = 'Preview unavailable';
+    }
+}
+window.renderPaanyayaModalHtmlPreview = renderPaanyayaModalHtmlPreview;
+
+window.printPaanyayaModalFrameOnly = function() {
+    const frame = document.getElementById('paanyayaModalPreviewFrame');
+    if (frame && frame.contentWindow) {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+    }
+};
+
+window.confirmPrintAndDispatchPaanyaya = async function() {
+    const btn = document.getElementById('pnyModalConfirmPrintBtn');
+    const payload = collectPaanyayaModalPayload('confirm_and_dispatch');
+    if (!payload.appointment_date || !payload.appointment_time || !payload.venue) {
+        window.agapNotify?.('Please enter a valid weekday appointment date, time, and venue.', 'warning', 'Paanyaya');
+        return;
+    }
+    const dow = new Date(`${payload.appointment_date}T00:00:00`).getDay();
+    if (dow === 0 || dow === 6) {
+        window.agapNotify?.('Paanyaya appointments can only be scheduled on weekdays (Monday to Friday).', 'warning', 'Paanyaya');
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Confirming & Dispatching...';
+    }
+
+    try {
+        const res = await fetch('../../../backend/api/paanyaya/preparation.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            window.agapNotify?.(data.message || 'Unable to confirm and dispatch the invitation.', 'error', 'Paanyaya');
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = 'Confirm, Print & Dispatch to Summons Server';
+            }
+            return;
+        }
+
+        window.printPaanyayaModalFrameOnly();
+        window.agapNotify?.(data.message || 'Paanyaya confirmed and dispatched to Summons Server.', 'success', 'Paanyaya Dispatched');
+        window.closePaanyayaPreviewModal();
+        setTimeout(() => {
+            window.location.hash = '#paanyaya-preparation';
+            window.location.reload();
+        }, 500);
+    } catch (err) {
+        window.agapNotify?.('Connection error while dispatching Paanyaya invitation.', 'error', 'Paanyaya');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Confirm, Print & Dispatch to Summons Server';
+        }
+    }
+};

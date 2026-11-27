@@ -78,7 +78,7 @@ try {
         'SELECT c.liso_assigned_to, c.screening_decision, c.status, c.submitted_by, c.is_draft,
                 c.category_id, c.secondary_category_id, c.other_category_specification,
                 c.secondary_other_category_specification, c.case_type, c.complaint_title, c.intake_source,
-                c.narrative, cat.category_name, cs.case_id
+                c.narrative, cat.category_name, cs.case_id, cs.case_status
          FROM complaints c
          LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
          LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
@@ -95,6 +95,12 @@ try {
     $intakeScreeningMeta = null;
 }
 $isUndocketedIntake = empty($intakeScreeningMeta['case_id']);
+$formalCaseStatus = trim((string) ($intakeScreeningMeta['case_status'] ?? ''));
+$complaintStatusVal = trim((string) ($intakeScreeningMeta['status'] ?? ''));
+$canRequestPendingClose = !$isLuponReadOnly
+    && !$isUndocketedIntake
+    && !in_array($formalCaseStatus, ['Closed', 'Resolution / Closed', 'DISMISSED_BARRED', 'Pending Close', 'CFA Issued', 'Arbitration Award'], true)
+    && !in_array($complaintStatusVal, ['Pending Screening', 'Needs Information', 'Accepted', 'Pre-Docketed (Paanyaya)', 'Closed', 'Resolution / Closed', 'Pending Close', 'Rejected', 'Archived'], true);
 $isIntakeAlreadyEligible = ($intakeScreeningMeta['screening_decision'] ?? '') === 'Eligible'
     || !$isUndocketedIntake
     || in_array($intakeScreeningMeta['status'] ?? '', [
@@ -613,8 +619,8 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             <span>Proof of Service</span>
                         </a>
                         <?php if (!$isLuponReadOnly): ?>
-                            <button type="button" id="openPendingCloseBtn" class="cd-btn-rose" onclick="openPendingCloseModal()" title="Request complainant-verified Pending Close">
-                                <span>Kasunduan / Isara</span>
+                            <button type="button" id="openPendingCloseBtn" class="cd-btn-rose" onclick="openPendingCloseModal()" title="Request complainant-verified Pending Close"<?php echo $canRequestPendingClose ? '' : ' style="display:none;"'; ?>>
+                                <span>Request Pending Close</span>
                             </button>
                         <?php endif; ?>
                     </div>
@@ -1392,13 +1398,13 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                 $preparationParties = $preparation['ready_at']
                                     ? json_decode($preparation['verified_parties'], true, 512, JSON_THROW_ON_ERROR)
                                     : $preparationService->parties($complaintId);
+                                if ($preparation['eligible']) {
+                                    $paanyayaServers = $delivery->servers();
+                                }
                                 if ($preparation['prepared_at']) {
                                     $paanyayaServiceHistory = $delivery->history($complaintId, $invitationNumber);
                                     $latestService = PaanyayaServiceDelivery::latestAttempt($preparationDb, $complaintId, $invitationNumber);
                                     $latestOutcome = $latestService['outcome'] ?? null;
-                                    if ($preparation['eligible'] && $preparation['ready_at'] && (!$latestService || $latestOutcome === 'Not Delivered')) {
-                                        $paanyayaServers = $delivery->servers();
-                                    }
                                     if ($latestOutcome === 'Delivered') {
                                         $paanyayaMinutes = $minutesModel->getStageMinutes($complaintId, 'Paanyaya ' . $invitationNumber);
                                     }
@@ -3166,6 +3172,132 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
     </div>
 </div>
 
+<!-- Editable Paanyaya Print / Preview & Auto-Dispatch Modal -->
+<div id="paanyayaEditablePreviewModal" class="modal" style="display:none; z-index: 1080; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.65); align-items: center; justify-content: center; padding: 16px;">
+    <div class="modal-content" style="max-width: 1180px; width: 96vw; height: 90vh; max-height: 90vh; display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 14px;">
+        <div class="modal-header" style="padding: 14px 22px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <h2 id="pnyModalHeading" style="margin:0; font-size:1.1rem; font-weight:800; color:#0f172a;">Preview, Edit &amp; Print Paanyaya Letter</h2>
+                    <span id="pnyModalInvBadge" style="font-size:0.72rem; font-weight:800; padding:2px 9px; border-radius:9999px; background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">1st Paanyaya</span>
+                </div>
+                <p id="pnyModalSub" style="margin:2px 0 0; font-size:0.8rem; color:#64748b;">
+                    Suriin at ayusin ang wording kung kinakailangan. Pagkumpirma at pag-print, awtomatikong maipapadala ang Paanyaya sa Summons Server queue.
+                </p>
+            </div>
+            <button type="button" class="close-btn" onclick="closePaanyayaPreviewModal()" aria-label="Close modal" style="font-size:1.6rem; color:#64748b; background:none; border:none; cursor:pointer; line-height:1;">&times;</button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(320px, 420px) 1fr; flex: 1; min-height: 0; overflow: hidden;">
+            <!-- Left Panel: Editable Letter Sections -->
+            <div style="padding: 16px 18px; border-right: 1px solid #e2e8f0; overflow-y: auto; background: #ffffff; display: flex; flex-direction: column; gap: 12px;">
+                <input type="hidden" id="pnyModalComplaintId" value="<?= $complaintId ?>">
+                <input type="hidden" id="pnyModalInvNum" value="1">
+                <input type="hidden" id="pnyModalPartyVersion" value="">
+                <input type="hidden" id="pnyModalMode" value="dispatch">
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <label style="font-size:0.78rem; font-weight:700; color:#334155; display:block;">
+                        Appointment Date (Mon–Fri)
+                        <input type="date" id="pnyEditDate" style="width:100%; margin-top:4px; padding:7px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.84rem;" oninput="syncPaanyayaModalBodyPreview()">
+                    </label>
+                    <label style="font-size:0.78rem; font-weight:700; color:#334155; display:block;">
+                        Appointment Time
+                        <input type="time" id="pnyEditTime" style="width:100%; margin-top:4px; padding:7px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.84rem;" oninput="syncPaanyayaModalBodyPreview()">
+                    </label>
+                </div>
+
+                <label style="font-size:0.78rem; font-weight:700; color:#334155; display:block;">
+                    Venue / Tanggapan
+                    <input type="text" id="pnyEditVenue" maxlength="255" style="width:100%; margin-top:4px; padding:7px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.84rem;" oninput="syncPaanyayaModalBodyPreview()">
+                </label>
+
+                <label style="font-size:0.78rem; font-weight:700; color:#334155; display:block;">
+                    Letter Title Header
+                    <input type="text" id="pnyEditDocTitle" maxlength="120" style="width:100%; margin-top:4px; padding:7px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.84rem;" oninput="schedulePaanyayaModalRender()">
+                </label>
+
+                <div style="padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; display:flex; flex-direction:column; gap:8px;">
+                    <div style="font-size:0.74rem; font-weight:800; color:#475569; text-transform:uppercase; letter-spacing:0.04em;">Mga Partido sa Liham</div>
+                    <label style="font-size:0.76rem; font-weight:700; color:#334155; display:block;">
+                        Nagpaanyaya (Complainant)
+                        <input type="text" id="pnyEditCompName" maxlength="255" style="width:100%; margin-top:3px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.82rem;" oninput="syncPaanyayaModalBodyPreview()">
+                    </label>
+                    <label style="font-size:0.76rem; font-weight:700; color:#334155; display:block;">
+                        Address ng Nagpaanyaya
+                        <input type="text" id="pnyEditCompAddr" maxlength="255" style="width:100%; margin-top:3px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.82rem;" oninput="schedulePaanyayaModalRender()">
+                    </label>
+                    <label style="font-size:0.76rem; font-weight:700; color:#334155; display:block;">
+                        Inanyayahan (Respondent)
+                        <input type="text" id="pnyEditRespName" maxlength="255" style="width:100%; margin-top:3px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.82rem;" oninput="schedulePaanyayaModalRender()">
+                    </label>
+                    <label style="font-size:0.76rem; font-weight:700; color:#334155; display:block;">
+                        Address ng Inanyayahan
+                        <input type="text" id="pnyEditRespAddr" maxlength="255" style="width:100%; margin-top:3px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.82rem;" oninput="schedulePaanyayaModalRender()">
+                    </label>
+                </div>
+
+                <label style="font-size:0.78rem; font-weight:700; color:#334155; display:block;">
+                    Salutation
+                    <input type="text" id="pnyEditSalutation" maxlength="120" value="Mahal na G/Gng/Bb:" style="width:100%; margin-top:4px; padding:7px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.84rem;" oninput="schedulePaanyayaModalRender()">
+                </label>
+
+                <label style="font-size:0.78rem; font-weight:700; color:#334155; display:block;">
+                    Buod ng Usapin / Salaysay
+                    <textarea id="pnyEditSalaysay" rows="2" maxlength="1500" style="width:100%; margin-top:4px; padding:7px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.82rem;" oninput="syncPaanyayaModalBodyPreview()"></textarea>
+                </label>
+
+                <div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <label for="pnyEditBody1" style="font-size:0.78rem; font-weight:700; color:#334155;">Pangunahing Talata ng Paanyaya (Editable)</label>
+                        <button type="button" onclick="resetPaanyayaModalBody1()" style="background:none; border:none; padding:0; font-size:0.74rem; color:#0284c7; font-weight:700; cursor:pointer;">Reset Wording</button>
+                    </div>
+                    <textarea id="pnyEditBody1" rows="5" maxlength="3500" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.82rem; line-height:1.45;" oninput="this.dataset.userEdited='1'; schedulePaanyayaModalRender();"></textarea>
+                </div>
+
+                <label style="font-size:0.78rem; font-weight:700; color:#334155; display:block;">
+                    Ikalawang Talata (Mediation Role)
+                    <textarea id="pnyEditBody2" rows="2" maxlength="1000" style="width:100%; margin-top:4px; padding:7px 9px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.82rem;" oninput="schedulePaanyayaModalRender()">Ang inyo pong lingkod ay para lamang mamagitan sa anumang inyong mapag-uusapan.</textarea>
+                </label>
+
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <label style="font-size:0.76rem; font-weight:700; color:#334155; display:block;">
+                        Pangatlong Talata
+                        <input type="text" id="pnyEditBody3" maxlength="500" value="Kung Kaya't inaasahan ang inyong pagtalima sa inyong imbitasyon." style="width:100%; margin-top:3px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem;" oninput="schedulePaanyayaModalRender()">
+                    </label>
+                    <label style="font-size:0.76rem; font-weight:700; color:#334155; display:block;">
+                        Signatory (Punong Barangay)
+                        <input type="text" id="pnyEditCaptain" maxlength="160" value="<?= htmlspecialchars((string) ($sysSettings['captain_name'] ?? 'HON. AKIKO LYNNE CENTENO'), ENT_QUOTES, 'UTF-8') ?>" style="width:100%; margin-top:3px; padding:6px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem;" oninput="schedulePaanyayaModalRender()">
+                    </label>
+                </div>
+
+                <div style="padding:10px 12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; font-size:0.78rem; color:#065f46; line-height:1.45;">
+                    <strong>Automated Summons Server Dispatch:</strong> Pagkatapos kumpirmahin at i-print, awtomatikong mare-release at mapupunta sa Proof of Service / Summons Server queue ang Paanyaya na ito.
+                </div>
+            </div>
+
+            <!-- Right Panel: Live Printable A4 Preview -->
+            <div style="background:#475569; display:flex; flex-direction:column; min-height:0; overflow:hidden;">
+                <div style="padding:8px 14px; background:#334155; color:#e2e8f0; font-size:0.78rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span>Live Printable A4 Letter Preview (Barangay Tumana Format)</span>
+                    <span id="pnyModalPreviewStatus" style="font-size:0.74rem; color:#93c5fd;">Ready</span>
+                </div>
+                <iframe id="paanyayaModalPreviewFrame" title="Editable Paanyaya Letter Preview" style="width:100%; flex:1; border:none; background:#475569;"></iframe>
+            </div>
+        </div>
+
+        <div style="padding: 12px 22px; border-top: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0;">
+            <button type="button" class="cd-btn-soft" onclick="closePaanyayaPreviewModal()">Cancel</button>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <button type="button" class="cd-btn-soft" onclick="printPaanyayaModalFrameOnly()">Print Preview Only</button>
+                <button type="button" id="pnyModalConfirmPrintBtn" class="cd-btn-green" onclick="confirmPrintAndDispatchPaanyaya()">
+                    Confirm, Print &amp; Dispatch to Summons Server
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 window.openRecordReturnModal = function(stage) {
     const cId = <?= (int)($complaintId ?? 0) ?>;
@@ -3202,6 +3334,13 @@ window.submitRoutingOverride = async function(ev) {
     }
 };
 window.openPendingCloseModal = function() {
+    const cData = window.complaintData || {};
+    const cStatus = String(cData.case_status || cData.case_workspace?.case?.case_status || cData.status || '');
+    const preDocketed = !cData.case_id || ['Pending Screening', 'Needs Information', 'Accepted', 'Pre-Docketed (Paanyaya)'].includes(cStatus);
+    if (preDocketed) {
+        window.agapNotify?.('Pending Close is only available once the complaint is formally docketed into Mediation or Conciliation.', 'warning', 'Formal Complaint Required');
+        return;
+    }
     const el = document.getElementById('pendingCloseModal');
     if (el) el.style.display = 'flex';
 };

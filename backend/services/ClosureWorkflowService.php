@@ -172,6 +172,15 @@ final class ClosureWorkflowService
                 return ['success' => false, 'message' => 'Complaint not found.'];
             }
 
+            $preDocketStatuses = ['Pending Screening', 'Needs Information', 'Accepted', 'Pre-Docketed (Paanyaya)'];
+            if (empty($comp['case_id']) || in_array((string) ($comp['case_status'] ?? ''), $preDocketStatuses, true)) {
+                $this->conn->rollBack();
+                return [
+                    'success' => false,
+                    'message' => 'Pending Close is only available once the complaint is formally docketed (Mediation or Conciliation).',
+                ];
+            }
+
             if (in_array($comp['status'], ['Closed', 'Resolution / Closed'], true) || $comp['case_status'] === 'Closed') {
                 $this->conn->rollBack();
                 return ['success' => false, 'message' => 'This complaint has already completed final closure.'];

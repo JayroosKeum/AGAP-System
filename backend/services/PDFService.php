@@ -4786,8 +4786,12 @@ class PDFService
             if (trim($cName) !== '') $compNames[] = trim($cName);
             if (trim($cAddr) !== '') $compAddrs[] = trim($cAddr);
         }
-        $compNameStr = !empty($compNames) ? implode(' / ', $compNames) : 'NAGPAANYAYA';
-        $compAddrStr = !empty($compAddrs) ? implode(', ', array_unique($compAddrs)) : 'Barangay Tumana, Marikina City';
+        $compNameStr = !empty($data['complainant_display'])
+            ? trim((string) $data['complainant_display'])
+            : (!empty($compNames) ? implode(' / ', $compNames) : 'NAGPAANYAYA');
+        $compAddrStr = !empty($data['complainant_address'])
+            ? trim((string) $data['complainant_address'])
+            : (!empty($compAddrs) ? implode(', ', array_unique($compAddrs)) : 'Barangay Tumana, Marikina City');
 
         $respNames = [];
         $respAddrs = [];
@@ -4798,7 +4802,9 @@ class PDFService
             if (trim($rAddr) !== '') $respAddrs[] = trim($rAddr);
         }
         $respNameStr = !empty($respNames) ? implode(' / ', $respNames) : 'INANYAYAHAN';
-        $respAddrStr = !empty($respAddrs) ? implode(', ', array_unique($respAddrs)) : 'Barangay Tumana, Marikina City';
+        $respAddrStr = !empty($data['respondent_address'])
+            ? trim((string) $data['respondent_address'])
+            : (!empty($respAddrs) ? implode(', ', array_unique($respAddrs)) : 'Barangay Tumana, Marikina City');
 
         $compCount = count($compNames);
         $niNina = ($compCount > 1) ? 'nina' : 'ni';
@@ -4825,7 +4831,24 @@ class PDFService
         $captainName = !empty($data['captain_name']) ? $this->escape($data['captain_name']) : 'HON. AKIKO LYNNE CENTENO';
         $hasESignature = !empty($data['has_e_signature']);
         $attemptNumber = (int)($data['attempt_number'] ?? 1);
-        $docTitleText = ($attemptNumber === 2) ? 'I K A L A W A N G   P A A N Y A Y A' : 'P A A N Y A Y A';
+        $docTitleText = !empty($data['doc_title'])
+            ? $this->escape(trim((string) $data['doc_title']))
+            : (($attemptNumber === 2) ? 'I K A L A W A N G   P A A N Y A Y A' : 'P A A N Y A Y A');
+        $salutationText = !empty($data['salutation'])
+            ? $this->escape(trim((string) $data['salutation']))
+            : 'Mahal na G/Gng/Bb:';
+        $bodyParagraph1Html = !empty($data['body_paragraph_1'])
+            ? nl2br($this->escape(trim((string) $data['body_paragraph_1'])))
+            : ('Kayo po ay malugod na inaanyayahan sa <strong>' . $venue . '</strong>, sa ika <strong>' . $petsa . '</strong> ng <strong>' . $buwan . '</strong>, <strong>' . $taon . '</strong> araw ng <strong>' . $araw . '</strong> sa ganap na <strong>' . $oras . '</strong> upang pagusapan at mabigyang linaw ukol sa inihaing alintana o usapin ' . $niNina . ' <strong>' . $this->escape($compNameStr) . '</strong>. Dahil ayon sa kanila <em>{' . $salaysay . '}</em>. Kung kaya\'t ' . $pronoun . ' ay dumulog sa Barangay upang kayo ay Paanyayahan.');
+        $bodyParagraph2Text = !empty($data['body_paragraph_2'])
+            ? $this->escape(trim((string) $data['body_paragraph_2']))
+            : 'Ang inyo pong lingkod ay para lamang mamagitan sa anumang inyong mapag-uusapan.';
+        $bodyParagraph3Text = !empty($data['body_paragraph_3'])
+            ? $this->escape(trim((string) $data['body_paragraph_3']))
+            : 'Kung Kaya\'t inaasahan ang inyong pagtalima sa inyong imbitasyon.';
+        $closingPhraseText = !empty($data['closing_phrase'])
+            ? $this->escape(trim((string) $data['closing_phrase']))
+            : 'Salamat po.';
 
         $signatureHtml = '';
 
@@ -4940,22 +4963,22 @@ class PDFService
             <div class="party-address">' . $this->escape($respAddrStr) . '</div>
         </div>
 
-        <div class="salutation">Mahal na G/Gng/Bb:</div>
+        <div class="salutation">' . $salutationText . '</div>
 
         <div class="body-p">
-            Kayo po ay malugod na inaanyayahan sa <strong>' . $venue . '</strong>, sa ika <strong>' . $petsa . '</strong> ng <strong>' . $buwan . '</strong>, <strong>' . $taon . '</strong> araw ng <strong>' . $araw . '</strong> sa ganap na <strong>' . $oras . '</strong> upang pagusapan at mabigyang linaw ukol sa inihaing alintana o usapin ' . $niNina . ' <strong>' . $this->escape($compNameStr) . '</strong>. Dahil ayon sa kanila <em>{' . $salaysay . '}</em>. Kung kaya\'t ' . $pronoun . ' ay dumulog sa Barangay upang kayo ay Paanyayahan.
+            ' . $bodyParagraph1Html . '
         </div>
 
         <div class="body-p">
-            Ang inyo pong lingkod ay para lamang mamagitan sa anumang inyong mapag-uusapan.
+            ' . $bodyParagraph2Text . '
         </div>
 
         <div class="body-p">
-            Kung Kaya\'t inaasahan ang inyong pagtalima sa inyong imbitasyon.
+            ' . $bodyParagraph3Text . '
         </div>
 
         <div class="body-p" style="margin-bottom: 2mm;">
-            Salamat po.
+            ' . $closingPhraseText . '
         </div>
 
         <table class="bottom-table">

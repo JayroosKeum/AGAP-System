@@ -222,9 +222,23 @@ final class PaanyayaPreparationService
 
     public function save(int $id, int $userId, string $action, array $input, int $invitation = 1): string
     {
-        if (!in_array($action, ['generate', 'ready', 'revise'], true)) {
+        return (string) ($this->saveWithDetails($id, $userId, $action, $input, $invitation)['message'] ?? '');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function saveWithDetails(int $id, int $userId, string $action, array $input, int $invitation = 1): array
+    {
+        if (!in_array($action, ['generate', 'ready', 'revise', 'confirm_and_dispatch'], true)) {
             throw new DomainException('Choose a valid preparation action.');
         }
+        $attemptId = 0;
+        $dispatchedServerId = 0;
+        $dispatchedServerName = '';
+        $dispatchedAppointment = '';
+        $returnedVersion = '';
+
         $this->db->beginTransaction();
         try {
             // Serialize submissions for the same intake, including the first generation.
@@ -245,11 +259,56 @@ final class PaanyayaPreparationService
                 }
                 $this->db->prepare('UPDATE paanyaya_preparations SET ready_at = NULL, ready_by = NULL WHERE complaint_id = ? AND invitation_number = ?')
                     ->execute([$id, $invitation]);
-                $message = 'Invitation reopened. Regenerate it with the updated details and mark it ready again.';
+                $message = 'Invitation reopened. Preview, print, and confirm to dispatch to the Summons Server.';
                 $auditAction = 'Reopened Paanyaya invitation for revision';
+            } elseif ($action === 'confirm_and_dispatch') {
+                require_once __DIR__ . '/PaanyayaServiceDelivery.php';
+                $latest = PaanyayaServiceDelivery::latestAttempt($this->db, $id, $invitation);
+                if ($record['ready_at'] && $latest && $latest['outcome'] === null) {
+                    throw new DomainException('This invitation is already confirmed and queued with the Summons Server.');
+                }
+                $parties = $this->parties($id, true);
+                if ($record['rescheduled']
+                    && (substr((string) $record['appointment_at'], 0, 16) !== ($input['appointment_date'] ?? '') . ' ' . ($input['appointment_time'] ?? '')
+                        || (string) $record['venue'] !== trim((string) ($input['venue'] ?? '')))) {
+                    throw new DomainException('Change the appointment through the docket rescheduling action.');
+                }
+                $this->generate($id, $userId, $input, $parties, $invitation, (bool) $record['rescheduled']);
+                $this->db->prepare('UPDATE paanyaya_preparations SET ready_by = ?, ready_at = NOW() WHERE complaint_id = ? AND invitation_number = ?')
+                    ->execute([$userId, $id, $invitation]);
+
+                $updated = $this->intake($id, $invitation);
+                if (!$updated || empty($updated['document_version'])) {
+                    throw new RuntimeException('Unable to load confirmed Paanyaya version for dispatch.');
+                }
+                $returnedVersion = (string) $updated['document_version'];
+                $dispatchedAppointment = (string) $updated['appointment_at'];
+
+                $delivery = new PaanyayaServiceDelivery($this->db);
+                $requestedServer = !empty($input['assigned_to']) ? (int) $input['assigned_to'] : null;
+                $dispatchInfo = $delivery->dispatchInsideTransaction(
+                    $id,
+                    $userId,
+                    $requestedServer,
+                    $returnedVersion,
+                    $dispatchedAppointment,
+                    $invitation
+                );
+                $attemptId = (int) $dispatchInfo['attempt_id'];
+                $dispatchedServerId = (int) $dispatchInfo['server_id'];
+                $dispatchedServerName = (string) $dispatchInfo['server_name'];
+                $message = sprintf(
+                    'Paanyaya invitation confirmed, printed, and automatically dispatched to %s.',
+                    $dispatchedServerName !== '' ? $dispatchedServerName : 'the Summons Server'
+                );
+                $auditAction = 'Confirmed, printed, and auto-dispatched Paanyaya invitation';
             } elseif ($record['ready_at']) {
                 $this->db->commit();
-                return 'This invitation is already Ready for Release.';
+                return [
+                    'success' => true,
+                    'message' => 'This invitation is already confirmed and ready.',
+                    'document_version' => (string) ($record['document_version'] ?? ''),
+                ];
             } elseif ($action === 'generate') {
                 $parties = $this->parties($id, true);
                 if ($record['rescheduled']
@@ -258,7 +317,7 @@ final class PaanyayaPreparationService
                     throw new DomainException('Change the appointment through the docket rescheduling action.');
                 }
                 $this->generate($id, $userId, $input, $parties, $invitation, (bool) $record['rescheduled']);
-                $message = 'Invitation generated. Review or print the PDF before marking it Ready for Release.';
+                $message = 'Invitation generated. Review or print the PDF before confirmation.';
                 $auditAction = 'Generated Paanyaya invitation';
             } else {
                 $parties = $this->parties($id, true);
@@ -271,7 +330,25 @@ final class PaanyayaPreparationService
                 throw new RuntimeException('Unable to save the Paanyaya audit entry.');
             }
             $this->db->commit();
-            return $message;
+
+            if ($action === 'confirm_and_dispatch' && $dispatchedServerId > 0) {
+                (new PaanyayaServiceDelivery($this->db))->notifyDispatchedServer(
+                    $id,
+                    $userId,
+                    $dispatchedServerId,
+                    $dispatchedAppointment,
+                    $invitation
+                );
+            }
+
+            return [
+                'success' => true,
+                'message' => $message,
+                'attempt_id' => $attemptId,
+                'server_id' => $dispatchedServerId,
+                'server_name' => $dispatchedServerName,
+                'document_version' => $returnedVersion ?: (string) ($this->intake($id, $invitation)['document_version'] ?? ''),
+            ];
         } catch (Throwable $exception) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
@@ -325,12 +402,29 @@ final class PaanyayaPreparationService
             'invitation_date' => $date,
             'invitation_time' => $time,
             'venue' => $venue,
-            'invitee_name' => implode(' / ', array_column($respondents, 'full_name')),
+            'invitee_name' => trim((string) ($input['respondent_display'] ?? $input['invitee_name'] ?? '')) ?: implode(' / ', array_column($respondents, 'full_name')),
             'has_e_signature' => false,
         ]);
         $data['complainants'] = $complainants;
         $data['respondents'] = $respondents;
         $data['intake_reference'] = $data['complaint']['intake_reference'] ?? '';
+        foreach ([
+            'doc_title',
+            'complainant_display',
+            'complainant_address',
+            'respondent_address',
+            'salutation',
+            'salaysay',
+            'body_paragraph_1',
+            'body_paragraph_2',
+            'body_paragraph_3',
+            'closing_phrase',
+            'captain_name',
+        ] as $optKey) {
+            if (is_string($input[$optKey] ?? null) && trim($input[$optKey]) !== '') {
+                $data[$optKey] = mb_substr(trim($input[$optKey]), 0, 4000);
+            }
+        }
         $pdf = $renderer->generatePaanyaya($id, ['data' => $data]);
 
         $this->archiveCurrentDocument($id, $invitation);

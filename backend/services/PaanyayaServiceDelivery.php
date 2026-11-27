@@ -16,6 +16,25 @@ final class PaanyayaServiceDelivery
             FROM users WHERE role_id = 4 AND status = 'Active' ORDER BY last_name, first_name, user_id")->fetchAll();
     }
 
+    public static function autoAssignServerId(PDO $db): int
+    {
+        $stmt = $db->query("
+            SELECT u.user_id,
+                   COALESCE(SUM(CASE WHEN a.outcome IS NULL AND a.attempt_id IS NOT NULL THEN 1 ELSE 0 END), 0) AS pending_count
+            FROM users u
+            LEFT JOIN paanyaya_service_attempts a ON a.assigned_to = u.user_id
+            WHERE u.role_id = 4 AND u.status = 'Active'
+            GROUP BY u.user_id
+            ORDER BY pending_count ASC, u.user_id ASC
+            LIMIT 1
+        ");
+        $serverId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($serverId <= 0) {
+            throw new DomainException('No active Summons Server account is available to receive the automatic dispatch.');
+        }
+        return $serverId;
+    }
+
     public function history(int $complaintId, int $invitation = 1): array
     {
         $statement = $this->db->prepare("SELECT a.attempt_id, a.released_at, a.outcome, a.notes, a.recorded_at, a.proof_mime,
@@ -53,48 +72,58 @@ final class PaanyayaServiceDelivery
         return $statement->fetchAll();
     }
 
-    public function release(int $complaintId, int $clerkId, int $serverId, string $version, int $invitation = 1): void
-    {
-        $this->db->beginTransaction();
-        try {
-            $preparation = $this->lockIntake($complaintId, $invitation);
-            if (!hash_equals($preparation['document_version'], $version)) {
-                throw new DomainException('Review and mark the current invitation Ready for Release first.');
-            }
-            $this->verifyInvitation($complaintId, $preparation);
+    public function dispatchInsideTransaction(
+        int $complaintId,
+        int $clerkId,
+        ?int $serverId,
+        string $version,
+        string $appointmentAt,
+        int $invitation = 1
+    ): array {
+        $resolvedServerId = ($serverId !== null && $serverId > 0)
+            ? $serverId
+            : self::autoAssignServerId($this->db);
 
-            $server = $this->db->prepare("SELECT user_id FROM users WHERE user_id = ? AND role_id = 4 AND status = 'Active' FOR SHARE");
-            $server->execute([$serverId]);
-            if (!$server->fetchColumn()) {
-                throw new DomainException('Select an active summons server.');
-            }
-
-            $latest = self::latestAttempt($this->db, $complaintId, $invitation);
-            if ($latest && $latest['outcome'] !== 'Not Delivered') {
-                throw new DomainException('This invitation already has an assignment or a confirmed delivery.');
-            }
-
-            $this->db->prepare('INSERT INTO paanyaya_service_attempts
-                (complaint_id, appointment_at, document_version, assigned_to, released_by, invitation_number)
-                VALUES (?, ?, ?, ?, ?, ?)')->execute([
-                    $complaintId, $preparation['appointment_at'], $version, $serverId, $clerkId, $invitation,
-                ]);
-            $this->audit($clerkId, 'Released Paanyaya invitation for service', $complaintId);
-            $this->db->commit();
-        } catch (Throwable $exception) {
-            if ($this->db->inTransaction()) {
-                $this->db->rollBack();
-            }
-            throw $exception;
+        $serverStmt = $this->db->prepare("SELECT user_id, TRIM(CONCAT_WS(' ', first_name, last_name)) AS full_name FROM users WHERE user_id = ? AND role_id = 4 AND status = 'Active' FOR SHARE");
+        $serverStmt->execute([$resolvedServerId]);
+        $serverRow = $serverStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$serverRow) {
+            throw new DomainException('Select an active summons server.');
         }
 
+        $latest = self::latestAttempt($this->db, $complaintId, $invitation);
+        if ($latest && $latest['outcome'] !== 'Not Delivered') {
+            throw new DomainException('This invitation already has an assignment or a confirmed delivery.');
+        }
+
+        $this->db->prepare('INSERT INTO paanyaya_service_attempts
+            (complaint_id, appointment_at, document_version, assigned_to, released_by, invitation_number)
+            VALUES (?, ?, ?, ?, ?, ?)')->execute([
+                $complaintId, $appointmentAt, $version, (int) $serverRow['user_id'], $clerkId, $invitation,
+            ]);
+        $attemptId = (int) $this->db->lastInsertId();
+
+        return [
+            'attempt_id' => $attemptId,
+            'server_id' => (int) $serverRow['user_id'],
+            'server_name' => (string) ($serverRow['full_name'] ?? 'Summons Server'),
+        ];
+    }
+
+    public function notifyDispatchedServer(
+        int $complaintId,
+        int $clerkId,
+        int $serverId,
+        ?string $appointmentAt,
+        int $invitation = 1
+    ): void {
         try {
             $refStmt = $this->db->prepare("SELECT COALESCE(NULLIF(TRIM(intake_reference), ''), NULLIF(TRIM(complaint_number), ''), CONCAT('Complaint #', complaint_id)) FROM complaints WHERE complaint_id = ?");
             $refStmt->execute([$complaintId]);
             $refLabel = (string) ($refStmt->fetchColumn() ?: ('Complaint #' . $complaintId));
             $invLabel = $invitation === 2 ? '2nd Paanyaya' : '1st Paanyaya';
-            $apptLabel = !empty($preparation['appointment_at'])
-                ? date('M j, Y g:i A', strtotime((string) $preparation['appointment_at']))
+            $apptLabel = !empty($appointmentAt)
+                ? date('M j, Y g:i A', strtotime((string) $appointmentAt))
                 : 'Scheduled';
 
             require_once __DIR__ . '/NotificationService.php';
@@ -109,6 +138,40 @@ final class PaanyayaServiceDelivery
         } catch (Throwable $notifError) {
             error_log('Paanyaya release notification warning: ' . $notifError->getMessage());
         }
+    }
+
+    public function release(int $complaintId, int $clerkId, int $serverId, string $version, int $invitation = 1): void
+    {
+        $resolvedServerId = $serverId > 0 ? $serverId : null;
+        $appointmentAt = '';
+        $this->db->beginTransaction();
+        try {
+            $preparation = $this->lockIntake($complaintId, $invitation);
+            if (!hash_equals($preparation['document_version'], $version)) {
+                throw new DomainException('Review and mark the current invitation Ready for Release first.');
+            }
+            $this->verifyInvitation($complaintId, $preparation);
+
+            $appointmentAt = (string) ($preparation['appointment_at'] ?? '');
+            $dispatch = $this->dispatchInsideTransaction(
+                $complaintId,
+                $clerkId,
+                $resolvedServerId,
+                $version,
+                $appointmentAt,
+                $invitation
+            );
+            $resolvedServerId = (int) $dispatch['server_id'];
+            $this->audit($clerkId, 'Released Paanyaya invitation for service', $complaintId);
+            $this->db->commit();
+        } catch (Throwable $exception) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $exception;
+        }
+
+        $this->notifyDispatchedServer($complaintId, $clerkId, $resolvedServerId, $appointmentAt, $invitation);
     }
 
     public function record(int $attemptId, int $serverId, array $input, array $file): void
