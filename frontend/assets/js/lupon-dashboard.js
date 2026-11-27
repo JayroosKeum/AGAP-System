@@ -11,9 +11,7 @@
         data: null,
         isLoading: false,
         activeCaseDossier: null,
-        activeDossierCaseId: null,
-        fontSizeMode: localStorage.getItem('agap_lupon_font_size') || 'normal',
-        contrastMode: localStorage.getItem('agap_lupon_contrast') === 'true'
+        activeDossierCaseId: null
     };
 
     const getCsrfToken = () => {
@@ -54,39 +52,8 @@
         if (el) el.textContent = (val !== null && val !== undefined) ? String(val) : '0';
     };
 
-    // Accessibility Controls: Large Text & High Contrast
-    const applyAccessibilitySettings = () => {
-        const root = document.body;
-        const fontBtn = document.getElementById('btnToggleFontSize');
-        const contrastBtn = document.getElementById('btnToggleContrast');
-
-        if (state.fontSizeMode === 'large') {
-            root.classList.add('font-size-large');
-            if (fontBtn) fontBtn.classList.add('active');
-        } else {
-            root.classList.remove('font-size-large');
-            if (fontBtn) fontBtn.classList.remove('active');
-        }
-
-        if (state.contrastMode) {
-            root.classList.add('high-contrast-mode');
-            if (contrastBtn) contrastBtn.classList.add('active');
-        } else {
-            root.classList.remove('high-contrast-mode');
-            if (contrastBtn) contrastBtn.classList.remove('active');
-        }
-    };
-
-    const toggleFontSize = () => {
-        state.fontSizeMode = state.fontSizeMode === 'large' ? 'normal' : 'large';
-        localStorage.setItem('agap_lupon_font_size', state.fontSizeMode);
-        applyAccessibilitySettings();
-    };
-
-    const toggleHighContrast = () => {
-        state.contrastMode = !state.contrastMode;
-        localStorage.setItem('agap_lupon_contrast', String(state.contrastMode));
-        applyAccessibilitySettings();
+    const clearLegacyAccessibilityClasses = () => {
+        document.body.classList.remove('font-size-large', 'high-contrast-mode');
     };
 
     // Render KPI Top Cards
@@ -102,19 +69,15 @@
         const gName = sched.group_name;
         const gStation = sched.station || 'Lupon Court Room';
         const gPos = sched.group_position ? ` (${sched.group_position})` : '';
-        const headerTag = document.getElementById('dutyDayHeaderTag');
         if (gName) {
             setText('dutyDayDisplaySub', `${gName}${gPos} · ${gStation}`);
             const bannerHeader = document.querySelector('.duty-day-info h3');
             if (bannerHeader) bannerHeader.textContent = `${gName} · ${gStation}`;
-            if (headerTag) headerTag.textContent = `${gName} (${dutyDay})`;
         } else if (!dutyDay || dutyDay === 'No Duty Assigned') {
             setText('dutyDayDisplaySub', 'Wala pang nakatakdang araw ng duty');
-            if (headerTag) headerTag.textContent = 'No Duty Assigned';
         } else {
             const noteText = sched.notes ? ` · ${sched.notes}` : '';
             setText('dutyDayDisplaySub', `${dutyDay} Duty Schedule${noteText}`);
-            if (headerTag) headerTag.textContent = `${dutyDay} Duty`;
         }
     };
 
@@ -521,9 +484,6 @@
 
     // Event Listeners
     const initListeners = () => {
-        document.getElementById('btnToggleFontSize')?.addEventListener('click', toggleFontSize);
-        document.getElementById('btnToggleContrast')?.addEventListener('click', toggleHighContrast);
-
         document.getElementById('dossierCloseBtn')?.addEventListener('click', closeDossierModal);
         document.getElementById('dossierCloseFooterBtn')?.addEventListener('click', closeDossierModal);
 
@@ -600,7 +560,7 @@
 
     // Bootstrap
     const boot = () => {
-        applyAccessibilitySettings();
+        clearLegacyAccessibilityClasses();
         initListeners();
         fetchLuponData();
     };

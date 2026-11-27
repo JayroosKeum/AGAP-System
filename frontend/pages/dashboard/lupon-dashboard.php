@@ -30,25 +30,6 @@ include '../../layouts/header.php';
                     <h1 style="margin: 0; font-size: 1.6rem; color: #0f172a;">Lupon Member &amp; Conciliator Dashboard</h1>
                 </div>
             </div>
-            <!-- Senior-Friendly Accessibility Toolbar Controls -->
-            <div class="lupon-accessibility-bar" style="margin-bottom: 0;">
-                <div class="lupon-accessibility-info">
-                    <span style="color:#64748b; font-size:0.85rem;">Senior Mode:</span>
-                    <strong id="dutyDayHeaderTag" style="font-size:0.85rem; color:#0f172a;">Pangkat Duty Team</strong>
-                </div>
-                <div class="lupon-accessibility-controls">
-                    <?php if ($roleId === 3): ?>
-                        <a href="#jurisdictionQueue" class="btn-accessibility-pill" style="background:#102b2d; color:#ffffff; border-color:#102b2d; text-decoration:none;">My Walk-in Screenings</a>
-                    <?php endif; ?>
-                    <button type="button" class="btn-accessibility-pill" onclick="window.open('../../../backend/api/reports/council_brief.php?autoprint=1', '_blank', 'width=1020,height=820,noopener,noreferrer')" title="I-print ang 1-Page Monthly Council Meeting Executive Brief" style="background:#0f172a; color:#ffffff; border-color:#0f172a;">
-                        <span>1-Click Council Brief</span>
-                    </button>
-                    <?php $agapFontSliderCompact = true; include '../../layouts/font-size-slider.php'; ?>
-                    <button type="button" class="btn-accessibility-pill" id="btnToggleContrast" title="Mataas na Contrast para sa Madaling Pagbasa">
-                        <span>High Contrast</span>
-                    </button>
-                </div>
-            </div>
         </div>
 
         <section class="dashboard-overview" aria-label="Lupon Member Dashboard Overview">
