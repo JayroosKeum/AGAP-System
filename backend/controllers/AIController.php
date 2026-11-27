@@ -309,7 +309,11 @@ assign an official hearing outcome. Put information not supported by the notes i
 Return ONLY valid JSON with exactly these string keys:
 {
   "main_dispute_identified": "",
+  "complainant_statement": "",
+  "respondent_statement": "",
   "discussion_summary": "",
+  "new_proposal": "",
+  "counteroffer": "",
   "agreements_action_items": "",
   "unresolved_issues": "",
   "outcome_remarks": "",
@@ -338,7 +342,11 @@ PROMPT;
 
         $fields = [
             'main_dispute_identified' => 1000,
+            'complainant_statement' => 5000,
+            'respondent_statement' => 5000,
             'discussion_summary' => 5000,
+            'new_proposal' => 3000,
+            'counteroffer' => 3000,
             'agreements_action_items' => 4000,
             'unresolved_issues' => 3000,
             'outcome_remarks' => 1000,

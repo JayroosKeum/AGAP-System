@@ -2568,6 +2568,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 </div>
 <?php include __DIR__ . '/../../layouts/transmittal-modal.php'; ?>
 <?php include __DIR__ . '/../../layouts/kp-form-preview-modal.php'; ?>
+<?php include __DIR__ . '/../../layouts/hearing-session-wizard-modal.php'; ?>
 
 <!-- MODAL: Sworn Statement of Repudiation (KP Form 17 - 2-Panel 50/50 Split-Screen Live Editor) -->
 <div id="modalFileRepudiation" class="modal" role="dialog" aria-modal="true" style="display: none; padding: 14px; z-index: 9999;">
@@ -2938,6 +2939,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="../../assets/js/summons-preview.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/summons-preview.js'); ?>"></script>
 <script src="../../assets/js/complaints.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/complaints.js'); ?>"></script>
+<script src="../../assets/js/hearing-session-wizard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/hearing-session-wizard.js'); ?>"></script>
 
 
 <!-- ========================================== -->

@@ -703,8 +703,10 @@ window.AGAP_SETTINGS.mediation_venue = <?= json_encode($medVenue) ?>;
 
 <?php include __DIR__ . '/../../layouts/transmittal-modal.php'; ?>
 <?php include __DIR__ . '/../../layouts/kp-form-preview-modal.php'; ?>
+<?php include __DIR__ . '/../../layouts/hearing-session-wizard-modal.php'; ?>
 
 <script src="../../assets/js/stage-workspace.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/stage-workspace.js'); ?>"></script>
+<script src="../../assets/js/hearing-session-wizard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/hearing-session-wizard.js'); ?>"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         initStageWorkspace({

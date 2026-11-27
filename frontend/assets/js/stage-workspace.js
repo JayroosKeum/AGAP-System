@@ -1854,6 +1854,12 @@ function renderSessionNavigation(data, stage) {
 
             </div>
 
+            <div>
+                <button type="button" class="btn-create" data-readonly-exempt="true" onclick="openHearingSessionWizard(${activeHearingId}, '${escapeHtml(mode)}', ${Number(stageWorkspaceState.caseId || 0)})" style="font-size: 0.78rem; padding: 7px 14px; background: #2563eb; border-color: #2563eb; display: inline-flex; align-items: center; gap: 5px; font-weight: 700;">
+                    📝 3-Step Session Wizard
+                </button>
+            </div>
+
         </div>
 
     `;
@@ -3814,6 +3820,12 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     </span>
 
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openHearingSessionWizard(${hId}, '${escapeHtml(mode)}', ${Number(stageWorkspaceState.caseId || 0)})" style="font-size: 0.78rem; padding: 4px 10px; border-color: #2563eb; color: #1d4ed8; background: #eff6ff; font-weight: 700;">
+
+                        📝 Open 3-Step Wizard
+
+                    </button>
+
                     <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Print official blank ruled minutes sheet">
 
                         🖨️ Print Blank Minutes Sheet
@@ -4899,11 +4911,12 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
     }
 
     if (status === 'Finalized' && !suppressAutoModal) {
-        const discussionField = getMinutesField('session_minutes', hearingId);
-        const discussionVal = String(discussionField?.value || '').trim();
-        if (!discussionVal) {
-            notifyUser('Please enter the Discussion Summary & Statements before finalizing the minutes.', 'warning', 'Discussion Summary Required');
-            discussionField?.focus();
+        const discussionVal = String(getMinutesField('session_minutes', hearingId)?.value || session.settlement_discussion_notes || '').trim();
+        const compStmtVal = String(getMinutesField('minCompStmt', hearingId)?.value || session.complainant_statement || '').trim();
+        const respStmtVal = String(getMinutesField('minRespStmt', hearingId)?.value || session.respondent_statement || '').trim();
+        if (!discussionVal && !compStmtVal && !respStmtVal) {
+            notifyUser('Please enter the Complainant/Respondent statement or Discussion Summary before finalizing the minutes.', 'warning', 'Minutes Narrative Required');
+            (getMinutesField('minCompStmt', hearingId) || getMinutesField('session_minutes', hearingId))?.focus();
             return;
         }
     }
@@ -4958,6 +4971,11 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
 
 
+    const getValOr = (baseId, fallback = '') => {
+        const el = document.getElementById(`${baseId}_${hearingId}`) || document.getElementById(baseId);
+        return el ? (el.value || '') : (fallback || '');
+    };
+
     const payload = {
 
         hearing_id: Number(hearingId),
@@ -4970,27 +4988,27 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
 
         complaint_reviewed: getChecked('minReviewed'),
 
-        complainant_statement: '',
+        complainant_statement: getValOr('minCompStmt', session.complainant_statement),
 
-        respondent_statement: '',
+        respondent_statement: getValOr('minRespStmt', session.respondent_statement),
 
         main_dispute_identified: getVal('minDisputeSummary'),
 
         previous_proposal: session.carryover?.previous_proposal || session.previous_proposal || '',
 
-        agenda_topics: session.carryover?.agenda_topics || '',
+        agenda_topics: getValOr('minAgenda', session.carryover?.agenda_topics || session.agenda_topics || ''),
 
-        new_proposal: '',
+        new_proposal: getValOr('minNewProposal', session.new_proposal),
 
-        counteroffer: '',
+        counteroffer: getValOr('minCounterOffer', session.counteroffer),
 
-        caucus_conducted: 0,
+        caucus_conducted: (document.getElementById(`minCaucus_${hearingId}`) || document.getElementById('minCaucus')) ? getChecked('minCaucus') : Number(session.caucus_conducted || 0),
 
-        caucus_notes: '',
+        caucus_notes: getValOr('minCaucusNotes', session.caucus_notes),
 
-        agreements_action_items: getVal('minAgreements'),
+        agreements_action_items: getValOr('minAgreements', session.agreements_action_items),
 
-        unresolved_issues: getVal('minUnresolved'),
+        unresolved_issues: getValOr('minUnresolved', session.unresolved_issues),
 
         session_outcome: outcomeVal,
 
@@ -9073,6 +9091,12 @@ function applyAiHearingMinutesDraft(hearingId) {
         input.dispatchEvent(new Event('change', { bubbles: true }));
     };
     setValue('minDisputeSummary', draft.main_dispute_identified);
+    setValue('minCompStmt', draft.complainant_statement);
+    setValue('minRespStmt', draft.respondent_statement);
+    setValue('minNewProposal', draft.new_proposal);
+    setValue('minCounterOffer', draft.counteroffer);
+    setValue('minAgreements', draft.agreements_action_items);
+    setValue('minUnresolved', draft.unresolved_issues);
     setValue('session_minutes', draft.discussion_summary);
     setValue('minOutcomeRemarks', draft.outcome_remarks);
     dismissAiHearingMinutesDraft(hearingId);
@@ -9542,13 +9566,45 @@ function printHearingMinutes(hearingId) {
 
 
 
-            <div class="section-heading">I. Salaysay at Buod ng Usapan (Proceedings &amp; Discussion)</div>
+            <div class="section-heading">I. Pangunahing Usapin at Mga Pahayag (Dispute &amp; Party Statements)</div>
+
+            ${min.main_dispute_identified ? `<div class="section-body"><strong>Pangunahing Usapin (Main Dispute):</strong> ${escapeHtml(min.main_dispute_identified)}</div>` : ''}
+
+            <div class="section-body"><strong>Pahayag ng Nagsusumbong (Complainant's Statement):</strong><br>${escapeHtml(min.complainant_statement || 'Walang hiwalay na pahayag na itinala.')}</div>
+
+            <div class="section-body"><strong>Tugon ng Ipinagsumbong (Respondent's Statement):</strong><br>${escapeHtml(min.respondent_statement || 'Walang hiwalay na tugon na itinala.')}</div>
+
+
+
+            <div class="section-heading">II. Buod ng Talakayan at Pamamagitan (Proceedings &amp; Discussion)</div>
 
             <div class="section-body">${escapeHtml(min.settlement_discussion_notes || min.main_dispute_identified || 'Walang naitalang buod ng talakayan.')}</div>
 
+            ${(min.new_proposal || min.counteroffer || min.caucus_conducted) ? `
+
+                <div class="section-heading">III. Mga Mungkahi at Pribadong Pulong (Proposals &amp; Caucus)</div>
+
+                ${min.new_proposal ? `<div class="section-body"><strong>Bagong Mungkahi / Alok:</strong> ${escapeHtml(min.new_proposal)}</div>` : ''}
+
+                ${min.counteroffer ? `<div class="section-body"><strong>Kontra-Mungkahi (Counteroffer):</strong> ${escapeHtml(min.counteroffer)}</div>` : ''}
+
+                ${min.caucus_conducted ? `<div class="section-body"><strong>Private Caucus:</strong> ${escapeHtml(min.caucus_notes || 'Isinagawa.')}</div>` : ''}
+
+            ` : ''}
+
+            ${(min.agreements_action_items || min.unresolved_issues) ? `
+
+                <div class="section-heading">${(min.new_proposal || min.counteroffer || min.caucus_conducted) ? 'IV' : 'III'}. Mga Napagkasunduan at Natitirang Usapin</div>
+
+                ${min.agreements_action_items ? `<div class="section-body"><strong>Mga Napagkasunduang Hakbang:</strong> ${escapeHtml(min.agreements_action_items)}</div>` : ''}
+
+                ${min.unresolved_issues ? `<div class="section-body"><strong>Mga Hindi Pa Nalutas na Usapin:</strong> ${escapeHtml(min.unresolved_issues)}</div>` : ''}
+
+            ` : ''}
 
 
-            <div class="section-heading">II. Kinalabasan ng Pagdinig at Susunod na Hakbang (Session Outcome)</div>
+
+            <div class="section-heading">${((min.new_proposal || min.counteroffer || min.caucus_conducted) && (min.agreements_action_items || min.unresolved_issues)) ? 'V' : ((min.new_proposal || min.counteroffer || min.caucus_conducted || min.agreements_action_items || min.unresolved_issues) ? 'IV' : 'III')}. Kinalabasan ng Pagdinig at Susunod na Hakbang (Session Outcome)</div>
 
             <div class="section-body"><strong>Kinalabasan (Outcome):</strong> ${escapeHtml(min.session_outcome || 'Pending Evaluation')}${min.outcome_remarks ? ' — ' + escapeHtml(min.outcome_remarks) : ''}${min.actual_end_time ? ' (Natapos: ' + formatDateTimeReadable(min.actual_end_time) + ')' : ''}</div>
 

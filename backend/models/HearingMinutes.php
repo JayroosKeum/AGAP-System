@@ -896,8 +896,10 @@ class HearingMinutes
         }
 
         $priorStmt = $this->conn->prepare(
-            "SELECT hm.session_type, hm.main_dispute_identified, hm.settlement_discussion_notes,
-                    hm.unresolved_issues, hm.previous_proposal, hm.new_proposal, hm.agreements_action_items
+            "SELECT hm.session_type, hm.main_dispute_identified, hm.complainant_statement,
+                    hm.respondent_statement, hm.agenda_topics, hm.settlement_discussion_notes,
+                    hm.unresolved_issues, hm.previous_proposal, hm.new_proposal, hm.counteroffer,
+                    hm.agreements_action_items
              FROM hearing_minutes hm
              WHERE hm.case_id = ? AND (? <= 0 OR hm.hearing_id <> ?)
              ORDER BY hm.minute_id DESC
@@ -911,6 +913,10 @@ class HearingMinutes
             return [
                 'carried_from_stage' => (string) ($prior['session_type'] ?? ($hType !== '' ? $hType : 'Prior Session')),
                 'prior_summary' => trim((string) ($prior['settlement_discussion_notes'] ?? '')),
+                'complainant_statement' => trim((string) ($prior['complainant_statement'] ?? '')),
+                'respondent_statement' => trim((string) ($prior['respondent_statement'] ?? '')),
+                'agenda_topics' => trim((string) ($prior['agenda_topics'] ?? '')),
+                'counteroffer' => trim((string) ($prior['counteroffer'] ?? '')),
                 'unresolved_issues' => trim((string) ($prior['unresolved_issues'] ?? '')),
                 'previous_proposal' => $proposal,
                 'agreed_terms' => $proposal,
