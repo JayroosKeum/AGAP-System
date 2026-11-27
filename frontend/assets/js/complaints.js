@@ -446,6 +446,11 @@ function activateRequestedCaseTab() {
         const resolvedTab = access.allowed ? targetId : 'tab-overview';
         switchCaseTab(resolvedTab);
         if (hashTab && resolvedTab === 'tab-paanyaya') {
+            if (hashTab === 'paanyaya-invitation-1' && typeof switchPaanyayaSubTab === 'function') {
+                switchPaanyayaSubTab(1);
+            } else if (hashTab === 'paanyaya-invitation-2' && typeof switchPaanyayaSubTab === 'function') {
+                switchPaanyayaSubTab(2);
+            }
             const anchorEl = document.getElementById(hashTab);
             if (anchorEl) {
                 setTimeout(() => anchorEl.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
@@ -1020,11 +1025,16 @@ async function loadComplaintDetails() {
         setText('infoCaseType', data.case_type || 'Civil');
         const incTime = data.incident_time ? formatTime12(data.incident_time) : '';
         const incDate = data.incident_date ? formatDateReadable(data.incident_date) : 'N/A';
-        setText('infoIncidentDate', (incDate !== 'N/A' && incTime && incTime !== 'Not recorded') ? `${incDate} at ${incTime}` : incDate);
+        const incLabel = (incDate !== 'N/A' && incTime && incTime !== 'Not recorded') ? `${incDate} at ${incTime}` : incDate;
+        setText('infoIncidentDate', incLabel);
+        setText('cdLocCardIncidentDate', incLabel);
         setText('infoIncidentTime', incTime || 'Not recorded');
         setText('infoDateFiled', data.created_at ? formatDateReadable(data.created_at) : '—');
         setText('infoStatus', displayStage);
         window.complaintCreatedAt = data.created_at || null;
+        if (typeof syncUnifiedComplaintHeader === 'function') {
+            syncUnifiedComplaintHeader(data, docketNum, displayStage, hasFormalDocket);
+        }
 
         const infoDocketEl = document.getElementById('infoDocketCase');
         if (infoDocketEl) {
@@ -1072,6 +1082,7 @@ async function loadComplaintDetails() {
         const locAddress = data.incident_location || (data.location && data.location.address) || 'Not specified';
         const locLandmark = data.incident_landmark || 'None';
         setText('locationAddressText', locAddress);
+        setText('cdLocCardAddress', locAddress);
         setText('locationLandmarkText', locLandmark);
         setText('tab2LocationAddress', locAddress);
         setText('tab2LocationLandmark', locLandmark);
@@ -3230,6 +3241,137 @@ function renderPaanyayaStageCard(stageNum, stageData, caseNum, compNames, respNa
     }
 }
 
+function switchPaanyayaSubTab(invNum) {
+    const num = Number(invNum) === 2 ? 2 : 1;
+    [1, 2].forEach((n) => {
+        const btn = document.getElementById(`cdPSubTab${n}`);
+        const panel = document.getElementById(`paanyaya-invitation-${n}`) || document.getElementById(`cdPaanyayaSubPanel${n}`);
+        if (btn) btn.classList.toggle('is-active', n === num);
+        if (panel) panel.classList.toggle('is-hidden', n !== num);
+    });
+}
+window.switchPaanyayaSubTab = switchPaanyayaSubTab;
+
+function syncUnifiedComplaintHeader(data, docketNum, displayStage, hasFormalDocket) {
+    if (!data) return;
+    const breadEl = document.getElementById('cdBreadcrumbCaseNum');
+    if (breadEl) breadEl.textContent = docketNum || '—';
+
+    const parties = Array.isArray(data.parties) ? data.parties : [];
+    const compNames = parties
+        .filter((p) => String(p.party_type || '').toLowerCase() === 'complainant')
+        .map((p) => p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim())
+        .filter(Boolean);
+    const respNames = parties
+        .filter((p) => String(p.party_type || '').toLowerCase() === 'respondent')
+        .map((p) => p.full_name || `${p.first_name || ''} ${p.last_name || ''}`.trim())
+        .filter(Boolean);
+
+    const headlineEl = document.getElementById('cdPartiesHeadline');
+    if (headlineEl) {
+        if (compNames.length && respNames.length) {
+            headlineEl.textContent = `${compNames.join(', ')} laban kay ${respNames.join(', ')}`;
+        } else {
+            headlineEl.textContent = data.complaint_title || 'Reklamo / Usapin';
+        }
+    }
+
+    const proofLink = document.getElementById('cdProofServiceLink');
+    if (proofLink) {
+        const cId = Number(data.complaint_id || 0);
+        const caseId = Number(data.case_id || data.case_workspace?.case?.case_id || 0);
+        proofLink.href = caseId > 0
+            ? `../gps/proof-service.php?case_id=${encodeURIComponent(caseId)}&complaint_id=${encodeURIComponent(cId)}`
+            : `../gps/proof-service.php?complaint_id=${encodeURIComponent(cId)}`;
+    }
+
+    const cStatus = String(data.case_status || data.case_workspace?.case?.case_status || data.status || '');
+    const isIntakeDone = Boolean(
+        data.screening_decision === 'Eligible' || hasFormalDocket ||
+        ['Accepted', 'Pre-Docketed (Paanyaya)', 'Mediation', 'Conciliation', 'Arbitration', 'Settled', 'CFA Issued'].includes(cStatus)
+    );
+    const isMediation = Boolean(hasFormalDocket && ['Mediation', 'Docketed', 'Docketed (Mediation)'].includes(cStatus));
+    const isConciliation = Boolean(hasFormalDocket && ['Conciliation'].includes(cStatus));
+    const isClosed = Boolean(['Settled', 'Dismissed', 'CFA Issued', 'Arbitration Award', 'Resolved at Paanyaya / Closed'].includes(cStatus));
+
+    const setStepState = (idx, mode) => {
+        const el = document.getElementById(`cdStep${idx}`);
+        const badge = document.getElementById(`cdStepNum${idx}`);
+        if (!el || !badge) return;
+        el.classList.remove('is-done', 'is-active', 'is-pending');
+        el.classList.add(`is-${mode}`);
+        badge.textContent = mode === 'done' ? '✓' : String(idx);
+    };
+
+    if (isClosed) {
+        setStepState(1, 'done');
+        setStepState(2, 'done');
+        setStepState(3, 'done');
+        setStepState(4, 'done');
+    } else if (isConciliation) {
+        setStepState(1, 'done');
+        setStepState(2, 'done');
+        setStepState(3, 'done');
+        setStepState(4, 'active');
+    } else if (isMediation) {
+        setStepState(1, 'done');
+        setStepState(2, 'done');
+        setStepState(3, 'active');
+        setStepState(4, 'pending');
+    } else if (isIntakeDone) {
+        setStepState(1, 'done');
+        setStepState(2, 'active');
+        setStepState(3, 'pending');
+        setStepState(4, 'pending');
+    } else {
+        setStepState(1, 'active');
+        setStepState(2, 'pending');
+        setStepState(3, 'pending');
+        setStepState(4, 'pending');
+    }
+
+    const nextLink = document.getElementById('cdNextStepLink');
+    const primaryBtn = document.getElementById('cdPrimaryStageBtn');
+    const isReadOnly = Boolean(window.__agapLuponReadOnly || window.__agapCaseOutcomeLocked);
+    if (primaryBtn && isClosed) {
+        primaryBtn.style.display = 'none';
+    }
+    if (nextLink) {
+        if (isClosed) {
+            nextLink.textContent = displayStage || 'Tapos na ang Usapin';
+            nextLink.onclick = () => switchCaseTab('tab-arbitration');
+        } else if (isConciliation) {
+            nextLink.textContent = 'Pagdinig ng Pangkat (Conciliation)';
+            nextLink.onclick = () => switchCaseTab('tab-conciliation');
+            if (primaryBtn && !isReadOnly) {
+                primaryBtn.style.display = '';
+                primaryBtn.innerHTML = '<span>+ Schedule Conciliation</span>';
+                primaryBtn.onclick = () => openEmbeddedScheduleModal('Conciliation');
+            }
+        } else if (isMediation) {
+            nextLink.textContent = 'Pamamagitan ng Punong Barangay';
+            nextLink.onclick = () => switchCaseTab('tab-mediation');
+            if (primaryBtn && !isReadOnly) {
+                primaryBtn.style.display = '';
+                primaryBtn.innerHTML = '<span>+ Schedule Mediation</span>';
+                primaryBtn.onclick = () => openEmbeddedScheduleModal('Mediation');
+            }
+        } else if (isIntakeDone) {
+            nextLink.textContent = 'Paghahatid ng Paanyaya sa Magkabilang Panig';
+            nextLink.onclick = () => switchCaseTab('tab-paanyaya');
+        } else {
+            nextLink.textContent = 'Pagsusuri ng LISO (Preliminary Screening)';
+            nextLink.onclick = () => switchCaseTab('tab-overview');
+        }
+    }
+
+    const outBadge = document.getElementById('cdOutcomesBadge');
+    if (outBadge) {
+        outBadge.textContent = isClosed ? 'CONCLUDED' : 'PENDING';
+    }
+}
+window.syncUnifiedComplaintHeader = syncUnifiedComplaintHeader;
+
 function renderPaanyayaTab(data) {
     if (!data) return;
     const stages = data.paanyaya_stages || {};
@@ -3700,11 +3842,15 @@ function renderHearingSessionCards(sessions, containerId, badgeId, stageType, ca
 function applyOutcomeReadOnlyLock(isLocked) {
     window.__agapCaseOutcomeLocked = Boolean(isLocked);
     const readOnlyTabs = ['tab-overview', 'tab-mediation', 'tab-conciliation'];
-    ['statusTrackerButton', 'editComplaintBtn'].forEach(id => {
+    ['statusTrackerButton', 'editComplaintBtn', 'cdPrimaryStageBtn', 'openPendingCloseBtn'].forEach(id => {
         const control = document.getElementById(id);
         if (!control) return;
         control.classList.toggle('case-header-readonly-action', Boolean(isLocked));
         control.setAttribute('aria-disabled', isLocked ? 'true' : 'false');
+        if (id === 'cdPrimaryStageBtn' || id === 'openPendingCloseBtn') {
+            control.style.display = isLocked ? 'none' : '';
+            control.disabled = Boolean(isLocked);
+        }
     });
 
     readOnlyTabs.forEach(tabId => {

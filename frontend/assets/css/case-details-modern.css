@@ -2632,3 +2632,510 @@
     font-size: 0.72rem;
     font-weight: 700;
 }
+
+/* ==========================================================================
+   Unified Complaint Details Shell Redesign (Nov 2026)
+   ========================================================================== */
+
+.case-details-main {
+    background-color: #f4f6f9;
+    padding: 18px 24px 60px;
+}
+
+.case-details-main .cross-link-alert-banner {
+    max-width: 1120px;
+    margin: 0 auto 14px !important;
+}
+
+.cd-unified-shell {
+    max-width: 1120px;
+    margin: 0 auto;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
+    overflow: hidden;
+}
+
+.cd-shell-header {
+    padding: 20px 26px 18px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.cd-breadcrumb-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.cd-breadcrumb {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 600;
+    flex-wrap: wrap;
+}
+
+.cd-breadcrumb a {
+    color: #64748b;
+    text-decoration: none;
+}
+
+.cd-breadcrumb a:hover {
+    color: #1e293b;
+    text-decoration: underline;
+}
+
+.cd-breadcrumb-current {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.cd-office-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 9999px;
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    color: #047857;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.cd-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+.cd-parties-headline {
+    margin: 0;
+    font-size: 1.42rem;
+    font-weight: 800;
+    color: #0f172a;
+    letter-spacing: -0.35px;
+    line-height: 1.25;
+}
+
+.cd-subtitle {
+    margin: 0 0 14px 0;
+    font-size: 0.82rem;
+    color: #64748b;
+}
+
+.cd-action-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.cd-action-left,
+.cd-action-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.cd-btn-green {
+    background: #14532d;
+    color: #ffffff !important;
+    border: 1px solid #14532d;
+    padding: 7px 15px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s ease;
+}
+
+.cd-btn-green:hover {
+    background: #166534;
+    border-color: #166534;
+}
+
+.cd-btn-soft {
+    background: #ffffff;
+    color: #1e293b !important;
+    border: 1px solid #cbd5e1;
+    padding: 7px 13px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.cd-btn-soft:hover {
+    background: #f8fafc;
+    border-color: #94a3b8;
+}
+
+.cd-btn-rose {
+    background: #fff1f2;
+    color: #be123c !important;
+    border: 1px solid #fecdd3;
+    padding: 7px 13px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.cd-btn-rose:hover {
+    background: #ffe4e6;
+    border-color: #fda4af;
+}
+
+/* 6-Column Metadata Strip */
+.cd-meta-strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 14px;
+    padding: 15px 26px;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.cd-meta-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.cd-meta-label {
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.cd-meta-val {
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #0f172a;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.cd-meta-link {
+    color: #0f766e;
+    text-decoration: underline;
+    font-weight: 700;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    cursor: pointer;
+}
+
+/* 4-Step Horizontal Stage Stepper */
+.cd-stage-stepper {
+    margin: 16px 26px;
+    padding: 10px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+}
+
+.cd-step-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+    min-width: 0;
+}
+
+.cd-step-item:hover {
+    background: #f8fafc;
+}
+
+.cd-step-item.is-active {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+}
+
+.cd-step-badge {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.74rem;
+    font-weight: 800;
+    flex-shrink: 0;
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.cd-step-item.is-done .cd-step-badge {
+    background: #16a34a;
+    color: #ffffff;
+}
+
+.cd-step-item.is-active .cd-step-badge {
+    background: #2563eb;
+    color: #ffffff;
+}
+
+.cd-step-title {
+    display: block;
+    font-size: 0.79rem;
+    font-weight: 800;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cd-step-item.is-active .cd-step-title {
+    color: #1d4ed8;
+}
+
+.cd-step-item.is-pending .cd-step-title {
+    color: #64748b;
+    font-weight: 600;
+}
+
+.cd-step-sub {
+    display: block;
+    font-size: 0.71rem;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cd-step-item.is-active .cd-step-sub {
+    color: #2563eb;
+}
+
+.cd-step-chevron {
+    color: #cbd5e1;
+    font-size: 1rem;
+    font-weight: 700;
+    user-select: none;
+}
+
+/* Unified Tabs Bar inside Shell */
+.cd-unified-shell .case-tabs-nav {
+    padding: 0 26px;
+    margin-bottom: 0;
+    gap: 22px;
+    border-top: 1px solid #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.cd-unified-shell .case-tab-item.active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+}
+
+.cd-tab-content-area {
+    padding: 22px 26px 28px;
+    background: #ffffff;
+}
+
+.cd-tab-content-area .sophos-layout-grid,
+.cd-tab-content-area .operational-two-col,
+.cd-tab-content-area .kp-forms-card-box,
+.cd-tab-content-area .stage-section-card,
+.cd-tab-content-area .hearings-schedule-card,
+.cd-tab-content-area .dual-doc-preview-grid,
+.cd-tab-content-area > div[style*="margin: 0 30px"] {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* Paanyaya Stage 0 Header & Party Service Cards */
+.cd-p-stage-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.cd-p-subtabs {
+    display: flex;
+    gap: 14px;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.cd-p-subtab {
+    background: none;
+    border: none;
+    padding: 8px 4px 10px;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 2px solid transparent;
+}
+
+.cd-p-subtab.is-active {
+    color: #0f172a;
+    border-bottom-color: #2563eb;
+}
+
+.cd-p-subtab-pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.cd-p-subtab.is-active .cd-p-subtab-pill {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.cd-p-panel.is-hidden {
+    display: none;
+}
+
+.cd-p-schedule-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 13px 16px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: 14px;
+}
+
+.cd-p-party-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 14px;
+}
+
+.cd-p-party-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 15px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cd-p-party-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+}
+
+.cd-p-party-badge {
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 6px;
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.cd-p-party-badge.is-resp {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.cd-p-meta-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 0.79rem;
+    color: #334155;
+    line-height: 1.5;
+}
+
+.cd-p-action-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px 18px;
+}
+
+@media (max-width: 980px) {
+    .cd-meta-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .cd-stage-stepper {
+        grid-template-columns: 1fr 1fr;
+    }
+    .cd-step-chevron {
+        display: none;
+    }
+    .cd-p-party-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .case-details-main {
+        padding: 10px 10px 44px;
+    }
+    .cd-shell-header,
+    .cd-meta-strip,
+    .cd-tab-content-area {
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+    .cd-stage-stepper {
+        margin-left: 16px;
+        margin-right: 16px;
+        grid-template-columns: 1fr;
+    }
+    .cd-meta-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}

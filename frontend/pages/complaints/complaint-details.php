@@ -234,62 +234,10 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
         <?php include '../../layouts/navbar.php'; ?>
 
-        <!-- Modern Action Bar / Navigation Header (Picture 1) -->
-        <div class="case-details-action-bar">
-            <div class="case-bar-left">
-                <a href="complaint-list.php" class="back-link">
-                    <svg class="back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-                    <span>Back to Complaints</span>
-                </a>
-                <div class="case-title-badge-group">
-                    <h1 id="complaintNumber" class="case-main-heading">Case #—</h1>
-                    <span id="complaintStatusBadge" class="case-stage-pill status-mediation">Loading...</span>
-                </div>
-            </div>
-
-            <div class="case-bar-right">
-                <?php if ($roleId === 3 && $assignedLisoId > 0 && $assignedLisoId !== (int) $_SESSION['user_id']): ?>
-                    <span style="color:#64748b; font-size:.82rem; font-weight:700;">Assigned to another LISO</span>
-                <?php endif; ?>
-                <?php if ($canFormallyDocket): ?>
-                    <button type="button" class="btn-case-primary" onclick="docketEligibleIntake(<?php echo $complaintId; ?>)">
-                        <span>Formal Docket</span>
-                    </button>
-                <?php endif; ?>
-                <?php if ($isLuponReadOnly): ?>
-                    <span class="btn-case-status" id="statusTrackerButton" style="cursor:default; pointer-events:none;" title="Current complaint progression status">
-                        <span id="statusDotIndicator" class="status-dot-indicator"></span>
-                        <span id="statusTrackerButtonLabel">Status: Under Review</span>
-                    </span>
-                <?php else: ?>
-                    <button type="button" class="btn-case-status" id="statusTrackerButton" onclick="toggleStatusTracker()" title="Toggle case progression tracking">
-                        <span id="statusDotIndicator" class="status-dot-indicator"></span>
-                        <span id="statusTrackerButtonLabel">Status: In Progress</span>
-                        <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
-                    </button>
-                <?php endif; ?>
-                <?php if (!$isLuponReadOnly): ?>
-                    <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="btn-case-primary">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
-                        <span>Edit Case</span>
-                    </a>
-                    <button type="button" id="openRoutingOverrideBtn" class="btn-case-status" onclick="openRoutingOverrideModal()" title="Review or override automated receiving queue">
-                        <span>Queue / Routing</span>
-                    </button>
-                    <button type="button" id="openPendingCloseBtn" class="btn-case-status" onclick="openPendingCloseModal()" title="Request complainant-verified Pending Close">
-                        <span>Request Pending Close</span>
-                    </button>
-                <?php else: ?>
-                    <span class="btn-case-status" style="background:#eef6f2; border-color:#cde2d6; color:#102b2d; cursor:default; pointer-events:none;">
-                        Read-Only Screening View
-                    </span>
-                <?php endif; ?>
-                <script>
-                    window.__agapLuponReadOnly = <?php echo $isLuponReadOnly ? 'true' : 'false'; ?>;
-                    window.__agapCanScreenClassification = <?php echo $canScreenClassification ? 'true' : 'false'; ?>;
-                </script>
-            </div>
-        </div>
+        <script>
+            window.__agapLuponReadOnly = <?php echo $isLuponReadOnly ? 'true' : 'false'; ?>;
+            window.__agapCanScreenClassification = <?php echo $canScreenClassification ? 'true' : 'false'; ?>;
+        </script>
 
         <?php if ($complaintFlash && !empty($complaintFlash['message'])): ?>
             <script>
@@ -619,11 +567,148 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </a>
         </div>
 
+        <!-- Unified Complaint Details Shell -->
+        <div class="cd-unified-shell">
+            <header class="cd-shell-header">
+                <div class="cd-breadcrumb-row">
+                    <nav class="cd-breadcrumb" aria-label="Breadcrumb">
+                        <span>Katarungang Pambarangay</span>
+                        <span>&rsaquo;</span>
+                        <a href="complaint-list.php">Mga Reklamo</a>
+                        <span>&rsaquo;</span>
+                        <span id="cdBreadcrumbCaseNum" class="cd-breadcrumb-current">Case #—</span>
+                    </nav>
+                    <span class="cd-office-pill">
+                        <span style="width:6px; height:6px; border-radius:50%; background:#10b981;"></span>
+                        Tanggapan ng Lupong Tagapamayapa
+                    </span>
+                </div>
+
+                <div class="cd-title-row">
+                    <h1 id="cdPartiesHeadline" class="cd-parties-headline">Loading complaint...</h1>
+                    <span id="complaintStatusBadge" class="case-stage-pill status-mediation">Loading...</span>
+                    <span id="sophosHeroCaseNum" class="sophos-ref-pill">#—</span>
+                    <span id="complaintNumber" style="display:none;">Case #—</span>
+                </div>
+                <p class="cd-subtitle">Rekord, pagdinig, at mga pinoproceso sa ilalim ng Katarungang Pambarangay (R.A. 7160).</p>
+
+                <div class="cd-action-row">
+                    <div class="cd-action-left">
+                        <?php if (!$isLuponReadOnly): ?>
+                            <a id="editComplaintBtn" href="complaint-edit.php?id=<?php echo $complaintId; ?>" class="cd-btn-soft">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                <span>Baguhin</span>
+                            </a>
+                            <?php if ($canFormallyDocket): ?>
+                                <button type="button" id="cdPrimaryStageBtn" class="cd-btn-green" onclick="docketEligibleIntake(<?php echo $complaintId; ?>)">
+                                    <span>+ Formal Docket</span>
+                                </button>
+                            <?php else: ?>
+                                <button type="button" id="cdPrimaryStageBtn" class="cd-btn-green" onclick="switchCaseTab('tab-paanyaya')">
+                                    <span>+ Pakipag-usap / Paanyaya</span>
+                                </button>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                        <a id="cdProofServiceLink" href="../gps/proof-service.php?complaint_id=<?php echo $complaintId; ?>" class="cd-btn-soft">
+                            <span>Proof of Service</span>
+                        </a>
+                        <?php if (!$isLuponReadOnly): ?>
+                            <button type="button" id="openPendingCloseBtn" class="cd-btn-rose" onclick="openPendingCloseModal()" title="Request complainant-verified Pending Close">
+                                <span>Kasunduan / Isara</span>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                    <div class="cd-action-right">
+                        <?php if ($roleId === 3 && $assignedLisoId > 0 && $assignedLisoId !== (int) $_SESSION['user_id']): ?>
+                            <span style="color:#64748b; font-size:.78rem; font-weight:700;">Assigned to another LISO</span>
+                        <?php endif; ?>
+                        <?php if ($isLuponReadOnly): ?>
+                            <span class="btn-case-status" id="statusTrackerButton" style="cursor:default; pointer-events:none; font-size:0.78rem; padding:6px 12px;">
+                                <span id="statusDotIndicator" class="status-dot-indicator"></span>
+                                <span id="statusTrackerButtonLabel">Status: Under Review</span>
+                            </span>
+                        <?php else: ?>
+                            <button type="button" class="cd-btn-soft" id="statusTrackerButton" onclick="toggleStatusTracker()" title="Toggle case progression tracking">
+                                <span id="statusDotIndicator" class="status-dot-indicator"></span>
+                                <span id="statusTrackerButtonLabel">Status: In Progress</span>
+                                <span id="statusToggleArrow" class="dropdown-arrow">▼</span>
+                            </button>
+                            <button type="button" id="openRoutingOverrideBtn" class="cd-btn-soft" onclick="openRoutingOverrideModal()" title="Review or override automated receiving queue">
+                                <span>Queue / Routing</span>
+                            </button>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 6-Column Metadata Strip -->
+            <div class="cd-meta-strip">
+                <div class="cd-meta-cell">
+                    <span class="cd-meta-label">Uri ng Alitan</span>
+                    <span id="infoCategory" class="cd-meta-val">—</span>
+                </div>
+                <div class="cd-meta-cell">
+                    <span class="cd-meta-label">Petsa ng Paghain</span>
+                    <span id="infoDateFiled" class="cd-meta-val">—</span>
+                </div>
+                <div class="cd-meta-cell">
+                    <span class="cd-meta-label">Paraan ng Paghain</span>
+                    <span id="sophosInfoOrigin" class="cd-meta-val">—</span>
+                </div>
+                <div class="cd-meta-cell">
+                    <span class="cd-meta-label">Petsa ng Pangyayari</span>
+                    <span id="infoIncidentDate" class="cd-meta-val">—</span>
+                </div>
+                <div class="cd-meta-cell">
+                    <span class="cd-meta-label">Lugar ng Alitan</span>
+                    <span id="locationAddressText" class="cd-meta-val">—</span>
+                </div>
+                <div class="cd-meta-cell">
+                    <span class="cd-meta-label">Susunod na Hakbang</span>
+                    <a id="cdNextStepLink" href="javascript:void(0)" onclick="switchCaseTab('tab-paanyaya')" class="cd-meta-link">Paghahatid ng Paanyaya</a>
+                </div>
+            </div>
+
+            <!-- 4-Step Horizontal Stage Stepper -->
+            <div class="cd-stage-stepper" aria-label="Case Progression">
+                <button type="button" id="cdStep1" class="cd-step-item is-done" onclick="switchCaseTab('tab-overview')">
+                    <span class="cd-step-badge" id="cdStepNum1">✓</span>
+                    <span style="min-width:0;">
+                        <span class="cd-step-title">1. Paghain (Intake)</span>
+                        <span class="cd-step-sub" id="cdStepSub1">Online / LISO Inaprubahan</span>
+                    </span>
+                </button>
+                <span class="cd-step-chevron" aria-hidden="true">&rsaquo;</span>
+                <button type="button" id="cdStep2" class="cd-step-item is-active" onclick="switchCaseTab('tab-paanyaya')">
+                    <span class="cd-step-badge" id="cdStepNum2">2</span>
+                    <span style="min-width:0;">
+                        <span class="cd-step-title">2. Paanyaya sa Magkabilang Panig</span>
+                        <span class="cd-step-sub" id="cdStepSub2">Hatid sa May Sumbong &amp; Ipinagsusumbong</span>
+                    </span>
+                </button>
+                <span class="cd-step-chevron" aria-hidden="true">&rsaquo;</span>
+                <button type="button" id="cdStep3" class="cd-step-item is-pending" onclick="switchCaseTab('tab-mediation')">
+                    <span class="cd-step-badge" id="cdStepNum3">3</span>
+                    <span style="min-width:0;">
+                        <span class="cd-step-title">3. Pamamagitan (PB Mediation)</span>
+                        <span class="cd-step-sub" id="cdStepSub3">15-Araw na Takdang Panahon</span>
+                    </span>
+                </button>
+                <span class="cd-step-chevron" aria-hidden="true">&rsaquo;</span>
+                <button type="button" id="cdStep4" class="cd-step-item is-pending" onclick="switchCaseTab('tab-conciliation')">
+                    <span class="cd-step-badge" id="cdStepNum4">4</span>
+                    <span style="min-width:0;">
+                        <span class="cd-step-title">4. Konsilyasyon / Pangkat</span>
+                        <span class="cd-step-sub" id="cdStepSub4">3-Kasapi ng Lupon Council</span>
+                    </span>
+                </button>
+            </div>
+
         <!-- Horizontal Tabs Navigation Bar -->
         <nav class="case-tabs-nav" aria-label="Case Sections" <?php echo ($isLuponReadOnly && $isUndocketedIntake && !$preparation) ? 'style="display: none;"' : ''; ?>>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-overview' ? 'active' : ''; ?>" data-tab="tab-overview" onclick="switchCaseTab('tab-overview')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
-                <span>Case Folder</span>
+                <span>Overview &amp; Workflow</span>
             </button>
             <?php if ($preparation || $preparationFlash || $usesPaanyayaPreparation || !$isLuponReadOnly): ?>
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>" data-tab="tab-paanyaya" id="navTabPaanyayaLink" onclick="switchCaseTab('tab-paanyaya')">
@@ -643,12 +728,15 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <button type="button" class="case-tab-item <?php echo $activeTab === 'tab-arbitration' ? 'active' : ''; ?>" data-tab="tab-arbitration" id="caseTabItemOutcomes" onclick="switchCaseTab('tab-arbitration')">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"></path><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                 <span id="tabOutcomesLabel">Outcomes</span>
+                <span class="case-tab-count" id="cdOutcomesBadge">PENDING</span>
                 <span class="case-tab-lock-icon" id="tabLockArbitration" style="display: none;" title="Locked stage">🔒</span>
             </button>
         </nav>
 
+        <div class="cd-tab-content-area">
+
         <!-- Collapsible Case Status / Progression Section -->
-        <div id="statusTrackerSection" class="status-tracker-section" style="display: none; margin: 0 30px 24px;">
+        <div id="statusTrackerSection" class="status-tracker-section" style="display: none; margin: 0 0 24px;">
             <div class="status-tracker-card">
                 <div class="status-tracker-card-header">
                     <div class="status-tracker-header-left">
@@ -926,42 +1014,6 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </div>
             <?php endif; ?>
 
-            <!-- Sophos-Style Hero Section (Light Mode) -->
-            <div class="sophos-hero-card">
-                <div class="sophos-hero-left">
-                    <div class="sophos-hero-pills-row">
-                        <span id="sophosHeroCaseNum" class="sophos-ref-pill">#CMP-2026-0000</span>
-                        <span id="heroCaseTypeBadge" class="sophos-tag-select sophos-tag-type">
-                            <span id="sophosCaseTypeText">CIVIL COMPLAINT</span>
-                        </span>
-                        <span id="heroComplaintStatusBadge" class="sophos-tag-select sophos-tag-status">
-                            <span id="sophosStatusText">Under Review</span>
-                        </span>
-                        <!-- Hidden hook for legacy scripts if needed -->
-                        <span id="heroDaysRemainingBadge" style="display: none;"><span id="heroDaysRemainingText"></span></span>
-                    </div>
-                    <h2 id="complaintTitle" class="sophos-hero-title">Loading case title...</h2>
-                </div>
-                <div class="sophos-hero-kpis">
-                    <div class="sophos-kpi-col">
-                        <span class="sophos-kpi-label">Assigned Officer</span>
-                        <span id="sophosHeroOwner" class="sophos-kpi-val">Punong Barangay</span>
-                    </div>
-                    <div class="sophos-kpi-col">
-                        <span class="sophos-kpi-label">Date Filed</span>
-                        <span id="infoDateFiled" class="sophos-kpi-val">—</span>
-                    </div>
-                    <div class="sophos-kpi-col">
-                        <span class="sophos-kpi-label">Hearing Date</span>
-                        <span id="sophosHeroHearingDate" class="sophos-kpi-val">N/A</span>
-                    </div>
-                    <div class="sophos-kpi-col">
-                        <span class="sophos-kpi-label">Last Updated</span>
-                        <span id="sophosHeroLastUpdate" class="sophos-kpi-val">—</span>
-                    </div>
-                </div>
-            </div>
-
             <!-- Sophos-Inspired 2-Column Asymmetric Layout Grid -->
             <div class="sophos-layout-grid">
                 <!-- ================= LEFT COLUMN (~36% / 360px) ================= -->
@@ -970,25 +1022,29 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <div class="sophos-card">
                         <div class="sophos-card-header" style="display:flex; justify-content:space-between; align-items:center;">
                             <h3 class="sophos-card-title">Information</h3>
-                            <span style="font-size:0.68rem; font-weight:700; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; padding:2px 7px; border-radius:9999px;" title="Structured classification is isolated from dynamic hearing minutes">Metadata Protected</span>
+                            <span id="heroCaseTypeBadge" class="sophos-tag-select sophos-tag-type" style="font-size:0.68rem; padding:2px 8px;">
+                                <span id="sophosCaseTypeText">CIVIL COMPLAINT</span>
+                            </span>
                         </div>
                         <div class="sophos-card-body">
+                            <span id="heroComplaintStatusBadge" style="display:none;"><span id="sophosStatusText">Under Review</span></span>
+                            <span id="heroDaysRemainingBadge" style="display:none;"><span id="heroDaysRemainingText"></span></span>
                             <div class="sophos-info-list">
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Case Title</span>
+                                    <span id="complaintTitle" class="sophos-info-val">Loading...</span>
+                                </div>
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Tracking Ref</span>
                                     <span id="infoTrackingRef" class="sophos-info-val">—</span>
                                 </div>
                                 <div class="sophos-info-row">
-                                    <span class="sophos-info-label">Case type</span>
-                                    <span id="infoCaseType" class="sophos-info-val">Civil Complaint</span>
+                                    <span class="sophos-info-label">Assigned Officer</span>
+                                    <span id="sophosHeroOwner" class="sophos-info-val">Punong Barangay</span>
                                 </div>
                                 <div class="sophos-info-row">
-                                    <span class="sophos-info-label">Category</span>
-                                    <span id="infoCategory" class="sophos-info-val">—</span>
-                                </div>
-                                <div class="sophos-info-row">
-                                    <span class="sophos-info-label">Origin / Intake</span>
-                                    <span id="sophosInfoOrigin" class="sophos-info-val">Resident Portal (Online)</span>
+                                    <span class="sophos-info-label">Next Hearing</span>
+                                    <span id="sophosHeroHearingDate" class="sophos-info-val">N/A</span>
                                 </div>
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Jurisdiction</span>
@@ -1001,6 +1057,10 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Admin Status</span>
                                     <span id="infoStatus" class="sophos-info-val" style="color: #2563eb;">Loading...</span>
+                                </div>
+                                <div class="sophos-info-row">
+                                    <span class="sophos-info-label">Last Updated</span>
+                                    <span id="sophosHeroLastUpdate" class="sophos-info-val">—</span>
                                 </div>
                             </div>
                         </div>
@@ -1066,7 +1126,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             <div class="sophos-loc-meta">
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Specific Location</span>
-                                    <span id="locationAddressText" class="sophos-info-val">—</span>
+                                    <span id="cdLocCardAddress" class="sophos-info-val">—</span>
                                 </div>
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Severity / Priority</span>
@@ -1082,7 +1142,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                                 </div>
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Incident Date &amp; Time</span>
-                                    <span id="infoIncidentDate" class="sophos-info-val">—</span>
+                                    <span id="cdLocCardIncidentDate" class="sophos-info-val">—</span>
                                 </div>
                                 <div class="sophos-info-row">
                                     <span class="sophos-info-label">Coordinates</span>
@@ -1282,6 +1342,15 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
              TAB PANE 1B: PAANYAYA (Stage 0 Pre-Docketing & Dialogue)
              =================================================================== -->
         <div id="tab-paanyaya" class="case-tab-pane <?php echo $activeTab === 'tab-paanyaya' ? 'active' : ''; ?>">
+            <div class="cd-p-stage-head">
+                <div>
+                    <h2 style="margin:0; font-size:1.05rem; font-weight:800; color:#0f172a;">Stage 0 &mdash; Paanyaya (Di-Formal na Usapan bago ang Formal Docket)</h2>
+                    <p style="margin:3px 0 0; font-size:0.8rem; color:#64748b;">Paghahatid ng Paanyaya at Paunawa sa Magkabilang Panig na may GPS at Proof of Service.</p>
+                </div>
+                <a href="../gps/proof-service.php?complaint_id=<?php echo $complaintId; ?>" class="cd-btn-soft" style="border-color:#93c5fd; color:#0284c7 !important;">
+                    <span>Buksan ang Buong Proof of Service &#8599;</span>
+                </a>
+            </div>
             <?php if ($preparation || $preparationFlash): ?>
                 <div id="paanyaya-preparation">
                     <?php
@@ -1292,6 +1361,23 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     if (!$paanyayaInvitations) {
                         $paanyayaInvitations[1] = null;
                     }
+                    $p1Inv = $paanyayaInvitations[1] ?? null;
+                    $p2Inv = $paanyayaInvitations[2] ?? null;
+                    $p1Label = $p1Inv ? (!empty($p1Inv['prepared_at']) ? 'Inihanda' : 'Not Started') : 'Not Started';
+                    $p2Label = $p2Inv ? (!empty($p2Inv['prepared_at']) ? 'Inihanda' : 'Aktibo') : 'Hindi Kailangan';
+                    $defaultSubInv = (!empty($_SESSION['paanyaya_preparation_flash']['invitation_number']) && (int)$_SESSION['paanyaya_preparation_flash']['invitation_number'] === 2) || isset($paanyayaInvitations[2]) ? 2 : 1;
+                    ?>
+                    <div class="cd-p-subtabs" role="tablist" aria-label="Paanyaya Invitations">
+                        <button type="button" class="cd-p-subtab <?= $defaultSubInv === 1 ? 'is-active' : '' ?>" id="cdPSubTab1" onclick="switchPaanyayaSubTab(1)">
+                            <span>1st Paanyaya (Unang Paanyaya)</span>
+                            <span class="cd-p-subtab-pill"><?= htmlspecialchars($p1Label) ?></span>
+                        </button>
+                        <button type="button" class="cd-p-subtab <?= $defaultSubInv === 2 ? 'is-active' : '' ?>" id="cdPSubTab2" onclick="switchPaanyayaSubTab(2)">
+                            <span>2nd Paanyaya (Ikalawang Paanyaya)</span>
+                            <span class="cd-p-subtab-pill"><?= htmlspecialchars($p2Label) ?></span>
+                        </button>
+                    </div>
+                    <?php
                     foreach ($paanyayaInvitations as $invitationNumber => $invitationRecord) {
                         $preparation = $invitationRecord;
                         $preparationFlash = (int) ($intakeFlash['invitation_number'] ?? 1) === $invitationNumber ? $intakeFlash : null;
@@ -1322,12 +1408,20 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             error_log('Paanyaya service workspace: ' . $exception->getMessage());
                             $paanyayaServiceUnavailable = true;
                         }
+                        $isSubPanelActive = ($invitationNumber === $defaultSubInv);
                         include __DIR__ . '/tabs/paanyaya-preparation.php';
                     }
-                    ?>
+                    if (!isset($paanyayaInvitations[2])): ?>
+                        <div id="cdPaanyayaSubPanel2" class="cd-p-panel is-hidden">
+                            <div class="cd-p-action-box" style="text-align:center; padding:24px;">
+                                <strong style="display:block; color:#0f172a; margin-bottom:4px;">2nd Paanyaya (Ikalawang Paanyaya)</strong>
+                                <span style="font-size:0.84rem; color:#64748b;">Hindi pa kailangan ang ikalawang paanyaya maliban kung hilingin ng may sumbong pagkatapos ng Unang Paanyaya.</span>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
             <?php elseif (!$isLuponReadOnly): ?>
-                <div class="sophos-card" style="margin: 0 30px 24px; padding: 24px;">
+                <div class="sophos-card" style="padding: 24px;">
                     <h3 style="margin: 0 0 8px; font-size: 1.05rem; color: #0f172a;">Stage 0 &middot; Paanyaya Workspace</h3>
                     <p style="margin: 0 0 14px; font-size: 0.9rem; color: #475569;">
                         This complaint is outside the prepared Paanyaya workflow (it may be awaiting LISO screening or already docketed directly for formal mediation).
@@ -1724,6 +1818,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         <div id="evidenceDropzone" style="display:none;"><input type="file" id="evidenceFileInput" style="display:none;"><div id="dropzoneUploadProgress" style="display:none;"></div></div>
         <input type="hidden" id="partyComplaintId" value="<?php echo $complaintId; ?>">
         <input type="hidden" id="attachmentComplaintId" value="<?php echo $complaintId; ?>">
+
+        </div> <!-- close .cd-tab-content-area -->
+        </div> <!-- close .cd-unified-shell -->
 
     </div>
 
