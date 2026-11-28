@@ -416,6 +416,11 @@ try {
     $misleadingAlias = $db->query("SELECT narrative AS full_name FROM complaints WHERE complaint_id = {$ownedCid}")->fetchColumn();
     assertTrue($misleadingAlias === $prefixNarrative['json']['narrative'], 'A6: A name-like alias cannot turn a stored narrative into an encrypted name');
 
+    $preBpsoRead = httpCall($base, $actors['lupon_other'], "complaints/view.php?id={$ownedCid}");
+    assertTrue($preBpsoRead['status'] === 403, 'A4: Unassigned Lupon Member cannot bypass BPSO intake gate before endorsement (403)');
+    $db->prepare("UPDATE complaints SET bpso_status = 'Endorsed to LISO', assigned_queue = 'LISO_SCREENING' WHERE complaint_id = ?")
+        ->execute([$ownedCid]);
+
     $unassignedScreenRead = httpCall($base, $actors['lupon_other'], "complaints/view.php?id={$ownedCid}");
     assertTrue($unassignedScreenRead['status'] === 200, 'A4: Active Lupon Member can open unassigned pending intake awaiting LISO screening');
     $dynamicLocCheck = PiiCryptoService::decryptPayload([
