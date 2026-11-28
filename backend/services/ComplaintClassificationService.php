@@ -210,6 +210,7 @@ final class ComplaintClassificationService
         $text = mb_strtolower(trim($narrative . ' ' . $requestedResolution));
 
         $rules = [
+            ['match' => 'abandonment of a minor', 'pattern' => '/\b(abandon\w*|naiwang\s*menor|iniwan\s*(ang\s*)?(bata|anak|menor)|pagpapabaya\s*sa\s*(bata|menor)|pagbabantay.*menor|menor\s*de\s*edad)\b/iu', 'reason' => 'Narrative describes abandonment, neglect, or non-support involving a minor.', 'title' => 'Abandonment / Pagpapabaya sa Menor de Edad'],
             ['match' => 'non-payment of debt', 'pattern' => '/\b(utang|umutang|pautang|hindi\s*(pa\s*)?(na)?bayad|hindi\s*(pa\s*)?nagbabayad|di\s*nagbayad|loan|debt|borrowed|singil|naniningil|promissory|pagkakautang)\b/iu', 'reason' => 'Narrative describes an unpaid loan or monetary debt.', 'title' => 'Hindi nabayarang utang / paniningil'],
             ['match' => 'collection of debts', 'pattern' => '/\b(koleksyon|paniningil|collection|installment|hulugan|overdue\s*payment)\b/iu', 'reason' => 'Narrative describes collection of overdue payments or obligations.', 'title' => 'Paglikom ng utang o bayarin'],
             ['match' => 'lease and rental', 'pattern' => '/\b(upa|upahan|paupahan|tenant|landlord|lessee|lessor|rent|rental|evict|papalayas)\b/iu', 'reason' => 'Narrative involves a landlord-tenant or rental/lease dispute.', 'title' => 'Alitan sa paupahan at upa'],

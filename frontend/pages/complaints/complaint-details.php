@@ -76,8 +76,10 @@ require_once __DIR__ . '/../../../backend/services/ComplaintInformationService.p
 try {
     $assignmentStatement = $preparationDb->prepare(
         'SELECT c.liso_assigned_to, c.screening_decision, c.status, c.submitted_by, c.is_draft,
-                c.category_id, c.secondary_category_id, c.other_category_specification,
+                c.category_id, c.proposed_category_id, c.secondary_category_id, c.other_category_specification,
                 c.secondary_other_category_specification, c.case_type, c.complaint_title, c.intake_source,
+                c.intake_reference, c.complaint_number, c.incident_date, c.incident_purok,
+                c.incident_location, c.incident_street, c.requested_resolution, c.review_notes,
                 c.narrative, cat.category_name, cs.case_id, cs.case_status
          FROM complaints c
          LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
@@ -342,11 +344,14 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
         }
 
         function syncLisoScreenOtherInputs() {
+            const catEl = document.getElementById('lisoScreenCategoryId');
+            const otherWrap = document.getElementById('lisoScreenOtherWrap');
+            const otherInp = document.getElementById('lisoScreenOtherSpec');
             resolveLisoCategoryInput(
                 document.getElementById('lisoScreenCategoryInput'),
-                document.getElementById('lisoScreenCategoryId'),
-                document.getElementById('lisoScreenOtherWrap'),
-                document.getElementById('lisoScreenOtherSpec')
+                catEl,
+                otherWrap,
+                otherInp
             );
             resolveLisoCategoryInput(
                 document.getElementById('lisoScreenSecondaryCategoryInput'),
@@ -355,6 +360,104 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 document.getElementById('lisoScreenSecondaryOtherSpec')
             );
             autoMapLisoScreenCaseType();
+        }
+
+        function syncLisoApprovalSubmitState() {
+            const chk = document.getElementById('lisoScreenConfirmJurisdictionCheck');
+            const btn = document.getElementById('btnMarkIntakeEligible');
+            if (btn && chk) {
+                btn.disabled = !chk.checked;
+            }
+        }
+
+        function toggleLisoSecondaryCategory(forceState) {
+            const row = document.getElementById('lisoSecondaryCatRow');
+            const btn = document.getElementById('btnToggleLisoSecondaryCat');
+            const secEl = document.getElementById('lisoScreenSecondaryCategoryId');
+            const secOtherEl = document.getElementById('lisoScreenSecondaryOtherSpec');
+            if (!row) return;
+            const shouldShow = typeof forceState === 'boolean' ? forceState : (row.style.display === 'none');
+            row.style.display = shouldShow ? 'block' : 'none';
+            if (btn) btn.textContent = shouldShow ? '− Alisin ang Pangalawang Kategorya' : '+ Pangalawang Kategorya';
+            if (!shouldShow) {
+                if (secEl) secEl.value = '';
+                if (secOtherEl) secOtherEl.value = '';
+                syncLisoScreenOtherInputs();
+            }
+        }
+
+        function applyLisoSystemSuggestion() {
+            const btn = document.getElementById('btnApplyLisoSystemSuggestion');
+            const catEl = document.getElementById('lisoScreenCategoryId');
+            const caseTypeEl = document.getElementById('lisoScreenCaseType');
+            const titleEl = document.getElementById('lisoScreenComplaintTitle');
+            if (!btn || !catEl) return;
+
+            const sugCatId = btn.dataset.catId || '';
+            const sugCaseType = btn.dataset.caseType || '';
+            const sugTitle = btn.dataset.suggestedTitle || '';
+
+            if (sugCatId) catEl.value = sugCatId;
+            syncLisoScreenOtherInputs();
+            if (caseTypeEl && (sugCaseType === 'Civil' || sugCaseType === 'Criminal')) {
+                caseTypeEl.value = sugCaseType;
+            }
+            if (titleEl && sugTitle && (!titleEl.value.trim() || titleEl.dataset.defaultTitle === '1')) {
+                titleEl.value = sugTitle;
+            }
+            document.querySelectorAll('.liso-quick-tag-btn').forEach(p => p.classList.remove('is-active'));
+            window.agapNotify?.('Inilapat ang mungkahi ng system sa classification controls.', 'success', 'LISO Screening');
+        }
+
+        function applyLisoQuickTag(pillBtn, patterns) {
+            const catEl = document.getElementById('lisoScreenCategoryId');
+            if (!catEl || !Array.isArray(patterns)) return;
+            let matchedId = '';
+            for (const pat of patterns) {
+                const lowerPat = String(pat).toLowerCase();
+                for (let i = 0; i < catEl.options.length; i++) {
+                    const opt = catEl.options[i];
+                    if (!opt.value) continue;
+                    if (opt.text.toLowerCase().includes(lowerPat)) {
+                        matchedId = opt.value;
+                        break;
+                    }
+                }
+                if (matchedId) break;
+            }
+            if (!matchedId) {
+                window.agapNotify?.('Walang direktang kategoryang tumugma para sa quick tag na ito.', 'info', 'Quick Filter');
+                return;
+            }
+            catEl.value = matchedId;
+            syncLisoScreenOtherInputs();
+            document.querySelectorAll('.liso-quick-tag-btn').forEach(p => p.classList.remove('is-active'));
+            pillBtn?.classList.add('is-active');
+        }
+
+        function resetLisoCompactScreening() {
+            const resetVal = (el) => {
+                if (!el) return;
+                el.value = el.dataset.initialValue ?? '';
+            };
+            resetVal(document.getElementById('lisoScreenCategoryId'));
+            resetVal(document.getElementById('lisoScreenSecondaryCategoryId'));
+            resetVal(document.getElementById('lisoScreenOtherSpec'));
+            resetVal(document.getElementById('lisoScreenSecondaryOtherSpec'));
+            resetVal(document.getElementById('lisoScreenCaseType'));
+            resetVal(document.getElementById('lisoScreenComplaintTitle'));
+            resetVal(document.getElementById('lisoScreeningDecisionNotes'));
+            resetVal(document.getElementById('lisoResidentRequest'));
+
+            const secEl = document.getElementById('lisoScreenSecondaryCategoryId');
+            toggleLisoSecondaryCategory(Boolean(secEl && secEl.value));
+            syncLisoScreenOtherInputs();
+
+            const chk = document.getElementById('lisoScreenConfirmJurisdictionCheck');
+            if (chk) chk.checked = false;
+            syncLisoApprovalSubmitState();
+            document.querySelectorAll('.liso-quick-tag-btn').forEach(p => p.classList.remove('is-active'));
+            window.agapNotify?.('Naibalik sa unang estado ang screening form.', 'info', 'Reset Screening');
         }
 
         async function runLisoAutoClassify(complaintId) {
@@ -421,32 +524,43 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             const titleEl = document.getElementById('lisoScreenComplaintTitle');
             const notesEl = document.getElementById('lisoScreeningDecisionNotes');
             const requestEl = document.getElementById('lisoResidentRequest');
+            const confirmJurChk = document.getElementById('lisoScreenConfirmJurisdictionCheck');
             const btnNeedsInfo = document.getElementById('btnIntakeNeedsInfo');
             const btnEligible = document.getElementById('btnMarkIntakeEligible');
             const btnRejected = document.getElementById('btnMarkIntakeRejected');
-            if (status === 'Rejected' && !(notesEl?.value || '').trim()) {
-                window.agapNotify?.('Enter the reason or jurisdictional basis before marking this intake ineligible.', 'error');
-                notesEl?.focus();
-                return;
+
+            if (status === 'Rejected') {
+                const rejectNotes = (notesEl?.value || '').trim();
+                const defaultNote = (notesEl?.dataset.defaultNote || '').trim();
+                if (!rejectNotes || (defaultNote !== '' && rejectNotes === defaultNote)) {
+                    window.agapNotify?.('Ilagay muna sa Tala sa Pagsusuri ang dahilan o legal basis ng pag-reject bago markahang ineligible.', 'error');
+                    notesEl?.focus();
+                    return;
+                }
             }
 
             if (status === 'Accepted') {
+                if (confirmJurChk && !confirmJurChk.checked) {
+                    window.agapNotify?.('Lagyan ng check ang kumpirmasyon ("Nabasa at nasuri ko ang salaysay, mga partido, at hurisdiksyon (R.A. 7160).") bago aprubahan.', 'warning', 'Confirmation Required');
+                    confirmJurChk.focus();
+                    return;
+                }
                 const typedPrimary = (catInputEl?.value || '').trim();
-                if ((catInputEl && !typedPrimary) || (catEl && !catEl.value && !typedPrimary)) {
-                    window.agapNotify?.('Select or type the official Complaint Category before marking this intake eligible.', 'error');
-                    (catInputEl || catEl)?.focus();
+                if (!catEl?.value && !typedPrimary) {
+                    window.agapNotify?.('Piliin muna ang Pangunahing Kategorya bago aprubahan sa Paanyaya.', 'error');
+                    (catEl || catInputEl)?.focus();
                     return;
                 }
                 const catText = catEl?.options[catEl.selectedIndex]?.text || '';
                 const isOther = /others|iba pa/i.test(catText);
                 const otherVal = (otherEl?.value || '').trim();
                 if (isOther && (!otherVal || otherVal.toLowerCase() === 'pending barangay liso classification')) {
-                    window.agapNotify?.('Specify the exact dispute category or type a complaint category before marking this intake eligible.', 'error');
-                    (otherEl?.offsetParent ? otherEl : (catInputEl || otherEl))?.focus();
+                    window.agapNotify?.('Tukuyin ang eksaktong kategorya sa "Specify Category (Others)" bago aprubahan.', 'error');
+                    (otherEl || catEl)?.focus();
                     return;
                 }
                 if (caseTypeEl && !['Civil', 'Criminal'].includes(caseTypeEl.value)) {
-                    window.agapNotify?.('Select whether this case is Civil or Criminal.', 'error');
+                    window.agapNotify?.('Piliin kung Civil o Criminal ang Klase ng usapin.', 'error');
                     caseTypeEl.focus();
                     return;
                 }
@@ -455,7 +569,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             window.__agapReviewIntakeSubmitting = true;
             const activeBtn = status === 'Accepted' ? btnEligible : (status === 'Rejected' ? btnRejected : btnNeedsInfo);
             const originalLabel = activeBtn ? activeBtn.textContent : '';
-            const allControls = [btnNeedsInfo, btnEligible, btnRejected, notesEl, requestEl, catInputEl, catEl, otherEl, secCatInputEl, secCatEl, secOtherEl, caseTypeEl, titleEl];
+            const allControls = [btnNeedsInfo, btnEligible, btnRejected, notesEl, requestEl, catInputEl, catEl, otherEl, secCatInputEl, secCatEl, secOtherEl, caseTypeEl, titleEl, confirmJurChk];
 
             allControls.forEach((el) => {
                 if (el) {
@@ -474,14 +588,18 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             form.append('status', status);
             form.append('review_notes', reviewNotes);
             if (status !== 'Rejected') {
-            if (catEl) form.append('category_id', catEl.value);
-            if (catInputEl) form.append('category_name', catInputEl.value.trim());
-            if (otherEl) form.append('other_category_specification', otherEl.value.trim());
-            if (secCatEl) form.append('secondary_category_id', secCatEl.value);
-            if (secCatInputEl) form.append('secondary_category_name', secCatInputEl.value.trim());
-            if (secOtherEl) form.append('secondary_other_category_specification', secOtherEl.value.trim());
-            if (caseTypeEl) form.append('case_type', caseTypeEl.value);
-            if (titleEl) form.append('complaint_title', titleEl.value.trim());
+                if (catEl) form.append('category_id', catEl.value);
+                if (catInputEl) form.append('category_name', catInputEl.value.trim());
+                if (otherEl) form.append('other_category_specification', otherEl.value.trim());
+                if (secCatEl) form.append('secondary_category_id', secCatEl.value);
+                if (secCatInputEl) form.append('secondary_category_name', secCatInputEl.value.trim());
+                if (secOtherEl) form.append('secondary_other_category_specification', secOtherEl.value.trim());
+                if (caseTypeEl) form.append('case_type', caseTypeEl.value);
+                if (titleEl) form.append('complaint_title', titleEl.value.trim());
+                if (confirmJurChk) {
+                    form.append('compact_view', '1');
+                    form.append('jurisdiction_confirmed', confirmJurChk.checked ? '1' : '0');
+                }
             }
             if (status === 'Needs Information' && requestEl) {
                 form.append('request_message', requestEl.value.trim());
@@ -497,6 +615,10 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     screeningCard.style.display = 'none';
                 }
                 window.agapNotify?.(result.message, 'success');
+                if (status === 'Accepted') {
+                    window.location.href = `complaint-details.php?id=${encodeURIComponent(complaintId)}&tab=paanyaya#paanyaya-preparation`;
+                    return;
+                }
                 window.location.reload();
             } catch (error) {
                 window.__agapReviewIntakeSubmitting = false;
@@ -507,6 +629,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         el.style.opacity = '';
                     }
                 });
+                syncLisoApprovalSubmitState();
                 if (activeBtn && originalLabel) {
                     activeBtn.textContent = originalLabel;
                 }
@@ -845,167 +968,310 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 <?php
                     require_once __DIR__ . '/../../../backend/services/ComplaintClassificationService.php';
                     $screeningCategories = ComplaintClassificationService::getCategories($preparationDb);
-                    $screeningRow = [];
+                    $screeningParties = [];
                     try {
-                        $scrStmt = $preparationDb->prepare('SELECT * FROM complaint_intake_screenings WHERE complaint_id = ? LIMIT 1');
-                        $scrStmt->execute([$complaintId]);
-                        $screeningRow = $scrStmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                        $screeningParties = (new PaanyayaPreparationService($preparationDb))->parties($complaintId);
                     } catch (Throwable) {
-                        $screeningRow = [];
+                        $screeningParties = [];
                     }
+                    $scrCompNames = [];
+                    $scrCompAddrs = [];
+                    $scrRespNames = [];
+                    $scrRespAddrs = [];
+                    foreach ($screeningParties as $sp) {
+                        $nm = trim((string) ($sp['full_name'] ?? ''));
+                        $ad = trim((string) ($sp['address'] ?? ''));
+                        if (strcasecmp((string) ($sp['party_type'] ?? ''), 'Respondent') === 0) {
+                            if ($nm !== '') $scrRespNames[] = $nm;
+                            if ($ad !== '') $scrRespAddrs[] = $ad;
+                        } else {
+                            if ($nm !== '') $scrCompNames[] = $nm;
+                            if ($ad !== '') $scrCompAddrs[] = $ad;
+                        }
+                    }
+                    $scrCompDisplay = $scrCompNames ? implode(', ', $scrCompNames) : 'May Sumbong';
+                    $scrCompAddrDisplay = $scrCompAddrs ? implode(', ', array_unique($scrCompAddrs)) : 'Barangay Tumana';
+                    $scrRespDisplay = $scrRespNames ? implode(', ', $scrRespNames) : 'Ipinagsusumbong';
+                    $scrRespAddrDisplay = $scrRespAddrs ? implode(', ', array_unique($scrRespAddrs)) : 'Barangay Tumana';
+
                     $currentCatId = (int) ($intakeScreeningMeta['category_id'] ?? 0);
                     $currentSecCatId = (int) ($intakeScreeningMeta['secondary_category_id'] ?? 0);
                     $currentOtherSpec = (string) ($intakeScreeningMeta['other_category_specification'] ?? '');
                     $currentSecOtherSpec = (string) ($intakeScreeningMeta['secondary_other_category_specification'] ?? '');
                     $currentCaseType = (string) ($intakeScreeningMeta['case_type'] ?? 'Civil');
-                    $currentTitle = (string) ($intakeScreeningMeta['complaint_title'] ?? '');
+                    $currentTitle = trim((string) ($intakeScreeningMeta['complaint_title'] ?? ''));
                     $needsLisoClassification = strcasecmp(trim($currentOtherSpec), 'Pending Barangay LISO Classification') === 0;
-                    $isCurrentOther = false;
-                    $isCurrentSecOther = false;
-                    $currentCatDisplayName = '';
-                    $currentSecCatDisplayName = '';
-                    foreach ($screeningCategories as $sc) {
-                        $sname = (string) ($sc['category_name'] ?? '');
-                        if ((int) $sc['category_id'] === $currentCatId) {
-                            if (stripos($sname, 'Others') !== false || stripos($sname, 'Iba pa') !== false) {
-                                $isCurrentOther = true;
-                                $currentCatDisplayName = (!$needsLisoClassification && $currentOtherSpec !== '') ? $currentOtherSpec : '';
-                            } elseif (!$needsLisoClassification) {
-                                $currentCatDisplayName = $sname;
-                            }
-                        }
-                        if ($currentSecCatId > 0 && (int) $sc['category_id'] === $currentSecCatId) {
-                            if (stripos($sname, 'Others') !== false || stripos($sname, 'Iba pa') !== false) {
-                                $isCurrentSecOther = true;
-                                $currentSecCatDisplayName = $currentSecOtherSpec !== '' ? $currentSecOtherSpec : $sname;
-                            } else {
-                                $currentSecCatDisplayName = $sname;
+                    $scrRefTag = trim((string) ($intakeScreeningMeta['intake_reference'] ?: ($intakeScreeningMeta['complaint_number'] ?: ('CMP-' . $complaintId))));
+                    $scrIncidentRaw = trim((string) ($intakeScreeningMeta['incident_date'] ?? ''));
+                    $scrIncidentFmt = $scrIncidentRaw !== '' ? date('M j, Y', strtotime($scrIncidentRaw)) : 'Hindi nakatala';
+                    $scrLocParts = array_filter([
+                        trim((string) ($intakeScreeningMeta['incident_purok'] ?? '')),
+                        trim((string) ($intakeScreeningMeta['incident_location'] ?? '')),
+                        trim((string) ($intakeScreeningMeta['incident_street'] ?? '')),
+                    ]);
+                    $scrLugarFmt = $scrLocParts ? implode(', ', array_unique($scrLocParts)) : 'Barangay Tumana';
+                    $scrChannel = trim((string) ($intakeScreeningMeta['intake_source'] ?? 'Online')) ?: 'Online';
+                    $scrNarrative = trim((string) ($intakeScreeningMeta['narrative'] ?? ''));
+                    $scrRelief = trim((string) ($intakeScreeningMeta['requested_resolution'] ?? ''));
+                    $scrDefaultTitle = ($scrCompNames && $scrRespNames && ($currentTitle === '' || strcasecmp($currentTitle, 'Pending Barangay LISO Classification') === 0))
+                        ? ($scrCompNames[0] . ' laban kay ' . $scrRespNames[0])
+                        : $currentTitle;
+                    $scrDefaultNotes = trim((string) ($intakeScreeningMeta['review_notes'] ?? ''));
+                    $scrApprovalNoteTemplate = 'Inaprubahan ng LISO mula sa ' . strtolower($scrChannel) . ' submission. Kwalipikado sa Paanyaya.';
+                    $scrInitialNotes = $scrDefaultNotes !== '' ? $scrDefaultNotes : $scrApprovalNoteTemplate;
+
+                    $sysSuggestion = ComplaintClassificationService::suggestFromNarrative($preparationDb, $scrNarrative, $scrRelief);
+                    $sysSugPrimary = $sysSuggestion['primary'] ?? null;
+                    $proposedCatId = (int) ($intakeScreeningMeta['proposed_category_id'] ?? 0);
+                    if ($proposedCatId > 0 && (!empty($sysSugPrimary['confidence']) && $sysSugPrimary['confidence'] === 'Low')) {
+                        foreach ($screeningCategories as $sc) {
+                            if ((int) $sc['category_id'] === $proposedCatId) {
+                                $sysSugPrimary = [
+                                    'category_id' => $proposedCatId,
+                                    'category_name' => (string) $sc['category_name'],
+                                    'case_type' => (string) ($sc['default_case_type'] ?? 'Civil'),
+                                ];
+                                break;
                             }
                         }
                     }
-                    $lisoImpMax = (float) ($screeningRow['offense_imprisonment_max'] ?? 0);
-                    $lisoSelectedImp = $lisoImpMax > 1.0 ? '2' : ($lisoImpMax > 0.5 ? '1' : ($lisoImpMax > 0.0 ? '0.5' : '0'));
-                    $lisoNoPriv = array_key_exists('has_private_offended_party', $screeningRow) && empty($screeningRow['has_private_offended_party']);
-                    $lisoDetained = !empty($screeningRow['accused_under_detention']);
-                    $lisoHabeas = !empty($screeningRow['habeas_corpus_needed']);
-                    $lisoPresc = !empty($screeningRow['prescription_risk']);
+                    $sysSugCatId = (int) ($sysSugPrimary['category_id'] ?? 0);
+                    $sysSugCatName = (string) ($sysSugPrimary['category_name'] ?? 'Walang tiyak na tugma');
+                    $sysSugCaseType = (string) ($sysSuggestion['case_type'] ?? ($sysSugPrimary['case_type'] ?? 'Civil'));
+                    $sysSugTitle = (string) ($sysSuggestion['suggested_title'] ?? '');
+                    $initialSelectedCatId = !$needsLisoClassification && $currentCatId > 0 ? $currentCatId : $sysSugCatId;
+                    $initialCaseType = $currentCaseType;
+                    if ($needsLisoClassification && ($sysSugCaseType === 'Civil' || $sysSugCaseType === 'Criminal')) {
+                        $initialCaseType = $sysSugCaseType;
+                    }
                 ?>
-                <section id="intake-screening" class="sophos-card" aria-labelledby="intake-screening-title" style="margin-bottom: 18px; border: 1.5px solid #cde2d6; background: linear-gradient(135deg, #ffffff 0%, #f7fbf9 100%);">
-                    <div class="sophos-card-header" style="border-bottom: 1px solid #e2ece7; padding: 14px 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <section id="intake-screening" class="liso-compact-card" aria-labelledby="intake-screening-title">
+                    <header class="liso-compact-header">
+                        <div class="liso-compact-title-wrap">
+                            <h2 id="intake-screening-title">Lupon / LISO Screening (Compact View)</h2>
+                            <span class="liso-compact-ref-pill"><?= htmlspecialchars($scrRefTag, ENT_QUOTES, 'UTF-8') ?></span>
+                        </div>
+                        <button type="button" id="btnResetLisoScreening" class="liso-compact-reset-btn" onclick="resetLisoCompactScreening()" title="Revert screening fields back to initial values">
+                            <span>&#8635;</span>
+                            <span>Reset</span>
+                        </button>
+                    </header>
+
+                    <div class="liso-compact-body">
+                        <!-- Metadata Strip -->
+                        <div class="liso-compact-meta-bar">
+                            <div class="liso-compact-meta-items">
+                                <span>Pangyayari: <strong><?= htmlspecialchars($scrIncidentFmt, ENT_QUOTES, 'UTF-8') ?></strong></span>
+                                <span>&middot;</span>
+                                <span>Lugar: <strong><?= htmlspecialchars($scrLugarFmt, ENT_QUOTES, 'UTF-8') ?></strong></span>
+                                <span>&middot;</span>
+                                <span>Paghain: <strong><?= htmlspecialchars($scrChannel, ENT_QUOTES, 'UTF-8') ?></strong></span>
+                            </div>
+                            <span class="liso-compact-jurisdiction-pill">R.A. 7160 - No Lawyers (Sec. 415)</span>
+                        </div>
+
+                        <!-- Side-by-Side Parties -->
+                        <div class="liso-compact-parties-grid">
+                            <div class="liso-compact-party-card">
+                                <div>
+                                    <span class="liso-compact-party-role is-comp"><span class="liso-compact-party-dot"></span>May Sumbong</span>
+                                    <div class="liso-compact-party-name"><?= htmlspecialchars($scrCompDisplay, ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+                                <span class="liso-compact-party-addr"><?= htmlspecialchars($scrCompAddrDisplay, ENT_QUOTES, 'UTF-8') ?></span>
+                            </div>
+                            <div class="liso-compact-party-card">
+                                <div>
+                                    <span class="liso-compact-party-role is-resp"><span class="liso-compact-party-dot"></span>Ipinagsusumbong</span>
+                                    <div class="liso-compact-party-name"><?= htmlspecialchars($scrRespDisplay, ENT_QUOTES, 'UTF-8') ?></div>
+                                </div>
+                                <span class="liso-compact-party-addr"><?= htmlspecialchars($scrRespAddrDisplay, ENT_QUOTES, 'UTF-8') ?></span>
+                            </div>
+                        </div>
+
+                        <!-- Full Narrative & Relief Requested -->
+                        <div class="liso-compact-narrative-box">
+                            <div>
+                                <span class="liso-compact-block-label">Buong Salaysay ng Pangyayari</span>
+                                <p class="liso-compact-block-text"><?= htmlspecialchars($scrNarrative !== '' ? $scrNarrative : 'Walang nakasaad na salaysay.', ENT_QUOTES, 'UTF-8') ?></p>
+                            </div>
+                            <div style="border-top: 1px dashed #cbd5e1; padding-top: 10px;">
+                                <span class="liso-compact-block-label is-relief">Hiniling na Lunas (Prayer / Relief)</span>
+                                <p class="liso-compact-block-text"><?= htmlspecialchars($scrRelief !== '' ? $scrRelief : 'Hindi tinukoy ng may sumbong ang espesipikong hinihiling na lunas.', ENT_QUOTES, 'UTF-8') ?></p>
+                            </div>
+                        </div>
+
+                        <!-- Mungkahi ng System -->
+                        <?php if ($sysSugCatId > 0): ?>
+                            <div id="lisoSystemSuggestionCard" class="liso-compact-suggestion-card">
+                                <div>
+                                    <span class="liso-compact-suggestion-tag">Mungkahi ng System</span>
+                                    <strong class="liso-compact-suggestion-name"><?= htmlspecialchars($sysSugCatName, ENT_QUOTES, 'UTF-8') ?></strong>
+                                </div>
+                                <button type="button"
+                                        id="btnApplyLisoSystemSuggestion"
+                                        class="liso-compact-apply-btn"
+                                        data-cat-id="<?= (int) $sysSugCatId ?>"
+                                        data-case-type="<?= htmlspecialchars($sysSugCaseType, ENT_QUOTES, 'UTF-8') ?>"
+                                        data-suggested-title="<?= htmlspecialchars($sysSugTitle, ENT_QUOTES, 'UTF-8') ?>"
+                                        onclick="applyLisoSystemSuggestion()">
+                                    <span>&#10003;</span>
+                                    <span>Gamitin</span>
+                                </button>
+                            </div>
+                        <?php endif; ?>
+
+                        <!-- Quick Filter / Preset Pills -->
+                        <div class="liso-compact-quick-row">
+                            <span class="liso-compact-quick-label">Quick:</span>
+                            <button type="button" class="liso-quick-tag-btn" onclick='applyLisoQuickTag(this, ["non-payment of debt","collection of debts"])'>Utang</button>
+                            <button type="button" class="liso-quick-tag-btn" onclick='applyLisoQuickTag(this, ["slander","defamation"])'>Paninirang-Puri</button>
+                            <button type="button" class="liso-quick-tag-btn" onclick='applyLisoQuickTag(this, ["boundary","alteration of boundary","easement"])'>Hangganan</button>
+                            <button type="button" class="liso-quick-tag-btn" onclick='applyLisoQuickTag(this, ["neighborhood nuisance","alarms and scandals"])'>Ingay</button>
+                        </div>
+
+                        <!-- Pangunahing Kategorya + Optional Secondary -->
                         <div>
-                            <h2 id="intake-screening-title" style="margin: 0; font-size: 1rem; font-weight: 800; color: #102b2d;">LISO Preliminary Screening &amp; Legal Classification</h2>
-                            <p style="margin: 2px 0 0; font-size: 0.82rem; color: #475569;">Determine the official KP category, Civil/Criminal case type, and specific nature before marking this intake eligible.</p>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" id="btnLisoAutoClassify" class="btn-outline-sm" onclick="runLisoAutoClassify(<?php echo $complaintId; ?>)" style="font-size: 0.76rem; padding: 5px 11px;">Auto-Classify from Salaysay</button>
-                            <span style="background: #fef3c7; color: #b45309; border: 1px solid #fde68a; border-radius: 999px; padding: 4px 12px; font-size: 0.74rem; font-weight: 700;">Action Required</span>
-                        </div>
-                    </div>
-                    <div class="sophos-card-body" style="padding: 16px 20px;">
-                        <?php if ($needsLisoClassification): ?>
-                            <div style="margin-bottom: 14px; padding: 10px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 0.82rem; color: #1e3a8a;">
-                                <strong>Resident Online Filing:</strong> Legal classification is pending Lupon determination. Select or type the official category and Civil/Criminal type below before marking Eligible.
+                            <div class="liso-compact-field-label-row">
+                                <label for="lisoScreenCategoryId" class="liso-compact-field-label">Pangunahing Kategorya <span style="color:#dc2626;">*</span></label>
+                                <button type="button" id="btnToggleLisoSecondaryCat" class="liso-compact-add-sec-btn" onclick="toggleLisoSecondaryCategory()">
+                                    <?= $currentSecCatId > 0 ? '− Alisin ang Pangalawang Kategorya' : '+ Pangalawang Kategorya' ?>
+                                </button>
                             </div>
-                        <?php endif; ?>
+                            <select id="lisoScreenCategoryId"
+                                    class="liso-compact-select"
+                                    data-initial-value="<?= $initialSelectedCatId > 0 ? (int) $initialSelectedCatId : '' ?>"
+                                    onchange="syncLisoScreenOtherInputs()">
+                                <option value="">Pumili ng opisyal na kategorya...</option>
+                                <?php foreach ($screeningCategories as $sc): ?>
+                                    <option value="<?= (int) $sc['category_id'] ?>"
+                                            data-case-type="<?= htmlspecialchars((string) ($sc['default_case_type'] ?? 'Civil'), ENT_QUOTES, 'UTF-8') ?>"
+                                            data-is-other="<?= !empty($sc['is_other']) ? '1' : '0' ?>"
+                                            <?= ((int) $sc['category_id'] === $initialSelectedCatId) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars((string) $sc['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
 
-                        <datalist id="lisoScreeningCategoriesList">
-                            <?php foreach ($screeningCategories as $sc): ?>
-                                <option value="<?= htmlspecialchars((string) $sc['category_name']) ?>"
-                                        data-category-id="<?= (int) $sc['category_id'] ?>"
-                                        data-case-type="<?= htmlspecialchars((string) ($sc['default_case_type'] ?? 'Civil')) ?>"></option>
-                            <?php endforeach; ?>
-                        </datalist>
+                        <div id="lisoScreenOtherWrap" style="display: none;">
+                            <label for="lisoScreenOtherSpec" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Specify Category (Others) <span style="color:#dc2626;">*</span></label>
+                            <input type="text"
+                                   id="lisoScreenOtherSpec"
+                                   class="liso-compact-input"
+                                   maxlength="255"
+                                   data-initial-value="<?= htmlspecialchars($needsLisoClassification ? '' : $currentOtherSpec, ENT_QUOTES, 'UTF-8') ?>"
+                                   value="<?= htmlspecialchars($needsLisoClassification ? '' : $currentOtherSpec, ENT_QUOTES, 'UTF-8') ?>"
+                                   placeholder="Specify the dispute category...">
+                        </div>
 
-                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 14px;">
-                            <div class="form-group" style="margin: 0;">
-                                <label for="lisoScreenCategoryInput" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Complaint Category <span style="color:#dc2626;">*</span></label>
-                                <div class="category-picker-wrap">
-                                    <input type="text"
-                                           id="lisoScreenCategoryInput"
-                                           list="lisoScreeningCategoriesList"
-                                           value="<?= htmlspecialchars($currentCatDisplayName) ?>"
-                                           placeholder="Search KP category or type Other / Custom..."
-                                           autocomplete="off"
-                                           oninput="syncLisoScreenOtherInputs()"
-                                           onchange="syncLisoScreenOtherInputs()"
-                                           style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
+                        <div id="lisoSecondaryCatRow" style="display: <?= $currentSecCatId > 0 ? 'block' : 'none' ?>;">
+                            <label for="lisoScreenSecondaryCategoryId" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Pangalawang Kategorya <span style="font-weight:500; color:#64748b;">(Opsyonal)</span></label>
+                            <select id="lisoScreenSecondaryCategoryId"
+                                    class="liso-compact-select"
+                                    data-initial-value="<?= $currentSecCatId > 0 ? (int) $currentSecCatId : '' ?>"
+                                    onchange="syncLisoScreenOtherInputs()">
+                                <option value="">Wala (None)</option>
+                                <?php foreach ($screeningCategories as $sc): ?>
+                                    <option value="<?= (int) $sc['category_id'] ?>"
+                                            data-case-type="<?= htmlspecialchars((string) ($sc['default_case_type'] ?? 'Civil'), ENT_QUOTES, 'UTF-8') ?>"
+                                            data-is-other="<?= !empty($sc['is_other']) ? '1' : '0' ?>"
+                                            <?= ((int) $sc['category_id'] === $currentSecCatId) ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars((string) $sc['category_name'], ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div id="lisoScreenSecondaryOtherWrap" style="margin-top:8px; display: none;">
+                                <input type="text"
+                                       id="lisoScreenSecondaryOtherSpec"
+                                       class="liso-compact-input"
+                                       maxlength="255"
+                                       data-initial-value="<?= htmlspecialchars($currentSecOtherSpec, ENT_QUOTES, 'UTF-8') ?>"
+                                       value="<?= htmlspecialchars($currentSecOtherSpec, ENT_QUOTES, 'UTF-8') ?>"
+                                       placeholder="Specify the 2nd dispute category...">
+                            </div>
+                        </div>
+
+                        <!-- Klase + Pamagat ng Usapin -->
+                        <div class="liso-compact-two-col">
+                            <div>
+                                <label for="lisoScreenCaseType" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Klase</label>
+                                <select id="lisoScreenCaseType"
+                                        class="liso-compact-select"
+                                        data-initial-value="<?= htmlspecialchars($initialCaseType, ENT_QUOTES, 'UTF-8') ?>"
+                                        onchange="syncLisoCriminalFields()">
+                                    <option value="Civil" <?= $initialCaseType === 'Civil' ? 'selected' : '' ?>>Civil</option>
+                                    <option value="Criminal" <?= $initialCaseType === 'Criminal' ? 'selected' : '' ?>>Criminal</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="lisoScreenComplaintTitle" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Pamagat ng Usapin</label>
+                                <input type="text"
+                                       id="lisoScreenComplaintTitle"
+                                       class="liso-compact-input"
+                                       maxlength="255"
+                                       data-initial-value="<?= htmlspecialchars($scrDefaultTitle, ENT_QUOTES, 'UTF-8') ?>"
+                                       data-default-title="<?= $currentTitle === '' ? '1' : '0' ?>"
+                                       value="<?= htmlspecialchars($scrDefaultTitle, ENT_QUOTES, 'UTF-8') ?>"
+                                       placeholder="Hal. Juan Dela Cruz laban kay Pedro Santos">
+                            </div>
+                        </div>
+
+                        <!-- Tala sa Pagsusuri -->
+                        <div>
+                            <label for="lisoScreeningDecisionNotes" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Tala sa Pagsusuri</label>
+                            <textarea id="lisoScreeningDecisionNotes"
+                                      class="liso-compact-textarea"
+                                      rows="2"
+                                      maxlength="2000"
+                                      data-initial-value="<?= htmlspecialchars($scrInitialNotes, ENT_QUOTES, 'UTF-8') ?>"
+                                      data-default-note="<?= htmlspecialchars($scrApprovalNoteTemplate, ENT_QUOTES, 'UTF-8') ?>"
+                                      placeholder="Ilagay ang tala sa pagsusuri o dahilan ng pag-reject..."><?= htmlspecialchars($scrInitialNotes, ENT_QUOTES, 'UTF-8') ?></textarea>
+                        </div>
+
+                        <!-- Confirmation Checkbox -->
+                        <label class="liso-compact-confirm-box" for="lisoScreenConfirmJurisdictionCheck">
+                            <input type="checkbox" id="lisoScreenConfirmJurisdictionCheck" onchange="syncLisoApprovalSubmitState()">
+                            <span>Nabasa at nasuri ko ang salaysay, mga partido, at hurisdiksyon (R.A. 7160).</span>
+                        </label>
+
+                        <!-- Primary Approval CTA -->
+                        <button type="button"
+                                id="btnMarkIntakeEligible"
+                                class="liso-compact-submit-btn"
+                                disabled
+                                onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')">
+                            <span>&#10003; Aprubahan at Iproseso sa Paanyaya &rarr;</span>
+                        </button>
+
+                        <!-- Secondary LISO Actions (Needs Information / Reject) -->
+                        <details style="margin-top:2px;">
+                            <summary style="font-size:0.78rem; color:#64748b; font-weight:700; cursor:pointer;">Iba pang Aksyon sa Screening (Humingi ng Impormasyon / I-reject)</summary>
+                            <div style="margin-top:10px; padding:12px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:10px;">
+                                <?php if ($hasResidentAccount): ?>
+                                    <div>
+                                        <label for="lisoResidentRequest" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Mensahe sa Residente (kailangan para sa Needs Information)</label>
+                                        <textarea id="lisoResidentRequest"
+                                                  class="liso-compact-textarea"
+                                                  rows="2"
+                                                  data-initial-value=""
+                                                  maxlength="<?= ComplaintInformationService::REQUEST_LIMIT ?>"></textarea>
+                                    </div>
+                                <?php endif; ?>
+                                <div style="display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap;">
+                                    <?php if ($hasResidentAccount): ?>
+                                        <button type="button" id="btnIntakeNeedsInfo" class="cd-btn-soft" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Humingi ng Impormasyon</button>
+                                    <?php endif; ?>
+                                    <button type="button" id="btnMarkIntakeRejected" class="cd-btn-rose" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Rejected')">Mark Ineligible / Reject</button>
                                 </div>
-                                <select id="lisoScreenCategoryId" onchange="syncLisoScreenOtherInputs()" style="display: none;">
-                                    <option value="">Select official category...</option>
-                                    <?php foreach ($screeningCategories as $sc): ?>
-                                        <option value="<?= (int) $sc['category_id'] ?>"
-                                                data-case-type="<?= htmlspecialchars((string) ($sc['default_case_type'] ?? 'Civil')) ?>"
-                                                data-is-other="<?= !empty($sc['is_other']) ? '1' : '0' ?>"
-                                                <?= ((int) $sc['category_id'] === $currentCatId && !$needsLisoClassification) ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars((string) $sc['category_name']) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
                             </div>
-
-                            <div class="form-group" style="margin: 0;">
-                                <label for="lisoScreenCaseType" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Case Type (Auto-Mapped) <span style="color:#dc2626;">*</span></label>
-                                <select id="lisoScreenCaseType" onchange="syncLisoCriminalFields()" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
-                                    <option value="Civil" <?= $currentCaseType === 'Civil' ? 'selected' : '' ?>>Civil</option>
-                                    <option value="Criminal" <?= $currentCaseType === 'Criminal' ? 'selected' : '' ?>>Criminal</option>
-                                </select>
-                                <small id="lisoScreenCaseTypeHint" style="display: block; font-size: 0.72rem; color: #64748b; margin-top: 4px;">Auto-mapped from category (editable).</small>
-                            </div>
-
-                            <div class="form-group" style="margin: 0;">
-                                <label for="lisoScreenSecondaryCategoryInput" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">2nd Complaint Category <span style="font-weight:500; color:#64748b;">(Optional)</span></label>
-                                <div class="category-picker-wrap">
-                                    <input type="text"
-                                           id="lisoScreenSecondaryCategoryInput"
-                                           list="lisoScreeningCategoriesList"
-                                           value="<?= htmlspecialchars($currentSecCatDisplayName) ?>"
-                                           placeholder="Search or type 2nd category (optional)..."
-                                           autocomplete="off"
-                                           oninput="syncLisoScreenOtherInputs()"
-                                           onchange="syncLisoScreenOtherInputs()"
-                                           style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
-                                </div>
-                                <select id="lisoScreenSecondaryCategoryId" onchange="syncLisoScreenOtherInputs()" style="display: none;">
-                                    <option value="">None</option>
-                                    <?php foreach ($screeningCategories as $sc): ?>
-                                        <option value="<?= (int) $sc['category_id'] ?>"
-                                                data-case-type="<?= htmlspecialchars((string) ($sc['default_case_type'] ?? 'Civil')) ?>"
-                                                data-is-other="<?= !empty($sc['is_other']) ? '1' : '0' ?>"
-                                                <?= ((int) $sc['category_id'] === $currentSecCatId) ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars((string) $sc['category_name']) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div id="lisoScreenOtherWrap" class="form-group" style="margin-bottom: 14px; display: none;">
-                            <label for="lisoScreenOtherSpec" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Specify Category (Others) <span style="color:#dc2626;">*</span></label>
-                            <input type="text" id="lisoScreenOtherSpec" maxlength="255" value="<?= htmlspecialchars($needsLisoClassification ? '' : $currentOtherSpec) ?>" placeholder="Specify the dispute category..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
-                        </div>
-
-                        <div id="lisoScreenSecondaryOtherWrap" class="form-group" style="margin-bottom: 14px; display: none;">
-                            <label for="lisoScreenSecondaryOtherSpec" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Specify 2nd Category (Others) <span style="color:#dc2626;">*</span></label>
-                            <input type="text" id="lisoScreenSecondaryOtherSpec" maxlength="255" value="<?= htmlspecialchars($currentSecOtherSpec) ?>" placeholder="Specify the 2nd dispute category..." style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 9px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff;">
-                        </div>
-
-                        <div class="form-group" style="margin-bottom: 14px;">
-                            <label for="lisoScreeningDecisionNotes" style="display: block; font-size: 0.8rem; font-weight: 700; color: #334155; margin-bottom: 6px;">Internal screening notes / rejection basis (required for rejection)</label>
-                            <textarea id="lisoScreeningDecisionNotes" rows="3" maxlength="2000" style="width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 0.88rem; color: #0f172a; background: #ffffff; resize: vertical;"></textarea>
-                        </div>
-                        <?php if ($hasResidentAccount): ?>
-                            <div class="form-group paanyaya-prep-fields">
-                                <label for="lisoResidentRequest">Message to resident (required when requesting information)
-                                    <textarea id="lisoResidentRequest" rows="3" maxlength="<?= ComplaintInformationService::REQUEST_LIMIT ?>"></textarea>
-                                </label>
-                            </div>
-                        <?php endif; ?>
-                        <div style="display: flex; justify-content: flex-end; align-items: center; gap: 10px; flex-wrap: wrap;">
-                            <button type="button" id="btnMarkIntakeRejected" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Rejected')">Mark Ineligible / Reject</button>
-                            <button type="button" id="btnIntakeNeedsInfo" class="btn-case-status" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Needs Information')">Needs Information</button>
-                            <button type="button" id="btnMarkIntakeEligible" class="btn-case-primary" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Accepted')">Mark Intake Eligible</button>
-                        </div>
+                        </details>
                     </div>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function() {
+                            if (typeof syncLisoScreenOtherInputs === 'function') syncLisoScreenOtherInputs();
+                            if (typeof syncLisoApprovalSubmitState === 'function') syncLisoApprovalSubmitState();
+                        });
+                    </script>
                 </section>
             <?php elseif ($roleId === 3 && ($intakeScreeningMeta['screening_decision'] ?? '') === 'Eligible'): ?>
                 <div class="sophos-card" style="margin-bottom: 18px; border: 1.5px solid #bbf7d0; background: #f0fdf4; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">

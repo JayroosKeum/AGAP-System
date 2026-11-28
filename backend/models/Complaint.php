@@ -682,6 +682,9 @@ class Complaint
         if ($status === 'Rejected' && (trim((string) $notes) === '' || mb_strlen((string) $notes) > 2000 || !ValidationService::text((string) $notes))) {
             return ['success' => false, 'message' => 'Provide a rejection reason or jurisdictional basis (up to 2000 characters).'];
         }
+        if ($status === 'Accepted' && !empty($classification['compact_view']) && empty($classification['jurisdiction_confirmed'])) {
+            return ['success' => false, 'message' => 'Pakikumpirma muna ang checkbox ("Nabasa at nasuri ko ang salaysay, mga partido, at hurisdiksyon (R.A. 7160).") bago aprubahan.'];
+        }
         $this->conn->beginTransaction();
         try {
             $lock = $this->conn->prepare(

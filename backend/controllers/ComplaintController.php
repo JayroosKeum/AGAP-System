@@ -444,7 +444,7 @@ class ComplaintController
         foreach ([
             'category_id', 'category_name', 'secondary_category_id', 'secondary_category_name',
             'other_category_specification', 'secondary_other_category_specification',
-            'case_type', 'complaint_title',
+            'case_type', 'complaint_title', 'compact_view', 'jurisdiction_confirmed',
             'offense_imprisonment_max', 'has_private_offended_party',
             'accused_under_detention', 'habeas_corpus_needed', 'prescription_risk'
         ] as $field) {

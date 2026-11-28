@@ -3139,3 +3139,387 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
+
+/* ============================================================================
+   LUPON / LISO SCREENING (COMPACT VIEW) CARD
+   ============================================================================ */
+.liso-compact-card {
+    background: #ffffff;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 14px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.liso-compact-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.liso-compact-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.liso-compact-title-wrap h2 {
+    margin: 0;
+    font-size: 1.02rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.liso-compact-ref-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background: #e2e8f0;
+    color: #334155;
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.liso-compact-reset-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 7px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.liso-compact-reset-btn:hover {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+}
+
+.liso-compact-body {
+    padding: 16px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.liso-compact-meta-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.82rem;
+    color: #475569;
+}
+
+.liso-compact-meta-items {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.liso-compact-meta-items strong {
+    color: #0f172a;
+    font-weight: 700;
+}
+
+.liso-compact-jurisdiction-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 9999px;
+    background: #fffbeb;
+    color: #b45309;
+    border: 1px solid #fde68a;
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.liso-compact-parties-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.liso-compact-party-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 11px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.liso-compact-party-role {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.74rem;
+    font-weight: 700;
+    margin-bottom: 3px;
+}
+
+.liso-compact-party-role.is-comp { color: #1d4ed8; }
+.liso-compact-party-role.is-resp { color: #b91c1c; }
+
+.liso-compact-party-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.liso-compact-party-name {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.liso-compact-party-addr {
+    font-size: 0.76rem;
+    color: #64748b;
+    text-align: right;
+    max-width: 48%;
+}
+
+.liso-compact-narrative-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.liso-compact-block-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #64748b;
+    margin-bottom: 5px;
+    display: block;
+}
+
+.liso-compact-block-label.is-relief {
+    color: #1d4ed8;
+}
+
+.liso-compact-block-text {
+    margin: 0;
+    font-size: 0.86rem;
+    line-height: 1.55;
+    color: #1e293b;
+    white-space: pre-wrap;
+}
+
+.liso-compact-suggestion-card {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 10px;
+    padding: 11px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.liso-compact-suggestion-tag {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: #15803d;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.liso-compact-suggestion-name {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.liso-compact-apply-btn {
+    background: #2563eb;
+    color: #ffffff;
+    border: 1px solid #1d4ed8;
+    border-radius: 7px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.liso-compact-apply-btn:hover {
+    background: #1d4ed8;
+}
+
+.liso-compact-quick-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+.liso-compact-quick-label {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #64748b;
+}
+
+.liso-quick-tag-btn {
+    background: #f1f5f9;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 0.76rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.liso-quick-tag-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.liso-quick-tag-btn.is-active {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #93c5fd;
+}
+
+.liso-compact-field-label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+}
+
+.liso-compact-field-label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #334155;
+}
+
+.liso-compact-add-sec-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #0284c7;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.liso-compact-add-sec-btn:hover {
+    text-decoration: underline;
+}
+
+.liso-compact-input,
+.liso-compact-select,
+.liso-compact-textarea {
+    width: 100%;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 0.86rem;
+    color: #0f172a;
+    background: #ffffff;
+    box-sizing: border-box;
+    font-family: inherit;
+}
+
+.liso-compact-two-col {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.9fr) minmax(240px, 1.3fr);
+    gap: 12px;
+}
+
+.liso-compact-confirm-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border-radius: 9px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: #0f172a;
+    cursor: pointer;
+}
+
+.liso-compact-confirm-box input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    accent-color: #2563eb;
+    cursor: pointer;
+}
+
+.liso-compact-submit-btn {
+    width: 100%;
+    padding: 11px 18px;
+    border-radius: 9px;
+    border: none;
+    background: #2563eb;
+    color: #ffffff;
+    font-size: 0.9rem;
+    font-weight: 800;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    transition: background-color 0.15s ease, opacity 0.15s ease;
+}
+
+.liso-compact-submit-btn:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.liso-compact-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+    .liso-compact-parties-grid,
+    .liso-compact-two-col {
+        grid-template-columns: 1fr;
+    }
+    .liso-compact-party-card {
+        flex-direction: column;
+    }
+    .liso-compact-party-addr {
+        max-width: 100%;
+        text-align: left;
+    }
+}

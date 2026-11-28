@@ -34,9 +34,42 @@ $model = new Paanyaya($db);
 $result = $action === 'docket'
     ? $model->escalateToFormalDocketing($id, $actor)
     : $model->recordMinutes($id, 'Paanyaya ' . $number, $_POST, $actor);
+
+if ($action === 'minutes' && !empty($result['success'])) {
+    $medDatePost = trim((string) ($_POST['mediation_date'] ?? ''));
+    $medTimePost = trim((string) ($_POST['mediation_time'] ?? ''));
+    if (($_POST['outcome'] ?? '') === 'Escalate_Mediation' && $medDatePost !== '' && $medTimePost !== '') {
+        $_SESSION['paanyaya_pending_mediation'][$id] = [
+            'mediation_date' => $medDatePost,
+            'mediation_time' => $medTimePost,
+        ];
+    } else {
+        unset($_SESSION['paanyaya_pending_mediation'][$id]);
+    }
+}
+
+if ($action === 'docket' && !empty($result['success'])) {
+    $pendingMed = $_SESSION['paanyaya_pending_mediation'][$id] ?? [];
+    unset($_SESSION['paanyaya_pending_mediation'][$id]);
+    $medDate = trim((string) ($_POST['mediation_date'] ?? ($pendingMed['mediation_date'] ?? '')));
+    $medTime = trim((string) ($_POST['mediation_time'] ?? ($pendingMed['mediation_time'] ?? '')));
+    if ($medDate !== '' && $medTime !== '') {
+        require_once __DIR__ . '/../../models/Summons.php';
+        $summonRes = (new Summons($db))->issueFirstSummon($id, $actor, [
+            'mediation_date' => $medDate,
+            'mediation_time' => $medTime,
+        ]);
+        if (!empty($summonRes['success'])) {
+            $result['message'] .= ' 1st Formal Mediation scheduled for ' . date('M j, Y', strtotime($medDate)) . ' at ' . date('g:i A', strtotime($medTime)) . '.';
+        } elseif (!empty($summonRes['message'])) {
+            $result['message'] .= ' (Mediation schedule note: ' . $summonRes['message'] . ')';
+        }
+    }
+}
+
 $old = [];
 if (!$result['success'] && $action === 'minutes') {
-    foreach (['dialogue_date', 'complainant_attended', 'respondent_attended', 'outcome', 'discussion_summary', 'agreed_terms'] as $field) {
+    foreach (['dialogue_date', 'complainant_attended', 'respondent_attended', 'outcome', 'discussion_summary', 'agreed_terms', 'mediation_date', 'mediation_time', 'allow_immediate_escalation'] as $field) {
         if (is_string($_POST[$field] ?? null)) {
             $old[$field] = mb_substr($_POST[$field], 0, 10000);
         }

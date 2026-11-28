@@ -296,9 +296,33 @@ try {
             $staffPage = request($base, $liso, "/frontend/pages/complaints/complaint-details.php?id=$id");
             check($staffPage['status'] === 200 && substr_count($staffPage['body'], 'Resident replied') === 2,
                 'LISO workspace shows both request and response rounds');
+            check(
+                str_contains($staffPage['body'], 'Lupon / LISO Screening (Compact View)')
+                && str_contains($staffPage['body'], 'R.A. 7160 - No Lawyers (Sec. 415)')
+                && str_contains($staffPage['body'], 'Buong Salaysay ng Pangyayari')
+                && str_contains($staffPage['body'], 'Hiniling na Lunas (Prayer / Relief)')
+                && str_contains($staffPage['body'], 'Mungkahi ng System')
+                && str_contains($staffPage['body'], 'Gamitin')
+                && str_contains($staffPage['body'], 'Pangunahing Kategorya')
+                && str_contains($staffPage['body'], '+ Pangalawang Kategorya')
+                && str_contains($staffPage['body'], 'Aprubahan at Iproseso sa Paanyaya')
+                && str_contains($staffPage['body'], 'btnResetLisoScreening'),
+                'Lupon member sees the LISO Screening (Compact View) controls and cards'
+            );
             check(request($base, $actors['luponhead'], 'complaints/review.php', ['complaint_id' => $id, 'status' => 'Accepted'])['status'] === 422,
                 'Another Lupon member cannot re-screen the assigned online intake');
-            $reviewData = ['complaint_id' => $id, 'status' => 'Accepted'];
+            check(request($base, $liso, 'complaints/review.php', [
+                'complaint_id' => $id,
+                'status' => 'Accepted',
+                'compact_view' => '1',
+                'jurisdiction_confirmed' => '0',
+            ])['status'] === 422, 'Compact View approval requires R.A. 7160 jurisdiction confirmation checkbox');
+            $reviewData = [
+                'complaint_id' => $id,
+                'status' => 'Accepted',
+                'compact_view' => '1',
+                'jurisdiction_confirmed' => '1',
+            ];
             $review = request($base, $liso, 'complaints/review.php', $reviewData);
             check($review['status'] === 200 && ($review['json']['success'] ?? false),
                 "$source intake is marked eligible: " . ($review['json']['message'] ?? $review['body']));
