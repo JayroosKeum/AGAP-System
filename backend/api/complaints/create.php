@@ -41,7 +41,8 @@ $result['message'] = trim((string)($result['message'] ?? '')) ?: (
 
 if ($isJson) {
     header('Content-Type: application/json; charset=utf-8');
-    http_response_code($result['success'] ? 201 : (($result['code'] ?? '') === 'PAANYAYA_HANDOFF_FORBIDDEN' ? 403 : 422));
+    $errorStatus = in_array($result['code'] ?? '', ['PAANYAYA_HANDOFF_FORBIDDEN', 'FORMAL_MEDIATION_FORBIDDEN'], true) ? 403 : 422;
+    http_response_code($result['success'] ? 201 : $errorStatus);
     echo json_encode($result);
     exit;
 }
@@ -67,7 +68,7 @@ if (!empty($result['complaint_id'])) {
         header('Location: ../../../frontend/pages/resident/dashboard.php');
         exit;
     }
-    if (!empty($result['escalated_from_paanyaya'])) {
+    if (!empty($result['escalated_from_paanyaya']) || !empty($result['direct_formal_mediation'])) {
         header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int)$result['complaint_id'] . '&tab=mediation');
         exit;
     }

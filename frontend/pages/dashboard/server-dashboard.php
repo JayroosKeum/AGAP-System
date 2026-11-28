@@ -22,154 +22,202 @@ include '../../layouts/header.php';
 
         <?php include '../../layouts/navbar.php'; ?>
 
-        <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;">
-            <div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <h1 style="margin: 0; font-size: 1.6rem; color: #0f172a;">Summons &amp; Field Dispatch Dashboard</h1>
+        <section class="dashboard-overview server-dispatch-view" id="serverDispatchRoot" aria-label="Summons &amp; Field Dispatch">
+
+            <!-- ── 1. Dashboard Header ──────────────────────────────────────────── -->
+            <header class="dispatch-page-header" id="dispatchPageHeader">
+                <div>
+                    <div class="dispatch-overline">BARANGAY TUMANA &middot; KATARUNGANG PAMBARANGAY</div>
+                    <h1 class="dispatch-main-title">Summons &amp; Field Dispatch</h1>
+                </div>
+                <div class="dispatch-header-actions">
+                    <button type="button" class="dispatch-header-btn" id="btnMobilePreview" aria-pressed="false">
+                        <span aria-hidden="true">📱</span>
+                        <span>Mobile Preview</span>
+                    </button>
+                    <button type="button" class="dispatch-header-btn" id="btnDispatchReset">
+                        <span aria-hidden="true">&#8635;</span>
+                        <span>Reset</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- ── 2. Dispatch List Workspace ───────────────────────────────────── -->
+            <div id="dispatchListView">
+                <!-- 3 Top Summary KPI Cards -->
+                <section class="server-kpis-grid" aria-label="Dispatch Summary KPIs">
+                    <div class="server-kpi-card kpi-pending" id="kpiPendingCard">
+                        <div class="kpi-card-header">
+                            <span class="server-kpi-label">Pending</span>
+                            <span class="server-kpi-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
+                            </span>
+                        </div>
+                        <div class="server-kpi-val" id="kpiPendingDelivery">0</div>
+                        <span class="server-kpi-sub">Target ngayong araw</span>
+                    </div>
+
+                    <div class="server-kpi-card kpi-served" id="kpiServedCard">
+                        <div class="kpi-card-header">
+                            <span class="server-kpi-label">Served Today</span>
+                            <span class="server-kpi-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </span>
+                        </div>
+                        <div class="server-kpi-val" id="kpiServedToday">0</div>
+                        <span class="server-kpi-sub">Matagumpay na naihatid</span>
+                    </div>
+
+                    <div class="server-kpi-card kpi-unserved" id="kpiUnservedCard">
+                        <div class="kpi-card-header">
+                            <span class="server-kpi-label">Follow-up</span>
+                            <span class="server-kpi-icon" aria-hidden="true">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="8" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </span>
+                        </div>
+                        <div class="server-kpi-val" id="kpiUnservedFollowup">0</div>
+                        <span class="server-kpi-sub">'Di mahanap / tumanggi</span>
+                    </div>
+                </section>
+
+                <!-- Filter Tabs, Route Selector, Search & Dispatch Queue Cards -->
+                <div class="server-dispatch-panel">
+                    <div class="server-status-tabs" role="tablist" aria-label="Status Filter">
+                        <button type="button" class="btn-status-filter active" data-status="pending" role="tab" aria-selected="true">
+                            Nakatakda (<span id="tabCountPending">0</span>)
+                        </button>
+                        <button type="button" class="btn-status-filter" data-status="served" role="tab" aria-selected="false">
+                            Naihatid (<span id="tabCountServed">0</span>)
+                        </button>
+                        <button type="button" class="btn-status-filter" data-status="unserved" role="tab" aria-selected="false">
+                            Hindi Naihatid (<span id="tabCountUnserved">0</span>)
+                        </button>
+                        <button type="button" class="btn-status-filter" data-status="all" role="tab" aria-selected="false">
+                            Lahat
+                        </button>
+                    </div>
+
+                    <div class="server-filter-bar">
+                        <div class="server-filter-col">
+                            <select id="purokRouteSelect" class="dispatch-control" aria-label="Purok Route Filter">
+                                <option value="all">Lahat ng Purok (All Routes)</option>
+                            </select>
+                        </div>
+                        <div class="server-filter-col">
+                            <input type="search"
+                                   id="dispatchSearchInput"
+                                   class="dispatch-control"
+                                   placeholder="Hanapin ang pangalan o kaso..."
+                                   aria-label="Search dispatch items by name or case reference">
+                        </div>
+                    </div>
+
+                    <div class="dispatch-tasks-stream" id="dispatchTasksContainer">
+                        <div class="agap-skeleton" role="status" aria-label="Loading field dispatch tasks">
+                            <span class="agap-skeleton-line"></span>
+                            <span class="agap-skeleton-line" style="width:84%"></span>
+                            <span class="agap-skeleton-line" style="width:68%"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <section class="dashboard-overview server-dispatch-view" aria-label="Summons Server Field Dispatch Overview">
+            <!-- ── 3. Service Logging View (Log Service ->) ─────────────────────── -->
+            <div id="serviceLoggingView" style="display: none;" aria-label="Service Logging View">
+                <div class="logging-back-row">
+                    <button type="button" class="dispatch-back-btn" id="btnBackToDispatchList">
+                        &larr; Back to Dispatch List
+                    </button>
+                </div>
 
-            <!-- ── 1. Dispatch Summary KPIs ────────────────────────────────────── -->
-            <section class="server-kpis-grid" aria-label="Dispatch Summary KPIs">
-                <!-- Pending Delivery -->
-                <div class="server-kpi-card kpi-pending" id="kpiPendingCard">
-                    <div class="kpi-card-header">
-                        <span class="server-kpi-label">Pending Delivery</span>
-                        <span class="server-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg></span>
+                <div class="service-logging-card">
+                    <div class="logging-summary-header">
+                        <div class="logging-summary-main">
+                            <div class="logging-meta-overline" id="logMetaOverline">REF &middot; STAGE &middot; ATTEMPT 1</div>
+                            <h2 class="logging-party-heading" id="logPartyHeading">Recipient Name (Role)</h2>
+                            <div class="logging-address-line">
+                                <span aria-hidden="true">📍</span>
+                                <span id="logAddressLine">Address not specified</span>
+                            </div>
+                        </div>
+                        <div class="logging-schedule-pill" id="logSchedulePill">
+                            <span aria-hidden="true">🕒</span>
+                            <span id="logScheduleText">Today &middot; 4:00 PM</span>
+                        </div>
                     </div>
-                    <div class="server-kpi-val" id="kpiPendingDelivery">0</div>
-                    <span class="server-kpi-sub">Target ngayong araw / bukas</span>
-                </div>
 
-                <!-- Served Today -->
-                <div class="server-kpi-card kpi-served" id="kpiServedCard">
-                    <div class="kpi-card-header">
-                        <span class="server-kpi-label">Served Today</span>
-                        <span class="server-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg></span>
-                    </div>
-                    <div class="server-kpi-val" id="kpiServedToday">0</div>
-                    <span class="server-kpi-sub">Matagumpay na naihatid</span>
-                </div>
+                    <form id="serviceLoggingForm" class="logging-form-body" enctype="multipart/form-data">
+                        <input type="hidden" name="delivery_id" id="logDeliveryId" value="">
+                        <input type="hidden" name="paanyaya_attempt_id" id="logPaanyayaAttemptId" value="">
 
-                <!-- Unserved / Need Follow-up -->
-                <div class="server-kpi-card kpi-unserved" id="kpiUnservedCard">
-                    <div class="kpi-card-header">
-                        <span class="server-kpi-label">Unserved / Follow-up</span>
-                        <span class="server-kpi-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></span>
-                    </div>
-                    <div class="server-kpi-val" id="kpiUnservedFollowup">0</div>
-                    <span class="server-kpi-sub">Lumipat, 'di mahanap, tumanggi</span>
-                </div>
-            </section>
+                        <div class="logging-field-group">
+                            <label for="logOfficerReturn" class="logging-field-label">
+                                Log Officer's Return <span class="required-mark">*</span>
+                            </label>
+                            <select id="logOfficerReturn" name="return_outcome" class="logging-input" required>
+                                <option value="served_personal">&#10003; Served Personally (Personal na Naihatid)</option>
+                                <option value="served_substituted">Served via Substituted Service (Iniwan sa Kasama sa Bahay)</option>
+                                <option value="served_refused">Refused to Sign / Tendered (Tumanggi Lumagda)</option>
+                                <option value="unserved_not_found">Unserved &mdash; Address Not Found ('Di Mahanap ang Tirahan)</option>
+                                <option value="unserved_moved_out">Unserved &mdash; Party Moved Out (Lumipat na)</option>
+                                <option value="unserved_no_one_home">Unserved &mdash; No One Home (Walang Tao sa Bahay)</option>
+                                <option value="unserved_out_of_town">Unserved &mdash; Out of Town / Deceased (Wala sa Lugar / Pumanaw)</option>
+                            </select>
+                        </div>
 
-            <!-- ── 2. Purok Route Filter & Batch Routing Toolbar ───────────────── -->
-            <div class="server-route-toolbar">
-                <div class="route-filter-group">
-                    <label for="purokRouteSelect" class="route-filter-label">
-                        <span>Purok Route Filter:</span>
-                    </label>
-                    <select id="purokRouteSelect" class="route-filter-select" aria-label="Purok Batch Route Filter">
-                        <option value="all">Lahat ng Purok (All Routes)</option>
-                    </select>
-                </div>
+                        <div class="logging-field-group">
+                            <label for="logRecipientName" class="logging-field-label">
+                                Pangalan ng Tumanggap / Panig
+                            </label>
+                            <input type="text"
+                                   id="logRecipientName"
+                                   name="recipient_name"
+                                   class="logging-input"
+                                   placeholder="Ilagay ang pangalan ng tumanggap o panig">
+                        </div>
 
-                <div class="server-status-pill-group" role="tablist" aria-label="Status Filter">
-                    <button type="button" class="btn-status-filter active" data-status="pending">Nakatakda (Pending)</button>
-                    <button type="button" class="btn-status-filter" data-status="served">Naihatid (Served)</button>
-                    <button type="button" class="btn-status-filter" data-status="unserved">Hindi Naihatid (Unserved)</button>
-                    <button type="button" class="btn-status-filter" data-status="all">Lahat (All)</button>
+                        <div class="logging-field-group">
+                            <button type="button" class="logging-attach-btn" id="btnAttachPhotoProof">
+                                <span aria-hidden="true">📷</span>
+                                <span>Attach Photo Proof</span>
+                            </button>
+                            <input type="file"
+                                   id="logProofFile"
+                                   name="proof_file"
+                                   accept="image/*"
+                                   capture="environment"
+                                   style="display: none;">
+                            <div id="logPhotoPreviewWrap" class="logging-photo-preview" style="display: none;"></div>
+                        </div>
+
+                        <div class="logging-field-group">
+                            <label for="logRemarks" class="logging-field-label">
+                                Mga Tala ukol sa Paghahatid (Remarks)
+                            </label>
+                            <textarea id="logRemarks"
+                                      name="remarks"
+                                      class="logging-textarea"
+                                      rows="4"
+                                      placeholder="Halimbawa: Personal na tinanggap sa gate ng bahay..."></textarea>
+                        </div>
+
+                        <div class="logging-actions-footer">
+                            <button type="button" class="logging-btn-secondary" id="btnLogCancel">Cancel</button>
+                            <div class="logging-actions-right">
+                                <button type="button" class="logging-btn-secondary" id="btnLogSaveDraft">Save Draft</button>
+                                <button type="submit" class="logging-btn-primary" id="btnLogSubmitDelivery">
+                                    &#10003; Submit Delivery Status
+                                </button>
+                            </div>
+                        </div>
+                    </form>
                 </div>
             </div>
-
-            <!-- ── 3. Field Dispatch Tasks Stream & 1-Tap Service Logger ────────── -->
-            <section aria-label="Dispatch Tasks List">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
-                    <h2 style="font-size:1.3rem; font-weight:800; color:#0f172a; margin:0; display:flex; align-items:center; gap:8px;">
-                        <span>Mga Ihahatid na Summons at Notisya</span>
-                    </h2>
-                    <span id="dispatchTasksCount" style="background:#e0e7ff; color:#3730a3; font-size:0.85rem; font-weight:800; padding:4px 12px; border-radius:9999px;">
-                        0 Hatid
-                    </span>
-                </div>
-
-                <div class="dispatch-tasks-stream" id="dispatchTasksContainer">
-                    <div class="agap-skeleton" role="status" aria-label="Loading field dispatch tasks"><span class="agap-skeleton-line"></span><span class="agap-skeleton-line" style="width:84%"></span><span class="agap-skeleton-line" style="width:68%"></span></div>
-                </div>
-            </section>
 
         </section>
 
     </div>
 
-</div>
-
-<!-- ── 1-Tap Service Logger Modal with Photo / Camera Upload ──────────────── -->
-<div id="serviceLoggerModal" class="server-modal-overlay" style="display: none;" role="dialog" aria-modal="true" aria-labelledby="loggerModalTitle">
-    <div class="server-modal-card">
-        <header class="server-modal-header">
-            <h3 id="loggerModalTitle">1-Tap Service Logger</h3>
-            <button type="button" id="loggerCloseBtn" style="background:none; border:none; color:#cbd5e1; font-size:1.8rem; cursor:pointer; line-height:1;">&times;</button>
-        </header>
-
-        <form id="serviceLoggerForm" class="server-modal-body" enctype="multipart/form-data">
-            <input type="hidden" name="delivery_id" id="loggerDeliveryId" value="">
-            <input type="hidden" name="action" id="loggerActionInput" value="served">
-
-            <div>
-                <label for="loggerRecipientName" style="display:block; font-size:0.88rem; font-weight:700; color:#0f172a; margin-bottom:6px;">
-                    Pangalan ng Tumanggap / Pangalan ng Panig:
-                </label>
-                <input type="text" name="recipient_name" id="loggerRecipientName" style="width:100%; border:1.5px solid #cbd5e1; border-radius:8px; padding:10px 12px; font-size:0.95rem; box-sizing:border-box;">
-            </div>
-
-            <!-- Unserved Reason Dropdown (visible when action == unserved) -->
-            <div id="loggerUnservedReasonWrap" style="display: none;">
-                <label for="loggerUnservedReason" style="display:block; font-size:0.88rem; font-weight:700; color:#0f172a; margin-bottom:6px;">
-                    Dahilan ng Hindi Pagkakahatid (Unserved Reason):
-                </label>
-                <select name="unserved_reason" id="loggerUnservedReason" style="width:100%; border:1.5px solid #cbd5e1; border-radius:8px; padding:10px 12px; font-size:0.95rem; box-sizing:border-box;">
-                    <option value="Address Not Found">Hindi Mahanap ang Tirahan (Address Not Found)</option>
-                    <option value="Party Moved Out">Lumipat na ng Tirahan (Party Moved Out)</option>
-                    <option value="No One Home">Walang Tao sa Bahay (No One Home)</option>
-                    <option value="Deceased">Pumanaw na (Deceased)</option>
-                    <option value="Out of Town / Country">Nasa Ibang Lugar / Bansa (Out of Town)</option>
-                </select>
-            </div>
-
-            <!-- Camera / Photo Upload for Proof-of-Service -->
-            <div>
-                <label style="display:block; font-size:0.88rem; font-weight:700; color:#0f172a; margin-bottom:6px;">
-                    Katibayan ng Paghahatid (Camera / Photo Proof):
-                </label>
-                <div class="server-photo-preview-wrap" id="loggerPhotoWrap">
-                    <div id="loggerPhotoPreview">
-                        <span style="display:inline-flex; justify-content:center; margin-bottom:6px; color:#475569;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></span><br>
-                        <strong>I-click upang kumuha ng litrato gamit ang camera</strong><br>
-                        <small style="color:#64748b;">(Halimbawa: Gate ng bahay, larawan ng tumanggap, resibo ng pirma)</small>
-                    </div>
-                </div>
-                <!-- Native camera capture attribute for mobile phones -->
-                <input type="file" name="proof_file" id="loggerProofFile" accept="image/*" capture="environment" style="display: none;">
-            </div>
-
-            <div>
-                <label for="loggerRemarks" style="display:block; font-size:0.88rem; font-weight:700; color:#0f172a; margin-bottom:6px;">
-                    Mga Tala ukol sa Paghahatid (Remarks):
-                </label>
-                <textarea name="remarks" id="loggerRemarks" rows="2" placeholder="Halimbawa: Personal na tinanggap sa gate ng bahay..." style="width:100%; border:1.5px solid #cbd5e1; border-radius:8px; padding:10px 12px; font-size:0.9rem; box-sizing:border-box; resize:vertical;"></textarea>
-            </div>
-        </form>
-
-        <footer class="server-modal-footer">
-            <button type="button" id="loggerCancelBtn" class="btn-status-filter" style="border:1px solid #cbd5e1;">Kanselahin</button>
-            <button type="button" id="btnSaveServiceLog" class="btn-tap-action btn-tap-served" style="min-height:40px; padding:8px 18px;">
-                I-save ang Tala
-            </button>
-        </footer>
-    </div>
 </div>
 
 <script src="../../assets/js/server-dashboard.js?v=<?php echo filemtime(__DIR__ . '/../../assets/js/server-dashboard.js'); ?>"></script>

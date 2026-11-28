@@ -1960,6 +1960,51 @@ include '../../layouts/header.php';
                                     <strong>Legal na Pag-uuri ng Barangay Lupon (LISO):</strong> Hindi mo kailangang magpasya kung Sibil o Kriminal ang iyong sumbong o pumili ng legal na kategorya. Suriin ang iyong buod ng blotter sa itaas—ang itinalagang Miyembro ng Lupon (LISO) ang mangangasiwa sa pormal na legal na pag-uuri at susuri sa hurisdiksyon ng Barangay Tumana sa panahon ng pagsusuri.
                                 </div>
                             <?php else: ?>
+                            <?php if (empty($escalatePaanyaya)): ?>
+                            <?php $initTrack = ($old['filing_track'] ?? '') === 'formal_mediation' ? 'formal_mediation' : 'paanyaya_intake'; ?>
+                            <div id="filingTrackCard" style="margin: 8px 0 14px; padding: 14px 16px; border: 1.5px solid #cbd5e1; border-radius: 12px; background: #f8fafc;">
+                                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                                    <div>
+                                        <strong style="font-size:0.9rem; color:#0f172a;">Filing Track (Intake vs. Formal Complaint)</strong>
+                                        <div style="font-size:0.78rem; color:#64748b;">Choose whether this enters Stage 0 Paanyaya first or proceeds directly as a Formal Complaint to Stage 1 Mediation.</div>
+                                    </div>
+                                    <span id="kp7AutoTrackBadge" style="display:none; font-size:0.72rem; font-weight:700; padding:3px 9px; border-radius:9999px; background:#dbeafe; color:#1d4ed8; border:1px solid #bfdbfe;">Auto-selected (KP Form 7 Scan Attached)</span>
+                                </div>
+                                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
+                                    <label id="cardTrackPaanyaya" style="display:flex; align-items:flex-start; gap:10px; padding:11px 12px; border:1.5px solid <?= $initTrack === 'paanyaya_intake' ? '#1b6553' : '#cbd5e1' ?>; border-radius:10px; background:#ffffff; cursor:pointer;">
+                                        <input type="radio" name="filing_track" value="paanyaya_intake" <?= $initTrack === 'paanyaya_intake' ? 'checked' : '' ?> style="margin-top:3px; accent-color:#1b6553;">
+                                        <div>
+                                            <div style="font-size:0.84rem; font-weight:700; color:#0f172a;">Preliminary Intake (Stage 0 Paanyaya)</div>
+                                            <div style="font-size:0.76rem; color:#64748b; margin-top:2px;">Standard walk-in intake for Paanyaya invitation and informal dialogue before formal docketing.</div>
+                                        </div>
+                                    </label>
+                                    <label id="cardTrackFormal" style="display:flex; align-items:flex-start; gap:10px; padding:11px 12px; border:1.5px solid <?= $initTrack === 'formal_mediation' ? '#1d4ed8' : '#cbd5e1' ?>; border-radius:10px; background:<?= $initTrack === 'formal_mediation' ? '#eff6ff' : '#ffffff' ?>; cursor:pointer;">
+                                        <input type="radio" name="filing_track" value="formal_mediation" <?= $initTrack === 'formal_mediation' ? 'checked' : '' ?> style="margin-top:3px; accent-color:#1d4ed8;">
+                                        <div>
+                                            <div style="font-size:0.84rem; font-weight:700; color:#1e3a8a;">Formal Complaint (Direct to Mediation)</div>
+                                            <div style="font-size:0.76rem; color:#475569; margin-top:2px;">Skips Paanyaya, immediately dockets a formal Case Number (KP Form 7), and enters Stage 1 Mediation.</div>
+                                        </div>
+                                    </label>
+                                </div>
+                                <div id="formalMediationScheduleBox" style="display:<?= $initTrack === 'formal_mediation' ? 'block' : 'none' ?>; margin-top:12px; padding:10px 12px; border:1px dashed #93c5fd; border-radius:8px; background:#ffffff;">
+                                    <label style="display:flex; align-items:center; gap:8px; font-size:0.8rem; font-weight:600; color:#1e40af; cursor:pointer; margin:0;">
+                                        <input type="checkbox" id="chkDirectMedSchedule" <?= (!empty($old['mediation_date']) && !empty($old['mediation_time'])) ? 'checked' : '' ?>>
+                                        <span>Schedule 1st Formal Mediation Hearing now (optional — otherwise schedule on Mediation tab)</span>
+                                    </label>
+                                    <div id="directMedScheduleFields" style="display:<?= (!empty($old['mediation_date']) && !empty($old['mediation_time'])) ? 'grid' : 'none' ?>; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px;">
+                                        <div>
+                                            <label for="directMedDate" style="font-size:0.75rem; font-weight:600; color:#334155;">1st Mediation Date</label>
+                                            <input type="date" id="directMedDate" name="mediation_date" class="form-control" min="<?= date('Y-m-d', strtotime('+1 day')) ?>" value="<?= htmlspecialchars((string) ($old['mediation_date'] ?? '')) ?>" disabled>
+                                        </div>
+                                        <div>
+                                            <label for="directMedTime" style="font-size:0.75rem; font-weight:600; color:#334155;">Target Call Time</label>
+                                            <input type="time" id="directMedTime" name="mediation_time" class="form-control" min="08:00" max="17:00" value="<?= htmlspecialchars((string) ($old['mediation_time'] ?? '13:00')) ?>" disabled>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <?php endif; ?>
+
                             <!-- Dispute Classification Grid -->
                             <div class="form-row-2" style="margin-top: 10px;">
                                 <div class="form-group">
@@ -5890,6 +5935,10 @@ document.addEventListener('DOMContentLoaded', () => {
             kp7Badge.textContent = 'Scan Uploaded';
         }
 
+        if (typeof window.onKp7ScanAttachedForTrack === 'function') {
+            window.onKp7ScanAttachedForTrack(true);
+        }
+
         renderDocumentInLeftViewer(file, currentKp7Url);
     }
 
@@ -5909,6 +5958,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (kp7Alert) {
             kp7Alert.style.display = 'none';
             kp7Alert.textContent = '';
+        }
+
+        if (typeof window.onKp7ScanAttachedForTrack === 'function') {
+            window.onKp7ScanAttachedForTrack(false);
         }
 
         renderDocumentInLeftViewer(null, null);
@@ -6550,6 +6603,92 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     methodRadios.forEach(r => r.addEventListener('change', syncFilingMethod));
     syncFilingMethod();
+
+    <?php if (!$isResidentPortal): ?>
+    // ── Staff Filing Track (Stage 0 Paanyaya vs. Direct Formal Complaint to Mediation) ──
+    const trackRadios = document.querySelectorAll('input[name="filing_track"]');
+    const cardTrackPaanyaya = document.getElementById('cardTrackPaanyaya');
+    const cardTrackFormal = document.getElementById('cardTrackFormal');
+    const formalScheduleBox = document.getElementById('formalMediationScheduleBox');
+    const chkDirectMedSchedule = document.getElementById('chkDirectMedSchedule');
+    const directMedFields = document.getElementById('directMedScheduleFields');
+    const directMedDate = document.getElementById('directMedDate');
+    const directMedTime = document.getElementById('directMedTime');
+    const kp7AutoTrackBadge = document.getElementById('kp7AutoTrackBadge');
+    const submitComplaintBtn = document.getElementById('btnSubmitComplaint');
+    let autoSelectedFormalFromKp7 = false;
+
+    function syncFilingTrack() {
+        if (!trackRadios.length) return;
+        const selected = document.querySelector('input[name="filing_track"]:checked')?.value || 'paanyaya_intake';
+        const isFormal = selected === 'formal_mediation';
+
+        if (cardTrackPaanyaya) {
+            cardTrackPaanyaya.style.borderColor = isFormal ? '#cbd5e1' : '#1b6553';
+            cardTrackPaanyaya.style.background = isFormal ? '#ffffff' : '#f0fdf4';
+        }
+        if (cardTrackFormal) {
+            cardTrackFormal.style.borderColor = isFormal ? '#1d4ed8' : '#cbd5e1';
+            cardTrackFormal.style.background = isFormal ? '#eff6ff' : '#ffffff';
+        }
+        if (formalScheduleBox) {
+            formalScheduleBox.style.display = isFormal ? 'block' : 'none';
+        }
+
+        const schedActive = isFormal && Boolean(chkDirectMedSchedule?.checked);
+        if (directMedFields) {
+            directMedFields.style.display = schedActive ? 'grid' : 'none';
+        }
+        if (directMedDate) {
+            directMedDate.disabled = !schedActive;
+            directMedDate.required = schedActive;
+        }
+        if (directMedTime) {
+            directMedTime.disabled = !schedActive;
+            directMedTime.required = schedActive;
+        }
+
+        if (submitComplaintBtn && !<?= $isFromPaanyaya ? 'true' : 'false' ?>) {
+            submitComplaintBtn.innerHTML = isFormal
+                ? 'File Formal Complaint &amp; Go to Mediation &rarr;'
+                : 'Submit &amp; Accept Complaint &rarr;';
+        }
+    }
+
+    trackRadios.forEach((r) => r.addEventListener('change', () => {
+        autoSelectedFormalFromKp7 = false;
+        if (r.value !== 'formal_mediation' && kp7AutoTrackBadge) {
+            kp7AutoTrackBadge.style.display = 'none';
+        }
+        syncFilingTrack();
+    }));
+    chkDirectMedSchedule?.addEventListener('change', syncFilingTrack);
+
+    window.onKp7ScanAttachedForTrack = function (hasScan) {
+        if (!trackRadios.length) return;
+        if (hasScan) {
+            const formalRadio = document.querySelector('input[name="filing_track"][value="formal_mediation"]');
+            if (formalRadio && !formalRadio.checked) {
+                formalRadio.checked = true;
+                autoSelectedFormalFromKp7 = true;
+            }
+            if (kp7AutoTrackBadge) {
+                kp7AutoTrackBadge.style.display = 'inline-flex';
+            }
+        } else {
+            if (kp7AutoTrackBadge) {
+                kp7AutoTrackBadge.style.display = 'none';
+            }
+            if (autoSelectedFormalFromKp7) {
+                const paanyayaRadio = document.querySelector('input[name="filing_track"][value="paanyaya_intake"]');
+                if (paanyayaRadio) paanyayaRadio.checked = true;
+                autoSelectedFormalFromKp7 = false;
+            }
+        }
+        syncFilingTrack();
+    };
+    syncFilingTrack();
+    <?php endif; ?>
 
 
     // ── Map Controls & Live Coordinates Badge ──

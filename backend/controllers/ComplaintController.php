@@ -216,9 +216,27 @@ class ComplaintController
             }
         }
 
-        $result = $sourcePaanyayaId === null
-            ? $this->complaint->create($data)
-            : $this->createFromPaanyaya($sourcePaanyayaId, $actorId, $data);
+        $filingTrack = trim((string) ($data['filing_track'] ?? ''));
+        $wantsFormalDirect = ($sourcePaanyayaId === null)
+            && ($filingTrack === 'formal_mediation' || !empty($data['formal_direct_mediation']));
+        if ($wantsFormalDirect) {
+            if ($actorId < 1 || ($_SESSION['role_name'] ?? '') === 'Resident' || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)) {
+                return [
+                    'success' => false,
+                    'code' => 'FORMAL_MEDIATION_FORBIDDEN',
+                    'message' => 'Only authorized Lupon Clerk or Administrator accounts may file a formal complaint directly into Mediation.'
+                ];
+            }
+        }
+        $isFormalDirect = $wantsFormalDirect && empty($data['is_draft']);
+
+        if ($sourcePaanyayaId !== null) {
+            $result = $this->createFromPaanyaya($sourcePaanyayaId, $actorId, $data);
+        } elseif ($isFormalDirect) {
+            $result = $this->createFormalDirect($actorId, $data);
+        } else {
+            $result = $this->complaint->create($data);
+        }
 
         if ($result['success']) {
             $complaintId = (int) ($result['complaint_id'] ?? 0);
@@ -262,6 +280,130 @@ class ComplaintController
         }
 
         return $result;
+    }
+
+    private function createFormalDirect(int $actorId, array $data): array
+    {
+        require_once __DIR__ . '/../models/CaseModel.php';
+        require_once __DIR__ . '/../models/CaseStage.php';
+        require_once __DIR__ . '/../models/Paanyaya.php';
+
+        $this->conn->beginTransaction();
+        try {
+            $result = $this->complaint->create($data, true);
+            if (empty($result['success'])) {
+                $this->conn->rollBack();
+                return $result;
+            }
+
+            $routing = $result['routing'] ?? [];
+            if (isset($routing['kp_eligible']) && $routing['kp_eligible'] === false) {
+                throw new DomainException(
+                    'This filing was flagged for ' . ($routing['route'] ?? 'external') . ' referral (outside Katarungang Pambarangay Mediation jurisdiction) and cannot be docketed directly into Mediation.'
+                );
+            }
+
+            $complaintId = (int) ($result['complaint_id'] ?? 0);
+            if ($complaintId <= 0) {
+                throw new RuntimeException('Unable to save the formal complaint.');
+            }
+
+            $typeStmt = $this->conn->prepare('SELECT case_type FROM complaints WHERE complaint_id = ? LIMIT 1');
+            $typeStmt->execute([$complaintId]);
+            $caseType = (string) ($typeStmt->fetchColumn() ?: 'Civil');
+
+            $this->conn->prepare("
+                UPDATE complaints
+                SET status = 'Mediation',
+                    screening_decision = 'Eligible',
+                    assigned_queue = 'FORMAL_MEDIATION',
+                    liso_reviewed_by = COALESCE(liso_reviewed_by, ?),
+                    liso_reviewed_at = COALESCE(liso_reviewed_at, NOW()),
+                    docketed_by = ?,
+                    docketed_at = NOW(),
+                    updated_at = NOW()
+                WHERE complaint_id = ?
+            ")->execute([$actorId, $actorId, $complaintId]);
+
+            $caseModel = new CaseModel($this->conn);
+            if (!$caseModel->create(['complaint_id' => $complaintId, 'case_type' => $caseType])) {
+                throw new RuntimeException('Unable to create the formal Mediation docket.');
+            }
+
+            $caseStmt = $this->conn->prepare('SELECT case_id, case_number FROM cases WHERE complaint_id = ? ORDER BY case_id DESC LIMIT 1');
+            $caseStmt->execute([$complaintId]);
+            $caseRow = $caseStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$caseRow) {
+                throw new RuntimeException('Unable to load the created formal Mediation case.');
+            }
+
+            $caseId = (int) $caseRow['case_id'];
+            $caseNumber = (string) $caseRow['case_number'];
+            $this->conn->prepare("UPDATE cases SET case_status = 'Mediation' WHERE case_id = ?")->execute([$caseId]);
+            (new CaseStage($this->conn))->startStage($caseId, 'Mediation');
+
+            $paanyaya = new Paanyaya($this->conn);
+            $kp7Path = $paanyaya->generateAndRegisterKp7($complaintId, $caseId, $caseNumber, $actorId);
+
+            if (!$this->audit->log($actorId, "Direct Formal Complaint Docketed: Case #{$caseNumber} routed straight to Mediation (Stage 1)", 'Complaints', $complaintId)) {
+                throw new RuntimeException('Could not audit direct formal complaint docketing.');
+            }
+
+            $this->conn->commit();
+
+            $message = "Formal complaint filed and docketed as Case #{$caseNumber}. Ready for Mediation (Stage 1).";
+            $medDate = trim((string) ($data['mediation_date'] ?? ''));
+            $medTime = trim((string) ($data['mediation_time'] ?? ''));
+            if ($medDate !== '' && $medTime !== '') {
+                require_once __DIR__ . '/../models/Summons.php';
+                $summonRes = (new Summons($this->conn))->issueFirstSummon($complaintId, $actorId, [
+                    'mediation_date' => $medDate,
+                    'mediation_time' => $medTime,
+                ]);
+                if (!empty($summonRes['success'])) {
+                    $message .= ' 1st Formal Mediation scheduled for ' . date('M j, Y', strtotime($medDate)) . ' at ' . date('g:i A', strtotime($medTime)) . '.';
+                } elseif (!empty($summonRes['message'])) {
+                    $message .= ' (Mediation schedule note: ' . $summonRes['message'] . ')';
+                }
+            }
+
+            try {
+                require_once __DIR__ . '/../services/NotificationService.php';
+                (new NotificationService($this->conn))->notifyRoles(
+                    ['Administrator', 'Lupon Clerk'],
+                    'Direct Formal Complaint Docketed for Mediation',
+                    "Formal complaint {$caseNumber} (" . ($data['complaint_title'] ?? 'General Dispute') . ') skipped Stage 0 Paanyaya and was docketed directly into Mediation (Stage 1).',
+                    $actorId ?: null,
+                    'info',
+                    "../complaints/complaint-details.php?id={$complaintId}&tab=mediation"
+                );
+            } catch (Throwable $ne) {
+                error_log('Failed to dispatch formal mediation notification: ' . $ne->getMessage());
+            }
+
+            return array_merge($result, [
+                'success' => true,
+                'direct_formal_mediation' => true,
+                'case_id' => $caseId,
+                'case_number' => $caseNumber,
+                'complaint_number' => $caseNumber,
+                'status' => 'Mediation',
+                'kp7_generated' => $kp7Path !== null,
+                'redirect_url' => '../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '&tab=mediation',
+                'message' => $message,
+            ]);
+        } catch (DomainException $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            return ['success' => false, 'message' => $e->getMessage()];
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('Failed to create direct formal complaint: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to file formal complaint directly into Mediation. Please try again.'];
+        }
     }
 
     private function createFromPaanyaya(int $sourceId, int $actorId, array $data): array

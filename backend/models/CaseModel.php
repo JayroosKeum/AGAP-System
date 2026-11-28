@@ -601,7 +601,7 @@ class CaseModel
             return 'invalid_complaint';
         }
 
-        $complaint = $this->conn->prepare('SELECT complaint_id, status FROM complaints WHERE complaint_id = ?');
+        $complaint = $this->conn->prepare('SELECT complaint_id, status, assigned_queue FROM complaints WHERE complaint_id = ?');
         $complaint->execute([$complaintId]);
 
         $complaintRecord = $complaint->fetch(PDO::FETCH_ASSOC);
@@ -617,6 +617,10 @@ class CaseModel
 
         if ($case->fetch()) {
             return 'duplicate_case';
+        }
+
+        if ($complaintRecord['status'] === 'Mediation' && ($complaintRecord['assigned_queue'] ?? '') === 'FORMAL_MEDIATION') {
+            return null;
         }
 
         if (PaanyayaPreparationService::requiresPreparation($this->conn, (int) $complaintId)) {

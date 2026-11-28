@@ -1548,83 +1548,7 @@ class Paanyaya
             }
 
             // 4. Auto-generate KP Form 7 (Formal Complaint)
-            $kp7Path = null;
-            try {
-                $kp7Dir = dirname(__DIR__, 2) . '/storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber);
-                if (!is_dir($kp7Dir)) {
-                    @mkdir($kp7Dir, 0750, true);
-                }
-
-                $kp7Relative = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber) . '/KP-Form-7-Complaint-' . date('Ymd-His') . '.pdf';
-                $kp7Absolute = dirname(__DIR__, 2) . '/' . $kp7Relative;
-
-                // Load complaint data for KP Form 7
-                $cDetailsStmt = $this->conn->prepare("
-                    SELECT c.*, cat.category_name 
-                    FROM complaints c 
-                    LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id 
-                    WHERE c.complaint_id = ? LIMIT 1
-                ");
-                $cDetailsStmt->execute([$complaintId]);
-                $cDetails = $cDetailsStmt->fetch(PDO::FETCH_ASSOC);
-
-                $partyStmt = $this->conn->prepare("
-                    SELECT cp.*, TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
-                           r.address, r.purok
-                    FROM complaint_parties cp
-                    INNER JOIN residents r ON r.resident_id = cp.resident_id
-                    WHERE cp.complaint_id = ?
-                    ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name
-                ");
-                $partyStmt->execute([$complaintId]);
-                $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
-
-                $complainants = [];
-                $respondents = [];
-                foreach ($parties as $p) {
-                    $item = [
-                        'full_name' => $p['full_name'],
-                        'address' => trim(implode(', ', array_filter([$p['address'] ?? '', $p['purok'] ?? '']))),
-                    ];
-                    if ($p['party_type'] === 'Complainant') $complainants[] = $item;
-                    if ($p['party_type'] === 'Respondent') $respondents[] = $item;
-                }
-
-                $kp7Data = [
-                    'complaint_id' => $complaintId,
-                    'case_number' => $caseNumber,
-                    'complaint_number' => $caseNumber,
-                    'complaint_title' => $cDetails['complaint_title'] ?? '',
-                    'category_name' => $cDetails['category_name'] ?? '',
-                    'narrative' => $cDetails['narrative'] ?? '',
-                    'requested_resolution' => $cDetails['requested_resolution'] ?? '',
-                    'incident_date' => $cDetails['incident_date'] ?? date('Y-m-d'),
-                    'incident_time' => $cDetails['incident_time'] ?? null,
-                    'incident_location' => $cDetails['incident_location'] ?? 'Barangay Tumana',
-                    'filed_date' => date('Y-m-d'),
-                    'complainants' => $complainants,
-                    'respondents' => $respondents,
-                ];
-
-                $this->pdf->generateKp7($kp7Data, $kp7Absolute);
-
-                if (file_exists($kp7Absolute)) {
-                    $kp7Path = $kp7Relative;
-                    // Register KP Form 7 in generated_documents
-                    $tplStmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 7' LIMIT 1");
-                    $tplStmt->execute();
-                    $kp7TplId = (int) $tplStmt->fetchColumn() ?: 1;
-
-                    $insDoc = $this->conn->prepare("
-                        INSERT INTO generated_documents (
-                            case_id, template_id, file_path, generated_by, service_status
-                        ) VALUES (?, ?, ?, ?, 'Served')
-                    ");
-                    $insDoc->execute([$caseId, $kp7TplId, $kp7Relative, $userId ?? 1]);
-                }
-            } catch (Throwable $docErr) {
-                error_log('Failed to generate KP Form 7 on escalation: ' . $docErr->getMessage());
-            }
+            $kp7Path = $this->generateAndRegisterKp7($complaintId, $caseId, $caseNumber, $userId);
 
             // 5. Update complaints status to Mediation
             $this->conn->prepare("
@@ -1683,6 +1607,94 @@ class Paanyaya
             error_log('Escalation error: ' . $e->getMessage());
             return ['success' => false, 'message' => 'Escalation failed: ' . $e->getMessage()];
         }
+    }
+
+    public function generateAndRegisterKp7(int $complaintId, int $caseId, string $caseNumber, ?int $userId = null): ?string
+    {
+        try {
+            require_once __DIR__ . '/../services/PiiCryptoService.php';
+            $kp7Dir = dirname(__DIR__, 2) . '/storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber);
+            if (!is_dir($kp7Dir)) {
+                @mkdir($kp7Dir, 0750, true);
+            }
+
+            $kp7Relative = 'storage/generated-documents/' . date('Y') . '/' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $caseNumber) . '/KP-Form-7-Complaint-' . date('Ymd-His') . '.pdf';
+            $kp7Absolute = dirname(__DIR__, 2) . '/' . $kp7Relative;
+
+            $cDetailsStmt = $this->conn->prepare("
+                SELECT c.*, cat.category_name
+                FROM complaints c
+                LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
+                WHERE c.complaint_id = ? LIMIT 1
+            ");
+            $cDetailsStmt->execute([$complaintId]);
+            $cDetails = $cDetailsStmt->fetch(PDO::FETCH_ASSOC);
+            if (is_array($cDetails)) {
+                $cDetails = PiiCryptoService::decryptPayload($cDetails);
+            }
+
+            $partyStmt = $this->conn->prepare("
+                SELECT cp.*, TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name, r.suffix)) AS full_name,
+                       r.address, r.purok
+                FROM complaint_parties cp
+                INNER JOIN residents r ON r.resident_id = cp.resident_id
+                WHERE cp.complaint_id = ?
+                ORDER BY FIELD(cp.party_type, 'Complainant', 'Respondent', 'Witness'), r.last_name
+            ");
+            $partyStmt->execute([$complaintId]);
+            $parties = $partyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $complainants = [];
+            $respondents = [];
+            foreach ($parties as $p) {
+                $pDec = PiiCryptoService::decryptPayload($p);
+                $item = [
+                    'full_name' => $pDec['full_name'] ?? '',
+                    'address' => trim(implode(', ', array_filter([$pDec['address'] ?? '', $pDec['purok'] ?? '']))),
+                ];
+                if (($p['party_type'] ?? '') === 'Complainant') {
+                    $complainants[] = $item;
+                }
+                if (($p['party_type'] ?? '') === 'Respondent') {
+                    $respondents[] = $item;
+                }
+            }
+
+            $kp7Data = [
+                'complaint_id' => $complaintId,
+                'case_number' => $caseNumber,
+                'complaint_number' => $caseNumber,
+                'complaint_title' => $cDetails['complaint_title'] ?? '',
+                'category_name' => $cDetails['category_name'] ?? '',
+                'narrative' => $cDetails['narrative'] ?? '',
+                'requested_resolution' => $cDetails['requested_resolution'] ?? '',
+                'incident_date' => $cDetails['incident_date'] ?? date('Y-m-d'),
+                'incident_time' => $cDetails['incident_time'] ?? null,
+                'incident_location' => $cDetails['incident_location'] ?? 'Barangay Tumana',
+                'filed_date' => date('Y-m-d'),
+                'complainants' => $complainants,
+                'respondents' => $respondents,
+            ];
+
+            $this->pdf->generateKp7($kp7Data, $kp7Absolute);
+
+            if (file_exists($kp7Absolute)) {
+                $tplStmt = $this->conn->prepare("SELECT template_id FROM document_templates WHERE template_name = 'KP Form 7' LIMIT 1");
+                $tplStmt->execute();
+                $kp7TplId = (int) $tplStmt->fetchColumn() ?: 1;
+
+                $insDoc = $this->conn->prepare("
+                    INSERT INTO generated_documents (
+                        case_id, template_id, file_path, generated_by, service_status
+                    ) VALUES (?, ?, ?, ?, 'Served')
+                ");
+                $insDoc->execute([$caseId, $kp7TplId, $kp7Relative, $userId ?? 1]);
+                return $kp7Relative;
+            }
+        } catch (Throwable $docErr) {
+            error_log('Failed to generate KP Form 7: ' . $docErr->getMessage());
+        }
+        return null;
     }
 
     private function docketRecordedDialogue(int $complaintId, int $userId): array

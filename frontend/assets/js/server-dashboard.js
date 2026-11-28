@@ -1,6 +1,5 @@
 /**
- * AGAP - Summons / Process Server Dashboard ("Kuya")
- * Mobile-First Field Dispatch, Purok-based Batch Routing & 1-Tap Service Logger
+ * AGAP - Summons & Field Dispatch Dashboard and Service Logging Flow
  */
 
 (() => {
@@ -9,10 +8,14 @@
     const state = {
         purok: 'all',
         status: 'pending',
+        search: '',
         isLoading: false,
         tasks: [],
-        activeDelivery: null
+        activeTask: null,
+        mobilePreview: false
     };
+
+    const DRAFT_PREFIX = 'agap_dispatch_draft_v1_';
 
     const getCsrfToken = () => {
         return window.agapCsrfToken || document.querySelector('meta[name="agap-csrf-token"]')?.content || '';
@@ -24,86 +27,129 @@
         return String(str).replace(/[&<>"']/g, (m) => map[m]);
     };
 
-    const formatDateClean = (dateString) => {
-        if (!dateString) return '';
-        const d = new Date(dateString.replace(' ', 'T'));
-        if (isNaN(d.getTime())) return dateString;
-        return d.toLocaleDateString('fil-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+    const getTaskKey = (task) => {
+        if (task?.task_kind === 'paanyaya' && Number(task?.paanyaya_attempt_id) > 0) {
+            return `paanyaya_${Number(task.paanyaya_attempt_id)}`;
+        }
+        return `summon_${Number(task?.delivery_id || 0)}`;
     };
 
-    const formatTimeOnly = (dateString) => {
-        if (!dateString) return '';
-        const clean = String(dateString).trim();
-        if (/^\d{2}:\d{2}(:\d{2})?$/.test(clean)) {
-            const parts = clean.split(':');
-            const h = parseInt(parts[0], 10);
-            const m = parts[1];
-            const ampm = h >= 12 ? 'PM' : 'AM';
-            const h12 = h % 12 || 12;
-            return `${h12}:${m} ${ampm}`;
+    const loadDraft = (task) => {
+        try {
+            const raw = localStorage.getItem(DRAFT_PREFIX + getTaskKey(task));
+            return raw ? JSON.parse(raw) : null;
+        } catch {
+            return null;
         }
-        const d = new Date(dateString.replace(' ', 'T'));
-        if (isNaN(d.getTime())) return dateString;
-        return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    };
+
+    const saveDraft = (task, payload) => {
+        try {
+            localStorage.setItem(DRAFT_PREFIX + getTaskKey(task), JSON.stringify(payload));
+        } catch {
+            // Ignore storage quota errors
+        }
+    };
+
+    const clearDraft = (task) => {
+        try {
+            localStorage.removeItem(DRAFT_PREFIX + getTaskKey(task));
+        } catch {
+            // Ignore storage errors
+        }
+    };
+
+    const formatNoticeBadge = (task) => {
+        const raw = String(task?.form_type || task?.hearing_type || 'Notice').trim();
+        const invNum = Number(task?.invitation_number || 0);
+        if (task?.task_kind === 'paanyaya' || /^Paanyaya\s+/i.test(raw)) {
+            if (invNum === 2 || /2/.test(raw)) return '2nd Paanyaya';
+            return '1st Paanyaya';
+        }
+        if (/KP\s*Form\s*8\b/i.test(raw)) return 'KP-8 Notice';
+        if (/KP\s*Form\s*9\b/i.test(raw)) return 'KP-9 Summons';
+        if (/KP\s*Form\s*12\b/i.test(raw)) return 'KP-12 Notice';
+        if (/KP\s*Form\s*19\b/i.test(raw)) return 'KP-19 Notice';
+        return raw;
+    };
+
+    const getLocalDateIso = (offsetDays = 0) => {
+        const d = new Date();
+        d.setDate(d.getDate() + offsetDays);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
+
+    const formatScheduleBadge = (dateString) => {
+        if (!dateString) return 'Schedule TBD';
+        const iso = String(dateString).trim().replace(' ', 'T');
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return String(dateString);
+
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const datePart = `${y}-${m}-${day}`;
+
+        const timeLabel = d.toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+
+        let dayLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (datePart === getLocalDateIso(0)) {
+            dayLabel = 'Today';
+        } else if (datePart === getLocalDateIso(1)) {
+            dayLabel = 'Tomorrow';
+        }
+
+        return `${dayLabel} · ${timeLabel}`;
     };
 
     const showToast = (message, isError = false) => {
+        if (typeof window.agapNotify === 'function') {
+            window.agapNotify(message, isError ? 'error' : 'success', 'Field Dispatch');
+            return;
+        }
         let toast = document.getElementById('serverDashboardToast');
         if (!toast) {
             toast = document.createElement('div');
             toast.id = 'serverDashboardToast';
-            toast.style.cssText = `
-                position: fixed;
-                bottom: 24px;
-                right: 24px;
-                padding: 14px 22px;
-                background: #064e3b;
-                color: #ffffff;
-                font-size: 0.95rem;
-                font-weight: 700;
-                border-radius: 10px;
-                box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
-                z-index: 999999;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                transform: translateY(100px);
-                opacity: 0;
-                transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-            `;
+            toast.style.cssText = 'position:fixed;bottom:24px;right:24px;padding:12px 18px;background:#064e3b;color:#fff;font-size:0.88rem;font-weight:700;border-radius:10px;box-shadow:0 10px 18px rgba(0,0,0,0.2);z-index:999999;transition:opacity 0.2s ease;';
             document.body.appendChild(toast);
         }
-
         toast.style.background = isError ? '#991b1b' : '#064e3b';
-        toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
-        toast.style.transform = 'translateY(0)';
+        toast.textContent = message;
         toast.style.opacity = '1';
-
-        setTimeout(() => {
-            toast.style.transform = 'translateY(100px)';
-            toast.style.opacity = '0';
-        }, 3500);
+        setTimeout(() => { toast.style.opacity = '0'; }, 3200);
     };
 
-    // Render Dispatch Summary KPIs
-    const renderKpis = (kpis) => {
-        if (!kpis) return;
+    const renderKpisAndTabs = (kpis, counts) => {
         const setText = (id, val) => {
             const el = document.getElementById(id);
             if (el) el.textContent = String(val ?? 0);
         };
-        setText('kpiPendingDelivery', kpis.pending_delivery);
-        setText('kpiServedToday', kpis.served_today);
-        setText('kpiUnservedFollowup', kpis.unserved_followup);
+        if (kpis) {
+            setText('kpiPendingDelivery', kpis.pending_delivery);
+            setText('kpiServedToday', kpis.served_today);
+            setText('kpiUnservedFollowup', kpis.unserved_followup);
+        }
+        if (counts) {
+            setText('tabCountPending', counts.pending);
+            setText('tabCountServed', counts.served);
+            setText('tabCountUnserved', counts.unserved);
+        }
     };
 
-    // Populate Purok Dropdown
     const renderPurokDropdown = (puroks) => {
         const select = document.getElementById('purokRouteSelect');
         if (!select || !puroks || select.dataset.loaded === 'true') return;
 
         select.innerHTML = '<option value="all">Lahat ng Purok (All Routes)</option>';
-        puroks.forEach(p => {
+        puroks.forEach((p) => {
             const opt = document.createElement('option');
             opt.value = p;
             opt.textContent = p;
@@ -113,163 +159,219 @@
         select.dataset.loaded = 'true';
     };
 
-    // Render Dispatch Tasks Stream
-    const renderTasks = (tasks) => {
+    const getFilteredTasks = () => {
+        const q = state.search.trim().toLowerCase();
+        if (!q) return state.tasks;
+        return state.tasks.filter((task) => {
+            const haystack = [
+                task.full_name,
+                task.case_number,
+                task.address,
+                task.house_street,
+                task.purok,
+                task.party_type,
+                task.form_type,
+                formatNoticeBadge(task)
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(q);
+        });
+    };
+
+    const renderTasks = () => {
         const container = document.getElementById('dispatchTasksContainer');
-        const countBadge = document.getElementById('dispatchTasksCount');
         if (!container) return;
 
-        const items = tasks || [];
-        if (countBadge) countBadge.textContent = `${items.length} Hatid`;
-
+        const items = getFilteredTasks();
         container.replaceChildren();
 
         if (items.length === 0) {
             container.innerHTML = `
-                <div style="padding: 36px 20px; text-align: center; color: #475569; background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 14px;">
-                    
-                    <strong style="font-size: 1.15rem; color: #0f172a;">Walang nakatakdang summons delivery para sa filter na ito.</strong>
-                    <p style="margin: 6px 0 0; font-size: 0.92rem; color: #64748b;">
-                        Pumili ng ibang Purok o i-filter ang status gamit ang mga pindutan sa itaas.
+                <div style="padding: 36px 20px; text-align: center; color: #475569; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px;">
+                    <strong style="font-size: 1rem; color: #0f172a;">Walang nakatakdang summons delivery para sa filter na ito.</strong>
+                    <p style="margin: 6px 0 0; font-size: 0.86rem; color: #64748b;">
+                        Subukan ang ibang status tab, Purok route, o search keyword.
                     </p>
                 </div>
             `;
             return;
         }
 
-        items.forEach(task => {
+        items.forEach((task) => {
             const card = document.createElement('article');
-            const isServed = (task.delivery_status || '').startsWith('Served');
-            const isUnserved = ['Unserved', 'Refused', 'Attempted'].includes(task.delivery_status);
-            const cardClass = isServed ? 'task-served' : (isUnserved ? 'task-unserved' : 'task-pending');
-            card.className = `dispatch-task-card ${cardClass}`;
+            const rawStatus = String(task.delivery_status || 'Pending');
+            const isServed = rawStatus.startsWith('Served');
+            const isUnserved = ['Unserved', 'Refused', 'Attempted'].includes(rawStatus);
+            const statusClass = isServed ? 'is-served' : (isUnserved ? 'is-unserved' : 'is-pending');
+            const statusLabel = isServed
+                ? (rawStatus === 'Served Refused' ? 'Served (Refused)' : 'Served')
+                : (isUnserved ? 'Follow-up' : 'Pending');
 
-            const isComp = task.party_type === 'Complainant';
+            const isPending = !isServed && !isUnserved;
+            const daysUntil = task.days_until_hearing !== null && task.days_until_hearing !== undefined
+                ? Number(task.days_until_hearing)
+                : null;
+            const isUrgent = isPending && daysUntil !== null && !isNaN(daysUntil) && daysUntil <= 1;
 
+            const noticeBadge = formatNoticeBadge(task);
+            const attemptNum = Math.max(1, Number(task.attempt_number || 1));
+            const schedText = `${formatScheduleBadge(task.hearing_date)} (Attempt ${attemptNum})`;
+            const addrText = task.house_street || task.address || task.purok || 'Barangay Tumana';
+            const hasDraft = Boolean(loadDraft(task));
+
+            let docLinkHtml = '';
+            if (task.task_kind === 'paanyaya' && Number(task.paanyaya_attempt_id) > 0) {
+                docLinkHtml = `<a class="dispatch-pdf-link" href="../../../backend/api/paanyaya/service.php?attempt_id=${Number(task.paanyaya_attempt_id)}&amp;view=invitation" target="_blank" rel="noopener">View PDF</a>`;
+            } else if (task.replacement_document_id) {
+                docLinkHtml = `<a class="dispatch-pdf-link" href="../../../backend/api/documents/kp-form.php?document_id=${Number(task.replacement_document_id)}&amp;pdf=1" target="_blank" rel="noopener">View Notice</a>`;
+            }
+
+            card.className = 'dispatch-task-card';
             card.innerHTML = `
-                <div class="dispatch-card-top">
-                    <div>
-                        <span class="dispatch-purok-tag">${escapeHtml(task.purok || 'Unspecified Purok')}</span>
-                        <div class="dispatch-party-name">${escapeHtml(task.full_name)}</div>
-                        <span class="dispatch-party-type ${isComp ? 'complainant' : 'respondent'}">${escapeHtml(task.party_type || 'Panig')}</span>
-                    </div>
-                    <div style="text-align: right;">
-                        <span style="font-size: 0.82rem; font-weight: 800; padding: 4px 10px; border-radius: 6px; background: #f1f5f9; color: #334155;">
-                            ${escapeHtml(task.form_type || 'KP Form')}
-                        </span>
-                        <div style="font-size: 0.88rem; font-weight: 700; color: #0f172a; margin-top: 4px;">
-                            Case #${escapeHtml(task.case_number)}
+                <div class="dispatch-card-row">
+                    <div class="dispatch-card-info">
+                        <div class="dispatch-card-badges">
+                            <span class="dispatch-notice-pill">${escapeHtml(noticeBadge)}</span>
+                            <span class="dispatch-ref-code">${escapeHtml(task.case_number || '')}</span>
+                            <span class="dispatch-status-dot ${statusClass}">&bull; ${escapeHtml(statusLabel)}</span>
+                            ${isUrgent ? '<span class="dispatch-urgent-badge">Urgent</span>' : ''}
+                            ${hasDraft ? '<span class="dispatch-draft-badge">Draft</span>' : ''}
+                        </div>
+                        <div class="dispatch-party-line">
+                            <strong>${escapeHtml(task.full_name || 'Recipient')}</strong>
+                            <span class="dispatch-party-role">(${escapeHtml(task.party_type || 'Respondent')})</span>
+                        </div>
+                        <div class="dispatch-meta-line">
+                            <span>📍 ${escapeHtml(addrText)}</span>
+                            <span>&middot;</span>
+                            <span>🕒 ${escapeHtml(schedText)}</span>
+                            ${docLinkHtml ? `<span>&middot;</span>${docLinkHtml}` : ''}
                         </div>
                     </div>
-                </div>
-
-                <div class="dispatch-card-address">
-                    <div><strong>Tirahan:</strong> ${escapeHtml(task.house_street || task.address || task.purok || 'Address not provided')}</div>
-                    ${task.contact_no ? `<div><strong>Telepono:</strong> <a href="tel:${escapeHtml(task.contact_no)}">${escapeHtml(task.contact_no)}</a></div>` : ''}
-                </div>
-
-                <div class="dispatch-card-hearing-meta">
-                    <span>Pagdinig: <strong>${escapeHtml(formatDateClean(task.hearing_date))} (${formatTimeOnly(task.hearing_date)})</strong></span>
-                    <span>•</span>
-                    <span>Lugar: ${escapeHtml(task.venue || 'Lupon Court Room')}</span>
-                    <span>•</span>
-                    <span style="font-weight: 800; color: ${isServed ? '#15803d' : (isUnserved ? '#b91c1c' : '#b45309')};">
-                        Status: ${escapeHtml(task.delivery_status || 'Pending')}
-                    </span>
-                    ${task.proof_file_path ? `<span>•</span><a href="../../../${escapeHtml(task.proof_file_path)}" target="_blank" style="color:#0284c7; font-weight:700;">Tingnan ang Litrato</a>` : ''}
-                </div>
-
-                <div class="tap-actions-toolbar">
-                    ${task.task_kind === 'paanyaya' ? `
-                    <a class="btn-secondary" href="../../../backend/api/paanyaya/service.php?attempt_id=${Number(task.paanyaya_attempt_id)}&amp;view=invitation" target="_blank" rel="noopener">Open Invitation PDF</a>
-                    <a class="btn-secondary" href="../gps/proof-service.php#paanyaya-assignments">Open Proof of Service</a>
-                    ` : task.replacement_document_id ? `
-                    <a class="btn-secondary" href="../../../backend/api/documents/kp-form.php?document_id=${Number(task.replacement_document_id)}&amp;pdf=1" target="_blank" rel="noopener">Open printable notice</a>
-                    <a class="btn-secondary" href="../gps/proof-service.php?case_id=${Number(task.case_id)}&amp;hearing_id=${Number(task.hearing_id)}">Open Proof of Service</a>
-                    ` : `
-                    <button type="button" class="btn-tap-action btn-tap-served" data-action="served" data-id="${task.delivery_id}">
-                        Served
-                    </button>
-                    <button type="button" class="btn-tap-action btn-tap-refused" data-action="refused" data-id="${task.delivery_id}">
-                        Refused to Sign
-                    </button>
-                    <button type="button" class="btn-tap-action btn-tap-unserved" data-action="unserved" data-id="${task.delivery_id}">
-                        Unserved (Not Found)
-                    </button>
-                    <button type="button" class="btn-tap-action btn-tap-photo" data-action="photo" data-id="${task.delivery_id}">
-                        Upload Proof
-                    </button>
-                    `}
+                    <div class="dispatch-card-actions">
+                        <button type="button" class="dispatch-card-cta ${isServed ? 'is-secondary' : ''}" data-log-service="1">
+                            Log Service &rarr;
+                        </button>
+                    </div>
                 </div>
             `;
 
-            // Bind 1-tap quick buttons
-            card.querySelectorAll('.btn-tap-action').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const action = btn.dataset.action;
-                    handleServiceAction(task, action);
-                });
+            card.querySelector('[data-log-service="1"]')?.addEventListener('click', () => {
+                openServiceLoggingView(task);
             });
 
             container.appendChild(card);
         });
     };
 
-    // Open Modal for Detailed Service Logging & Photo Capture
-    const handleServiceAction = (task, action) => {
-        state.activeDelivery = task;
-        const modal = document.getElementById('serviceLoggerModal');
-        const modalTitle = document.getElementById('loggerModalTitle');
-        const actionInput = document.getElementById('loggerActionInput');
-        const deliveryIdInput = document.getElementById('loggerDeliveryId');
-        const recipientInput = document.getElementById('loggerRecipientName');
-        const remarksInput = document.getElementById('loggerRemarks');
-        const unservedReasonWrap = document.getElementById('loggerUnservedReasonWrap');
-        const photoPreview = document.getElementById('loggerPhotoPreview');
-        const photoInput = document.getElementById('loggerProofFile');
-
-        if (!modal) return;
-
-        deliveryIdInput.value = task.delivery_id;
-        actionInput.value = action === 'photo' ? 'served' : action;
-        recipientInput.value = task.full_name || '';
-        remarksInput.value = '';
-        if (photoInput) photoInput.value = '';
-        if (photoPreview) photoPreview.innerHTML = '<strong>I-click upang kumuha o mag-upload ng litrato (Gate/Tirahan/Kopya)</strong>';
-
-        if (action === 'served' || action === 'photo') {
-            modalTitle.textContent = 'Itala bilang "Served" (Naihatid)';
-            if (unservedReasonWrap) unservedReasonWrap.style.display = 'none';
-        } else if (action === 'refused') {
-            modalTitle.textContent = 'Itala bilang "Refused to Sign" (Tumanggi Lumagda)';
-            if (unservedReasonWrap) unservedReasonWrap.style.display = 'none';
-            remarksInput.value = 'Tumanggi lumagda ang panig ngunit personal na iniwan ang kopya.';
-        } else if (action === 'unserved') {
-            modalTitle.textContent = 'Itala bilang "Unserved" (Hindi Naihatid / Need Follow-up)';
-            if (unservedReasonWrap) unservedReasonWrap.style.display = 'block';
+    const updatePhotoPreview = (file) => {
+        const wrap = document.getElementById('logPhotoPreviewWrap');
+        if (!wrap) return;
+        if (!file) {
+            wrap.style.display = 'none';
+            wrap.replaceChildren();
+            return;
         }
-
-        modal.style.display = 'flex';
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            wrap.style.display = 'flex';
+            wrap.innerHTML = `
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <img src="${e.target.result}" alt="Proof preview">
+                    <div>
+                        <div style="font-size:0.82rem; font-weight:700; color:#0f172a;">${escapeHtml(file.name)}</div>
+                        <div style="font-size:0.74rem; color:#16a34a; font-weight:600;">Photo proof attached</div>
+                    </div>
+                </div>
+                <button type="button" class="logging-btn-secondary" id="btnRemovePhotoProof" style="min-height:32px; padding:4px 10px; font-size:0.78rem;">Remove</button>
+            `;
+            wrap.querySelector('#btnRemovePhotoProof')?.addEventListener('click', () => {
+                const input = document.getElementById('logProofFile');
+                if (input) input.value = '';
+                updatePhotoPreview(null);
+            });
+        };
+        reader.readAsDataURL(file);
     };
 
-    const closeLoggerModal = () => {
-        const modal = document.getElementById('serviceLoggerModal');
-        if (modal) modal.style.display = 'none';
-        state.activeDelivery = null;
+    const openServiceLoggingView = (task) => {
+        state.activeTask = task;
+
+        const listView = document.getElementById('dispatchListView');
+        const logView = document.getElementById('serviceLoggingView');
+        if (!listView || !logView) return;
+
+        const badgeUpper = formatNoticeBadge(task).toUpperCase();
+        const attemptNum = Math.max(1, Number(task.attempt_number || 1));
+        const addrText = task.house_street || task.address || task.purok || 'Barangay Tumana';
+
+        document.getElementById('logMetaOverline').textContent = `${task.case_number || 'CASE'} · ${badgeUpper} · ATTEMPT ${attemptNum}`;
+        document.getElementById('logPartyHeading').textContent = `${task.full_name || 'Recipient'} (${task.party_type || 'Respondent'})`;
+        document.getElementById('logAddressLine').textContent = addrText;
+        document.getElementById('logScheduleText').textContent = formatScheduleBadge(task.hearing_date);
+
+        document.getElementById('logDeliveryId').value = task.task_kind === 'paanyaya' ? '0' : String(task.delivery_id || 0);
+        document.getElementById('logPaanyayaAttemptId').value = task.task_kind === 'paanyaya' ? String(task.paanyaya_attempt_id || 0) : '0';
+
+        const draft = loadDraft(task);
+        const returnSelect = document.getElementById('logOfficerReturn');
+        const recipientInput = document.getElementById('logRecipientName');
+        const remarksInput = document.getElementById('logRemarks');
+        const fileInput = document.getElementById('logProofFile');
+
+        if (returnSelect) {
+            returnSelect.value = draft?.return_outcome || 'served_personal';
+        }
+        if (recipientInput) {
+            recipientInput.value = draft?.recipient_name !== undefined ? draft.recipient_name : (task.full_name || '');
+        }
+        if (remarksInput) {
+            remarksInput.value = draft?.remarks !== undefined ? draft.remarks : (task.remarks || '');
+        }
+        if (fileInput) {
+            fileInput.value = '';
+        }
+        updatePhotoPreview(null);
+
+        listView.style.display = 'none';
+        logView.style.display = 'block';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    // Submit 1-Tap Service Action
-    const submitServiceAction = async () => {
-        const form = document.getElementById('serviceLoggerForm');
-        const saveBtn = document.getElementById('btnSaveServiceLog');
-        if (!form) return;
+    const closeServiceLoggingView = () => {
+        const listView = document.getElementById('dispatchListView');
+        const logView = document.getElementById('serviceLoggingView');
+        if (logView) logView.style.display = 'none';
+        if (listView) listView.style.display = 'block';
+        state.activeTask = null;
+        renderTasks();
+    };
+
+    const handleSaveDraft = () => {
+        if (!state.activeTask) return;
+        const returnOutcome = document.getElementById('logOfficerReturn')?.value || 'served_personal';
+        const recipientName = document.getElementById('logRecipientName')?.value || '';
+        const remarks = document.getElementById('logRemarks')?.value || '';
+
+        saveDraft(state.activeTask, {
+            return_outcome: returnOutcome,
+            recipient_name: recipientName,
+            remarks,
+            saved_at: new Date().toISOString()
+        });
+        showToast('Delivery return draft saved.');
+    };
+
+    const handleSubmitDelivery = async (event) => {
+        event.preventDefault();
+        if (!state.activeTask) return;
+
+        const form = document.getElementById('serviceLoggingForm');
+        const submitBtn = document.getElementById('btnLogSubmitDelivery');
+        if (!form || !submitBtn) return;
 
         const formData = new FormData(form);
-
-        if (saveBtn) {
-            saveBtn.disabled = true;
-            saveBtn.textContent = 'Isinusumite...';
-        }
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
 
         try {
             const res = await fetch('../../../backend/api/dashboard/server-dispatch.php', {
@@ -279,31 +381,28 @@
                 },
                 body: formData
             });
-
             const data = await res.json();
             if (!res.ok || !data.success) {
-                throw new Error(data.message || 'Nabigo sa pag-log ng service action.');
+                throw new Error(data.message || 'Failed to submit delivery status.');
             }
 
-            showToast(data.message || 'Nai-save ang service action!');
-            closeLoggerModal();
-            fetchServerData();
+            clearDraft(state.activeTask);
+            showToast(data.message || 'Delivery status recorded successfully.');
+            closeServiceLoggingView();
+            await fetchServerData();
         } catch (err) {
-            showToast(err.message, true);
+            showToast(err.message || 'Failed to submit delivery status.', true);
         } finally {
-            if (saveBtn) {
-                saveBtn.disabled = false;
-                saveBtn.textContent = 'I-save ang Tala';
-            }
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '&#10003; Submit Delivery Status';
         }
     };
 
-    // Fetch Dashboard Data from API
     const fetchServerData = async () => {
         state.isLoading = true;
         try {
             const url = `../../../backend/api/dashboard/server-dispatch.php?purok=${encodeURIComponent(state.purok)}&status=${encodeURIComponent(state.status)}`;
-            const res = await fetch(url, { headers: { 'Accept': 'application/json' }, cache: 'no-store' });
+            const res = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
             const json = await res.json();
 
             if (!res.ok || !json.success || !json.data) {
@@ -313,104 +412,92 @@
             const data = json.data;
             state.tasks = data.tasks || [];
 
-            renderKpis(data.kpis);
+            renderKpisAndTabs(data.kpis, data.counts);
             renderPurokDropdown(data.puroks);
-            renderTasks(data.tasks);
-
+            renderTasks();
         } catch (err) {
-            console.error('Process Server Dispatch Error:', err);
+            console.error('Summons & Field Dispatch Error:', err);
             showToast('Unable to load field tasks: ' + err.message, true);
         } finally {
             state.isLoading = false;
         }
     };
 
-    // Initialize Listeners
     const initListeners = () => {
-        // Purok Filter change
+        // Status Filter Tabs
+        document.querySelectorAll('.btn-status-filter').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.btn-status-filter').forEach((b) => {
+                    b.classList.remove('active');
+                    b.setAttribute('aria-selected', 'false');
+                });
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+                state.status = btn.dataset.status || 'pending';
+                fetchServerData();
+            });
+        });
+
+        // Purok Route Filter
         document.getElementById('purokRouteSelect')?.addEventListener('change', (e) => {
             state.purok = e.target.value;
             fetchServerData();
         });
 
-        const updateServerKpiActiveUI = () => {
-            document.getElementById('kpiPendingCard')?.classList.toggle('is-active-tab', state.status === 'pending');
-            document.getElementById('kpiServedCard')?.classList.toggle('is-active-tab', state.status === 'served');
-            document.getElementById('kpiUnservedCard')?.classList.toggle('is-active-tab', state.status === 'unserved');
-        };
+        // Search Bar
+        document.getElementById('dispatchSearchInput')?.addEventListener('input', (e) => {
+            state.search = e.target.value || '';
+            renderTasks();
+        });
 
-        const setServerStatus = (newStatus) => {
-            if (state.status === newStatus) {
-                state.status = 'all';
-            } else {
-                state.status = newStatus;
+        // Mobile Preview Toggle
+        const btnMobile = document.getElementById('btnMobilePreview');
+        const rootEl = document.getElementById('serverDispatchRoot');
+        btnMobile?.addEventListener('click', () => {
+            state.mobilePreview = !state.mobilePreview;
+            rootEl?.classList.toggle('is-mobile-preview', state.mobilePreview);
+            btnMobile.classList.toggle('is-active', state.mobilePreview);
+            btnMobile.setAttribute('aria-pressed', state.mobilePreview ? 'true' : 'false');
+        });
+
+        // Reset Filters & View
+        document.getElementById('btnDispatchReset')?.addEventListener('click', () => {
+            state.purok = 'all';
+            state.status = 'pending';
+            state.search = '';
+
+            const purokSelect = document.getElementById('purokRouteSelect');
+            if (purokSelect) purokSelect.value = 'all';
+
+            const searchInput = document.getElementById('dispatchSearchInput');
+            if (searchInput) searchInput.value = '';
+
+            document.querySelectorAll('.btn-status-filter').forEach((b) => {
+                const isPending = b.dataset.status === 'pending';
+                b.classList.toggle('active', isPending);
+                b.setAttribute('aria-selected', isPending ? 'true' : 'false');
+            });
+
+            if (state.activeTask) {
+                closeServiceLoggingView();
             }
-            document.querySelectorAll('.btn-status-filter').forEach(b => b.classList.toggle('active', b.dataset.status === state.status));
-            updateServerKpiActiveUI();
             fetchServerData();
-            document.getElementById('dispatchTasksContainer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        };
-
-        // Status Tabs click
-        document.querySelectorAll('.btn-status-filter').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.btn-status-filter').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                state.status = btn.dataset.status;
-                updateServerKpiActiveUI();
-                fetchServerData();
-            });
         });
 
-        // KPI card quick click & keyboard navigation
-        const bindKpiCard = (id, targetStatus) => {
-            const card = document.getElementById(id);
-            if (!card) return;
-            card.addEventListener('click', () => setServerStatus(targetStatus));
-            card.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setServerStatus(targetStatus);
-                }
-            });
-        };
+        // Logging View Controls
+        document.getElementById('btnBackToDispatchList')?.addEventListener('click', closeServiceLoggingView);
+        document.getElementById('btnLogCancel')?.addEventListener('click', closeServiceLoggingView);
+        document.getElementById('btnLogSaveDraft')?.addEventListener('click', handleSaveDraft);
+        document.getElementById('serviceLoggingForm')?.addEventListener('submit', handleSubmitDelivery);
 
-        // KPI stat cards remain static; explicit filter tabs handle status switching.
-
-        // Modal triggers
-        document.getElementById('loggerCloseBtn')?.addEventListener('click', closeLoggerModal);
-        document.getElementById('loggerCancelBtn')?.addEventListener('click', closeLoggerModal);
-        document.getElementById('btnSaveServiceLog')?.addEventListener('click', submitServiceAction);
-
-        // Photo Upload Trigger & Preview
-        const photoInput = document.getElementById('loggerProofFile');
-        const photoWrap = document.getElementById('loggerPhotoWrap');
-        const photoPreview = document.getElementById('loggerPhotoPreview');
-
-        if (photoWrap && photoInput) {
-            photoWrap.addEventListener('click', () => photoInput.click());
-            photoInput.addEventListener('change', () => {
-                const file = photoInput.files[0];
-                if (file && photoPreview) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        photoPreview.innerHTML = `<img src="${e.target.result}" alt="Proof Preview"><div style="margin-top:6px; font-weight:700; color:#047857;">Litrato napili: ${escapeHtml(file.name)}</div>`;
-                    };
-                    reader.readAsDataURL(file);
-                }
-            });
-        }
-
-        document.getElementById('serviceLoggerModal')?.addEventListener('click', (e) => {
-            if (e.target.id === 'serviceLoggerModal') closeLoggerModal();
-        });
-
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeLoggerModal();
+        const photoBtn = document.getElementById('btnAttachPhotoProof');
+        const photoInput = document.getElementById('logProofFile');
+        photoBtn?.addEventListener('click', () => photoInput?.click());
+        photoInput?.addEventListener('change', () => {
+            updatePhotoPreview(photoInput.files?.[0] || null);
         });
     };
 
-    // Bootstrap
     const boot = () => {
         initListeners();
         fetchServerData();

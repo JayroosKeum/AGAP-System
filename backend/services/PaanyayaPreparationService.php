@@ -10,6 +10,8 @@ final class PaanyayaPreparationService
 {
     private const ASSIGNED_WALK_IN = "
         c.is_draft = 0
+        AND c.status <> 'Mediation'
+        AND COALESCE(c.assigned_queue, '') <> 'FORMAL_MEDIATION'
         AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
         AND NOT EXISTS (SELECT 1 FROM paanyayas p WHERE p.complaint_id = c.complaint_id)
         AND NOT EXISTS (SELECT 1 FROM paanyaya_sessions s WHERE s.complaint_id = c.complaint_id)

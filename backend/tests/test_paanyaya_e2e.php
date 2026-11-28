@@ -738,6 +738,73 @@ try {
         && !empty($inServerQueue),
         'Confirm & print automatically marks ready and dispatches Paanyaya to Summons Server Proof of Service queue'
     );
+
+    // Direct Formal Complaint -> Stage 1 Mediation (bypasses Stage 0 Paanyaya)
+    $staffCreatePage = request($base, $clerk, '/frontend/pages/complaints/complaint-create.php');
+    $residentCreatePage = request($base, $filer, '/frontend/pages/complaints/complaint-create.php');
+    check(
+        $staffCreatePage['status'] === 200
+        && str_contains($staffCreatePage['body'], 'id="filingTrackCard"')
+        && str_contains($staffCreatePage['body'], 'name="filing_track"')
+        && str_contains($staffCreatePage['body'], 'value="formal_mediation"')
+        && $residentCreatePage['status'] === 200
+        && !str_contains($residentCreatePage['body'], 'id="filingTrackCard"')
+        && !str_contains($residentCreatePage['body'], 'name="filing_track"'),
+        'Direct Formal Complaint (Mediation) filing track appears for staff only'
+    );
+
+    $resFormalBlocked = request($base, $filer, 'complaints/create.php', [
+        'complaint_title' => "Resident Formal Spoof $token",
+        'category_id' => 1,
+        'case_type' => 'Civil',
+        'incident_date' => date('Y-m-d', strtotime('-1 day')),
+        'incident_street' => 'Tumana Test St',
+        'narrative' => 'Resident attempting to bypass LISO and Paanyaya via formal_mediation.',
+        'respondent_resident_id' => $residents[1],
+        'privacy_notice_acknowledged' => '1',
+        'filing_track' => 'formal_mediation',
+    ]);
+    check(
+        $resFormalBlocked['status'] === 403 && ($resFormalBlocked['json']['code'] ?? '') === 'FORMAL_MEDIATION_FORBIDDEN',
+        'Residents cannot bypass screening/Paanyaya by spoofing formal_mediation'
+    );
+
+    $formalRes = request($base, $clerk, 'complaints/create.php', [
+        'complaint_title' => "Direct Formal Complaint $token",
+        'category_id' => 1,
+        'case_type' => 'Civil',
+        'incident_date' => date('Y-m-d', strtotime('-1 day')),
+        'incident_time' => '09:30',
+        'incident_street' => 'Tumana Test St',
+        'narrative' => 'Complainant executed formal complaint (KP Form 7) directly for Punong Barangay Mediation.',
+        'complainant_resident_id' => $residents[0],
+        'respondent_resident_id' => $residents[1],
+        'privacy_notice_acknowledged' => '1',
+        'jurisdiction_screened' => '1',
+        'duplicate_acknowledged' => '1',
+        'filing_track' => 'formal_mediation',
+    ]);
+    $formalId = (int) ($formalRes['json']['complaint_id'] ?? 0);
+    if ($formalId > 0) {
+        $cleanup->trackComplaint($formalId);
+    }
+    $caseLookup->execute([$formalId]);
+    $formalCases = $caseLookup->fetchAll();
+    $complaintLookup->execute([$formalId]);
+    $formalRow = $complaintLookup->fetch();
+    $inPrepQueueIds = array_map(fn ($r) => (int) ($r['complaint_id'] ?? 0), $preparations->queue());
+    check(
+        $formalRes['status'] === 201
+        && !empty($formalRes['json']['direct_formal_mediation'])
+        && str_contains((string) ($formalRes['json']['redirect_url'] ?? ''), '&tab=mediation')
+        && count($formalCases) === 1
+        && ($formalCases[0]['case_status'] ?? '') === 'Mediation'
+        && ($formalRow['status'] ?? '') === 'Mediation'
+        && !PaanyayaPreparationService::requiresPreparation($db, $formalId)
+        && !in_array($formalId, $inPrepQueueIds, true),
+        'Direct Formal Complaint skips Paanyaya queue and dockets directly into Mediation (got ' . $formalRes['status'] . ': ' . ($formalRes['json']['message'] ?? $formalRes['body']) . ')'
+    );
+    expectKp7($base, $clerk, $formalId, true);
 } catch (Throwable $exception) {
     fwrite(STDERR, file_get_contents($logPath));
     throw $exception;

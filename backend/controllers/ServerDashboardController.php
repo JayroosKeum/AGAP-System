@@ -38,8 +38,8 @@ class ServerDashboardController
         ");
         $pendingDelivery = (int) $pendingStmt->fetchColumn();
 
-        // b. Served Today (falls back to total served if 0 today so the card reflects served records)
-        $servedStmt = $this->conn->prepare("
+        // b. Served Today (count of today's served deliveries) + Total Served for filter tab
+        $servedTodayStmt = $this->conn->prepare("
             SELECT COUNT(*)
             FROM summon_deliveries sd
             LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
@@ -47,17 +47,16 @@ class ServerDashboardController
               AND sd.delivery_status LIKE 'Served%'
               AND (DATE(sd.served_at) = ? OR DATE(sd.updated_at) = ?)
         ");
-        $servedStmt->execute([$today, $today]);
-        $servedToday = (int) $servedStmt->fetchColumn();
-        if ($servedToday === 0) {
-            $servedToday = (int) $this->conn->query("
-                SELECT COUNT(*)
-                FROM summon_deliveries sd
-                LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
-                WHERE $baseActiveWhere
-                  AND sd.delivery_status LIKE 'Served%'
-            ")->fetchColumn();
-        }
+        $servedTodayStmt->execute([$today, $today]);
+        $servedToday = (int) $servedTodayStmt->fetchColumn();
+
+        $totalServedSummons = (int) $this->conn->query("
+            SELECT COUNT(*)
+            FROM summon_deliveries sd
+            LEFT JOIN hearings h ON h.hearing_id = sd.hearing_id
+            WHERE $baseActiveWhere
+              AND sd.delivery_status LIKE 'Served%'
+        ")->fetchColumn();
 
         // c. Unserved / Need Follow-up (Party moved, address not found, refused, etc.)
         $unservedStmt = $this->conn->query("
@@ -102,7 +101,11 @@ class ServerDashboardController
         $whereClause = implode(' AND ', $where);
 
         $sql = "
-            SELECT sd.delivery_id, sd.case_id, sd.hearing_id, sd.party_type, sd.delivery_status,
+            SELECT 'summon' AS task_kind,
+                   0 AS paanyaya_attempt_id,
+                   c.complaint_id,
+                   0 AS invitation_number,
+                   sd.delivery_id, sd.case_id, sd.hearing_id, sd.party_type, sd.delivery_status,
                    n.document_id AS replacement_document_id,
                    sd.attempt_number, sd.service_method, sd.served_at, sd.unserved_reason,
                    sd.failure_notes, sd.remarks, sd.proof_file_path, sd.form_type,
@@ -156,6 +159,7 @@ class ServerDashboardController
         }
         unset($task);
 
+        $totalServedPaanyaya = 0;
         // Include Paanyaya service attempts (Stage 0) in KPIs & tasks (latest operative attempt per complaint & invitation)
         try {
             $paPending = (int) $this->conn->query("
@@ -186,6 +190,17 @@ class ServerDashboardController
             $paServedTodayStmt->execute([$today]);
             $paServedCount = (int) $paServedTodayStmt->fetchColumn();
             $servedToday += $paServedCount;
+
+            $totalServedPaanyaya = (int) $this->conn->query("
+                SELECT COUNT(*)
+                FROM paanyaya_service_attempts a
+                INNER JOIN (
+                    SELECT MAX(attempt_id) AS latest_attempt_id
+                    FROM paanyaya_service_attempts
+                    GROUP BY complaint_id, invitation_number
+                ) latest_pa ON latest_pa.latest_attempt_id = a.attempt_id
+                WHERE a.outcome = 'Delivered'
+            ")->fetchColumn();
 
             $paUnserved = (int) $this->conn->query("
                 SELECT COUNT(*)
@@ -288,11 +303,18 @@ class ServerDashboardController
             error_log('ServerDashboard Paanyaya query note: ' . $e->getMessage());
         }
 
+        $totalServedAll = $totalServedSummons + $totalServedPaanyaya;
         return [
             'kpis' => [
                 'pending_delivery' => $pendingDelivery,
                 'served_today' => $servedToday,
                 'unserved_followup' => $unservedFollowup
+            ],
+            'counts' => [
+                'pending' => $pendingDelivery,
+                'served' => $totalServedAll,
+                'unserved' => $unservedFollowup,
+                'all' => $pendingDelivery + $totalServedAll + $unservedFollowup,
             ],
             'puroks' => $puroks,
             'active_purok' => $purokFilter,
@@ -302,14 +324,70 @@ class ServerDashboardController
     }
 
     /**
-     * 1-Tap Service Logger with photo/camera proof upload support.
-     * Actions:
-     * - 'served': Mark summons as served (Personal / Substituted)
-     * - 'refused': Mark summons as Refused to Sign
-     * - 'unserved': Mark summons as Unserved (Not Found, Moved Out, etc.)
+     * Service Logger supporting both summon_deliveries and Paanyaya service attempts,
+     * with Officer's Return dropdown outcomes and photo proof upload.
      */
     public function logServiceAction(array $data, ?array $file = null): array
     {
+        $paanyayaAttemptId = filter_var($data['paanyaya_attempt_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        $returnOutcome = trim((string) ($data['return_outcome'] ?? ''));
+        $recipientInput = trim((string) ($data['recipient_name'] ?? ''));
+        $remarks = trim((string) ($data['remarks'] ?? ''));
+        $userId = (int) ($data['user_id'] ?? ($_SESSION['user_id'] ?? 0));
+        $roleId = (int) ($_SESSION['role_id'] ?? 0);
+
+        $outcomeMap = [
+            'served_personal' => ['action' => 'served', 'status' => 'Served Personal', 'method' => 'Personal Notice', 'label' => 'Served Personally (Personal na Naihatid)', 'reason' => null],
+            'served_substituted' => ['action' => 'served', 'status' => 'Served Substituted', 'method' => 'Substituted Service', 'label' => 'Substituted Service (Iniwan sa Kasama sa Bahay)', 'reason' => null],
+            'served_refused' => ['action' => 'refused', 'status' => 'Served Refused', 'method' => 'Tendered (Refused)', 'label' => 'Refused to Sign (Tumanggi Lumagda)', 'reason' => 'Refused to Sign'],
+            'unserved_not_found' => ['action' => 'unserved', 'status' => 'Unserved', 'method' => 'Personal', 'label' => 'Address Not Found', 'reason' => 'Address Not Found'],
+            'unserved_moved_out' => ['action' => 'unserved', 'status' => 'Unserved', 'method' => 'Personal', 'label' => 'Party Moved Out', 'reason' => 'Party Moved Out'],
+            'unserved_no_one_home' => ['action' => 'unserved', 'status' => 'Unserved', 'method' => 'Personal', 'label' => 'No One Home', 'reason' => 'No One Home'],
+            'unserved_out_of_town' => ['action' => 'unserved', 'status' => 'Unserved', 'method' => 'Personal', 'label' => 'Out of Town / Deceased', 'reason' => 'Out of Town / Country'],
+        ];
+
+        // 1. Handle Paanyaya invitation delivery return (Stage 0)
+        if ($paanyayaAttemptId) {
+            if ($roleId !== 4) {
+                return ['success' => false, 'message' => 'Only the assigned Summons Server may record Paanyaya delivery returns.'];
+            }
+            require_once __DIR__ . '/../services/PaanyayaServiceDelivery.php';
+            $mapped = $outcomeMap[$returnOutcome] ?? null;
+            $legacyAction = strtolower(trim((string) ($data['action'] ?? '')));
+            if ($mapped) {
+                $paOutcome = $mapped['action'] === 'unserved' ? 'Not Delivered' : 'Delivered';
+                $noteParts = [$mapped['label']];
+                if ($recipientInput !== '') {
+                    $noteParts[] = 'Recipient: ' . $recipientInput;
+                }
+                if ($remarks !== '') {
+                    $noteParts[] = $remarks;
+                }
+                $paNotes = implode(' — ', $noteParts);
+            } elseif (in_array($legacyAction, ['served', 'refused', 'unserved'], true)) {
+                $paOutcome = $legacyAction === 'unserved' ? 'Not Delivered' : 'Delivered';
+                $paNotes = $remarks !== '' ? $remarks : ($legacyAction === 'unserved' ? (string) ($data['unserved_reason'] ?? 'Not Delivered') : 'Delivered');
+            } else {
+                return ['success' => false, 'message' => "Select a valid Officer's Return option."];
+            }
+
+            try {
+                $service = new PaanyayaServiceDelivery($this->conn);
+                $proofUpload = ($file && !empty($file['tmp_name'])) ? $file : [];
+                $service->record((int) $paanyayaAttemptId, $userId, ['outcome' => $paOutcome, 'notes' => $paNotes], $proofUpload);
+                return [
+                    'success' => true,
+                    'message' => $paOutcome === 'Delivered'
+                        ? 'Paanyaya delivery marked as Delivered!'
+                        : 'Paanyaya delivery marked as Not Delivered (Follow-up required).',
+                    'delivery_status' => $paOutcome === 'Delivered' ? 'Served Personal' : 'Unserved',
+                ];
+            } catch (DomainException $e) {
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
+        }
+
+        // 2. Handle Formal Summons / Notice Delivery (summon_deliveries)
         $deliveryId = filter_var($data['delivery_id'] ?? null, FILTER_VALIDATE_INT);
         if (!$deliveryId) {
             return ['success' => false, 'message' => 'Invalid delivery ID.'];
@@ -333,13 +411,26 @@ class ServerDashboardController
         if ($delivery['delivery_status'] === 'Superseded') {
             return ['success' => false, 'message' => 'A superseded return is read-only.'];
         }
+        $mapped = $outcomeMap[$returnOutcome] ?? null;
         if ($delivery['replacement_document_id'] !== null) {
-            return ['success' => false, 'message' => 'Open Proof of Service to record the return for the replacement notice.'];
+            require_once __DIR__ . '/GPSController.php';
+            $gpsInput = [
+                'delivery_id' => $deliveryId,
+                'case_id' => $delivery['case_id'],
+                'hearing_id' => $delivery['hearing_id'],
+                'document_id' => $delivery['document_id'],
+                'party_type' => $delivery['party_type'],
+                'resident_id' => $delivery['resident_id'],
+                'recipient_name' => $recipientInput !== '' ? $recipientInput : ($delivery['recipient_name'] ?? 'Recipient'),
+                'delivery_status' => $mapped ? $mapped['status'] : 'Served Personal',
+                'service_method' => $mapped ? $mapped['method'] : 'Personal Notice',
+                'unserved_reason' => $mapped['reason'] ?? ($data['unserved_reason'] ?? null),
+                'remarks' => $remarks,
+            ];
+            return (new GPSController())->recordOfficerReturn($gpsInput, $file ?? [], $userId);
         }
 
-        $action = strtolower(trim((string) ($data['action'] ?? '')));
-        $remarks = trim((string) ($data['remarks'] ?? ''));
-        $userId = (int) ($data['user_id'] ?? ($_SESSION['user_id'] ?? 6));
+        $action = $mapped ? $mapped['action'] : strtolower(trim((string) ($data['action'] ?? '')));
         $now = date('Y-m-d H:i:s');
 
         // Handle Photo Upload (Proof of Service: house gate, recipient photo)
@@ -348,7 +439,7 @@ class ServerDashboardController
             $proofFilePath = $this->saveProofPhoto($deliveryId, $file);
         }
 
-        $recipientName = trim((string) ($data['recipient_name'] ?? ''));
+        $recipientName = $recipientInput;
         if ($recipientName === '') {
             $recipientName = trim(($delivery['first_name'] ?? '') . ' ' . ($delivery['last_name'] ?? ''));
         }
@@ -357,10 +448,11 @@ class ServerDashboardController
         }
 
         if ($action === 'served') {
-            $serviceMethod = trim((string) ($data['service_method'] ?? 'Personal Notice'));
+            $targetStatus = $mapped ? $mapped['status'] : 'Served Personal';
+            $serviceMethod = $mapped ? $mapped['method'] : trim((string) ($data['service_method'] ?? 'Personal Notice'));
             $upd = $this->conn->prepare("
                 UPDATE summon_deliveries
-                SET delivery_status = 'Served Personal',
+                SET delivery_status = ?,
                     service_method = ?,
                     served_at = ?,
                     served_by = ?,
@@ -373,12 +465,13 @@ class ServerDashboardController
                 WHERE delivery_id = ? AND delivery_status <> 'Superseded'
             ");
             $upd->execute([
+                $targetStatus,
                 $serviceMethod,
                 $now,
                 $userId,
                 $userId,
                 $recipientName,
-                $remarks ?: 'Personal service delivered and acknowledged.',
+                $remarks ?: ($targetStatus === 'Served Substituted' ? 'Substituted service delivered to household/office representative.' : 'Personal service delivered and acknowledged.'),
                 $proofFilePath,
                 $deliveryId
             ]);
@@ -390,13 +483,13 @@ class ServerDashboardController
                 $userId,
                 'SUMMON_SERVED',
                 'Summons',
-                "Summons delivery #{$deliveryId} marked as SERVED for Case {$delivery['case_number']}"
+                "Summons delivery #{$deliveryId} marked as {$targetStatus} for Case {$delivery['case_number']}"
             );
 
             return [
                 'success' => true,
                 'message' => 'Matagumpay na naitala ang paghahatid (Served)!',
-                'delivery_status' => 'Served Personal',
+                'delivery_status' => $targetStatus,
                 'proof_file_path' => $proofFilePath
             ];
         }
@@ -447,7 +540,7 @@ class ServerDashboardController
         }
 
         if ($action === 'unserved') {
-            $reason = trim((string) ($data['unserved_reason'] ?? 'Address Not Found'));
+            $reason = $mapped && $mapped['reason'] ? $mapped['reason'] : trim((string) ($data['unserved_reason'] ?? 'Address Not Found'));
             $upd = $this->conn->prepare("
                 UPDATE summon_deliveries
                 SET delivery_status = 'Unserved',

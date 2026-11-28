@@ -4162,11 +4162,13 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
 
-                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep(2)" style="font-size: 0.84rem; padding: 7px 14px;">
+                        ${(stageWorkspaceState.readOnly || readonlyAttr) ? '' : `
+                            <button type="button" class="btn-secondary" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 14px;">
 
-                            &larr; Step 2: Hearing Minutes
+                                Save Draft
 
-                        </button>
+                            </button>
+                        `}
 
                         <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
 
@@ -4191,6 +4193,11 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
                     <div style="display: flex; gap: 8px; align-items: center;">
 
                         ${(stageWorkspaceState.readOnly || readonlyAttr) ? `
+                            <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep(2)" style="font-size: 0.84rem; padding: 7px 14px;">
+
+                                &larr; Step 2: Hearing Minutes
+
+                            </button>
                             <span class="badge-stage" style="background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-size: 0.82rem; padding: 6px 14px; border-radius: 6px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
                                 🔒 Read-Only Session Record
                             </span>
@@ -4201,9 +4208,9 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             </button>
 
-                            <button type="button" class="btn-secondary" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 14px;">
+                            <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep(2)" style="font-size: 0.84rem; padding: 7px 14px;">
 
-                                Save Draft
+                                &larr; Step 2: Hearing Minutes
 
                             </button>
 
