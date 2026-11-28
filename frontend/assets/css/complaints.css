@@ -696,7 +696,7 @@ button:disabled, button.is-disabled, button[disabled], .btn-create:disabled, .bt
     display: flex;
     flex-direction: column;
     gap: 3px;
-    min-width: 180px;
+    min-width: 0;
 }
 .complaint-top-row {
     display: flex;

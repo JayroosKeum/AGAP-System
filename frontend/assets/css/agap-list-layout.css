@@ -409,25 +409,33 @@
     width: 100%;
     border-collapse: collapse;
     text-align: left;
-    font-size: 0.86rem;
+    font-size: 0.85rem;
+    table-layout: auto;
+}
+.agap-list-shell .agap-pill-badge,
+.agap-list-shell .party-pill-row,
+.agap-list-shell .complaint-title-link {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .agap-list-table-wrap thead th,
 .agap-list-shell .modern-complaints-table thead th {
     background: #f8fafc;
-    padding: 11px 16px;
-    font-size: 0.74rem;
+    padding: 11px 12px;
+    font-size: 0.73rem;
     font-weight: 700;
     color: #64748b;
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.03em;
     border-bottom: 1px solid #e2e8f0;
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.25;
 }
 
 .agap-list-table-wrap tbody td,
 .agap-list-shell .modern-complaints-table tbody td {
-    padding: 13px 16px;
+    padding: 12px 12px;
     border-bottom: 1px solid #f1f5f9;
     color: #1e293b;
     vertical-align: middle;

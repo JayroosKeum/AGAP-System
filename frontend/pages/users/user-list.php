@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id'], $_SESSION['role_id'])) {
 }
 
 $rbacDb = (new Database())->connect();
-if (!agapHasRole(['Administrator', 'Secretary', 'Lupon Clerk'], $rbacDb)) {
+if (!agapHasRole(['Administrator', 'Secretary', 'Lupon Clerk', 'BPSO'], $rbacDb)) {
     $roleId = (int) ($_SESSION['role_id'] ?? 0);
     $redirect = match ($roleId) {
         3 => '../dashboard/lupon-dashboard.php',

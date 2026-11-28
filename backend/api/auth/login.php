@@ -21,6 +21,11 @@ if (($_SESSION['role_name'] ?? '') === 'Resident') {
     exit;
 }
 
+if (($_SESSION['role_name'] ?? '') === 'BPSO') {
+    header('Location: ../../../frontend/pages/dashboard/bpso-dashboard.php', true, 303);
+    exit;
+}
+
 switch ((int) $_SESSION['role_id']) {
     case 1:
         header('Location: ../../../frontend/pages/dashboard/admin-dashboard.php', true, 303);

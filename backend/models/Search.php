@@ -56,6 +56,8 @@ class Search
                     OR EXISTS (SELECT 1 FROM arbitration_records ar_closed WHERE ar_closed.case_id = c.case_id)
                     OR c.case_status IN ('Closed','Settled','Dismissed','Arbitration','DISMISSED_BARRED','RESPONDENT_DEFAULT')
                     OR co.status IN ('Resolution / Closed','Closed','Settled','Dismissed','Arbitration','Rejected','DISMISSED_BARRED','RESPONDENT_DEFAULT','Resolved at Paanyaya / Closed'))";
+            } elseif ($filterStatus === 'BPSO Validation') {
+                $where[] = "(c.case_id IS NULL AND co.bpso_status IN ('Pending BPSO Review', 'Needs Clarification'))";
             } elseif ($filterStatus === 'Under Review') {
                 $where[] = "(c.case_id IS NULL AND co.status IN ('Filed', 'Under Review', 'Needs Information', 'Accepted') AND co.status NOT IN ('Dismissed', 'Rejected', 'Settled'))";
             } elseif ($filterStatus === 'Docketed') {
@@ -142,7 +144,7 @@ class Search
             $params[':date_to'] = $filters['date_to'];
         }
 
-        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status, co.status AS complaint_status, co.resolution_type, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, co.assigned_queue, co.routing_route, cc.category_name, co.document_status, co.is_draft,
+        $sql = "SELECT c.case_id, c.case_number, COALESCE(c.case_type, co.case_type) AS case_type, c.case_status, co.status, co.status AS complaint_status, co.bpso_status, co.bpso_blotter_no, co.intake_source, co.resolution_type, COALESCE(c.case_status, co.status) AS raw_record_status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, co.assigned_queue, co.routing_route, co.liso_endorsement_agency, cc.category_name, co.document_status, co.is_draft,
         GROUP_CONCAT(DISTINCT CONCAT(cp.party_type, ': ', TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name))) ORDER BY cp.party_type SEPARATOR ' | ') AS parties,
         MAX(history.repeat_count) AS repeat_party_count,
         (SELECT COALESCE(MAX(ps.attempt_number), 1) FROM paanyaya_sessions ps WHERE ps.complaint_id = co.complaint_id) AS paanyaya_attempt,
@@ -210,7 +212,7 @@ class Search
 
         $orderClause = $sortColumns[$sortBy] ?? "co.incident_date DESC, c.case_id DESC, co.complaint_id DESC";
 
-        $sql .= " GROUP BY c.case_id, c.case_number, c.case_type, co.case_type, c.case_status, co.status, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, co.assigned_queue, co.routing_route, cc.category_name, co.document_status, co.is_draft ORDER BY {$orderClause} LIMIT 250";
+        $sql .= " GROUP BY c.case_id, c.case_number, c.case_type, co.case_type, c.case_status, co.status, co.bpso_status, co.bpso_blotter_no, co.intake_source, c.docket_date, co.complaint_id, co.complaint_number, co.complaint_title, co.incident_date, co.assigned_queue, co.routing_route, co.liso_endorsement_agency, cc.category_name, co.document_status, co.is_draft ORDER BY {$orderClause} LIMIT 250";
         $stmt = $this->conn->prepare($sql);
         $stmt->execute($params);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);

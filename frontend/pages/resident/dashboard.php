@@ -13,6 +13,7 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['role_name'] ?? '') !== 'Resident
 
 require_once '../../../backend/config/database.php';
 require_once '../../../backend/services/CsrfService.php';
+require_once '../../../backend/services/PiiCryptoService.php';
 
 $userId = (int) $_SESSION['user_id'];
 $residentDashboardFlashes = [];
@@ -33,7 +34,10 @@ $complaints = [];
 
 try {
     $profileStatement = $db->prepare(
-        "SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)), ''),
+        "SELECT u.username,
+                r.first_name, r.middle_name, r.last_name, r.contact_no, r.email, r.purok, r.address,
+                COALESCE(r.residency_verified, 0) AS residency_verified,
+                COALESCE(NULLIF(TRIM(CONCAT_WS(' ', r.first_name, r.middle_name, r.last_name)), ''),
                          NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username) AS display_name
          FROM users u
          LEFT JOIN resident_user_profiles rup ON rup.user_id = u.user_id
@@ -41,10 +45,12 @@ try {
          WHERE u.user_id = ? LIMIT 1"
     );
     $profileStatement->execute([$userId]);
-    $profile = $profileStatement->fetch(PDO::FETCH_ASSOC) ?: [];
+    $rawProfile = $profileStatement->fetch(PDO::FETCH_ASSOC) ?: [];
+    $profile = $rawProfile ? PiiCryptoService::decryptPayload($rawProfile) : [];
 
     $complaintsStatement = $db->prepare(
         'SELECT c.complaint_id, c.intake_reference, c.complaint_number, c.complaint_title, c.status,
+                c.bpso_status, c.bpso_blotter_no, c.bpso_rejection_reason,
                 c.screening_decision, c.created_at, c.updated_at, cc.category_name, cc.tagalog_name,
                 EXISTS (SELECT 1 FROM complaint_information_requests ir
                     WHERE ir.complaint_id = c.complaint_id AND ir.responded_at IS NULL) AS awaiting_reply
@@ -98,8 +104,28 @@ $translateStatusLabel = static function (string $status): string {
 };
 
 $statusDetails = static function (array $complaint) use ($translateStatusLabel): array {
+    $bpsoStatus = (string) ($complaint['bpso_status'] ?? 'Endorsed to LISO');
     $decision = (string) ($complaint['screening_decision'] ?? 'Pending');
     $status = trim((string) ($complaint['status'] ?? 'Filed'));
+    if ($bpsoStatus === 'Pending BPSO Review' && $decision === 'Pending') {
+        return [
+            'label' => 'Naghihintay ng beripikasyon ng BPSO',
+            'label_en' => 'Pending BPSO Validation',
+            'message' => 'Sinusuri ng BPSO Desk ang kumpletong detalye at kung taga-Barangay Tumana ang inirereklamo bago ipasa sa LISO.',
+            'message_en' => 'BPSO is validating your submission details and confirming Tumana residency before endorsing to LISO.',
+            'tone' => 'pending',
+        ];
+    }
+    if ($bpsoStatus === 'Rejected') {
+        $reason = trim((string) ($complaint['bpso_rejection_reason'] ?? ''));
+        return [
+            'label' => 'Ibinalik ng BPSO (Hindi kumpleto)',
+            'label_en' => 'Returned by BPSO',
+            'message' => ($reason !== '' ? $reason . ' ' : '') . 'Maaari kayong magtungo nang personal (walk-in) sa BPSO Desk ng Barangay Tumana.',
+            'message_en' => ($reason !== '' ? $reason . ' ' : '') . 'You may visit the Barangay Tumana BPSO Desk in person to file walk-in.',
+            'tone' => 'attention',
+        ];
+    }
     return match ($decision) {
         'Needs Information' => [
             'label' => 'Kailangan ng karagdagang impormasyon',
@@ -162,6 +188,10 @@ $formatTagalogDate = static function (string $dateString): string {
 
 $displayName = trim((string) ($profile['display_name'] ?? 'Residente'));
 $firstName = trim((string) strtok($displayName, ' '));
+$residentHandle = trim((string) ($profile['username'] ?? ($_SESSION['username'] ?? '')));
+$isVerifiedResident = !empty($profile['residency_verified']);
+$isPlaceholderName = strcasecmp(trim((string) ($profile['first_name'] ?? '')), 'Unverified') === 0
+    && strcasecmp(trim((string) ($profile['last_name'] ?? '')), 'Resident') === 0;
 $recentComplaints = array_slice($complaints, 0, 5);
 $concernLink = static function (array $complaint): array {
     $reply = $complaint['status'] === 'Needs Information' && $complaint['awaiting_reply'];
@@ -238,7 +268,13 @@ $renderConcernRow = static function (array $complaint) use ($statusDetails, $con
         <?php else: ?>
         <section class="rd-hero-card" aria-labelledby="resident-dashboard-title">
             <div class="rd-hero-copy">
-                <span class="rd-hero-badge" data-en="Barangay Tumana, Marikina City">Barangay Tumana, Lungsod ng Marikina</span>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                    <span class="rd-hero-badge" data-en="Barangay Tumana, Marikina City">Barangay Tumana, Lungsod ng Marikina</span>
+                    <span style="display:inline-flex; align-items:center; padding:3px 10px; border-radius:999px; font-size:0.74rem; font-weight:700; <?= $isVerifiedResident ? 'background:#dcfce7; color:#166534; border:1px solid #86efac;' : 'background:#fef3c7; color:#92400e; border:1px solid #fde68a;' ?>">
+                        <?= $isVerifiedResident ? 'Verified Resident' : 'Unverified / Pending Verification' ?>
+                        <?= $residentHandle !== '' ? (' · ' . htmlspecialchars($residentHandle, ENT_QUOTES, 'UTF-8')) : '' ?>
+                    </span>
+                </div>
                 <h1 id="resident-dashboard-title"><span data-en="Good day,">Magandang araw,</span> <?= htmlspecialchars($firstName, ENT_QUOTES, 'UTF-8') ?>.</h1>
                 <p class="rd-hero-sub" data-en="Submit a community concern and follow its progress.">Magsumite ng sumbong sa komunidad at subaybayan ang progreso nito.</p>
                 <div class="rd-hero-actions">
@@ -294,6 +330,69 @@ $renderConcernRow = static function (array $complaint) use ($statusDetails, $con
                 <section class="resident-help-card" aria-labelledby="resident-help-title">
                     <div class="resident-help-icon" aria-hidden="true">?</div><div><h2 id="resident-help-title" data-en="Need help with a submission?">Kailangan ng tulong sa isinumite?</h2><p data-en="Visit the barangay office and provide your reference number.">Pumunta sa tanggapan ng barangay at ibigay ang iyong reference number.</p></div>
                 </section>
+
+                <?php if (!$isVerifiedResident): ?>
+                <section class="resident-panel" id="resident-verify-profile" aria-labelledby="verify-profile-title" style="padding:18px; border:1.5px solid #fde68a; background:#fffbeb;">
+                    <p class="resident-dashboard-eyebrow" style="color:#b45309;">Identity Verification Tier</p>
+                    <h2 id="verify-profile-title" style="margin:0 0 6px; font-size:1.05rem; color:#78350f;">Complete Profile for BPSO Verification</h2>
+                    <p style="margin:0 0 12px; font-size:0.84rem; color:#92400e; line-height:1.45;">
+                        Your account (<strong><?= htmlspecialchars($residentHandle, ENT_QUOTES, 'UTF-8') ?></strong>) is currently <strong>Unverified / Pending Verification</strong>. Provide your legal name and Barangay Tumana address so BPSO can validate your grievance remotely without requiring a personal visit.
+                    </p>
+                    <form id="residentProfileCompleteForm" style="display:grid; gap:8px;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                            <input type="text" name="first_name" required maxlength="100" placeholder="First Name *" value="<?= htmlspecialchars($isPlaceholderName ? '' : (string) ($profile['first_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem;">
+                            <input type="text" name="last_name" required maxlength="100" placeholder="Last Name *" value="<?= htmlspecialchars($isPlaceholderName ? '' : (string) ($profile['last_name'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem;">
+                        </div>
+                        <input type="tel" name="contact_no" maxlength="20" placeholder="Mobile Number (e.g. 0917...)" value="<?= htmlspecialchars((string) ($profile['contact_no'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem;">
+                        <input type="email" name="email" maxlength="150" placeholder="Email Address (Optional)" value="<?= htmlspecialchars((string) ($profile['email'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem;">
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                            <input type="text" name="purok" maxlength="100" placeholder="Purok (e.g. Purok 2) *" value="<?= htmlspecialchars((string) ($profile['purok'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem;">
+                            <input type="text" name="address" maxlength="255" placeholder="Street / House No. *" value="<?= htmlspecialchars((string) ($profile['address'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" style="padding:8px 10px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem;">
+                        </div>
+                        <button type="submit" id="btnSaveResidentProfile" class="rd-hero-cta" style="border:none; cursor:pointer; justify-content:center; padding:9px 14px; font-size:0.86rem;">Save Details for Verification</button>
+                    </form>
+                    <div id="residentProfileMsg" hidden style="margin-top:8px; font-size:0.82rem; font-weight:600;"></div>
+                </section>
+                <script>
+                    document.getElementById('residentProfileCompleteForm')?.addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        const form = e.currentTarget;
+                        const btn = document.getElementById('btnSaveResidentProfile');
+                        const msg = document.getElementById('residentProfileMsg');
+                        const payload = Object.fromEntries(new FormData(form).entries());
+                        if (btn) btn.disabled = true;
+                        try {
+                            const res = await fetch('../../../backend/api/residents/update-profile.php', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': <?= json_encode(CsrfService::token(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>
+                                },
+                                body: JSON.stringify(payload)
+                            });
+                            const data = await res.json();
+                            if (!res.ok || !data.success) {
+                                throw new Error(data.message || 'Unable to save profile.');
+                            }
+                            if (msg) {
+                                msg.hidden = false;
+                                msg.style.color = '#166534';
+                                msg.textContent = data.message || 'Profile saved.';
+                            }
+                            window.agapNotify?.(data.message || 'Profile updated.', 'success');
+                            setTimeout(() => window.location.reload(), 900);
+                        } catch (err) {
+                            if (msg) {
+                                msg.hidden = false;
+                                msg.style.color = '#991b1b';
+                                msg.textContent = err.message || 'Unable to update profile.';
+                            }
+                        } finally {
+                            if (btn) btn.disabled = false;
+                        }
+                    });
+                </script>
+                <?php endif; ?>
             </aside>
         </div>
 

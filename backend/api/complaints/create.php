@@ -19,8 +19,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || (!in_array((int) $_SESSION['role_id'], [1, 2], true) && !$isResidentPortal)) {
+$roleName = (string) ($_SESSION['role_name'] ?? '');
+$isResidentPortal = $roleName === 'Resident';
+$isStaffIntakeRole = in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)
+    || in_array($roleName, ['Administrator', 'Lupon Clerk', 'BPSO', 'Super Administrator'], true);
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || (!$isStaffIntakeRole && !$isResidentPortal)) {
     if ($isJson) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(401);

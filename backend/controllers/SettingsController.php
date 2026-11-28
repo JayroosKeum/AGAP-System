@@ -123,11 +123,13 @@ class SettingsController
             }
         }
 
-        // Synchronize summons_max_attempts and paanyaya_max_attempts for backward compatibility
-        if (isset($toUpdate['summons_max_attempts'])) {
-            $toUpdate['paanyaya_max_attempts'] = $toUpdate['summons_max_attempts'];
-        } elseif (isset($toUpdate['paanyaya_max_attempts'])) {
-            $toUpdate['summons_max_attempts'] = $toUpdate['paanyaya_max_attempts'];
+        // Keep summons_max_attempts (up to 6) distinct from paanyaya_max_attempts (up to 2)
+        if (isset($data['formal_kp_filing_fee_amount']) && is_numeric($data['formal_kp_filing_fee_amount'])) {
+            $feeVal = max(0.0, min(100000.0, round((float) $data['formal_kp_filing_fee_amount'], 2)));
+            $toUpdate['formal_kp_filing_fee_amount'] = number_format($feeVal, 2, '.', '');
+        }
+        if (isset($data['require_filing_fee_before_docket'])) {
+            $toUpdate['require_filing_fee_before_docket'] = !empty($data['require_filing_fee_before_docket']) ? '1' : '0';
         }
 
         // Multi-day mediation schedule setting (supports array of selected days or comma-separated string)

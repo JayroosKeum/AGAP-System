@@ -84,11 +84,13 @@ class Complaint
             $deletedWhere = $includeDeleted ? '' : ' AND c.deleted_at IS NULL';
             $stmt =
             $this->conn->prepare("
-                SELECT c.*, cs.case_id, cs.case_number, cs.case_status, cat.category_name, cat2.category_name AS secondary_category_name
+                SELECT c.*, cs.case_id, cs.case_number, cs.case_status, cat.category_name, cat2.category_name AS secondary_category_name,
+                       TRIM(CONCAT_WS(' ', bpso_u.first_name, bpso_u.last_name)) AS bpso_reviewer_name
                 FROM complaints c
                 LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
                 LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
                 LEFT JOIN complaint_categories cat2 ON cat2.category_id = c.secondary_category_id
+                LEFT JOIN users bpso_u ON bpso_u.user_id = c.bpso_reviewed_by
                 WHERE c.complaint_id=?{$deletedWhere}
             ");
 
@@ -161,7 +163,11 @@ class Complaint
             }
 
             $actorId = (int) ($_SESSION['user_id'] ?? 0);
-            $isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
+            $actorRoleName = (string) ($_SESSION['role_name'] ?? '');
+            $isResidentPortal = $actorRoleName === 'Resident';
+            $isBpsoActor = $actorRoleName === 'BPSO';
+            $filingTrack = trim((string) ($data['filing_track'] ?? ''));
+            $isBpsoToLiso = !$isResidentPortal && !$paanyayaHandoff && ($isBpsoActor || $filingTrack === 'bpso_to_liso');
             $data['intake_source'] = $isResidentPortal ? 'Online' : 'Walk-in';
             if ($isResidentPortal) {
                 $profile = $this->conn->prepare('SELECT resident_id FROM resident_user_profiles WHERE user_id = ?');
@@ -205,7 +211,36 @@ class Complaint
 
             $assignedLisoId = null;
             $assignedDutySessionId = null;
-            $isWalkInImmediateAccept = !$isResidentPortal && !$paanyayaHandoff;
+            $isWalkInImmediateAccept = !$isResidentPortal && !$paanyayaHandoff && !$isBpsoToLiso;
+
+            if ($isBpsoToLiso) {
+                if (empty($data['bpso_identity_verified'])) {
+                    return ['success' => false, 'message' => 'Confirm complainant identity verification before logging the walk-in blotter and endorsing to LISO.'];
+                }
+                if (empty($data['bpso_respondent_in_tumana'])) {
+                    return ['success' => false, 'message' => 'Confirm that the respondent resides in Barangay Tumana before endorsing to LISO.'];
+                }
+                $requestedLiso = filter_var($data['liso_assigned_to'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
+                if ($requestedLiso !== null) {
+                    $dutyStmt = $this->conn->prepare(
+                        "SELECT d.duty_session_id
+                         FROM liso_duty_sessions d
+                         INNER JOIN users u ON u.user_id = d.user_id
+                         INNER JOIN roles r ON r.role_id = u.role_id
+                         WHERE d.user_id = ? AND d.active_marker = 1 AND d.ended_at IS NULL
+                           AND DATE(d.started_at) = CURDATE()
+                           AND u.status = 'Active' AND r.role_name = 'Lupon Member'
+                         ORDER BY d.started_at DESC LIMIT 1"
+                    );
+                    $dutyStmt->execute([$requestedLiso]);
+                    $dutySessionId = $dutyStmt->fetchColumn();
+                    if (!$dutySessionId) {
+                        return ['success' => false, 'message' => 'Selected LISO officer is not currently on active LISO duty today.'];
+                    }
+                    $assignedLisoId = $requestedLiso;
+                    $assignedDutySessionId = (int) $dutySessionId;
+                }
+            }
 
             $validation = $this->validateIncidentInput($data);
             if (!$validation['success']) {
@@ -276,6 +311,13 @@ class Complaint
                     additional_details,
                     requested_resolution,
                     intake_source,
+                    bpso_status,
+                    bpso_blotter_no,
+                    bpso_respondent_in_tumana,
+                    bpso_identity_verified,
+                    bpso_private_notes,
+                    bpso_reviewed_by,
+                    bpso_reviewed_at,
                     submitted_by,
                     screening_decision,
                     status,
@@ -292,8 +334,8 @@ class Complaint
                 (
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL,
-                    ?, ?
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
             ");
 
@@ -301,6 +343,15 @@ class Complaint
             $secCatId = filter_var($data['secondary_category_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: null;
             $secOtherSpec = trim((string)($data['secondary_other_category_specification'] ?? '')) ?: null;
             $walkInActor = $actorId ?: ($data['clerk_id'] ?? $data['encoded_by'] ?? 1);
+            $bpsoStatus = $isResidentPortal ? 'Pending BPSO Review' : 'Endorsed to LISO';
+            $rawBlotterNo = trim((string) ($data['bpso_blotter_no'] ?? $data['blotter_ref_no'] ?? ''));
+            $bpsoBlotterNo = (!$isResidentPortal && $rawBlotterNo !== '') ? mb_substr($rawBlotterNo, 0, 64) : null;
+            $bpsoPrivateNotes = (!$isResidentPortal && trim((string) ($data['bpso_private_notes'] ?? '')) !== '')
+                ? mb_substr(trim((string) $data['bpso_private_notes']), 0, 2000)
+                : null;
+            $bpsoReviewedBy = $isResidentPortal ? null : $walkInActor;
+            $bpsoReviewedAt = $isResidentPortal ? null : date('Y-m-d H:i:s');
+            $initialStatus = $isWalkInImmediateAccept ? 'Accepted' : ($isBpsoToLiso ? 'Under Review' : 'Submitted');
             $stmt->execute([
                 $data['category_id'],
                 $secCatId,
@@ -323,20 +374,31 @@ class Complaint
                 trim((string) ($data['additional_details'] ?? '')) ?: null,
                 trim((string) ($data['requested_resolution'] ?? '')) ?: null,
                 $data['intake_source'],
+                $bpsoStatus,
+                $bpsoBlotterNo,
+                $isResidentPortal ? null : 1,
+                $isResidentPortal ? 0 : 1,
+                $bpsoPrivateNotes,
+                $bpsoReviewedBy,
+                $bpsoReviewedAt,
                 $isResidentPortal ? $actorId : null,
                 $isWalkInImmediateAccept ? 'Eligible' : 'Pending',
-                $isWalkInImmediateAccept ? 'Accepted' : 'Submitted',
+                $initialStatus,
                 'No Scan Uploaded',
                 0,
                 $isResidentPortal ? null : $walkInActor,
-                null,
-                null,
+                $assignedLisoId,
+                $assignedDutySessionId,
+                $assignedLisoId !== null ? date('Y-m-d H:i:s') : null,
                 $isWalkInImmediateAccept ? $walkInActor : null,
                 $isWalkInImmediateAccept ? date('Y-m-d H:i:s') : null
             ]);
 
             $complaintId = (int) $this->conn->lastInsertId();
             $intakeReference = sprintf('INT-%s-%06d', date('Y'), $complaintId);
+            if ($isBpsoToLiso && $bpsoBlotterNo === null) {
+                $bpsoBlotterNo = sprintf('BLT-%s-%06d', date('Y'), $complaintId);
+            }
 
             // A1 / A2: Automated classification & routing evaluation persisted on intake
             $classificationSuggestion = ComplaintClassificationService::suggestFromNarrative(
@@ -366,9 +428,14 @@ class Complaint
             $privacyAt = $privacyAcknowledged ? date('Y-m-d H:i:s') : null;
             $routedAt = date('Y-m-d H:i:s');
 
+            $initialAssignedQueue = ($isResidentPortal && $routingResult['assigned_queue'] === 'LISO_SCREENING')
+                ? 'BPSO_VALIDATION'
+                : $routingResult['assigned_queue'];
+
             $this->conn->prepare(
                 'UPDATE complaints
                  SET intake_reference = ?,
+                     bpso_blotter_no = COALESCE(bpso_blotter_no, ?),
                      proposed_category_id = ?,
                      routing_route = ?,
                      assigned_queue = ?,
@@ -381,9 +448,10 @@ class Complaint
                  WHERE complaint_id = ?'
             )->execute([
                 $intakeReference,
+                $bpsoBlotterNo,
                 $proposedCategoryId,
                 $routingResult['route'],
-                $routingResult['assigned_queue'],
+                $initialAssignedQueue,
                 $routingResult['rule_version'],
                 json_encode($routingResult['reasons'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 $routedAt,
@@ -410,6 +478,23 @@ class Complaint
 
             $this->applyMapLocation($complaintId, $data);
             $this->applyParties($complaintId, $data);
+            if (!$isResidentPortal) {
+                $linkedUserStmt = $this->conn->prepare(
+                    "SELECT rup.user_id
+                     FROM complaint_parties cp
+                     INNER JOIN resident_user_profiles rup ON rup.resident_id = cp.resident_id
+                     INNER JOIN users u ON u.user_id = rup.user_id AND u.status = 'Active'
+                     WHERE cp.complaint_id = ? AND cp.party_type = 'Complainant'
+                     ORDER BY cp.party_id ASC
+                     LIMIT 1"
+                );
+                $linkedUserStmt->execute([$complaintId]);
+                $linkedResidentUserId = (int) ($linkedUserStmt->fetchColumn() ?: 0);
+                if ($linkedResidentUserId > 0) {
+                    $this->conn->prepare('UPDATE complaints SET submitted_by = ? WHERE complaint_id = ? AND submitted_by IS NULL')
+                        ->execute([$linkedResidentUserId, $complaintId]);
+                }
+            }
             $this->saveIntakeScreening($complaintId, $data);
             try {
                 require_once __DIR__ . '/../services/NotificationService.php';
@@ -425,6 +510,36 @@ class Complaint
                         'info',
                         $actionUrl
                     );
+                } elseif ($isResidentPortal) {
+                    $notifService->notifyRoles(
+                        ['BPSO', 'Administrator'],
+                        'New Online Complaint for BPSO Validation',
+                        "Online intake {$cNum} (" . ($data['complaint_title'] ?? 'General Dispute') . ") requires BPSO desk validation and Tumana residency verification before LISO screening.",
+                        $actorId ?: null,
+                        'info',
+                        "../complaints/complaint-details.php?id=" . (int) $complaintId . "#bpso-validation"
+                    );
+                } elseif ($isBpsoToLiso) {
+                    $lisoUrl = "../complaints/complaint-details.php?id=" . (int) $complaintId . "#intake-screening";
+                    if ($assignedLisoId !== null) {
+                        $notifService->notifyUser(
+                            $assignedLisoId,
+                            'Walk-in Blotter Endorsed to LISO',
+                            "BPSO logged walk-in {$cNum} (Blotter {$bpsoBlotterNo}) and assigned it to you for KP jurisdiction evaluation.",
+                            $actorId ?: null,
+                            'info',
+                            $lisoUrl
+                        );
+                    } else {
+                        $notifService->notifyRoles(
+                            ['Lupon Member', 'Administrator'],
+                            'Walk-in Blotter Endorsed to LISO',
+                            "BPSO logged walk-in {$cNum} (Blotter {$bpsoBlotterNo}) and endorsed it for LISO jurisdiction screening.",
+                            $actorId ?: null,
+                            'info',
+                            $lisoUrl
+                        );
+                    }
                 } elseif (!$paanyayaHandoff) {
                     $notifService->notifyRoles(
                         ['Administrator', 'Lupon Member'],
@@ -446,10 +561,14 @@ class Complaint
                 'success' => true,
                 'message' => $isWalkInImmediateAccept
                     ? 'Walk-in complaint accepted and ready for Paanyaya preparation.'
-                    : 'Complaint intake submitted for preliminary screening by a Lupon Member.',
+                    : ($isResidentPortal
+                        ? 'Online complaint submitted for BPSO desk validation and Tumana residency verification.'
+                        : "Walk-in blotter ({$bpsoBlotterNo}) recorded and endorsed to LISO for jurisdiction screening."),
                 'case_id' => null,
                 'case_number' => null,
-                'status' => $isWalkInImmediateAccept ? 'Accepted' : 'Submitted',
+                'status' => $initialStatus,
+                'bpso_status' => $bpsoStatus,
+                'bpso_blotter_no' => $bpsoBlotterNo,
                 'complaint_id' => $complaintId,
                 'intake_reference' => $intakeReference,
                 'complaint_number' => null,
@@ -668,13 +787,14 @@ class Complaint
             $status = 'Accepted';
         }
 
-        $allowed = ['Under Review', 'Needs Information', 'Accepted', 'Rejected'];
+        $allowed = ['Under Review', 'Needs Information', 'Accepted', 'Referred', 'Rejected'];
         if (!in_array($status, $allowed, true)) {
             return ['success' => false, 'message' => 'Select a valid review decision.'];
         }
         $decision = match ($status) {
             'Needs Information' => 'Needs Information',
             'Accepted' => 'Eligible',
+            'Referred' => 'Referred',
             'Rejected' => 'Rejected',
             default => 'Pending',
         };
@@ -682,14 +802,27 @@ class Complaint
         if ($status === 'Rejected' && (trim((string) $notes) === '' || mb_strlen((string) $notes) > 2000 || !ValidationService::text((string) $notes))) {
             return ['success' => false, 'message' => 'Provide a rejection reason or jurisdictional basis (up to 2000 characters).'];
         }
+        $resolvedAgency = null;
+        $counselingNotes = trim((string) ($classification['counseling_notes'] ?? $notes ?? ''));
+        if ($status === 'Referred') {
+            $agencyInput = trim((string) ($classification['endorsement_agency'] ?? ''));
+            $resolvedAgency = ComplaintRoutingService::resolveExternalAgency($agencyInput);
+            if ($resolvedAgency === null) {
+                return ['success' => false, 'message' => 'Select an approved government agency for external endorsement (PNP, Marikina Settlement Office, CENO, TMO, VAWC, BCPC, or MTC / Prosecutor).'];
+            }
+            if ($counselingNotes === '' || mb_strlen($counselingNotes) > 2000 || !ValidationService::text($counselingNotes, true)) {
+                return ['success' => false, 'message' => 'Provide pre-filing counseling notes and jurisdictional basis (up to 2,000 characters).'];
+            }
+            $notes = $counselingNotes;
+        }
         if ($status === 'Accepted' && !empty($classification['compact_view']) && empty($classification['jurisdiction_confirmed'])) {
             return ['success' => false, 'message' => 'Pakikumpirma muna ang checkbox ("Nabasa at nasuri ko ang salaysay, mga partido, at hurisdiksyon (R.A. 7160).") bago aprubahan.'];
         }
         $this->conn->beginTransaction();
         try {
             $lock = $this->conn->prepare(
-                "SELECT c.submitted_by, c.liso_assigned_to, c.status, c.screening_decision, c.is_draft,
-                        c.category_id, c.secondary_category_id, c.other_category_specification,
+                "SELECT c.submitted_by, c.liso_assigned_to, c.bpso_status, c.status, c.screening_decision, c.is_draft,
+                        c.assigned_queue, c.category_id, c.secondary_category_id, c.other_category_specification,
                         c.secondary_other_category_specification, c.case_type, c.complaint_title,
                         cs.case_id, assigned.role_id AS assigned_role, assigned.status AS assigned_status
                  FROM complaints c
@@ -705,6 +838,9 @@ class Complaint
                 || (($mustBeAssignedLiso || $intake['submitted_by']) && $assignedId && ($assignedId !== $reviewerId
                     || (int) $intake['assigned_role'] !== 3 || $intake['assigned_status'] !== 'Active'))) {
                 throw new DomainException('This intake has already been screened or can no longer be updated by your account.');
+            }
+            if (($intake['bpso_status'] ?? 'Endorsed to LISO') !== 'Endorsed to LISO') {
+                throw new DomainException('This complaint must be validated and endorsed by BPSO before LISO screening.');
             }
 
             $hasClassificationInput = array_intersect(
@@ -866,6 +1002,10 @@ class Complaint
             $this->conn->prepare(
                 'UPDATE complaints
                  SET status = ?, screening_decision = ?, review_notes = ?,
+                     liso_endorsement_agency = ?, liso_counseling_notes = ?,
+                     liso_endorsed_at = CASE WHEN ? = \'Referred\' THEN NOW() ELSE liso_endorsed_at END,
+                     assigned_queue = COALESCE(?, assigned_queue),
+                     routing_route = COALESCE(?, routing_route),
                      category_id = ?, secondary_category_id = ?, other_category_specification = ?,
                      secondary_other_category_specification = ?, case_type = ?, complaint_title = ?,
                      liso_reviewed_by = ?, liso_reviewed_at = NOW()
@@ -874,6 +1014,11 @@ class Complaint
                 $status,
                 $decision,
                 $notes,
+                $resolvedAgency ? $resolvedAgency['full_name'] : null,
+                $resolvedAgency ? $counselingNotes : null,
+                $status,
+                $resolvedAgency ? $resolvedAgency['queue'] : null,
+                $resolvedAgency ? $resolvedAgency['route'] : null,
                 $effectiveCategoryId,
                 $effectiveSecCatId,
                 $effectiveOtherSpec,
@@ -883,6 +1028,23 @@ class Complaint
                 $reviewerId ?: null,
                 $id
             ]);
+            if ($resolvedAgency !== null) {
+                $this->conn->prepare(
+                    "INSERT INTO complaint_routing_logs
+                     (complaint_id, event_type, rule_version, proposed_category_id, routing_route, assigned_queue, previous_queue, override_reason, reasons_json, matched_keywords_json, actor_user_id)
+                     VALUES (?, 'Override', ?, ?, ?, ?, ?, ?, ?, '[]', ?)"
+                )->execute([
+                    $id,
+                    ComplaintRoutingService::RULE_VERSION,
+                    $effectiveCategoryId ?: null,
+                    $resolvedAgency['route'],
+                    $resolvedAgency['queue'],
+                    $intake['assigned_queue'] ?? null,
+                    mb_substr('LISO Endorsement to ' . $resolvedAgency['full_name'] . ': ' . $counselingNotes, 0, 500),
+                    json_encode([$resolvedAgency['full_name'] . ': ' . $counselingNotes], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    $reviewerId ?: null,
+                ]);
+            }
             if ($assignReviewer) {
                 $this->conn->prepare('UPDATE complaints SET liso_assigned_to = ?, liso_assigned_at = NOW() WHERE complaint_id = ?')
                     ->execute([$reviewerId, $id]);
@@ -932,7 +1094,39 @@ class Complaint
                 throw new RuntimeException('Unable to audit the screening decision.');
             }
             $this->conn->commit();
-            return ['success' => true, 'message' => 'Complaint review saved.'];
+            if ($resolvedAgency !== null) {
+                try {
+                    require_once __DIR__ . '/../services/NotificationService.php';
+                    $notifier = new NotificationService($this->conn);
+                    if (!empty($intake['submitted_by'])) {
+                        $notifier->notifyUser(
+                            (int) $intake['submitted_by'],
+                            'Complaint Endorsed to ' . $resolvedAgency['label'],
+                            'Your complaint falls outside Katarungang Pambarangay jurisdiction and has been endorsed by LISO to ' . $resolvedAgency['full_name'] . '. Counseling note: ' . $counselingNotes,
+                            $reviewerId ?: null,
+                            'info',
+                            'complaint.php?id=' . $id
+                        );
+                    }
+                    $notifier->notifyRoles(
+                        ['Administrator', 'Lupon Clerk'],
+                        'LISO Endorsed Complaint Externally',
+                        'Complaint #' . $id . ' was endorsed by LISO to ' . $resolvedAgency['full_name'] . '.',
+                        $reviewerId ?: null,
+                        'info',
+                        '../complaints/complaint-details.php?id=' . $id
+                    );
+                } catch (Throwable $ne) {
+                    error_log('LISO referral notification warning: ' . $ne->getMessage());
+                }
+            }
+            return [
+                'success' => true,
+                'message' => $resolvedAgency !== null
+                    ? ('Pre-filing counseling recorded and complaint endorsed to ' . $resolvedAgency['full_name'] . '.')
+                    : 'Complaint review saved.',
+                'endorsement_agency' => $resolvedAgency ? $resolvedAgency['full_name'] : null,
+            ];
         } catch (Throwable $exception) {
             $this->conn->rollBack();
             if ($exception instanceof DomainException) {
@@ -943,12 +1137,13 @@ class Complaint
         }
     }
 
-    public function docket(int $id, int $clerkId): array
+    public function docket(int $id, int $clerkId, array $feeData = []): array
     {
         require_once __DIR__ . '/CaseModel.php';
+        require_once __DIR__ . '/../services/FilingFeeService.php';
         if (PaanyayaPreparationService::managesDialogue($this->conn, $id)) {
             require_once __DIR__ . '/Paanyaya.php';
-            return (new Paanyaya($this->conn))->escalateToFormalDocketing($id, $clerkId);
+            return (new Paanyaya($this->conn))->escalateToFormalDocketing($id, $clerkId, null, $feeData);
         }
         $this->conn->beginTransaction();
         try {
@@ -976,6 +1171,7 @@ class Complaint
             if ($docketingError !== null) {
                 throw new InvalidArgumentException('This complaint is not yet authorized for formal docketing.');
             }
+            (new FilingFeeService($this->conn))->ensureReadyForDocketing($id, $feeData, $clerkId);
             if (!$caseModel->create(['complaint_id' => $id, 'case_type' => $complaint['case_type']])) {
                 throw new RuntimeException('Formal case docketing could not be completed.');
             }

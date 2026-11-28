@@ -113,12 +113,61 @@ $initEarlyEsc = !empty($formValues['allow_immediate_escalation']);
                 <a class="btn-case-primary" href="#paanyaya-invitation-2" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">Continue to the second invitation →</a>
             </div>
         <?php elseif ($canRecordPreparedDialogue && $paanyayaMinutes['complainant_choice'] === 'Escalate_Mediation' && $dialogueStatus === 'Pre-Docketed (Paanyaya)'): ?>
+            <?php
+                require_once __DIR__ . '/../../../../backend/services/FilingFeeService.php';
+                $dlgFeeStatus = (new FilingFeeService($preparationDb))->getStatus($complaintId);
+                $dlgFeePaid = in_array($dlgFeeStatus['filing_fee_status'], ['Paid', 'Exempt / Indigent'], true);
+            ?>
             <form method="post" action="<?= $dialogueEndpoint ?>" style="margin-top: 12px;"
                   onsubmit="if(this.dataset.submitting==='1'){event.preventDefault();return false;}this.dataset.submitting='1';const b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.textContent='Creating formal docket...';}">
                 <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
                 <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
                 <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
                 <input type="hidden" name="action" value="docket">
+                <input type="hidden" name="enforce_filing_fee" value="1">
+
+                <div class="att-esc-drawer" style="margin-top: 0; margin-bottom: 12px;">
+                    <div class="att-esc-drawer-head">
+                        <span class="att-esc-drawer-title">Step 5 &middot; Official KP Form No. 7 Filing Fee</span>
+                        <span class="att-esc-rule-pill"><?= $dlgFeePaid ? $escapePrep($dlgFeeStatus['filing_fee_status']) : ('Fee: PHP ' . number_format((float) $dlgFeeStatus['default_fee_amount'], 2)) ?></span>
+                    </div>
+                    <?php if ($dlgFeePaid): ?>
+                        <p style="margin:0; font-size:0.84rem; color:#166534; font-weight:600;">
+                            <?= $dlgFeeStatus['filing_fee_status'] === 'Paid'
+                                ? ('Official Receipt Recorded: ' . $escapePrep((string) $dlgFeeStatus['filing_fee_or_number']) . ' (PHP ' . number_format((float) $dlgFeeStatus['filing_fee_amount'], 2) . ')')
+                                : ('Filing Fee Exempted: ' . $escapePrep((string) $dlgFeeStatus['filing_fee_waiver_reason'])) ?>
+                        </p>
+                    <?php else: ?>
+                        <div style="display:grid; gap:10px;" data-fee-group="<?= $invitationNumber ?>">
+                            <div style="display:flex; gap:14px; flex-wrap:wrap; font-size:0.82rem; font-weight:600; color:#0f172a;">
+                                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                                    <input type="radio" name="filing_fee_status" value="Paid" checked onchange="const g=this.closest('[data-fee-group]');const p=g.querySelector('[data-fee-paid]');const w=g.querySelector('[data-fee-waiver]');p.style.display='grid';w.style.display='none';p.querySelectorAll('input').forEach(i=>i.disabled=false);w.querySelectorAll('input').forEach(i=>i.disabled=true);">
+                                    <span>Official Receipt Paid (KP Form No. 7)</span>
+                                </label>
+                                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                                    <input type="radio" name="filing_fee_status" value="Exempt / Indigent" onchange="const g=this.closest('[data-fee-group]');const p=g.querySelector('[data-fee-paid]');const w=g.querySelector('[data-fee-waiver]');p.style.display='none';w.style.display='block';p.querySelectorAll('input').forEach(i=>i.disabled=true);w.querySelectorAll('input').forEach(i=>i.disabled=false);">
+                                    <span>Indigent / Fee Exempt</span>
+                                </label>
+                            </div>
+                            <div class="att-form-grid" style="margin-bottom:0;" data-fee-paid="1">
+                                <label class="att-field-group">
+                                    <span class="att-field-label" style="font-size:0.76rem;">Official Receipt (OR) No. *</span>
+                                    <input type="text" name="filing_fee_or_number" class="att-clean-input" maxlength="64" required placeholder="e.g. OR-2026-00142">
+                                </label>
+                                <label class="att-field-group">
+                                    <span class="att-field-label" style="font-size:0.76rem;">Amount Paid (PHP) *</span>
+                                    <input type="number" step="0.01" min="0" name="filing_fee_amount" class="att-clean-input" required value="<?= number_format((float) $dlgFeeStatus['default_fee_amount'], 2, '.', '') ?>">
+                                </label>
+                            </div>
+                            <div style="display:none;" data-fee-waiver="1">
+                                <label class="att-field-group">
+                                    <span class="att-field-label" style="font-size:0.76rem;">Indigency / Exemption Basis *</span>
+                                    <input type="text" name="filing_fee_waiver_reason" class="att-clean-input" maxlength="255" disabled required placeholder="e.g. Barangay Indigency Certificate No. 2026-088">
+                                </label>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
 
                 <div class="att-esc-drawer" style="margin-top: 0; margin-bottom: 12px;">
                     <div class="att-esc-drawer-head">

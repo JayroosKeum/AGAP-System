@@ -2,9 +2,21 @@
 require_once '../../../backend/services/SecurityBootstrap.php';
 SecurityBootstrap::startSession();
 
-// Enforce access control: Admin (1), Lupon Clerk (2), Summons Server (4)
-if (!isset($_SESSION['user_id']) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2, 4], true)) {
-    header('Location: ../auth/login.php');
+// Enforce strict Summons Server access control on the field dispatch dashboard
+$sessionRoleId = (int) ($_SESSION['role_id'] ?? 0);
+$sessionRoleName = (string) ($_SESSION['role_name'] ?? '');
+if (!isset($_SESSION['user_id']) || ($sessionRoleId !== 4 && $sessionRoleName !== 'Summons Server')) {
+    if ($sessionRoleId === 1) {
+        header('Location: admin-dashboard.php', true, 303);
+    } elseif ($sessionRoleId === 2) {
+        header('Location: clerk-dashboard.php', true, 303);
+    } elseif ($sessionRoleId === 3) {
+        header('Location: lupon-dashboard.php', true, 303);
+    } elseif ($sessionRoleName === 'BPSO') {
+        header('Location: bpso-dashboard.php', true, 303);
+    } else {
+        header('Location: ../auth/login.php', true, 303);
+    }
     exit;
 }
 

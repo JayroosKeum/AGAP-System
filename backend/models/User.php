@@ -312,7 +312,7 @@ class User {
                        (u.password_hash IS NOT NULL AND u.password_hash <> '') AS has_password
                 FROM users u INNER JOIN roles r ON r.role_id = u.role_id";
         if ($staffOnly) {
-            $sql .= ' WHERE u.role_id IN (1, 2, 3, 4)';
+            $sql .= " WHERE r.role_name IN ('Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'BPSO')";
         }
         $stmt = $this->db->query($sql . ' ORDER BY u.last_name, u.first_name');
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -326,7 +326,7 @@ class User {
 
     public function getStaffRoles(): array
     {
-        return $this->db->query('SELECT role_id, role_name FROM roles WHERE role_id IN (1, 2, 3, 4) ORDER BY role_id')
+        return $this->db->query("SELECT role_id, role_name FROM roles WHERE role_name IN ('Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'BPSO') ORDER BY role_id")
             ->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -341,7 +341,7 @@ class User {
             // concurrent requests cannot both disable the last administrator.
             $admins = $this->db->query("SELECT user_id FROM users WHERE role_id = 1 AND status = 'Active' ORDER BY user_id FOR UPDATE")
                 ->fetchAll(PDO::FETCH_COLUMN);
-            $statement = $this->db->prepare('SELECT role_id, status, password_hash FROM users WHERE user_id = ? AND role_id IN (1, 2, 3, 4) FOR UPDATE');
+            $statement = $this->db->prepare("SELECT u.role_id, u.status, u.password_hash FROM users u INNER JOIN roles r ON r.role_id = u.role_id WHERE u.user_id = ? AND r.role_name IN ('Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'BPSO') FOR UPDATE");
             $statement->execute([$id]);
             $user = $statement->fetch(PDO::FETCH_ASSOC);
             if (!$user) {
@@ -505,6 +505,144 @@ class User {
         $stmt = $this->db->prepare($sql . ' LIMIT 1');
         $stmt->execute($values);
         return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Generates a unique Resident handle in the RES-TMN-XXXXX format.
+     */
+    public function generateResidentHandle(): string
+    {
+        $nextId = (int) ($this->db->query('SELECT COALESCE(MAX(user_id), 0) + 1 FROM users')->fetchColumn() ?: 1);
+        for ($offset = 0; $offset < 50; $offset++) {
+            $candidate = sprintf('RES-TMN-%05d', $nextId + $offset);
+            if (!$this->usernameInUse($candidate)) {
+                return $candidate;
+            }
+        }
+        return 'RES-TMN-' . strtoupper(bin2hex(random_bytes(3)));
+    }
+
+    /**
+     * Updates the signed-in Resident's own profile details for remote BPSO verification.
+     *
+     * @param array<string, mixed> $data
+     */
+    public function updateResidentOwnProfile(int $userId, array $data): array
+    {
+        if ($userId <= 0) {
+            return ['success' => false, 'message' => 'A valid resident session is required.'];
+        }
+
+        $firstName = trim((string) ($data['first_name'] ?? ''));
+        $middleName = trim((string) ($data['middle_name'] ?? ''));
+        $lastName = trim((string) ($data['last_name'] ?? ''));
+        $contactNo = trim((string) ($data['contact_no'] ?? ''));
+        $email = strtolower(trim((string) ($data['email'] ?? '')));
+        $purok = trim((string) ($data['purok'] ?? ''));
+        $address = trim((string) ($data['address'] ?? ''));
+
+        if ($firstName === '' || $lastName === '' || mb_strlen($firstName) > 100 || mb_strlen($lastName) > 100) {
+            return ['success' => false, 'message' => 'Enter your legal first name and last name.'];
+        }
+        if ($middleName !== '' && mb_strlen($middleName) > 100) {
+            return ['success' => false, 'message' => 'Middle name must be 100 characters or fewer.'];
+        }
+        if ($contactNo !== '' && !preg_match('/^[0-9+() .-]{7,20}$/', $contactNo)) {
+            return ['success' => false, 'message' => 'Enter a valid mobile or telephone number.'];
+        }
+        if ($email !== '' && (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 150)) {
+            return ['success' => false, 'message' => 'Enter a valid email address.'];
+        }
+        if ($email !== '' && $this->emailInUse($email, $userId)) {
+            return ['success' => false, 'message' => 'That email address is already linked to another account.'];
+        }
+        if ($purok === '' && $address === '') {
+            return ['success' => false, 'message' => 'Provide your Purok or Barangay Tumana street address.'];
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $linkStmt = $this->db->prepare(
+                'SELECT r.resident_id
+                 FROM resident_user_profiles p
+                 INNER JOIN residents r ON r.resident_id = p.resident_id
+                 WHERE p.user_id = ?
+                 LIMIT 1 FOR UPDATE'
+            );
+            $linkStmt->execute([$userId]);
+            $residentId = (int) ($linkStmt->fetchColumn() ?: 0);
+            if ($residentId <= 0) {
+                throw new DomainException('No linked resident profile was found for this account.');
+            }
+
+            $contactVal = $contactNo !== '' ? $contactNo : null;
+            $emailVal = $email !== '' ? $email : null;
+            $middleVal = $middleName !== '' ? $middleName : null;
+            $purokVal = $purok !== '' ? mb_substr($purok, 0, 100) : null;
+            $addrVal = $address !== '' ? $address : null;
+
+            $this->db->prepare(
+                'UPDATE users
+                 SET first_name = ?,
+                     middle_name = ?,
+                     last_name = ?,
+                     email = COALESCE(?, email),
+                     email_hash = COALESCE(?, email_hash),
+                     contact_no = ?,
+                     contact_no_hash = ?
+                 WHERE user_id = ?'
+            )->execute([
+                $firstName,
+                $middleVal,
+                $lastName,
+                $emailVal !== null ? $this->crypto->encrypt($emailVal) : null,
+                $emailVal !== null ? $this->crypto->emailBlindIndex($emailVal) : null,
+                $this->crypto->encrypt($contactVal),
+                $this->crypto->contactBlindIndex($contactVal),
+                $userId,
+            ]);
+
+            $this->db->prepare(
+                'UPDATE residents
+                 SET first_name = ?,
+                     middle_name = ?,
+                     last_name = ?,
+                     contact_no = ?,
+                     contact_no_hash = ?,
+                     contact_last4_hash = ?,
+                     email = COALESCE(?, email),
+                     email_hash = COALESCE(?, email_hash),
+                     purok = ?,
+                     address = ?,
+                     house_street = COALESCE(?, house_street)
+                 WHERE resident_id = ?'
+            )->execute([
+                $firstName,
+                $middleVal,
+                $lastName,
+                $this->crypto->encrypt($contactVal),
+                $this->crypto->contactBlindIndex($contactVal),
+                $this->crypto->contactLast4BlindIndex($contactVal),
+                $emailVal !== null ? $this->crypto->encrypt($emailVal) : null,
+                $emailVal !== null ? $this->crypto->emailBlindIndex($emailVal) : null,
+                $purokVal,
+                $addrVal,
+                $addrVal,
+                $residentId,
+            ]);
+
+            $this->db->commit();
+            return ['success' => true, 'resident_id' => $residentId, 'message' => 'Your resident profile was updated and is ready for BPSO verification.'];
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            if ($e instanceof DomainException) {
+                return ['success' => false, 'message' => $e->getMessage()];
+            }
+            error_log('updateResidentOwnProfile error: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to update your resident profile right now.'];
+        }
     }
 
     public function update(int $id, array $data): array

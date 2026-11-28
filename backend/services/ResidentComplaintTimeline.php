@@ -31,7 +31,10 @@ final class ResidentComplaintTimeline
     public function find(int $id, int $residentUserId): ?array
     {
         $query = $this->db->prepare('SELECT c.complaint_id, c.complaint_title, c.intake_reference, c.complaint_number,
-                c.status, c.screening_decision, c.created_at, c.updated_at, c.liso_reviewed_at,
+                c.status, c.screening_decision, c.bpso_status, c.bpso_blotter_no, c.bpso_rejection_reason, c.bpso_reviewed_at,
+                c.liso_endorsement_agency, c.liso_counseling_notes, c.liso_endorsed_at,
+                c.filing_fee_status, c.filing_fee_or_number, c.filing_fee_paid_at,
+                c.created_at, c.updated_at, c.liso_reviewed_at,
                 cs.case_id, cs.case_status, cs.docket_date, cs.updated_at AS case_updated_at, c.docketed_at
             FROM complaints c LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
             WHERE c.complaint_id = ? AND c.submitted_by = ? AND c.is_draft = 0 AND c.deleted_at IS NULL');
@@ -55,6 +58,17 @@ final class ResidentComplaintTimeline
             }
         };
         $add($complaint['created_at'], 'Concern submitted');
+        if (($complaint['bpso_status'] ?? '') === 'Endorsed to LISO' && !empty($complaint['bpso_reviewed_at'])) {
+            $blotterDetail = !empty($complaint['bpso_blotter_no'])
+                ? ('Blotter Ref: ' . $complaint['bpso_blotter_no'] . ' · Validated by BPSO and forwarded to LISO (no barangay visit required for initial screening).')
+                : 'Validated by BPSO and forwarded to LISO.';
+            $add($complaint['bpso_reviewed_at'], 'Validated by BPSO & Endorsed to LISO', $blotterDetail);
+        } elseif (($complaint['bpso_status'] ?? '') === 'Rejected' && !empty($complaint['bpso_reviewed_at'])) {
+            $rejReason = trim((string) ($complaint['bpso_rejection_reason'] ?? ''));
+            $rejDetail = ($rejReason !== '' ? $rejReason . ' ' : '')
+                . 'You may visit the Barangay Tumana BPSO desk in person to file or complete your complaint walk-in.';
+            $add($complaint['bpso_reviewed_at'], 'Returned by BPSO (Incomplete / Walk-in Recommended)', $rejDetail);
+        }
         foreach ($requests as $request) {
             $add($request['requested_at'], 'More information requested', $request['request_message'],
                 $request['request_id'] === ($openRequest['request_id'] ?? null));
@@ -74,7 +88,13 @@ final class ResidentComplaintTimeline
             }
         }
         $screeningStatus = $complaint['screening_decision'] === 'Eligible' ? 'Accepted' : $complaint['screening_decision'];
-        if (isset(self::SCREENING_LABELS[$screeningStatus]) && !isset($seen[$screeningStatus])
+        if ($screeningStatus === 'Referred' && !empty($complaint['liso_endorsement_agency'])) {
+            $refDetail = 'Endorsed to ' . $complaint['liso_endorsement_agency'];
+            if (!empty($complaint['liso_counseling_notes'])) {
+                $refDetail .= ' — Pre-filing counseling: ' . $complaint['liso_counseling_notes'];
+            }
+            $add($complaint['liso_endorsed_at'] ?: $complaint['liso_reviewed_at'], 'Pre-filing counseling & agency endorsement', $refDetail);
+        } elseif (isset(self::SCREENING_LABELS[$screeningStatus]) && !isset($seen[$screeningStatus])
             && ($screeningStatus !== 'Needs Information' || !$requests)) {
             $add($complaint['liso_reviewed_at'], self::SCREENING_LABELS[$screeningStatus]);
         }
@@ -104,6 +124,13 @@ final class ResidentComplaintTimeline
             };
             $paanyayaClosed = $paanyayaClosed || in_array($minute['outcome'], ['Settled', 'Dismissed'], true);
             $add($minute['dialogue_date'], $title);
+        }
+
+        if (in_array((string) ($complaint['filing_fee_status'] ?? ''), ['Paid', 'Exempt / Indigent'], true) && !empty($complaint['filing_fee_paid_at'])) {
+            $feeDetail = ($complaint['filing_fee_status'] === 'Paid')
+                ? ('Official Receipt No.: ' . ($complaint['filing_fee_or_number'] ?: 'Recorded'))
+                : 'Approved Indigency / Fee Exemption';
+            $add($complaint['filing_fee_paid_at'], 'KP Form No. 7 filing fee recorded', $feeDetail);
         }
 
         if ($complaint['case_id']) {

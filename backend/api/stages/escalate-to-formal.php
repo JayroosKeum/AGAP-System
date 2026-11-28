@@ -50,6 +50,11 @@ $escalationData = [
     'mediation_date' => !empty($input['mediation_date']) ? trim((string)$input['mediation_date']) : null,
     'mediation_time' => !empty($input['mediation_time']) ? trim((string)$input['mediation_time']) : null,
     'venue' => !empty($input['venue']) ? trim((string)$input['venue']) : 'Lupon Court Room',
+    'filing_fee_status' => $input['filing_fee_status'] ?? null,
+    'filing_fee_amount' => $input['filing_fee_amount'] ?? null,
+    'filing_fee_or_number' => $input['filing_fee_or_number'] ?? ($input['or_number'] ?? null),
+    'filing_fee_waiver_reason' => $input['filing_fee_waiver_reason'] ?? ($input['waiver_reason'] ?? null),
+    'enforce_filing_fee' => $input['enforce_filing_fee'] ?? null,
 ];
 
 $paanyayaModel = new Paanyaya();

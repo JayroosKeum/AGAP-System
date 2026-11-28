@@ -137,7 +137,7 @@ if (!function_exists('agapCanAccessComplaint')) {
 
         $stmt = $conn->prepare(
             'SELECT c.complaint_id, c.submitted_by, c.liso_assigned_to, c.liso_reviewed_by,
-                    c.is_draft, c.screening_decision, c.status, c.deleted_at,
+                    c.bpso_status, c.is_draft, c.screening_decision, c.status, c.deleted_at,
                     EXISTS (SELECT 1 FROM cases cs_chk WHERE cs_chk.complaint_id = c.complaint_id) AS has_case
              FROM complaints c
              WHERE c.complaint_id = ?
@@ -161,6 +161,14 @@ if (!function_exists('agapCanAccessComplaint')) {
             return true;
         }
 
+        if ($roleName === 'BPSO') {
+            if ($mode === 'read') {
+                return true;
+            }
+            return empty($complaint['has_case'])
+                && in_array((string) ($complaint['bpso_status'] ?? ''), ['Pending BPSO Review', 'Needs Clarification'], true);
+        }
+
         if ($roleName === 'Resident') {
             return (int) ($complaint['submitted_by'] ?? 0) === $userId;
         }
@@ -171,6 +179,7 @@ if (!function_exists('agapCanAccessComplaint')) {
                 return true;
             }
             $isUnassignedPendingIntake = empty($complaint['liso_assigned_to'])
+                && ($complaint['bpso_status'] ?? 'Endorsed to LISO') === 'Endorsed to LISO'
                 && empty($complaint['is_draft'])
                 && empty($complaint['has_case'])
                 && in_array((string) ($complaint['screening_decision'] ?? ''), ['Pending', 'Needs Information'], true)
@@ -501,7 +510,7 @@ if (!function_exists('agapBuildComplaintVisibilitySql')) {
             ? '1 = 1'
             : "{$complaintAlias}.deleted_at IS NULL";
 
-        if (in_array($roleName, ['Super Administrator', 'Administrator', 'Lupon Clerk'], true)) {
+        if (in_array($roleName, ['Super Administrator', 'Administrator', 'Lupon Clerk', 'BPSO'], true)) {
             return [$deletedClause, []];
         }
 
@@ -515,6 +524,7 @@ if (!function_exists('agapBuildComplaintVisibilitySql')) {
                 OR {$complaintAlias}.liso_reviewed_by = ?
                 OR (
                     {$complaintAlias}.liso_assigned_to IS NULL
+                    AND COALESCE({$complaintAlias}.bpso_status, 'Endorsed to LISO') = 'Endorsed to LISO'
                     AND COALESCE({$complaintAlias}.is_draft, 0) = 0
                     AND {$complaintAlias}.screening_decision IN ('Pending', 'Needs Information')
                     AND {$complaintAlias}.status IN ('Submitted', 'Filed', 'Under Review', 'Needs Information')

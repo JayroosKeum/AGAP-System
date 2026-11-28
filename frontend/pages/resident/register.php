@@ -17,6 +17,7 @@ require_once __DIR__ . '/../../../backend/services/GoogleResidentIdentity.php';
 $identity = $_SESSION['resident_google_registration'] ?? [];
 $googleConfigured = GoogleResidentIdentity::clientId() !== '';
 $confirmedEmail = $googleConfigured && ($identity['expires_at'] ?? 0) > time() ? $identity['email'] : null;
+$isQuickMode = (($_GET['mode'] ?? '') === 'quick') && $confirmedEmail === null;
 
 $error = (string) ($_GET['error'] ?? '');
 $messages = [
@@ -55,14 +56,63 @@ $messages = [
         <section class="resident-auth-panel" aria-label="Create a resident account">
             <div class="resident-auth-card resident-register-card">
                 <p class="resident-eyebrow">Resident Registration</p>
-                <h2>Create your account</h2>
-                <p class="resident-auth-lead"><?= $googleConfigured ? 'Use Google to confirm your Gmail address, then complete your resident profile.' : 'Complete your resident profile to create an account.' ?></p>
+                <h2><?= $isQuickMode ? 'Quick grievance access (Unverified)' : 'Create your account' ?></h2>
+                <p class="resident-auth-lead">
+                    <?php if ($isQuickMode): ?>
+                        Get an automatically generated <strong>RES-TMN</strong> username immediately. You can submit an online grievance or complete your identity verification later.
+                    <?php else: ?>
+                        <?= $googleConfigured ? 'Use Google to confirm your Gmail address, then complete your resident profile.' : 'Complete your resident profile to create an account.' ?>
+                    <?php endif; ?>
+                </p>
+
+                <?php if ($confirmedEmail === null): ?>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
+                        <a href="register.php" style="text-align:center; padding:8px 10px; border-radius:8px; font-size:0.82rem; font-weight:700; text-decoration:none; border:1.5px solid <?= !$isQuickMode ? '#1b6553' : '#cbd5e1' ?>; background:<?= !$isQuickMode ? '#eef6f2' : '#fff' ?>; color:<?= !$isQuickMode ? '#1b6553' : '#475569' ?>;">Standard Account</a>
+                        <a href="register.php?mode=quick" style="text-align:center; padding:8px 10px; border-radius:8px; font-size:0.82rem; font-weight:700; text-decoration:none; border:1.5px solid <?= $isQuickMode ? '#1b6553' : '#cbd5e1' ?>; background:<?= $isQuickMode ? '#eef6f2' : '#fff' ?>; color:<?= $isQuickMode ? '#1b6553' : '#475569' ?>;">Quick Handle (RES-TMN)</a>
+                    </div>
+                <?php endif; ?>
 
                 <?php if (isset($messages[$error])): ?>
                     <div class="resident-message error" role="alert"><?= htmlspecialchars($messages[$error], ENT_QUOTES, 'UTF-8') ?></div>
                 <?php endif; ?>
 
-                <?php if (!$googleConfigured || $confirmedEmail !== null): ?>
+                <?php if ($isQuickMode): ?>
+                <form action="../../../backend/api/auth/register-resident.php" method="post">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8') ?>">
+                    <input type="hidden" name="account_mode" value="quick">
+                    <div class="resident-field">
+                        <label for="quick_handle_preview">Auto-generated Resident Handle</label>
+                        <input id="quick_handle_preview" type="text" value="RES-TMN-XXXXX (Assigned automatically)" readonly style="background:#f8fafc; color:#0f766e; font-weight:700;">
+                    </div>
+                    <div class="resident-name-grid">
+                        <div class="resident-field"><label for="quick_first_name">First name (Optional)</label><input id="quick_first_name" name="first_name" type="text" autocomplete="given-name" maxlength="100" placeholder="Optional for now"></div>
+                        <div class="resident-field"><label for="quick_last_name">Last name (Optional)</label><input id="quick_last_name" name="last_name" type="text" autocomplete="family-name" maxlength="100" placeholder="Optional for now"></div>
+                    </div>
+                    <div class="resident-field"><label for="quick_contact_no">Mobile number (Optional)</label><input id="quick_contact_no" name="contact_no" type="tel" inputmode="tel" pattern="[0-9+() .-]{7,20}" maxlength="20" placeholder="Optional for BPSO contact" oninput="this.value=this.value.replace(/[^0-9+() .-]/g,'')"></div>
+                    <div class="resident-name-grid">
+                        <div class="resident-field">
+                            <label for="quick_password">Password <span>*</span></label>
+                            <div class="resident-password-wrap">
+                                <input id="quick_password" name="password" type="password" autocomplete="new-password" minlength="12" required>
+                                <button class="resident-password-toggle" type="button" aria-controls="quick_password" aria-label="Show password">Show</button>
+                            </div>
+                        </div>
+                        <div class="resident-field">
+                            <label for="quick_password_confirmation">Confirm password <span>*</span></label>
+                            <div class="resident-password-wrap">
+                                <input id="quick_password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" minlength="12" required>
+                                <button class="resident-password-toggle" type="button" aria-controls="quick_password_confirmation" aria-label="Show password confirmation">Show</button>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="resident-password-help">Use at least 12 characters, including an uppercase letter, lowercase letter, and number. Your account starts as <strong>Unverified / Pending Verification</strong> until BPSO validates your details.</p>
+                    <div class="resident-agreement">
+                        <input id="quick_terms_agreed" name="terms_agreed" type="checkbox" value="1" required aria-label="I agree to the Resident Portal User Agreement and Privacy Notice">
+                        <span>I have read and agree to the </span><button type="button" data-open-resident-terms>Resident Portal User Agreement and Privacy Notice</button><span>.</span>
+                    </div>
+                    <button class="resident-submit" type="submit">Create Quick Account &amp; Continue</button>
+                </form>
+                <?php elseif (!$googleConfigured || $confirmedEmail !== null): ?>
                 <form action="../../../backend/api/auth/register-resident.php" method="post">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(CsrfService::token(), ENT_QUOTES, 'UTF-8') ?>">
                     <div class="resident-name-grid">

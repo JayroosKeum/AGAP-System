@@ -147,8 +147,15 @@ final class ComplaintClassificationService
                 category_name ASC
         ";
         $rows = $db->query($sql)->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        $deduped = [];
+        $seenKeys = [];
         foreach ($rows as &$row) {
             $name = (string) ($row['category_name'] ?? '');
+            $normalized = mb_strtolower(trim(preg_replace('/\s+|â€”|—|-/u', ' ', $name) ?? $name));
+            if (isset($seenKeys[$normalized])) {
+                continue;
+            }
+            $seenKeys[$normalized] = true;
             $row['category_id'] = (int) $row['category_id'];
             $row['is_other'] = self::isOtherCategoryName($name);
             $row['default_case_type'] = self::resolveCaseTypeForCategoryName(
@@ -156,9 +163,10 @@ final class ComplaintClassificationService
                 $hasDefaultCol ? ($row['default_case_type'] ?? null) : null,
                 $row['ltia_code'] ?? null
             );
+            $deduped[] = $row;
         }
         unset($row);
-        return $rows;
+        return $deduped;
     }
 
     public static function resolveCaseTypeById(PDO $db, int $categoryId): ?string

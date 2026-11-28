@@ -16,13 +16,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!toastContainer) {
             toastContainer = document.createElement('div');
             toastContainer.id = 'settingsToastContainer';
-            toastContainer.style.cssText = 'position:fixed; top:20px; right:20px; z-index:99999; display:flex; flex-direction:column; gap:10px;';
+            toastContainer.style.cssText = 'position:fixed; top:20px; right:20px; z-index:99999; display:flex; flex-direction:column; gap:10px; pointer-events:none;';
             document.body.appendChild(toastContainer);
         }
 
         const toast = document.createElement('div');
         const bg = (type === 'success') ? '#15803d' : (type === 'error' ? '#b91c1c' : '#2563eb');
-        toast.style.cssText = `background:${bg}; color:#ffffff; padding:12px 18px; border-radius:8px; font-size:0.88rem; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,0.15); display:flex; align-items:center; gap:8px; animation:fadeIn 0.2s ease;`;
+        toast.style.cssText = `background:${bg}; color:#ffffff; padding:12px 18px; border-radius:8px; font-size:0.88rem; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,0.15); display:flex; align-items:center; gap:8px; animation:fadeIn 0.2s ease; pointer-events:none;`;
         toast.innerHTML = `<span>${type === 'success' ? '✓' : (type === 'error' ? '⚠️' : 'ℹ️')}</span><span>${escapeHtml(message)}</span>`;
         toastContainer.appendChild(toast);
 
@@ -82,6 +82,14 @@ document.addEventListener('DOMContentLoaded', () => {
             switchSettingsTab(fullTabId);
         }
     }
+    window.addEventListener('hashchange', () => {
+        const hashTab = window.location.hash.replace('#', '');
+        if (!hashTab) return;
+        const fullTabId = hashTab.startsWith('tab-') ? hashTab : 'tab-' + hashTab;
+        if (document.getElementById(fullTabId)) {
+            switchSettingsTab(fullTabId);
+        }
+    });
 
     const focusTarget = urlParams.get('focus');
     if (focusTarget || targetTabName === 'external') {

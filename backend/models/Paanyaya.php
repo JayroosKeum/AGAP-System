@@ -1330,11 +1330,12 @@ class Paanyaya
     public function escalateToFormalDocketing(int $complaintId, ?int $userId = null, ?string $notes = null, array $escalationData = []): array
     {
         if (PaanyayaPreparationService::managesDialogue($this->conn, $complaintId)) {
-            return $this->docketRecordedDialogue($complaintId, $userId ?? 0);
+            return $this->docketRecordedDialogue($complaintId, $userId ?? 0, $escalationData);
         }
         try {
             require_once __DIR__ . '/CaseModel.php';
             require_once __DIR__ . '/Summons.php';
+            require_once __DIR__ . '/../services/FilingFeeService.php';
 
             $caseModel = new CaseModel($this->conn);
             $summonsModel = new Summons($this->conn);
@@ -1358,6 +1359,7 @@ class Paanyaya
                     error_log('Could not start Mediation stage on escalation: ' . $se->getMessage());
                 }
             } else {
+                (new FilingFeeService($this->conn))->ensureReadyForDocketing($complaintId, $escalationData, $userId ?? 0);
                 // Fetch complaint details to determine case_type
                 $cStmt = $this->conn->prepare('SELECT case_type FROM complaints WHERE complaint_id = ? LIMIT 1');
                 $cStmt->execute([$complaintId]);
@@ -1697,9 +1699,10 @@ class Paanyaya
         return null;
     }
 
-    private function docketRecordedDialogue(int $complaintId, int $userId): array
+    private function docketRecordedDialogue(int $complaintId, int $userId, array $feeData = []): array
     {
         require_once __DIR__ . '/CaseModel.php';
+        require_once __DIR__ . '/../services/FilingFeeService.php';
         if ($userId < 1) {
             return ['success' => false, 'message' => 'A staff account is required.'];
         }
@@ -1719,6 +1722,7 @@ class Paanyaya
                 if (!in_array($complaint['status'] ?? '', $eligibleStatuses, true) || $minutes->fetchColumn() !== 'Escalate_Mediation') {
                     throw new DomainException('Record dialogue minutes with a mediation outcome before docketing this complaint.');
                 }
+                (new FilingFeeService($this->conn))->ensureReadyForDocketing($complaintId, $feeData, $userId);
                 if (!(new CaseModel($this->conn))->create(['complaint_id' => $complaintId, 'case_type' => $complaint['case_type']])) {
                     throw new RuntimeException('Unable to create the formal case.');
                 }

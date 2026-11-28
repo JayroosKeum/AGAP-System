@@ -3,12 +3,15 @@
 session_start();
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../middleware/rbac.php';
 require_once __DIR__ . '/../../services/ResidentNameLookup.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
-$isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
-if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || (!in_array((int) $_SESSION['role_id'], [1, 2], true) && !$isResidentPortal)) {
+$db = (new Database())->connect();
+$isResidentPortal = agapGetRoleName($db) === 'Resident';
+$isStaffDuplicateAllowed = agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'BPSO'], $db);
+if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || (!$isStaffDuplicateAllowed && !$isResidentPortal)) {
     http_response_code(401);
     echo json_encode(['success' => false, 'message' => 'Authentication required.']);
     exit;

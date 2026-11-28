@@ -17,13 +17,92 @@ final class ComplaintRoutingService
      * Receiving units approved for Barangay Tumana grievance operations.
      */
     public const APPROVED_QUEUES = [
+        'BPSO_VALIDATION' => 'BPSO Desk Validation & Blotter Queue',
         'LISO_SCREENING' => 'LISO Preliminary Screening Queue',
         'LUPON_PAANYAYA_PREP' => 'Lupon Clerk Paanyaya Preparation Queue',
         'VAWC_REFERRAL_DESK' => 'Barangay VAWC Desk (Referral Created)',
         'BCPC_REFERRAL_DESK' => 'Barangay BCPC Desk (Referral Created)',
         'PNP_PROSECUTOR_REFERRAL' => 'PNP / Prosecutor Referral Queue',
+        'MARIKINA_SETTLEMENT_REFERRAL' => 'Marikina City Settlement Office (Endorsement)',
+        'CENO_REFERRAL' => 'Marikina CENO (City Environment & Natural Resources Office)',
+        'TMO_REFERRAL' => 'Marikina TMO (Traffic / Transportation Management Office)',
         'REVIEW_EXCEPTION_QUEUE' => 'Manual Review Exception Queue',
     ];
+
+    /**
+     * Approved external agencies for LISO pre-filing counseling & Step 3/4 endorsement
+     * when a grievance falls outside Katarungang Pambarangay jurisdiction.
+     */
+    public const EXTERNAL_AGENCIES = [
+        'PNP' => [
+            'label' => 'PNP',
+            'full_name' => 'Philippine National Police (Marikina City Police Station)',
+            'queue' => 'PNP_PROSECUTOR_REFERRAL',
+            'route' => 'PNP',
+            'jurisdiction_note' => 'Criminal / police blotter matters outside KP jurisdiction.',
+        ],
+        'Marikina Settlement Office' => [
+            'label' => 'Marikina Settlement Office',
+            'full_name' => 'Marikina City Settlement Office',
+            'queue' => 'MARIKINA_SETTLEMENT_REFERRAL',
+            'route' => 'MARIKINA_SETTLEMENT',
+            'jurisdiction_note' => 'City-level settlement / inter-barangay or municipal conciliation matters.',
+        ],
+        'CENO' => [
+            'label' => 'CENO',
+            'full_name' => 'Marikina City Environment & Natural Resources Office (CENO)',
+            'queue' => 'CENO_REFERRAL',
+            'route' => 'CENO',
+            'jurisdiction_note' => 'Environmental, sanitation, waste, or ecological ordinance complaints.',
+        ],
+        'TMO' => [
+            'label' => 'TMO',
+            'full_name' => 'Marikina Traffic & Transportation Management Office (TMO)',
+            'queue' => 'TMO_REFERRAL',
+            'route' => 'TMO',
+            'jurisdiction_note' => 'Traffic, road obstruction, parking, and public transport disputes.',
+        ],
+        'VAWC' => [
+            'label' => 'Barangay VAWC Desk',
+            'full_name' => 'Barangay Tumana VAWC Desk / PNP WCPD',
+            'queue' => 'VAWC_REFERRAL_DESK',
+            'route' => 'VAWC',
+            'jurisdiction_note' => 'RA 9262 / RA 11313 gender-based violence and repeat harassment.',
+        ],
+        'BCPC' => [
+            'label' => 'Barangay BCPC Desk',
+            'full_name' => 'Barangay Council for the Protection of Children (BCPC)',
+            'queue' => 'BCPC_REFERRAL_DESK',
+            'route' => 'BCPC',
+            'jurisdiction_note' => 'Child protection, RA 7610, or juvenile welfare matters (RA 9344).',
+        ],
+        'MTC / Prosecutor' => [
+            'label' => 'MTC / City Prosecutor',
+            'full_name' => 'Office of the City Prosecutor / Metropolitan Trial Court (Marikina City)',
+            'queue' => 'PNP_PROSECUTOR_REFERRAL',
+            'route' => 'PROSECUTOR',
+            'jurisdiction_note' => 'Judicial or prosecutorial filing outside barangay conciliation authority.',
+        ],
+    ];
+
+    /**
+     * Resolves an agency key or label into canonical queue & metadata.
+     *
+     * @return array{key: string, label: string, full_name: string, queue: string, route: string, jurisdiction_note: string}|null
+     */
+    public static function resolveExternalAgency(string $input): ?array
+    {
+        $needle = trim($input);
+        if ($needle === '') {
+            return null;
+        }
+        foreach (self::EXTERNAL_AGENCIES as $key => $meta) {
+            if (strcasecmp($needle, $key) === 0 || strcasecmp($needle, $meta['label']) === 0 || strcasecmp($needle, $meta['full_name']) === 0) {
+                return ['key' => $key] + $meta;
+            }
+        }
+        return null;
+    }
 
     private const VAWC_KEYWORDS = [
         'vawc', 'ra 9262', 'domestic violence', 'battered', 'physical abuse by husband',

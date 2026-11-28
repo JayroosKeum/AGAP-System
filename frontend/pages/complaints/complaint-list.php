@@ -3,7 +3,8 @@
 session_start();
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if (!in_array($roleId, [1, 2, 3, 6], true) && !in_array((string) ($_SESSION['role_name'] ?? ''), ['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'], true)) {
+$roleName = (string) ($_SESSION['role_name'] ?? '');
+if (!in_array($roleId, [1, 2, 3, 6], true) && !in_array($roleName, ['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'BPSO'], true)) {
     $redirect = match ($roleId) {
         4 => '../dashboard/server-dashboard.php',
         default => '../auth/login.php',
@@ -88,8 +89,11 @@ include '../../layouts/header.php';
                             <button type="button" class="nav-tab-btn active" data-tab-status="">
                                 All <span class="tab-count-pill" id="tabCountAll">0</span>
                             </button>
+                            <button type="button" class="nav-tab-btn" data-tab-status="BPSO Validation">
+                                BPSO Desk <span class="tab-count-pill" id="tabCountBpso">0</span>
+                            </button>
                             <button type="button" class="nav-tab-btn" data-tab-status="Under Review">
-                                Verification <span class="tab-count-pill" id="tabCountReview">0</span>
+                                LISO Screening <span class="tab-count-pill" id="tabCountReview">0</span>
                             </button>
                             <button type="button" class="nav-tab-btn" data-tab-status="Paanyaya">
                                 Paanyaya <span class="tab-count-pill" id="tabCountPaanyaya">0</span>
@@ -231,19 +235,19 @@ include '../../layouts/header.php';
                     <table class="modern-complaints-table">
                         <thead>
                             <tr>
-                                <th class="sortable-th sort-active-desc" data-sort-key="case_no" style="min-width: 140px;" title="Click to sort by Case Number">
+                                <th class="sortable-th sort-active-desc" data-sort-key="case_no" style="width: 17%;" title="Click to sort by Case Number">
                                     <span class="th-content">Case / Ref No. <span class="sort-indicator" id="sortInd_case_no">▼</span></span>
                                 </th>
-                                <th class="sortable-th" data-sort-key="complaint" style="min-width: 240px;" title="Click to sort by Complaint (A-Z / Z-A)">
+                                <th class="sortable-th" data-sort-key="complaint" style="width: 28%;" title="Click to sort by Complaint (A-Z / Z-A)">
                                     <span class="th-content">Complaint <span class="sort-indicator" id="sortInd_complaint">⇅</span></span>
                                 </th>
-                                <th class="sortable-th" data-sort-key="parties" style="min-width: 200px;" title="Click to sort by Parties">
+                                <th class="sortable-th" data-sort-key="parties" style="width: 24%;" title="Click to sort by Parties">
                                     <span class="th-content">Parties <span class="sort-indicator" id="sortInd_parties">⇅</span></span>
                                 </th>
-                                <th class="sortable-th" data-sort-key="lifecycle" style="min-width: 170px;" title="Click to sort by Status">
+                                <th class="sortable-th" data-sort-key="lifecycle" style="width: 19%;" title="Click to sort by Status">
                                     <span class="th-content">Status <span class="sort-indicator" id="sortInd_lifecycle">⇅</span></span>
                                 </th>
-                                <th style="min-width: 145px; text-align: right;">Actions</th>
+                                <th style="width: 12%; text-align: right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="complaintTable">

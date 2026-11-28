@@ -95,6 +95,69 @@ class AuthController {
         return $result;
     }
 
+    /**
+     * Quick / Unverified Resident registration with auto-generated RES-TMN-XXXXX handle.
+     * Supports deferred identity disclosure until BPSO review or self-service profile completion.
+     */
+    public function registerQuickResident(array $data): array
+    {
+        if (($data['terms_agreed'] ?? '') !== '1') {
+            return ['success' => false, 'code' => 'validation', 'message' => 'You must agree to the Resident Portal User Agreement.'];
+        }
+
+        $password = (string) ($data['password'] ?? '');
+        $confirmation = (string) ($data['password_confirmation'] ?? '');
+        if (($error = $this->passwordError($password, $confirmation)) !== null) {
+            return ['success' => false, 'code' => 'validation', 'message' => $error];
+        }
+
+        $firstName = trim((string) ($data['first_name'] ?? ''));
+        $lastName = trim((string) ($data['last_name'] ?? ''));
+        $email = strtolower(trim((string) ($data['email'] ?? '')));
+        $contactNo = trim((string) ($data['contact_no'] ?? ''));
+
+        if ($firstName === '') {
+            $firstName = 'Unverified';
+        }
+        if ($lastName === '') {
+            $lastName = 'Resident';
+        }
+        if (mb_strlen($firstName) > 100 || mb_strlen($lastName) > 100) {
+            return ['success' => false, 'code' => 'validation', 'message' => 'Name fields must be 100 characters or fewer.'];
+        }
+        if ($email !== '' && (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 150)) {
+            return ['success' => false, 'code' => 'validation', 'message' => 'Enter a valid email address or leave it blank for now.'];
+        }
+        if ($email !== '' && $this->userModel->emailInUse($email)) {
+            return ['success' => false, 'code' => 'duplicate', 'message' => 'That email address is already registered.'];
+        }
+        if ($contactNo !== '' && !preg_match('/^[0-9+() .-]{7,20}$/', $contactNo)) {
+            return ['success' => false, 'code' => 'validation', 'message' => 'Enter a valid contact number or leave it blank for now.'];
+        }
+
+        $handle = $this->userModel->generateResidentHandle();
+        $result = $this->userModel->createResidentAccount([
+            'first_name' => $firstName,
+            'last_name' => $lastName,
+            'username' => $handle,
+            'email' => $email !== '' ? $email : null,
+            'contact_no' => $contactNo !== '' ? $contactNo : null,
+            'password' => $password,
+            'google_subject' => null,
+        ]);
+
+        if (!empty($result['success'])) {
+            $this->audit->log((int) $result['user_id'], 'Registered unverified resident account (' . $handle . ')', 'Resident Portal', (int) $result['resident_id']);
+            $userRow = $this->userModel->findByUsername($handle);
+            if ($userRow) {
+                $this->establishSession($userRow);
+            }
+            $result['username'] = $handle;
+            $result['verification_tier'] = 'Unverified / Pending Verification';
+        }
+        return $result;
+    }
+
     public function acceptResidentGoogleIdentity(array $identity): string
     {
         unset($_SESSION['resident_google_registration']);

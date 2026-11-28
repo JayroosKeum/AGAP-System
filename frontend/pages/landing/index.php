@@ -126,9 +126,13 @@ declare(strict_types=1);
                 </p>
                 <div class="hero-actions">
                     <a href="../resident/register.php" class="landing-cta" data-i18n="hero.cta_create_account">Create Account</a>
+                    <a href="../resident/register.php?mode=quick" class="landing-cta landing-cta-secondary">Quick Grievance Access</a>
                     <a href="../resident/login.php" class="landing-cta landing-cta-secondary" data-i18n="hero.cta_sign_in">Resident Sign In</a>
-                    <a href="anonymous-concern.php" class="landing-cta landing-cta-secondary">Report Anonymously</a>
-                    <span class="hero-note" data-i18n="hero.for_residents">For the residents of Barangay Tumana</span>
+                    <span class="hero-note">
+                        <span data-i18n="hero.for_residents">For the residents of Barangay Tumana</span>
+                        &middot;
+                        <a href="anonymous-concern.php" style="color:inherit; text-decoration:underline; font-weight:600;">Anonymous General Concern</a>
+                    </span>
                 </div>
             </div>
 

@@ -32,7 +32,7 @@ if (!PaanyayaPreparationService::managesDialogue($db, $id)) {
 
 $model = new Paanyaya($db);
 $result = $action === 'docket'
-    ? $model->escalateToFormalDocketing($id, $actor)
+    ? $model->escalateToFormalDocketing($id, $actor, null, $_POST)
     : $model->recordMinutes($id, 'Paanyaya ' . $number, $_POST, $actor);
 
 if ($action === 'minutes' && !empty($result['success'])) {

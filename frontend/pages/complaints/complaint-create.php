@@ -6,8 +6,11 @@ header('Pragma: no-cache');
 session_start();
 
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-$isResidentPortal = ($_SESSION['role_name'] ?? '') === 'Resident';
-if (!in_array($roleId, [1, 2], true) && !$isResidentPortal) {
+$roleName = (string) ($_SESSION['role_name'] ?? '');
+$isResidentPortal = $roleName === 'Resident';
+$isBpsoPortal = $roleName === 'BPSO';
+$isStaffIntake = in_array($roleId, [1, 2], true) || in_array($roleName, ['Administrator', 'Lupon Clerk', 'BPSO', 'Super Administrator'], true);
+if (!$isStaffIntake && !$isResidentPortal) {
     $isFromResidentPortal = (($_GET['portal'] ?? '') === 'resident')
         || str_contains((string) ($_SERVER['HTTP_REFERER'] ?? ''), '/resident/')
         || (($_COOKIE['agap_portal'] ?? '') === 'resident');
@@ -37,7 +40,11 @@ if (!$isResidentPortal) {
 }
 require_once __DIR__ . '/../../../backend/services/ComplaintClassificationService.php';
 require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
+require_once __DIR__ . '/../../../backend/services/FilingFeeService.php';
 $categories = ComplaintClassificationService::getCategories($db);
+$filingFeeService = new FilingFeeService($db);
+$strictFilingFee = $filingFeeService->isStrictApiEnforcementEnabled();
+$defaultFilingFeeAmount = number_format($filingFeeService->getDefaultFeeAmount(), 2, '.', '');
 
 $residentSelect = "SELECT resident_id, first_name, middle_name, last_name, suffix, birth_date, gender, civil_status, occupation, contact_no, email, preferred_contact, purok, address, home_latitude, home_longitude, is_tenant, residency_verified FROM residents";
 if ($isResidentPortal) {
@@ -1093,11 +1100,11 @@ include '../../layouts/header.php';
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
                     <div>
                         <strong style="font-size:0.95rem; color:#0f172a;">Walk-in Reference Lookup &amp; Duplicate Link</strong>
-                        <p style="margin:4px 0 0; font-size:0.82rem; color:#475569;">If the complainant filed online or already has an active complaint, search their Reference ID (e.g. <code>CMP-<?php echo date('Y'); ?>-0001</code>), name, or mobile number to link this walk-in visit instead of creating a duplicate.</p>
+                        <p style="margin:4px 0 0; font-size:0.82rem; color:#475569;">If the complainant filed online or already has an active complaint, search their Reference ID (e.g. <code>INT-<?php echo date('Y'); ?>-000001</code>), name, or mobile number to link this walk-in visit instead of creating a duplicate.</p>
                     </div>
                 </div>
                 <div style="display:flex; gap:8px; margin-top:12px; flex-wrap:wrap;">
-                    <input type="text" id="walkinLookupQuery" placeholder="Enter Reference ID (CMP-...), name, or contact number..." style="flex:1; min-width:240px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.86rem;">
+                    <input type="text" id="walkinLookupQuery" placeholder="Enter Reference ID (INT-...), name, or contact number..." style="flex:1; min-width:240px; padding:8px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:0.86rem;">
                     <button type="button" id="btnWalkinLookup" class="btn-outline-sm" style="padding:8px 14px; font-weight:700;">Search Existing Filings</button>
                     <button type="button" id="btnClearWalkinLookup" class="btn-secondary btn-sm" style="display:none; padding:8px 12px;">Clear</button>
                 </div>
@@ -1961,16 +1968,38 @@ include '../../layouts/header.php';
                                 </div>
                             <?php else: ?>
                             <?php if (empty($escalatePaanyaya)): ?>
-                            <?php $initTrack = ($old['filing_track'] ?? '') === 'formal_mediation' ? 'formal_mediation' : 'paanyaya_intake'; ?>
+                            <?php
+                                $initTrack = ($isBpsoPortal || ($old['filing_track'] ?? '') === 'bpso_to_liso')
+                                    ? 'bpso_to_liso'
+                                    : (($old['filing_track'] ?? '') === 'formal_mediation' ? 'formal_mediation' : 'paanyaya_intake');
+                            ?>
                             <div id="filingTrackCard" style="margin: 8px 0 14px; padding: 14px 16px; border: 1.5px solid #cbd5e1; border-radius: 12px; background: #f8fafc;">
                                 <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
                                     <div>
-                                        <strong style="font-size:0.9rem; color:#0f172a;">Filing Track (Intake vs. Formal Complaint)</strong>
-                                        <div style="font-size:0.78rem; color:#64748b;">Choose whether this enters Stage 0 Paanyaya first or proceeds directly as a Formal Complaint to Stage 1 Mediation.</div>
+                                        <strong style="font-size:0.9rem; color:#0f172a;"><?= $isBpsoPortal ? 'BPSO Step 1 · Walk-in Blotter &amp; Validation' : 'Filing Track (Intake vs. Formal Complaint)' ?></strong>
+                                        <div style="font-size:0.78rem; color:#64748b;"><?= $isBpsoPortal ? 'Validate complainant identity and respondent Barangay Tumana residency, log the blotter, and endorse directly to LISO.' : 'Choose whether this enters LISO screening first, Stage 0 Paanyaya, or proceeds directly as a Formal Complaint.' ?></div>
                                     </div>
                                     <span id="kp7AutoTrackBadge" style="display:none; font-size:0.72rem; font-weight:700; padding:3px 9px; border-radius:9999px; background:#dbeafe; color:#1d4ed8; border:1px solid #bfdbfe;">Auto-selected (KP Form 7 Scan Attached)</span>
                                 </div>
-                                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
+                                <?php if ($isBpsoPortal): ?>
+                                    <div style="display:grid; grid-template-columns:1fr; gap:10px;">
+                                        <label id="cardTrackBpsoLiso" style="display:flex; align-items:flex-start; gap:10px; padding:11px 12px; border:1.5px solid #0f766e; border-radius:10px; background:#f0fdfa; cursor:pointer;">
+                                            <input type="radio" name="filing_track" value="bpso_to_liso" checked style="margin-top:3px; accent-color:#0f766e;">
+                                            <div>
+                                                <div style="font-size:0.84rem; font-weight:700; color:#0f172a;">BPSO Desk Blotter &rarr; Endorse to LISO Screening (<code>bpso_to_liso</code>)</div>
+                                                <div style="font-size:0.76rem; color:#475569; margin-top:2px;">Validate complainant identity &amp; Tumana residency, log official barangay blotter (BLT), and endorse directly to LISO.</div>
+                                            </div>
+                                        </label>
+                                    </div>
+                                <?php else: ?>
+                                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+                                    <label id="cardTrackBpsoLiso" style="display:flex; align-items:flex-start; gap:10px; padding:11px 12px; border:1.5px solid <?= $initTrack === 'bpso_to_liso' ? '#0f766e' : '#cbd5e1' ?>; border-radius:10px; background:<?= $initTrack === 'bpso_to_liso' ? '#f0fdfa' : '#ffffff' ?>; cursor:pointer;">
+                                        <input type="radio" name="filing_track" value="bpso_to_liso" <?= $initTrack === 'bpso_to_liso' ? 'checked' : '' ?> style="margin-top:3px; accent-color:#0f766e;">
+                                        <div>
+                                            <div style="font-size:0.84rem; font-weight:700; color:#0f172a;">BPSO Blotter &rarr; LISO Screening</div>
+                                            <div style="font-size:0.76rem; color:#64748b; margin-top:2px;">Validate details &amp; Tumana residency, log blotter, and endorse to LISO for Step 2 jurisdiction review.</div>
+                                        </div>
+                                    </label>
                                     <label id="cardTrackPaanyaya" style="display:flex; align-items:flex-start; gap:10px; padding:11px 12px; border:1.5px solid <?= $initTrack === 'paanyaya_intake' ? '#1b6553' : '#cbd5e1' ?>; border-radius:10px; background:#ffffff; cursor:pointer;">
                                         <input type="radio" name="filing_track" value="paanyaya_intake" <?= $initTrack === 'paanyaya_intake' ? 'checked' : '' ?> style="margin-top:3px; accent-color:#1b6553;">
                                         <div>
@@ -1986,6 +2015,36 @@ include '../../layouts/header.php';
                                         </div>
                                     </label>
                                 </div>
+                                <?php endif; ?>
+
+                                <div id="bpsoValidationChecklistBox" style="display:<?= $initTrack === 'bpso_to_liso' ? 'grid' : 'none' ?>; gap:10px; margin-top:12px; padding:12px 14px; border:1.5px solid #99f6e4; border-radius:10px; background:#ffffff;">
+                                    <div style="font-size:0.84rem; font-weight:700; color:#115e59;">BPSO Desk Validation Checklist (Required before forwarding to LISO)</div>
+                                    <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:#1e293b; cursor:pointer; margin:0;">
+                                        <input type="checkbox" id="chkBpsoIdentityVerified" name="bpso_identity_verified" value="1" <?= ($initTrack === 'bpso_to_liso' || !empty($old['bpso_identity_verified'])) ? 'checked' : '' ?> style="margin-top:2px; accent-color:#0f766e;">
+                                        <span><strong>Complainant Identity &amp; Details Verified:</strong> Walk-in complainant personally narrated the grievance and details are complete.</span>
+                                    </label>
+                                    <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.82rem; color:#1e293b; cursor:pointer; margin:0;">
+                                        <input type="checkbox" id="chkBpsoRespondentTumana" name="bpso_respondent_in_tumana" value="1" <?= ($initTrack === 'bpso_to_liso' || !empty($old['bpso_respondent_in_tumana'])) ? 'checked' : '' ?> style="margin-top:2px; accent-color:#0f766e;">
+                                        <span><strong>Respondent is a Barangay Tumana Resident:</strong> Confirmed that the respondent resides or is situated within Barangay Tumana.</span>
+                                    </label>
+                                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+                                        <div>
+                                            <label for="bpsoAssignLisoSelect" style="font-size:0.78rem; font-weight:600; color:#334155; display:block; margin-bottom:4px;">Assign On-Duty LISO (Optional)</label>
+                                            <select id="bpsoAssignLisoSelect" name="liso_assigned_to" class="form-control" style="width:100%; border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; font-size:0.84rem;">
+                                                <option value="">Any Available On-Duty LISO (Queue)</option>
+                                                <?php foreach ($activeLisos as $liso): ?>
+                                                    <option value="<?= (int) $liso['user_id'] ?>">
+                                                        <?= htmlspecialchars(trim(($liso['first_name'] ?? '') . ' ' . ($liso['last_name'] ?? '')), ENT_QUOTES, 'UTF-8') ?> (On Duty)
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label for="bpsoPrivateNotesInput" style="font-size:0.78rem; font-weight:600; color:#334155; display:block; margin-bottom:4px;">Private BPSO Desk Notes (Staff Only)</label>
+                                            <input type="text" id="bpsoPrivateNotesInput" name="bpso_private_notes" maxlength="2000" value="<?= htmlspecialchars((string) ($old['bpso_private_notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?>" placeholder="Internal BPSO desk observations (never shown to residents)..." style="width:100%; border:1px solid #cbd5e1; border-radius:6px; padding:8px 10px; font-size:0.84rem;">
+                                        </div>
+                                    </div>
+                                </div>
                                 <div id="formalMediationScheduleBox" style="display:<?= $initTrack === 'formal_mediation' ? 'block' : 'none' ?>; margin-top:12px; padding:10px 12px; border:1px dashed #93c5fd; border-radius:8px; background:#ffffff;">
                                     <label style="display:flex; align-items:center; gap:8px; font-size:0.8rem; font-weight:600; color:#1e40af; cursor:pointer; margin:0;">
                                         <input type="checkbox" id="chkDirectMedSchedule" <?= (!empty($old['mediation_date']) && !empty($old['mediation_time'])) ? 'checked' : '' ?>>
@@ -1999,6 +2058,45 @@ include '../../layouts/header.php';
                                         <div>
                                             <label for="directMedTime" style="font-size:0.75rem; font-weight:600; color:#334155;">Target Call Time</label>
                                             <input type="time" id="directMedTime" name="mediation_time" class="form-control" min="08:00" max="17:00" value="<?= htmlspecialchars((string) ($old['mediation_time'] ?? '13:00')) ?>" disabled>
+                                        </div>
+                                    </div>
+                                    <?php
+                                        $initDirectFeeStatus = trim((string) ($old['filing_fee_status'] ?? ($strictFilingFee ? 'Paid' : '')));
+                                    ?>
+                                    <input type="hidden" id="directFilingFeeEnforce" name="enforce_filing_fee" value="<?= $strictFilingFee ? '1' : '0' ?>">
+                                    <div style="margin-top:10px; padding-top:10px; border-top:1px dashed #cbd5e1;">
+                                        <div style="font-size:0.78rem; font-weight:700; color:#1e3a8a; margin-bottom:6px;">
+                                            Step 5 · Official KP Form No. 7 Filing Fee <?= $strictFilingFee ? '(Required before Docketing)' : '(Optional unless Paid/Exempt)' ?>
+                                        </div>
+                                        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+                                            <?php if (!$strictFilingFee): ?>
+                                                <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.76rem; cursor:pointer;">
+                                                    <input type="radio" name="filing_fee_status" value="" <?= $initDirectFeeStatus === '' ? 'checked' : '' ?>>
+                                                    <span>Record Later / Unpaid</span>
+                                                </label>
+                                            <?php endif; ?>
+                                            <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.76rem; cursor:pointer; font-weight:600; color:#065f46;">
+                                                <input type="radio" name="filing_fee_status" value="Paid" <?= $initDirectFeeStatus === 'Paid' ? 'checked' : '' ?>>
+                                                <span>Paid (Official Receipt Issued)</span>
+                                            </label>
+                                            <label style="display:inline-flex; align-items:center; gap:5px; font-size:0.76rem; cursor:pointer; font-weight:600; color:#1e40af;">
+                                                <input type="radio" name="filing_fee_status" value="Exempt / Indigent" <?= $initDirectFeeStatus === 'Exempt / Indigent' ? 'checked' : '' ?>>
+                                                <span>Exempt / Indigent (Barangay Waiver)</span>
+                                            </label>
+                                        </div>
+                                        <div id="directFeePaidRow" style="display:<?= $initDirectFeeStatus === 'Paid' ? 'grid' : 'none' ?>; grid-template-columns:1fr 1fr; gap:10px;">
+                                            <div>
+                                                <label for="directFilingFeeOr" style="font-size:0.75rem; font-weight:600; color:#334155;">Official Receipt (OR) No. <span style="color:#dc2626;">*</span></label>
+                                                <input type="text" id="directFilingFeeOr" name="filing_fee_or_number" class="form-control" maxlength="64" placeholder="e.g. OR-2026-00142" value="<?= htmlspecialchars((string) ($old['filing_fee_or_number'] ?? '')) ?>">
+                                            </div>
+                                            <div>
+                                                <label for="directFilingFeeAmount" style="font-size:0.75rem; font-weight:600; color:#334155;">Filing Fee Amount (PHP)</label>
+                                                <input type="number" step="0.01" min="0" id="directFilingFeeAmount" name="filing_fee_amount" class="form-control" value="<?= htmlspecialchars((string) ($old['filing_fee_amount'] ?? $defaultFilingFeeAmount)) ?>">
+                                            </div>
+                                        </div>
+                                        <div id="directFeeWaiverRow" style="display:<?= $initDirectFeeStatus === 'Exempt / Indigent' ? 'block' : 'none' ?>;">
+                                            <label for="directFilingFeeWaiver" style="font-size:0.75rem; font-weight:600; color:#334155;">Indigency / Exemption Basis <span style="color:#dc2626;">*</span></label>
+                                            <input type="text" id="directFilingFeeWaiver" name="filing_fee_waiver_reason" class="form-control" maxlength="255" placeholder="e.g. Barangay Indigency Cert #2026-014" value="<?= htmlspecialchars((string) ($old['filing_fee_waiver_reason'] ?? '')) ?>">
                                         </div>
                                     </div>
                                 </div>
@@ -2098,7 +2196,7 @@ include '../../layouts/header.php';
                             <div style="margin-top: 8px; margin-bottom: 14px;">
                                 <button type="button" class="btn-outline-sm" id="btnAddSecondCategory" style="display: <?php echo $hasSecondCategory ? 'none' : 'inline-flex'; ?>; align-items: center; gap: 6px; font-weight: 600; color: #0284c7; border: 1.5px dashed #0284c7; background: #f0f9ff; padding: 7px 14px; border-radius: 6px; cursor: pointer; transition: all 0.2s ease;">
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                    <span>+ Add 2nd Complaint / Ikalawang Reklamo (Optional)</span>
+                                    <span>Add 2nd Complaint / Ikalawang Reklamo (Optional)</span>
                                 </button>
 
                                 <div id="secondCategoryContainer" style="display: <?php echo $hasSecondCategory ? 'block' : 'none'; ?>; margin-top: 10px; padding: 14px 16px; background: #f8fafc; border: 1.5px dashed #0284c7; border-radius: 8px;">
@@ -2182,7 +2280,7 @@ include '../../layouts/header.php';
                             <?php if (!$isResidentPortal): ?>
                             <div class="form-group" style="margin-bottom: 0;">
                                 <label for="blotterRefNo">Barangay Blotter Ref No. <span class="optional-label">Optional</span></label>
-                                <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLOTTER-2026-1089" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
+                                <input type="text" id="blotterRefNo" name="blotter_ref_no" placeholder="e.g. BLT-<?php echo date('Y'); ?>-000108" value="<?php echo htmlspecialchars($old['blotter_ref_no'] ?? ''); ?>">
                                 <small class="field-hint">Record internal or physical blotter reference number if applicable (Clerk / desk entry).</small>
                                 <div id="blotterJurisdictionNotice" class="field-hint" style="display:none; color:#b45309; font-weight:600; margin-top:5px; background:#fef3c7; padding:4px 8px; border-radius:4px; border:1px solid #fde68a;">
                                     ⚠️ Required for damages > ₱5,000 (Police / Court Jurisdiction — Issue Blotter Reference Only).
@@ -2233,7 +2331,7 @@ include '../../layouts/header.php';
                                         <?= $rOut('Susunod na Hakbang →', 'Next Step &rarr;') ?>
                                     </button>
                                     <button type="submit" form="createComplaintForm" class="btn-wizard-submit" id="btnSubmitComplaint" style="display: none;"<?= $isResidentPortal ? $rEnAttr('Submit Concern →') : '' ?>>
-                                        <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation &rarr;' : ($isResidentPortal ? 'Isumite ang Sumbong →' : 'Submit &amp; Accept Complaint &rarr;') ?>
+                                        <?= $isFromPaanyaya ? 'File Complaint &amp; Proceed to Mediation &rarr;' : ($isResidentPortal ? 'Isumite ang Sumbong →' : ($isBpsoPortal ? 'Record Blotter &amp; Endorse to LISO &rarr;' : 'Submit &amp; Accept Complaint &rarr;')) ?>
                                     </button>
                                 </div>
                             </div>
@@ -3764,6 +3862,39 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
             }
+
+            <?php if (!$isResidentPortal): ?>
+            const selectedTrack = document.querySelector('input[name="filing_track"]:checked')?.value || 'paanyaya_intake';
+            if (selectedTrack === 'formal_mediation' && document.getElementById('complaintIsDraftInput')?.value !== '1') {
+                const feeChoice = document.querySelector('input[name="filing_fee_status"]:checked')?.value || '';
+                const strictFeePolicy = <?= $strictFilingFee ? 'true' : 'false' ?>;
+                if (strictFeePolicy && feeChoice === '') {
+                    e.preventDefault();
+                    window.setWizardStep?.(5);
+                    window.agapNotify?.('Official KP Form No. 7 filing fee payment (OR Number) or Indigency exemption is required before direct formal docketing.', 'error');
+                    return;
+                }
+                if (feeChoice === 'Paid') {
+                    const orInput = document.getElementById('directFilingFeeOr');
+                    if (!orInput || !orInput.value.trim()) {
+                        e.preventDefault();
+                        window.setWizardStep?.(5);
+                        window.agapNotify?.('Enter the Official Receipt (OR) Number for the formal KP filing fee.', 'error');
+                        orInput?.focus();
+                        return;
+                    }
+                } else if (feeChoice === 'Exempt / Indigent') {
+                    const waiverInput = document.getElementById('directFilingFeeWaiver');
+                    if (!waiverInput || !waiverInput.value.trim()) {
+                        e.preventDefault();
+                        window.setWizardStep?.(5);
+                        window.agapNotify?.('Specify the indigency / fee exemption basis (waiver reason).', 'error');
+                        waiverInput?.focus();
+                        return;
+                    }
+                }
+            }
+            <?php endif; ?>
 
             const cityInput = document.getElementById('incidentCity');
             if (cityInput && (!cityInput.value || !cityInput.value.toLowerCase().includes('marikina'))) {
@@ -6607,8 +6738,12 @@ document.addEventListener('DOMContentLoaded', () => {
     <?php if (!$isResidentPortal): ?>
     // ── Staff Filing Track (Stage 0 Paanyaya vs. Direct Formal Complaint to Mediation) ──
     const trackRadios = document.querySelectorAll('input[name="filing_track"]');
+    const cardTrackBpsoLiso = document.getElementById('cardTrackBpsoLiso');
     const cardTrackPaanyaya = document.getElementById('cardTrackPaanyaya');
     const cardTrackFormal = document.getElementById('cardTrackFormal');
+    const bpsoChecklistBox = document.getElementById('bpsoValidationChecklistBox');
+    const chkBpsoIdentityVerified = document.getElementById('chkBpsoIdentityVerified');
+    const chkBpsoRespondentTumana = document.getElementById('chkBpsoRespondentTumana');
     const formalScheduleBox = document.getElementById('formalMediationScheduleBox');
     const chkDirectMedSchedule = document.getElementById('chkDirectMedSchedule');
     const directMedFields = document.getElementById('directMedScheduleFields');
@@ -6622,15 +6757,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!trackRadios.length) return;
         const selected = document.querySelector('input[name="filing_track"]:checked')?.value || 'paanyaya_intake';
         const isFormal = selected === 'formal_mediation';
+        const isBpsoLiso = selected === 'bpso_to_liso';
 
+        if (cardTrackBpsoLiso) {
+            cardTrackBpsoLiso.style.borderColor = isBpsoLiso ? '#0f766e' : '#cbd5e1';
+            cardTrackBpsoLiso.style.background = isBpsoLiso ? '#f0fdfa' : '#ffffff';
+        }
         if (cardTrackPaanyaya) {
-            cardTrackPaanyaya.style.borderColor = isFormal ? '#cbd5e1' : '#1b6553';
-            cardTrackPaanyaya.style.background = isFormal ? '#ffffff' : '#f0fdf4';
+            cardTrackPaanyaya.style.borderColor = (!isFormal && !isBpsoLiso) ? '#1b6553' : '#cbd5e1';
+            cardTrackPaanyaya.style.background = (!isFormal && !isBpsoLiso) ? '#f0fdf4' : '#ffffff';
         }
         if (cardTrackFormal) {
             cardTrackFormal.style.borderColor = isFormal ? '#1d4ed8' : '#cbd5e1';
             cardTrackFormal.style.background = isFormal ? '#eff6ff' : '#ffffff';
         }
+        if (bpsoChecklistBox) {
+            bpsoChecklistBox.style.display = isBpsoLiso ? 'grid' : 'none';
+        }
+        if (chkBpsoIdentityVerified) chkBpsoIdentityVerified.disabled = !isBpsoLiso;
+        if (chkBpsoRespondentTumana) chkBpsoRespondentTumana.disabled = !isBpsoLiso;
         if (formalScheduleBox) {
             formalScheduleBox.style.display = isFormal ? 'block' : 'none';
         }
@@ -6647,13 +6792,35 @@ document.addEventListener('DOMContentLoaded', () => {
             directMedTime.disabled = !schedActive;
             directMedTime.required = schedActive;
         }
+        syncDirectFeeFields(isFormal);
 
         if (submitComplaintBtn && !<?= $isFromPaanyaya ? 'true' : 'false' ?>) {
             submitComplaintBtn.innerHTML = isFormal
                 ? 'File Formal Complaint &amp; Go to Mediation &rarr;'
-                : 'Submit &amp; Accept Complaint &rarr;';
+                : (isBpsoLiso ? 'Record Blotter &amp; Endorse to LISO &rarr;' : 'Submit &amp; Accept Complaint &rarr;');
         }
     }
+    syncFilingTrack();
+
+    function syncDirectFeeFields(isFormal) {
+        const paidRow = document.getElementById('directFeePaidRow');
+        const waiverRow = document.getElementById('directFeeWaiverRow');
+        const orInp = document.getElementById('directFilingFeeOr');
+        const amtInp = document.getElementById('directFilingFeeAmount');
+        const waiverInp = document.getElementById('directFilingFeeWaiver');
+        const feeStatus = document.querySelector('input[name="filing_fee_status"]:checked')?.value || '';
+        const isPaid = isFormal && feeStatus === 'Paid';
+        const isExempt = isFormal && feeStatus === 'Exempt / Indigent';
+        if (paidRow) paidRow.style.display = isPaid ? 'grid' : 'none';
+        if (waiverRow) waiverRow.style.display = isExempt ? 'block' : 'none';
+        if (orInp) { orInp.disabled = !isPaid; orInp.required = isPaid; }
+        if (amtInp) { amtInp.disabled = !isPaid; }
+        if (waiverInp) { waiverInp.disabled = !isExempt; waiverInp.required = isExempt; }
+        document.querySelectorAll('input[name="filing_fee_status"]').forEach((r) => { r.disabled = !isFormal; });
+    }
+    document.querySelectorAll('input[name="filing_fee_status"]').forEach((r) => {
+        r.addEventListener('change', () => syncDirectFeeFields((document.querySelector('input[name="filing_track"]:checked')?.value || '') === 'formal_mediation'));
+    });
 
     trackRadios.forEach((r) => r.addEventListener('change', () => {
         autoSelectedFormalFromKp7 = false;
@@ -7529,7 +7696,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!blotterRefInput.value.trim()) {
             const currentYear = new Date().getFullYear();
-            blotterRefInput.value = 'BLOTTER-' + currentYear + '-';
+            blotterRefInput.value = 'BLT-' + currentYear + '-';
             blotterRefInput.setSelectionRange(blotterRefInput.value.length, blotterRefInput.value.length);
         }
     });
@@ -7643,7 +7810,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             lookupResultsEl.innerHTML = rows.map((row) => {
-                const ref = row.complaint_number || ('CMP-' + row.complaint_id);
+                const ref = row.intake_reference || row.complaint_number || ('INT-' + row.complaint_id);
                 const src = row.complaint_source === 'Online' ? 'Online' : 'Walk-in';
                 const srcBg = src === 'Online' ? '#dbeafe; color:#1d4ed8' : '#e2e8f0; color:#334155';
                 return `

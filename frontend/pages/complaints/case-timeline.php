@@ -312,7 +312,24 @@ include '../../layouts/header.php';
                                 </h3>
                                 <div style="font-size: 0.82rem; color: #64748b; line-height: 1.4;">
                                     <div><strong>Resident ID:</strong> #<?php echo $party['resident_id']; ?> (Single Relational Profile)</div>
-                                    <div><strong>Address:</strong> <?php echo htmlspecialchars(trim(($party['house_street'] ?? '') . ' ' . ($party['address'] ?? '') . ' ' . ($party['purok'] ?? 'Barangay Tumana'))); ?></div>
+                                    <?php
+                                        $streetVal = trim((string) ($party['house_street'] ?? ''));
+                                        $addrVal = trim((string) ($party['address'] ?? ''));
+                                        $purokVal = trim((string) ($party['purok'] ?? 'Barangay Tumana'));
+                                        $addrParts = [];
+                                        if ($streetVal !== '' && ($addrVal === '' || stripos($addrVal, $streetVal) === false)) {
+                                            $addrParts[] = $streetVal;
+                                        }
+                                        if ($addrVal !== '') {
+                                            $addrParts[] = $addrVal;
+                                        }
+                                        $joinedBase = implode(', ', $addrParts);
+                                        if ($purokVal !== '' && ($joinedBase === '' || stripos($joinedBase, $purokVal) === false)) {
+                                            $addrParts[] = $purokVal;
+                                        }
+                                        $dedupAddr = $addrParts ? implode(', ', $addrParts) : 'Barangay Tumana';
+                                    ?>
+                                    <div><strong>Address:</strong> <?php echo htmlspecialchars($dedupAddr); ?></div>
                                     <?php if (!empty($party['contact_no'])): ?>
                                         <div><strong>Contact:</strong> <?php echo htmlspecialchars($party['contact_no']); ?></div>
                                     <?php endif; ?>

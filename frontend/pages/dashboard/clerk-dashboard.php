@@ -42,6 +42,10 @@ include '../../layouts/header.php';
                 </div>
             </div>
             <div class="top-quick-actions" aria-label="Clerk quick access actions">
+                <form action="../complaints/complaint-list.php" method="get" role="search" style="display:flex; align-items:center; gap:6px; background:#fff; border:1px solid #cbd5e1; border-radius:8px; padding:4px 8px;">
+                    <input type="search" name="q" placeholder="Search Ref #, Case, Party..." aria-label="Search complaints and cases" style="border:none; outline:none; font-size:0.82rem; width:175px; background:transparent; color:#0f172a;">
+                    <button type="submit" style="border:none; background:#1b6553; color:#fff; border-radius:6px; padding:4px 9px; font-size:0.76rem; font-weight:700; cursor:pointer;">Search</button>
+                </form>
                 <a href="../complaints/complaint-create.php" class="btn-top-primary" id="btnClerkNewIntake">+ Walk-in Intake</a>
                 <a href="../users/user-list.php?tab=residents" class="btn-top-secondary">Verify Residents</a>
                 <a href="#clerkPaanyayaPreparation" class="btn-top-secondary">Paanyaya Queue</a>

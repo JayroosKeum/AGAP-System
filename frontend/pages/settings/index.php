@@ -260,7 +260,7 @@ include '../../layouts/header.php';
                                     <div class="settings-card-body">
                                         <div class="seal-uploader-grid">
                                             <div class="seal-upload-box">
-                                                <img id="barangaySealPreview" class="seal-preview-img" src="<?php echo htmlspecialchars($settings['barangay_seal_path'] ?? '../../assets/images/tumana-logo.png'); ?>" alt="Barangay Seal">
+                                                <img id="barangaySealPreview" class="seal-preview-img" src="<?php echo htmlspecialchars(!empty($settings['barangay_seal_path']) ? $settings['barangay_seal_path'] : '../../assets/images/tumana_logo.jpg'); ?>" alt="Barangay Seal">
                                                 <div class="seal-upload-title">Barangay Tumana Seal</div>
                                                 <div class="seal-upload-desc">Recommended: 300x300 PNG with transparent background.</div>
                                                 <input type="file" id="inputBarangaySeal" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="handleSealUpload('barangay', this)">
@@ -271,7 +271,7 @@ include '../../layouts/header.php';
                                             </div>
 
                                             <div class="seal-upload-box">
-                                                <img id="citySealPreview" class="seal-preview-img" src="<?php echo htmlspecialchars($settings['city_seal_path'] ?? '../../assets/images/marikina-logo.png'); ?>" alt="City Seal">
+                                                <img id="citySealPreview" class="seal-preview-img" src="<?php echo htmlspecialchars(!empty($settings['city_seal_path']) ? $settings['city_seal_path'] : '../../assets/images/marikina_logo.jpg'); ?>" alt="City Seal">
                                                 <div class="seal-upload-title">Marikina City Seal</div>
                                                 <div class="seal-upload-desc">Recommended: 300x300 PNG with transparent background.</div>
                                                 <input type="file" id="inputCitySeal" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="handleSealUpload('city', this)">
@@ -330,6 +330,27 @@ include '../../layouts/header.php';
                                                 <label class="form-label">Party Reschedule Limit</label>
                                                 <input type="number" name="party_reschedule_limit" class="form-control" value="<?php echo htmlspecialchars($settings['party_reschedule_limit'] ?? '2'); ?>" min="1" max="5">
                                                 <div class="form-help">Allowed reschedules before escalation.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="form-grid-3" style="margin-top: 14px;">
+                                            <div class="form-group">
+                                                <label class="form-label">Max Paanyaya Invitations</label>
+                                                <input type="number" name="paanyaya_max_attempts" class="form-control" value="<?php echo htmlspecialchars($settings['paanyaya_max_attempts'] ?? '2'); ?>" min="1" max="2">
+                                                <div class="form-help">Pre-filing Paanyaya limit prior to formal KP Form No. 7 filing (Default: 2).</div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">KP Form No. 7 Filing Fee (PHP)</label>
+                                                <input type="number" step="0.01" name="formal_kp_filing_fee_amount" class="form-control" value="<?php echo htmlspecialchars($settings['formal_kp_filing_fee_amount'] ?? '100.00'); ?>" min="0" max="100000">
+                                                <div class="form-help">Official Barangay Tumana filing fee for formal KP docketing.</div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">Strict Filing Fee Gate</label>
+                                                <select name="require_filing_fee_before_docket" class="form-control">
+                                                    <option value="0" <?php echo (($settings['require_filing_fee_before_docket'] ?? '0') !== '1') ? 'selected' : ''; ?>>UI Prompted (Flexible API)</option>
+                                                    <option value="1" <?php echo (($settings['require_filing_fee_before_docket'] ?? '0') === '1') ? 'selected' : ''; ?>>Strictly Required Before Docketing</option>
+                                                </select>
+                                                <div class="form-help">Require OR Number or Indigency exemption on all docketing endpoints.</div>
                                             </div>
                                         </div>
                                     </div>

@@ -12,12 +12,25 @@ if (!CsrfService::validateRequest()) {
     CsrfService::redirectBrowser('../../../frontend/pages/resident/register.php?error=session_expired');
 }
 
-$result = (new AuthController())->registerResident($_POST);
+$isQuickMode = (($_POST['account_mode'] ?? '') === 'quick');
+$auth = new AuthController();
+$result = $isQuickMode ? $auth->registerQuickResident($_POST) : $auth->registerResident($_POST);
 if (!$result['success']) {
     $code = in_array(($result['code'] ?? ''), ['validation', 'duplicate', 'google_required'], true)
         ? $result['code']
         : 'unavailable';
-    header('Location: ../../../frontend/pages/resident/register.php?error=' . rawurlencode($code), true, 303);
+    $modeParam = $isQuickMode ? '&mode=quick' : '';
+    header('Location: ../../../frontend/pages/resident/register.php?error=' . rawurlencode($code) . $modeParam, true, 303);
+    exit;
+}
+
+if ($isQuickMode && !empty($_SESSION['user_id']) && ($_SESSION['role_name'] ?? '') === 'Resident') {
+    $_SESSION['resident_flash'] = [
+        'type' => 'success',
+        'title' => 'Unverified Resident Account Created',
+        'message' => 'Your auto-generated handle is ' . ($result['username'] ?? 'RES-TMN') . ' (Unverified / Pending Verification). Save this handle for signing in. Complete your profile or submit a grievance below.',
+    ];
+    header('Location: ../../../frontend/pages/resident/dashboard.php', true, 303);
     exit;
 }
 

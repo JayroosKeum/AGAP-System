@@ -20,8 +20,11 @@ $isGroupActive = static function (array $dirs, array $pages = []) use ($currentF
     }
     return !empty($pages) && in_array($currentFile, $pages, true);
 };
-$dashboardLink = $roleName === 'Resident' ? '../resident/dashboard.php'
-    : ([1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/clerk-dashboard.php', 3 => '../dashboard/lupon-dashboard.php', 4 => '../dashboard/server-dashboard.php'][$roleId] ?? '../auth/login.php');
+$dashboardLink = match (true) {
+    $roleName === 'Resident' => '../resident/dashboard.php',
+    $roleName === 'BPSO' => '../dashboard/bpso-dashboard.php',
+    default => ([1 => '../dashboard/admin-dashboard.php', 2 => '../dashboard/clerk-dashboard.php', 3 => '../dashboard/lupon-dashboard.php', 4 => '../dashboard/server-dashboard.php'][$roleId] ?? '../auth/login.php'),
+};
 ?>
 <aside class="sidebar" id="appSidebar">
     <div class="sidebar-brand">
@@ -34,7 +37,7 @@ $dashboardLink = $roleName === 'Resident' ? '../resident/dashboard.php'
         <details class="nav-group" open data-nav-group="workspace">
             <summary>Workspace</summary>
             <div class="nav-group-links">
-                <a href="<?php echo $dashboardLink; ?>"<?php echo $isActive(['admin-dashboard.php', 'clerk-dashboard.php', 'lupon-dashboard.php', 'server-dashboard.php'], 'dashboard'); ?> title="Dashboard">
+                <a href="<?php echo $dashboardLink; ?>"<?php echo $isActive(['admin-dashboard.php', 'clerk-dashboard.php', 'lupon-dashboard.php', 'server-dashboard.php', 'bpso-dashboard.php'], 'dashboard'); ?> title="Dashboard">
                     <span class="nav-icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"></rect><rect x="14" y="3" width="7" height="5" rx="1"></rect><rect x="14" y="12" width="7" height="9" rx="1"></rect><rect x="3" y="16" width="7" height="5" rx="1"></rect></svg>
                     </span>
@@ -48,6 +51,38 @@ $dashboardLink = $roleName === 'Resident' ? '../resident/dashboard.php'
                 </a>
             </div>
         </details>
+
+        <?php if ($roleName === 'BPSO'): ?>
+            <details class="nav-group" open data-nav-group="bpso-desk">
+                <summary>BPSO Desk &amp; Blotter</summary>
+                <div class="nav-group-links">
+                    <a href="../dashboard/bpso-dashboard.php"<?php echo $isActive(['bpso-dashboard.php'], 'dashboard'); ?> title="BPSO Validation Queue">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+                        </span>
+                        <span class="nav-link-label">BPSO Validation Queue</span>
+                    </a>
+                    <a href="../complaints/complaint-create.php"<?php echo $isActive(['complaint-create.php', 'add-complaint.php'], 'complaints'); ?> title="Log Walk-in Blotter">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </span>
+                        <span class="nav-link-label">Log Walk-in Blotter</span>
+                    </a>
+                    <a href="../complaints/complaint-list.php"<?php echo $isActive(['complaint-list.php', 'complaint-details.php'], 'complaints'); ?> title="Complaints">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                        </span>
+                        <span class="nav-link-label">Complaints</span>
+                    </a>
+                    <a href="../users/user-list.php?tab=residents"<?php echo $isActive(['user-list.php', 'resident-verification.php'], 'users'); ?> title="Resident Verification">
+                        <span class="nav-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+                        </span>
+                        <span class="nav-link-label">Resident Verification</span>
+                    </a>
+                </div>
+            </details>
+        <?php endif; ?>
 
         <?php if (in_array($roleId, [1, 2], true)): ?>
             <details class="nav-group"<?php echo $isGroupActive(['paanyaya', 'complaints', 'cases']) ? ' open' : ''; ?> data-nav-group="case-management">

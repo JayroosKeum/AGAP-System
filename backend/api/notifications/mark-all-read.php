@@ -20,7 +20,10 @@ try {
         exit;
     }
 
-    if (!isset($_SESSION['user_id'], $_SESSION['role_id']) || !in_array((int) $_SESSION['role_id'], [1, 2, 3, 4, 5, 6], true)) {
+    require_once __DIR__ . '/../../config/database.php';
+    require_once __DIR__ . '/../../middleware/rbac.php';
+    $db = (new Database())->connect();
+    if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'Summons Server', 'Resident', 'BPSO'], $db)) {
         http_response_code(403);
         echo json_encode([
             'status' => 'error',

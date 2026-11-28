@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         field.dataset.requiredDecorated = 'true';
         field.setAttribute('aria-required', 'true');
         const label = fieldLabel(field);
-        if (label && !label.querySelector('.required-mark')) {
+        if (label && !label.querySelector('.required-mark, .required') && !/\*\s*$/.test((label.textContent || '').trim())) {
             const marker = document.createElement('span');
             marker.className = 'required-mark';
             marker.setAttribute('aria-hidden', 'true');

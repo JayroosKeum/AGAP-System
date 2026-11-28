@@ -245,8 +245,19 @@ CREATE TABLE IF NOT EXISTS complaints (
     additional_details LONGTEXT NULL,
     requested_resolution TEXT NULL,
     review_notes TEXT NULL,
+    liso_endorsement_agency VARCHAR(120) NULL,
+    liso_counseling_notes TEXT NULL,
+    liso_endorsed_at DATETIME NULL,
     intake_reference VARCHAR(50) NULL,
     intake_source ENUM('Online', 'Walk-in') NOT NULL DEFAULT 'Walk-in',
+    bpso_status ENUM('Pending BPSO Review', 'Endorsed to LISO', 'Needs Clarification', 'Rejected') NOT NULL DEFAULT 'Endorsed to LISO',
+    bpso_blotter_no VARCHAR(64) NULL,
+    bpso_respondent_in_tumana TINYINT(1) NULL,
+    bpso_identity_verified TINYINT(1) NOT NULL DEFAULT 0,
+    bpso_private_notes TEXT NULL,
+    bpso_rejection_reason VARCHAR(2000) NULL,
+    bpso_reviewed_by INT UNSIGNED NULL,
+    bpso_reviewed_at DATETIME NULL,
     submitted_by INT UNSIGNED NULL,
     liso_reviewed_by INT UNSIGNED NULL,
     liso_reviewed_at DATETIME NULL,
@@ -257,6 +268,12 @@ CREATE TABLE IF NOT EXISTS complaints (
     duplicate_of_complaint_id INT UNSIGNED NULL,
     docketed_by INT UNSIGNED NULL,
     docketed_at DATETIME NULL,
+    filing_fee_status ENUM('Unpaid', 'Paid', 'Exempt / Indigent') NOT NULL DEFAULT 'Unpaid',
+    filing_fee_amount DECIMAL(10, 2) NULL,
+    filing_fee_or_number VARCHAR(64) NULL,
+    filing_fee_paid_at DATETIME NULL,
+    filing_fee_recorded_by INT UNSIGNED NULL,
+    filing_fee_waiver_reason VARCHAR(255) NULL,
     status VARCHAR(50) NOT NULL DEFAULT 'Filed',
     resolution_type VARCHAR(50) NULL,
     resolution_notes TEXT NULL,
@@ -289,6 +306,7 @@ CREATE TABLE IF NOT EXISTS complaints (
     UNIQUE KEY uq_complaints_number (complaint_number),
     UNIQUE KEY uq_complaints_intake_reference (intake_reference),
     KEY idx_complaints_intake_queue (screening_decision, intake_source, created_at),
+    KEY idx_complaints_bpso_queue (bpso_status, intake_source, created_at),
     KEY idx_complaints_liso_assignment_queue (liso_assigned_to, screening_decision, intake_source),
     KEY idx_complaints_submitted_by (submitted_by),
     KEY idx_complaints_category_id (category_id),
@@ -304,6 +322,8 @@ CREATE TABLE IF NOT EXISTS complaints (
         FOREIGN KEY (encoded_by) REFERENCES users (user_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_submitted_by
         FOREIGN KEY (submitted_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_bpso_reviewed_by
+        FOREIGN KEY (bpso_reviewed_by) REFERENCES users (user_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_liso_reviewed_by
         FOREIGN KEY (liso_reviewed_by) REFERENCES users (user_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_liso_assigned_to
@@ -313,7 +333,9 @@ CREATE TABLE IF NOT EXISTS complaints (
     CONSTRAINT fk_complaints_duplicate_of
         FOREIGN KEY (duplicate_of_complaint_id) REFERENCES complaints (complaint_id) ON DELETE SET NULL,
     CONSTRAINT fk_complaints_docketed_by
-        FOREIGN KEY (docketed_by) REFERENCES users (user_id) ON DELETE SET NULL
+        FOREIGN KEY (docketed_by) REFERENCES users (user_id) ON DELETE SET NULL,
+    CONSTRAINT fk_complaints_filing_fee_recorded_by
+        FOREIGN KEY (filing_fee_recorded_by) REFERENCES users (user_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS complaint_information_requests (
@@ -1523,7 +1545,8 @@ INSERT INTO roles (role_name) VALUES
     ('Lupon Member'),
     ('Summons Server'),
     ('Resident'),
-    ('Super Administrator')
+    ('Super Administrator'),
+    ('BPSO')
 ON DUPLICATE KEY UPDATE role_name = VALUES(role_name);
 
 -- Initial local accounts. Default strong seed password: PassTumana2026!
@@ -1568,6 +1591,7 @@ FROM (
     UNION ALL SELECT 'Elena', 'S.', 'Bautista', 'luponsecretary', 'luponsecretary@agap.test', '09181234562', 'Lupon Member'
     UNION ALL SELECT 'Roberto', 'T.', 'Mercado', 'luponmember', 'luponmember@agap.test', '09181234563', 'Lupon Member'
     UNION ALL SELECT 'Ricardo', 'G.', 'Dalisay', 'summonsserver', 'summonsserver@agap.test', '09191234567', 'Summons Server'
+    UNION ALL SELECT 'Danilo', 'R.', 'Mendoza', 'bpso', 'bpso@agap.test', '09171234568', 'BPSO'
 ) AS seed
 INNER JOIN roles ON roles.role_name = seed.role_name
 WHERE NOT EXISTS (
@@ -1696,6 +1720,9 @@ INSERT INTO system_settings (setting_key, setting_value, description) VALUES
     ('mediation_session_interval_days', '3', 'Recommended minimum calendar days between mediation sessions (3-5)'),
     ('party_reschedule_limit', '2', 'Maximum allowed reschedules per party before authorized review is required (1-2)'),
     ('summons_max_attempts', '6', 'Standard cap for summons and officer return delivery attempts before CFA eligibility (1-6)'),
+    ('paanyaya_max_attempts', '2', 'Maximum Paanyaya pre-filing invitations prior to formal KP docketing (Step 3 & 4 rule)'),
+    ('formal_kp_filing_fee_amount', '100.00', 'Official Barangay Tumana filing fee (PHP) for formal KP Form No. 7 docketing'),
+    ('require_filing_fee_before_docket', '0', 'When 1, strictly require filing fee payment or indigency exemption before formal KP Form No. 7 docketing on all API endpoints'),
     ('summons_attempt_interval_days', '1', 'Minimum days between summons service attempts (1-3)'),
     ('mediation_day_of_week', 'Tue', 'Dedicated day of week for Punong Barangay mediation hearings (Tuesday Only rule)'),
     ('working_hours_start', '08:00', 'Fixed regular hearing-hours opening time'),

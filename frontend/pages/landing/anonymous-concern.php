@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../../../backend/services/IntakeNoticeFormatter.php';
+$kpNotice = IntakeNoticeFormatter::formatInsufficientInfoNotice();
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -30,6 +33,17 @@ declare(strict_types=1);
     </header>
 
     <main style="max-width:920px; margin:36px auto; padding:0 16px; display:grid; gap:24px;">
+        <section style="background:#fffbeb; border:1px solid #fde68a; border-left:5px solid #d97706; border-radius:16px; padding:22px 24px; box-shadow:0 6px 18px rgba(16,43,45,0.05);">
+            <p class="landing-kicker" style="margin-bottom:6px; color:#b45309;">Paalala sa Katarungang Pambarangay · Formal Complaint Requirement</p>
+            <h2 style="margin:0 0 10px; color:#78350f; font-size:1.25rem;">Filing a Dispute Against a Person or Neighbor?</h2>
+            <p style="margin:0 0 10px; color:#78350f; font-size:0.9rem; line-height:1.55; white-space:pre-line;"><?= htmlspecialchars($kpNotice['tagalog'], ENT_QUOTES, 'UTF-8') ?></p>
+            <p style="margin:0 0 14px; color:#92400e; font-size:0.86rem; line-height:1.5; white-space:pre-line;"><?= htmlspecialchars($kpNotice['english'], ENT_QUOTES, 'UTF-8') ?></p>
+            <div style="display:flex; flex-wrap:wrap; gap:10px;">
+                <a href="../resident/register.php?mode=quick" style="padding:9px 16px; background:#1b6553; color:#fff; border-radius:8px; font-weight:700; text-decoration:none; font-size:0.86rem;">Create Quick Resident Account (RES-TMN)</a>
+                <a href="../resident/login.php" style="padding:9px 16px; background:#fff; color:#102b2d; border:1px solid #cbd5e1; border-radius:8px; font-weight:700; text-decoration:none; font-size:0.86rem;">Resident Sign In</a>
+            </div>
+        </section>
+
         <section style="background:#fff; border:1px solid #d7e1db; border-radius:16px; padding:28px; box-shadow:0 8px 24px rgba(16,43,45,0.06);">
             <p class="landing-kicker" style="margin-bottom:6px;">Data-Minimized Anonymous Channel (RA 10173)</p>
             <h1 style="margin:0 0 8px; color:#102b2d; font-size:1.6rem;">Submit an Anonymous General Concern</h1>
@@ -76,6 +90,20 @@ declare(strict_types=1);
     </main>
 
     <script>
+        const ANON_QUEUE_LABELS = {
+            LISO_SCREENING: 'LISO Jurisdiction Screening',
+            BPSO_VALIDATION: 'BPSO Desk Validation',
+            REVIEW_EXCEPTION_QUEUE: 'Manual Review Queue',
+            LUPON_PAANYAYA_PREP: 'Paanyaya Preparation',
+            VAWC_REFERRAL_DESK: 'Barangay VAWC Desk',
+            BCPC_REFERRAL_DESK: 'Barangay BCPC Desk',
+            PNP_PROSECUTOR_REFERRAL: 'PNP / Prosecutor Referral',
+            MARIKINA_SETTLEMENT_REFERRAL: 'Marikina Settlement Office',
+            CENO_REFERRAL: 'Marikina CENO Endorsement',
+            TMO_REFERRAL: 'Marikina TMO Endorsement'
+        };
+        const formatAnonQueue = (q) => ANON_QUEUE_LABELS[String(q || '').trim()] || String(q || 'Barangay Intake Desk');
+
         document.getElementById('anonSubmitForm')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const out = document.getElementById('anonSubmitResult');
@@ -103,7 +131,7 @@ declare(strict_types=1);
                     const strong = document.createElement('strong');
                     strong.textContent = 'Submitted! Save these credentials now (token cannot be recovered): ';
                     const details = document.createElement('div');
-                    details.textContent = `Reference: ${data.reference_code} | Token: ${data.follow_up_token} | Queue: ${data.assigned_queue}`;
+                    details.textContent = `Reference: ${data.reference_code} | Token: ${data.follow_up_token} | Desk: ${formatAnonQueue(data.assigned_queue)}`;
                     out.appendChild(strong);
                     out.appendChild(details);
                     document.getElementById('anonTrackRef').value = data.reference_code;
@@ -141,7 +169,7 @@ declare(strict_types=1);
                     const r = data.record;
                     out.style.background = '#ecfdf5';
                     out.style.color = '#065f46';
-                    out.textContent = `Ref: ${r.reference_code} | Status: ${r.status} | Queue: ${r.assigned_queue} | Note: ${r.milestone_note}`;
+                    out.textContent = `Ref: ${r.reference_code} | Status: ${r.status} | Desk: ${formatAnonQueue(r.assigned_queue)} | Note: ${r.milestone_note}`;
                 } else {
                     out.style.background = '#fef2f2';
                     out.style.color = '#991b1b';

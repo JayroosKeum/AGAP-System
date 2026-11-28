@@ -5,6 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/ComplaintRoutingService.php';
 require_once __DIR__ . '/AuditService.php';
+require_once __DIR__ . '/IntakeNoticeFormatter.php';
 
 /**
  * Anonymous general concern intake and CSPRNG hashed-token tracking (A5).
@@ -111,6 +112,11 @@ final class AnonymousConcernService
 
             $this->conn->commit();
 
+            $kpNotice = IntakeNoticeFormatter::formatInsufficientInfoNotice([
+                'pagkakakilanlan at beripikadong tirahan ng nagsusumbong',
+                'pangalan at tirahan ng inirereklamo sa Barangay Tumana',
+            ]);
+
             return [
                 'success' => true,
                 'message' => 'Anonymous concern submitted. Save your follow-up token now; it cannot be recovered later.',
@@ -120,6 +126,7 @@ final class AnonymousConcernService
                 'routing_route' => $routing['route'],
                 'assigned_queue' => $routing['assigned_queue'],
                 'formal_kp_notice' => 'Anonymous submissions are handled as general barangay concerns. Formal Katarungang Pambarangay mediation/summons requires named complainant/respondent intake.',
+                'kp_insufficient_info_notice' => $kpNotice,
             ];
         } catch (Throwable $e) {
             if ($this->conn->inTransaction()) {

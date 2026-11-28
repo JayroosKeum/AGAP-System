@@ -541,7 +541,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDefaultView || !cachedGlobalCounts) {
             const allCount = rows.length;
-            const reviewCount = rows.filter(r => r.lifecycle_status === 'Verification' || r.lifecycle_status === 'Under Review').length;
+            const bpsoCount = rows.filter(r => !r.case_id && (r.bpso_status === 'Pending BPSO Review' || r.bpso_status === 'Needs Clarification')).length;
+            const reviewCount = rows.filter(r => (r.lifecycle_status === 'Verification' || r.lifecycle_status === 'Under Review') && r.bpso_status !== 'Pending BPSO Review' && r.bpso_status !== 'Needs Clarification').length;
             const mediationCount = rows.filter(r => r.lifecycle_status === 'Mediation').length;
             const conciliationCount = rows.filter(r => r.lifecycle_status === 'Conciliation').length;
             const cfaCount = rows.filter(r => r.lifecycle_status === 'CFA').length;
@@ -550,6 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             cachedGlobalCounts = {
                 all: allCount,
+                bpso: bpsoCount,
                 review: reviewCount,
                 paanyaya: paanyayaCount,
                 mediation: mediationCount,
@@ -566,6 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         setEl('tabCountAll', counts.all);
+        setEl('tabCountBpso', counts.bpso || 0);
         setEl('tabCountReview', counts.review || 0);
         setEl('tabCountPaanyaya', counts.paanyaya || 0);
         setEl('tabCountMediation', counts.mediation);
@@ -781,8 +784,26 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (row.document_status === 'Updated Scan Uploaded') {
             docBadgeHtml = `<span class="agap-pill-badge is-amber" style="padding:1px 7px; font-size:0.7rem;" title="Updated KP Form 7 scan uploaded">Updated Scan</span>`;
         }
-        const queueBadgeHtml = row.assigned_queue
-            ? `<span class="agap-pill-badge ${row.assigned_queue === 'REVIEW_EXCEPTION_QUEUE' ? 'is-amber' : 'is-slate'}" style="padding:1px 7px; font-size:0.7rem;" title="Assigned receiving queue">${escapeHtml(String(row.assigned_queue))}</span>`
+        const queueLabels = {
+            BPSO_VALIDATION: 'BPSO Desk Validation',
+            LISO_SCREENING: 'LISO Jurisdiction Screening',
+            LUPON_PAANYAYA_PREP: 'Paanyaya Preparation',
+            VAWC_REFERRAL_DESK: 'Barangay VAWC Desk',
+            BCPC_REFERRAL_DESK: 'Barangay BCPC Desk',
+            PNP_PROSECUTOR_REFERRAL: 'PNP / Prosecutor Referral',
+            MARIKINA_SETTLEMENT_REFERRAL: 'Marikina Settlement Office',
+            CENO_REFERRAL: 'Marikina CENO Endorsement',
+            TMO_REFERRAL: 'Marikina TMO Endorsement',
+            REVIEW_EXCEPTION_QUEUE: 'Manual Review Queue',
+            FORMAL_MEDIATION: 'Formal Mediation'
+        };
+        const rawQueue = String(row.assigned_queue || '').trim();
+        const agencyName = String(row.liso_endorsement_agency || '').trim();
+        const queueDisplay = agencyName !== ''
+            ? agencyName
+            : (queueLabels[rawQueue] || rawQueue);
+        const queueBadgeHtml = rawQueue
+            ? `<span class="agap-pill-badge ${rawQueue === 'REVIEW_EXCEPTION_QUEUE' ? 'is-amber' : 'is-slate'}" style="padding:1px 7px; font-size:0.7rem;" title="Assigned receiving queue">${escapeHtml(queueDisplay)}</span>`
             : '';
 
         const complaintHtml = `
@@ -861,6 +882,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else if (isPaanyaya) {
                 labelsToRender = [row.current_stage || ((Number(row.paanyaya_attempt || 1) >= 2 || rowStatus.includes('2nd')) ? '2nd Paanyaya' : '1st Paanyaya')];
+            } else if (!hasCase && (row.bpso_status === 'Pending BPSO Review' || row.bpso_status === 'Needs Clarification')) {
+                labelsToRender = [row.bpso_status === 'Needs Clarification' ? 'BPSO Clarification' : 'Pending BPSO Review'];
             } else if (!hasCase && row.lifecycle_status === 'Verification') {
                 labelsToRender = [row.current_stage || rowStatus || 'Under Review'];
             } else if (row.lifecycle_status && row.lifecycle_status !== 'Resolution / Closed') {

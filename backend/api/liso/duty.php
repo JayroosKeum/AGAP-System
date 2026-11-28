@@ -7,10 +7,13 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 
 require_once '../../services/LisoDutyService.php';
+require_once '../../middleware/rbac.php';
 
 $userId = (int) ($_SESSION['user_id'] ?? 0);
 $roleId = (int) ($_SESSION['role_id'] ?? 0);
-if ($userId < 1 || !in_array($roleId, [1, 2, 3], true)) {
+$roleName = agapGetRoleName();
+$canViewLisoDuty = in_array($roleId, [1, 2, 3], true) || in_array($roleName, ['Administrator', 'Lupon Clerk', 'Lupon Member', 'BPSO', 'Super Administrator'], true);
+if ($userId < 1 || !$canViewLisoDuty) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Unauthorized.']);
     exit;

@@ -841,6 +841,8 @@ async function loadComplaintDetails() {
             displayStage = 'Settled (Amicable Settlement)';
         } else if (data.status === 'Resolved at Paanyaya / Closed') {
             displayStage = 'Resolved at Paanyaya';
+        } else if (data.status === 'Referred' || data.screening_decision === 'Referred') {
+            displayStage = data.liso_endorsement_agency ? `Referred — ${data.liso_endorsement_agency}` : 'Referred (External Agency)';
         } else if (isPaanyayaRecord) {
             if (data.status === 'Needs Information' || data.screening_decision === 'Needs Information') {
                 displayStage = 'Needs Information';
@@ -884,6 +886,10 @@ async function loadComplaintDetails() {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
                 statusEl.style.border = '1px solid #86efac';
+            } else if (data.status === 'Referred' || data.screening_decision === 'Referred') {
+                statusEl.style.background = '#eff6ff';
+                statusEl.style.color = '#1d4ed8';
+                statusEl.style.border = '1px solid #bfdbfe';
             } else if (isEligibleForPaanyaya) {
                 statusEl.style.background = '#dcfce7';
                 statusEl.style.color = '#15803d';
@@ -1360,10 +1366,10 @@ function renderParties(parties) {
                 const phoneText = party.contact_unknown ? 'Contact unknown' : escapeHtml(party.contact_no || 'None on file');
 
                 const initials = getInitials(party.resident_name || 'Party');
-                const isVerified = Boolean(party.resident_id || party.verified);
+                const isVerified = Number(party.residency_verified) === 1;
                 const statusBadge = isVerified
                     ? `<span class="sophos-verified-tag">✓ Verified Resident</span>`
-                    : `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:0.72rem;font-weight:600;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0;">Recorded</span>`;
+                    : `<span style="display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;font-size:0.72rem;font-weight:600;background:#fef3c7;color:#92400e;border:1px solid #fde68a;">Unverified / Pending Verification</span>`;
 
                 rows += `
                     <tr data-party-role="${typeClass}">
@@ -1442,12 +1448,12 @@ function renderParties(parties) {
 
         const isMinor = Number(party.is_minor) === 1 || (party.age !== undefined && party.age !== null && party.age !== '' && Number(party.age) < 18);
         const guardianInfo = party.guardian_name ? `Guardian: ${escapeHtml(party.guardian_name)}${party.guardian_relationship ? ` (${escapeHtml(party.guardian_relationship)})` : ''}` : '';
-        const isVerified = Boolean(party.resident_id || party.verified);
+        const isVerified = Number(party.residency_verified) === 1;
         const roleLabel = typeClass === 'complainant'
             ? 'May Sumbong (Complainant)'
             : (typeClass === 'respondent' ? 'Ipinagsusumbong (Respondent)' : 'Saksi (Witness)');
         const subMetaParts = [escapeHtml(fullAddress)];
-        subMetaParts.push(isVerified ? 'Verified Resident' : 'Recorded');
+        subMetaParts.push(isVerified ? 'Verified Resident' : 'Unverified / Pending Verification');
         if (party.address_requires_verification) subMetaParts.push('Needs Verification');
 
         cards += `
@@ -12537,7 +12543,8 @@ function collectPaanyayaModalPayload(actionName) {
         body_paragraph_1: document.getElementById('pnyEditBody1')?.value?.trim() || '',
         body_paragraph_2: document.getElementById('pnyEditBody2')?.value?.trim() || '',
         body_paragraph_3: document.getElementById('pnyEditBody3')?.value?.trim() || '',
-        captain_name: document.getElementById('pnyEditCaptain')?.value?.trim() || ''
+        captain_name: document.getElementById('pnyEditCaptain')?.value?.trim() || '',
+        assigned_to: document.getElementById('pnyEditAssignedTo')?.value || ''
     };
 }
 
@@ -12555,11 +12562,16 @@ function openPaanyayaEditableModal(seed, dateVal, timeVal, venueVal) {
     const invBadge = document.getElementById('pnyModalInvBadge');
     if (invBadge) invBadge.textContent = invNum === 2 ? '2nd Paanyaya' : '1st Paanyaya';
 
+    const serverWrap = document.getElementById('pnyModalServerWrap');
+    if (serverWrap) {
+        serverWrap.style.display = mode === 'reprint' ? 'none' : 'grid';
+    }
+
     const confirmBtn = document.getElementById('pnyModalConfirmPrintBtn');
     if (confirmBtn) {
         confirmBtn.style.display = mode === 'reprint' ? 'none' : '';
         confirmBtn.disabled = false;
-        confirmBtn.textContent = 'Confirm, Print & Dispatch to Summons Server';
+        confirmBtn.textContent = 'Confirm & Dispatch to Summons Server';
     }
 
     const dateInp = document.getElementById('pnyEditDate');
@@ -12720,23 +12732,22 @@ window.confirmPrintAndDispatchPaanyaya = async function() {
             window.agapNotify?.(data.message || 'Unable to confirm and dispatch the invitation.', 'error', 'Paanyaya');
             if (btn) {
                 btn.disabled = false;
-                btn.textContent = 'Confirm, Print & Dispatch to Summons Server';
+                btn.textContent = 'Confirm & Dispatch to Summons Server';
             }
             return;
         }
 
-        window.printPaanyayaModalFrameOnly();
         window.agapNotify?.(data.message || 'Paanyaya confirmed and dispatched to Summons Server.', 'success', 'Paanyaya Dispatched');
         window.closePaanyayaPreviewModal();
         setTimeout(() => {
             window.location.hash = '#paanyaya-preparation';
             window.location.reload();
-        }, 500);
+        }, 350);
     } catch (err) {
         window.agapNotify?.('Connection error while dispatching Paanyaya invitation.', 'error', 'Paanyaya');
         if (btn) {
             btn.disabled = false;
-            btn.textContent = 'Confirm, Print & Dispatch to Summons Server';
+            btn.textContent = 'Confirm & Dispatch to Summons Server';
         }
     }
 };

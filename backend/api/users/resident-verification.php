@@ -13,7 +13,7 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
 $db = (new Database())->connect();
-agapRequireApiRoles(['Administrator', 'Secretary', 'Lupon Clerk'], $db);
+agapRequireApiRoles(['Administrator', 'Secretary', 'Lupon Clerk', 'BPSO'], $db);
 $actorUserId = agapSessionUserId();
 
 function findMatchedResidentForUser(PDO $db, array $user): ?array

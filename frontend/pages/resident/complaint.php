@@ -157,8 +157,27 @@ $request = $timeline['request'] ?? null;
                         <button class="rd-hero-cta" type="submit">Send response</button>
                     </form>
                 </section>
+            <?php elseif (($complaint['screening_decision'] ?? '') === 'Referred' && !empty($complaint['liso_endorsement_agency'])): ?>
+                <div class="resident-detail-feedback tone-progress" role="status">
+                    <strong>Pre-Filing Counseling &amp; Agency Endorsement:</strong>
+                    This matter falls outside Katarungang Pambarangay jurisdiction and has been endorsed by LISO to <strong><?= $escape($complaint['liso_endorsement_agency']) ?></strong>.
+                    <?php if (!empty($complaint['liso_counseling_notes'])): ?>
+                        <br><span><strong>Counseling Note:</strong> <?= $escape($complaint['liso_counseling_notes']) ?></span>
+                    <?php endif; ?>
+                    <div style="margin-top:8px;">
+                        <a class="resident-text-link" href="../../../backend/api/complaints/endorsement-slip.php?complaint_id=<?= (int) $id ?>" target="_blank" rel="noopener">Print / View Official Endorsement Slip &rarr;</a>
+                    </div>
+                </div>
             <?php elseif ($complaint['screening_decision'] === 'Needs Information'): ?>
                 <p class="resident-detail-feedback tone-attention">Contact the barangay office with your reference number to ask what information is needed.</p>
+            <?php elseif (($complaint['bpso_status'] ?? '') === 'Rejected'): ?>
+                <div class="resident-detail-feedback tone-attention" role="status">
+                    <strong>Submission Returned by BPSO:</strong>
+                    <?= $escape(trim((string) ($complaint['bpso_rejection_reason'] ?? 'Insufficient details provided.'))) ?>
+                    <br><span>You may visit the <strong>Barangay Tumana BPSO Desk</strong> in person (walk-in) to provide complete details and file your complaint.</span>
+                </div>
+            <?php elseif (($complaint['bpso_status'] ?? '') === 'Pending BPSO Review'): ?>
+                <p class="resident-detail-feedback tone-progress">Your online submission is currently in <strong>BPSO Validation</strong>. No barangay visit is needed while BPSO verifies your details and forwards the complaint to LISO.</p>
             <?php endif; ?>
 
             <section id="timeline" class="resident-panel resident-concerns-panel" aria-labelledby="timeline-title">

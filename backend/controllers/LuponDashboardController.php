@@ -94,6 +94,7 @@ class LuponDashboardController
              LEFT JOIN users encoder ON encoder.user_id = c.encoded_by
              WHERE c.liso_assigned_to = ?
                AND c.is_draft = 0 AND c.status IN ('Submitted', 'Filed', 'Under Review')
+               AND COALESCE(c.bpso_status, 'Endorsed to LISO') = 'Endorsed to LISO'
                AND c.screening_decision = 'Pending'
                AND NOT EXISTS (SELECT 1 FROM cases cs WHERE cs.complaint_id = c.complaint_id)
              ORDER BY resident_replied_at IS NULL, resident_replied_at ASC,

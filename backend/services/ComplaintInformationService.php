@@ -31,7 +31,7 @@ final class ComplaintInformationService
 
         $this->db->beginTransaction();
         try {
-            $complaint = $this->db->prepare('SELECT c.status, c.screening_decision
+            $complaint = $this->db->prepare('SELECT c.status, c.screening_decision, c.bpso_status
                 FROM complaints c WHERE c.complaint_id = ? AND c.submitted_by = ? AND c.is_draft = 0
                 AND NOT EXISTS (SELECT 1 FROM cases WHERE complaint_id = c.complaint_id) FOR UPDATE');
             $complaint->execute([$complaintId, $residentUserId]);
@@ -54,8 +54,13 @@ final class ComplaintInformationService
                 throw new DomainException('A response has already been saved for this request.');
             }
 
-            $this->db->prepare("UPDATE complaints SET status = 'Under Review', screening_decision = 'Pending'
-                WHERE complaint_id = ?")->execute([$complaintId]);
+            if (($row['bpso_status'] ?? '') === 'Needs Clarification') {
+                $this->db->prepare("UPDATE complaints SET bpso_status = 'Pending BPSO Review', status = 'Submitted', screening_decision = 'Pending'
+                    WHERE complaint_id = ?")->execute([$complaintId]);
+            } else {
+                $this->db->prepare("UPDATE complaints SET status = 'Under Review', screening_decision = 'Pending'
+                    WHERE complaint_id = ?")->execute([$complaintId]);
+            }
             if (!(new AuditService($this->db))->log($residentUserId, 'Replied to complaint information request', 'Complaints', $complaintId)) {
                 throw new RuntimeException('Unable to audit the resident response.');
             }

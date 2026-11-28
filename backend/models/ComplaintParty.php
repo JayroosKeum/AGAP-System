@@ -56,7 +56,8 @@ class ComplaintParty
                     r.first_name, r.middle_name, r.last_name, r.suffix AS resident_suffix,
                     r.contact_no AS resident_contact, r.purok, r.address, r.email,
                     r.birth_date AS resident_birth_date, r.gender AS resident_gender,
-                    r.civil_status AS resident_civil_status, r.is_tenant
+                    r.civil_status AS resident_civil_status, r.is_tenant,
+                    COALESCE(r.residency_verified, 0) AS residency_verified
              FROM complaint_parties cp
              INNER JOIN residents r ON r.resident_id = cp.resident_id
              WHERE cp.complaint_id = ?

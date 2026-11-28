@@ -19,7 +19,7 @@
 
 /* Individual Toast */
 .agap-toast {
-    pointer-events: auto;
+    pointer-events: none;
     background: #ffffff;
     border-radius: 10px;
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
@@ -34,6 +34,12 @@
     animation: agapSlideInRight 0.25s ease-out;
     transition: opacity 0.2s ease, transform 0.2s ease;
     box-sizing: border-box;
+}
+
+.agap-toast a,
+.agap-toast button,
+.agap-toast-close {
+    pointer-events: auto;
 }
 
 /* ==========================================================================

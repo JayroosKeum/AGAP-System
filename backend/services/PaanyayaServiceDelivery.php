@@ -12,8 +12,13 @@ final class PaanyayaServiceDelivery
 
     public function servers(): array
     {
-        return $this->db->query("SELECT user_id, TRIM(CONCAT_WS(' ', first_name, last_name)) AS full_name
-            FROM users WHERE role_id = 4 AND status = 'Active' ORDER BY last_name, first_name, user_id")->fetchAll();
+        return $this->db->query(
+            "SELECT user_id, TRIM(CONCAT_WS(' ', first_name, last_name)) AS full_name
+             FROM users
+             WHERE role_id = 4 AND status = 'Active'
+             ORDER BY CASE WHEN first_name = 'Test' OR username LIKE 'server_%' OR username LIKE 'test_%' THEN 1 ELSE 0 END ASC,
+                      last_name ASC, first_name ASC, user_id ASC"
+        )->fetchAll();
     }
 
     public static function autoAssignServerId(PDO $db): int
@@ -25,7 +30,9 @@ final class PaanyayaServiceDelivery
             LEFT JOIN paanyaya_service_attempts a ON a.assigned_to = u.user_id
             WHERE u.role_id = 4 AND u.status = 'Active'
             GROUP BY u.user_id
-            ORDER BY pending_count ASC, u.user_id ASC
+            ORDER BY CASE WHEN u.first_name = 'Test' OR u.username LIKE 'server_%' OR u.username LIKE 'test_%' THEN 1 ELSE 0 END ASC,
+                     pending_count ASC,
+                     u.user_id ASC
             LIMIT 1
         ");
         $serverId = (int) ($stmt->fetchColumn() ?: 0);
@@ -251,11 +258,53 @@ final class PaanyayaServiceDelivery
         }
     }
 
+    public function reassign(int $attemptId, int $actorId, int $newServerId): string
+    {
+        $this->db->beginTransaction();
+        try {
+            $attemptStmt = $this->db->prepare(
+                'SELECT attempt_id, complaint_id, invitation_number, outcome, assigned_to
+                 FROM paanyaya_service_attempts
+                 WHERE attempt_id = ? FOR UPDATE'
+            );
+            $attemptStmt->execute([$attemptId]);
+            $attempt = $attemptStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$attempt) {
+                throw new DomainException('Service assignment not found.');
+            }
+            if ($attempt['outcome'] !== null) {
+                throw new DomainException('Cannot reassign a completed service attempt.');
+            }
+            $serverStmt = $this->db->prepare(
+                "SELECT user_id, TRIM(CONCAT_WS(' ', first_name, last_name)) AS full_name
+                 FROM users WHERE user_id = ? AND role_id = 4 AND status = 'Active' FOR SHARE"
+            );
+            $serverStmt->execute([$newServerId]);
+            $server = $serverStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$server) {
+                throw new DomainException('Select an active Summons Server.');
+            }
+            $this->db->prepare('UPDATE paanyaya_service_attempts SET assigned_to = ? WHERE attempt_id = ?')
+                ->execute([(int) $server['user_id'], $attemptId]);
+            $this->audit($actorId, 'Reassigned Paanyaya service to ' . ($server['full_name'] ?: 'Summons Server'), (int) $attempt['complaint_id']);
+            $this->db->commit();
+            return (string) ($server['full_name'] ?: 'Summons Server');
+        } catch (Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     public static function latestAttempt(PDO $db, int $complaintId, int $invitation = 1): ?array
     {
-        $statement = $db->prepare('SELECT a.attempt_id, a.outcome, a.recorded_at, a.document_version
-            FROM paanyaya_service_attempts a JOIN paanyaya_preparations p USING (complaint_id, invitation_number)
-            WHERE a.complaint_id = ? AND a.invitation_number = ? AND a.document_version = ' . PaanyayaPreparationService::CURRENT_VERSION . '
+        $statement = $db->prepare("SELECT a.attempt_id, a.outcome, a.recorded_at, a.document_version, a.assigned_to,
+                TRIM(CONCAT_WS(' ', u.first_name, u.last_name)) AS server_name
+            FROM paanyaya_service_attempts a
+            JOIN paanyaya_preparations p USING (complaint_id, invitation_number)
+            LEFT JOIN users u ON u.user_id = a.assigned_to
+            WHERE a.complaint_id = ? AND a.invitation_number = ? AND a.document_version = " . PaanyayaPreparationService::CURRENT_VERSION . '
             ORDER BY a.attempt_id DESC LIMIT 1');
         $statement->execute([$complaintId, $invitation]);
         return $statement->fetch() ?: null;

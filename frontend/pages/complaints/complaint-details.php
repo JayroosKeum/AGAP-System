@@ -23,13 +23,16 @@ require_once __DIR__ . '/../../../backend/services/CsrfService.php';
 require_once __DIR__ . '/../../../backend/services/ComplaintRoutingService.php';
 require_once __DIR__ . '/../../../backend/services/ClosureEvidenceService.php';
 require_once __DIR__ . '/../../../backend/services/PiiCryptoService.php';
-if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member'])) {
+if (!agapHasRole(['Super Administrator', 'Administrator', 'Lupon Clerk', 'Lupon Member', 'BPSO'])) {
     http_response_code(403);
     exit('Access denied for this role.');
 }
 
-$isLuponReadOnly = $roleId === 3;
+$activeRoleName = agapGetRoleName();
+$isBpsoUser = ($activeRoleName === 'BPSO');
+$isLuponReadOnly = ($roleId === 3 || $isBpsoUser);
 $canScreenClassification = in_array($roleId, [1, 2, 3], true);
+$canValidateBpsoIntake = in_array($activeRoleName, ['BPSO', 'Administrator', 'Super Administrator'], true);
 $canAuthorizePastDate = $roleId === 1;
 
 if (!isset($_GET['id']) || empty($_GET['id'])) {
@@ -76,6 +79,11 @@ require_once __DIR__ . '/../../../backend/services/ComplaintInformationService.p
 try {
     $assignmentStatement = $preparationDb->prepare(
         'SELECT c.liso_assigned_to, c.screening_decision, c.status, c.submitted_by, c.is_draft,
+                c.bpso_status, c.bpso_blotter_no, c.bpso_respondent_in_tumana, c.bpso_identity_verified,
+                c.bpso_private_notes, c.bpso_rejection_reason, c.bpso_reviewed_at,
+                c.liso_endorsement_agency, c.liso_counseling_notes, c.liso_endorsed_at,
+                c.filing_fee_status, c.filing_fee_amount, c.filing_fee_or_number, c.filing_fee_paid_at, c.filing_fee_waiver_reason,
+                TRIM(CONCAT_WS(\' \', bpso_u.first_name, bpso_u.last_name)) AS bpso_reviewer_name,
                 c.category_id, c.proposed_category_id, c.secondary_category_id, c.other_category_specification,
                 c.secondary_other_category_specification, c.case_type, c.complaint_title, c.intake_source,
                 c.intake_reference, c.complaint_number, c.incident_date, c.incident_purok,
@@ -84,6 +92,7 @@ try {
          FROM complaints c
          LEFT JOIN complaint_categories cat ON cat.category_id = c.category_id
          LEFT JOIN cases cs ON cs.complaint_id = c.complaint_id
+         LEFT JOIN users bpso_u ON bpso_u.user_id = c.bpso_reviewed_by
          WHERE c.complaint_id = ? LIMIT 1'
     );
     $assignmentStatement->execute([$complaintId]);
@@ -103,7 +112,7 @@ $canRequestPendingClose = !$isLuponReadOnly
     && !$isUndocketedIntake
     && !in_array($formalCaseStatus, ['Closed', 'Resolution / Closed', 'DISMISSED_BARRED', 'Pending Close', 'CFA Issued', 'Arbitration Award'], true)
     && !in_array($complaintStatusVal, ['Pending Screening', 'Needs Information', 'Accepted', 'Pre-Docketed (Paanyaya)', 'Closed', 'Resolution / Closed', 'Pending Close', 'Rejected', 'Archived'], true);
-$isIntakeAlreadyEligible = ($intakeScreeningMeta['screening_decision'] ?? '') === 'Eligible'
+$isIntakeAlreadyEligible = in_array(($intakeScreeningMeta['screening_decision'] ?? ''), ['Eligible', 'Referred', 'Rejected', 'Duplicate'], true)
     || !$isUndocketedIntake
     || in_array($intakeScreeningMeta['status'] ?? '', [
         'Accepted',
@@ -113,14 +122,17 @@ $isIntakeAlreadyEligible = ($intakeScreeningMeta['screening_decision'] ?? '') ==
         'Arbitration',
         'Settled',
         'Dismissed',
+        'Referred',
         'CFA Issued',
         'Archived',
         'Rejected',
         'Resolved at Paanyaya / Closed'
     ], true);
+$bpsoStatusVal = trim((string) ($intakeScreeningMeta['bpso_status'] ?? 'Endorsed to LISO'));
+$isBpsoEndorsed = ($bpsoStatusVal === 'Endorsed to LISO');
 if ($roleId === 3 && $intakeScreeningMeta) {
     $assignedLisoId = (int) ($intakeScreeningMeta['liso_assigned_to'] ?? 0);
-    $canScreenSelectedIntake = !$isIntakeAlreadyEligible && !$intakeScreeningMeta['is_draft'] && (
+    $canScreenSelectedIntake = $isBpsoEndorsed && !$isIntakeAlreadyEligible && !$intakeScreeningMeta['is_draft'] && (
         $assignedLisoId < 1 || $assignedLisoId === (int) $_SESSION['user_id']
     );
 }
@@ -160,7 +172,7 @@ $paanyayaModel = new Paanyaya();
 $servingOfficers = $paanyayaModel->getServingOfficers();
 $eligiblePresiders = $paanyayaModel->getEligiblePresiders();
 $sysSettings = Setting::all();
-$maxPaanyayaSetting = (int) ($sysSettings['paanyaya_max_attempts'] ?? 3);
+$maxPaanyayaSetting = (int) ($sysSettings['paanyaya_max_attempts'] ?? Paanyaya::MAX_ATTEMPTS);
 
 $rawMedDays = $sysSettings['mediation_day_of_week'] ?? 'Tue';
 $allowedMedDays = [];
@@ -528,6 +540,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             const btnNeedsInfo = document.getElementById('btnIntakeNeedsInfo');
             const btnEligible = document.getElementById('btnMarkIntakeEligible');
             const btnRejected = document.getElementById('btnMarkIntakeRejected');
+            const btnReferAgency = document.getElementById('btnLisoReferAgency');
+            const agencyEl = document.getElementById('lisoEndorsementAgency');
+            const counselingEl = document.getElementById('lisoCounselingNotes');
 
             if (status === 'Rejected') {
                 const rejectNotes = (notesEl?.value || '').trim();
@@ -535,6 +550,22 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 if (!rejectNotes || (defaultNote !== '' && rejectNotes === defaultNote)) {
                     window.agapNotify?.('Ilagay muna sa Tala sa Pagsusuri ang dahilan o legal basis ng pag-reject bago markahang ineligible.', 'error');
                     notesEl?.focus();
+                    return;
+                }
+            }
+
+            if (status === 'Referred') {
+                const agencyVal = (agencyEl?.value || '').trim();
+                const counselingVal = (counselingEl?.value || notesEl?.value || '').trim();
+                const defaultNote = (notesEl?.dataset.defaultNote || '').trim();
+                if (!agencyVal) {
+                    window.agapNotify?.('Select the government agency to endorse this complaint to.', 'warning', 'Agency Endorsement');
+                    agencyEl?.focus();
+                    return;
+                }
+                if (!counselingVal || (defaultNote !== '' && counselingVal === defaultNote)) {
+                    window.agapNotify?.('Enter pre-filing counseling notes and the reason this falls outside KP jurisdiction.', 'warning', 'Pre-Filing Counseling');
+                    counselingEl?.focus();
                     return;
                 }
             }
@@ -567,9 +598,9 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             }
 
             window.__agapReviewIntakeSubmitting = true;
-            const activeBtn = status === 'Accepted' ? btnEligible : (status === 'Rejected' ? btnRejected : btnNeedsInfo);
+            const activeBtn = status === 'Accepted' ? btnEligible : (status === 'Rejected' ? btnRejected : (status === 'Referred' ? btnReferAgency : btnNeedsInfo));
             const originalLabel = activeBtn ? activeBtn.textContent : '';
-            const allControls = [btnNeedsInfo, btnEligible, btnRejected, notesEl, requestEl, catInputEl, catEl, otherEl, secCatInputEl, secCatEl, secOtherEl, caseTypeEl, titleEl, confirmJurChk];
+            const allControls = [btnNeedsInfo, btnEligible, btnRejected, btnReferAgency, agencyEl, counselingEl, notesEl, requestEl, catInputEl, catEl, otherEl, secCatInputEl, secCatEl, secOtherEl, caseTypeEl, titleEl, confirmJurChk];
 
             allControls.forEach((el) => {
                 if (el) {
@@ -604,6 +635,10 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             if (status === 'Needs Information' && requestEl) {
                 form.append('request_message', requestEl.value.trim());
             }
+            if (status === 'Referred') {
+                if (agencyEl) form.append('endorsement_agency', agencyEl.value.trim());
+                if (counselingEl) form.append('counseling_notes', counselingEl.value.trim());
+            }
             try {
                 const response = await fetch('../../../backend/api/complaints/review.php', { method: 'POST', body: form });
                 const result = await response.json();
@@ -613,6 +648,16 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 const screeningCard = document.getElementById('intake-screening');
                 if (screeningCard) {
                     screeningCard.style.display = 'none';
+                }
+                if (status === 'Referred') {
+                    const badgeEl = document.getElementById('complaintStatusBadge');
+                    const agLabel = result.endorsement_agency || (agencyEl?.value || '').trim();
+                    if (badgeEl) {
+                        badgeEl.textContent = agLabel ? `Referred — ${agLabel}` : 'Referred (External Agency)';
+                        badgeEl.style.background = '#eff6ff';
+                        badgeEl.style.color = '#1d4ed8';
+                        badgeEl.style.border = '1px solid #bfdbfe';
+                    }
                 }
                 window.agapNotify?.(result.message, 'success');
                 if (status === 'Accepted') {
@@ -637,9 +682,123 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             }
         }
 
+        async function submitBpsoReview(complaintId, action) {
+            if (window.__agapBpsoReviewSubmitting) return;
+            const blotterEl = document.getElementById('bpsoBlotterNoInput');
+            const idChk = document.getElementById('bpsoIdentityVerifiedCheck');
+            const detChk = document.getElementById('bpsoDetailsVerifiedCheck');
+            const tumanaChk = document.getElementById('bpsoRespondentTumanaCheck');
+            const lisoSel = document.getElementById('bpsoAssignLisoId');
+            const notesEl = document.getElementById('bpsoPrivateNotesInput');
+            const clarifyEl = document.getElementById('bpsoClarifyMessage');
+            const rejectEl = document.getElementById('bpsoRejectionReason');
+
+            const payload = {
+                complaint_id: complaintId,
+                action: action,
+                blotter_no: (blotterEl?.value || '').trim(),
+                identity_verified: idChk?.checked ? 1 : 0,
+                details_verified: detChk?.checked ? 1 : 0,
+                respondent_in_tumana: tumanaChk?.checked ? 1 : 0,
+                liso_assigned_to: (lisoSel?.value || '').trim(),
+                private_notes: (notesEl?.value || '').trim(),
+                request_message: (clarifyEl?.value || '').trim(),
+                rejection_reason: (rejectEl?.value || '').trim()
+            };
+
+            if (action === 'endorse') {
+                if (!payload.identity_verified) {
+                    window.agapNotify?.('Confirm complainant identity verification first.', 'warning', 'BPSO Validation');
+                    idChk?.focus();
+                    return;
+                }
+                if (!payload.details_verified) {
+                    window.agapNotify?.('Confirm that the complaint details are sufficient first.', 'warning', 'BPSO Validation');
+                    detChk?.focus();
+                    return;
+                }
+                if (!payload.respondent_in_tumana) {
+                    window.agapNotify?.('Confirm that the respondent is a Barangay Tumana resident before endorsing to LISO.', 'warning', 'BPSO Validation');
+                    tumanaChk?.focus();
+                    return;
+                }
+            } else if (action === 'request_info' && !payload.request_message) {
+                window.agapNotify?.('Enter a clarification message to send to the resident.', 'warning', 'BPSO Validation');
+                clarifyEl?.focus();
+                return;
+            } else if (action === 'reject' && !payload.rejection_reason) {
+                window.agapNotify?.('Provide a clear reason explaining what is missing or why the complaint is rejected.', 'warning', 'BPSO Validation');
+                rejectEl?.focus();
+                return;
+            }
+
+            window.__agapBpsoReviewSubmitting = true;
+            const btn = document.getElementById(
+                action === 'endorse' ? 'btnBpsoEndorseLiso' : (action === 'request_info' ? 'btnBpsoRequestInfo' : 'btnBpsoReject')
+            );
+            const origText = btn ? btn.textContent : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+            }
+            try {
+                const res = await fetch('../../../backend/api/complaints/bpso-review.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': window.agapCsrfToken || ''
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) {
+                    throw new Error(data.message || 'Unable to save BPSO validation.');
+                }
+                window.agapNotify?.(data.message || 'BPSO validation saved.', 'success', 'BPSO Desk');
+                window.location.reload();
+            } catch (err) {
+                window.__agapBpsoReviewSubmitting = false;
+                if (btn) {
+                    btn.disabled = false;
+                    if (origText) btn.textContent = origText;
+                }
+                window.agapNotify?.(err.message || 'Unable to process BPSO validation.', 'error', 'BPSO Desk');
+            }
+        }
+
         async function docketEligibleIntake(complaintId) {
             if (window.__agapDocketIntakeSubmitting) return;
-            if (!window.confirm('Create the formal KP case docket for this eligible intake?')) return;
+            const currentFeeStatus = <?= json_encode((string) ($intakeScreeningMeta['filing_fee_status'] ?? 'Unpaid')) ?>;
+            let orNumber = '';
+            let feeAmount = <?= json_encode(number_format((float) ($sysSettings['formal_kp_filing_fee_amount'] ?? 100), 2, '.', '')) ?>;
+            let waiverReason = '';
+            let feeChoice = currentFeeStatus;
+            if (currentFeeStatus === 'Unpaid') {
+                const enteredOr = window.prompt(
+                    `Step 5 Formal KP Form No. 7 Filing Fee (PHP ${feeAmount}):\nEnter Official Receipt (OR) Number — or type EXEMPT for indigency waiver:`,
+                    ''
+                );
+                if (enteredOr === null) return;
+                const cleanInput = enteredOr.trim();
+                if (!cleanInput) {
+                    window.agapNotify?.('Official Receipt (OR) Number or EXEMPT basis is required before formal docketing.', 'warning', 'Filing Fee Required');
+                    return;
+                }
+                if (cleanInput.toUpperCase() === 'EXEMPT') {
+                    const reason = window.prompt('Enter indigency / fee exemption basis (e.g., Barangay Indigency Certificate):', '');
+                    if (reason === null || !reason.trim()) {
+                        window.agapNotify?.('Exemption basis is required when waiving the filing fee.', 'warning', 'Filing Fee Required');
+                        return;
+                    }
+                    feeChoice = 'Exempt / Indigent';
+                    waiverReason = reason.trim();
+                } else {
+                    feeChoice = 'Paid';
+                    orNumber = cleanInput;
+                }
+            } else if (!window.confirm('Create the formal KP case docket for this eligible intake?')) {
+                return;
+            }
             window.__agapDocketIntakeSubmitting = true;
             const activeBtn = window.event?.target?.closest?.('button') || document.querySelector('[onclick*="docketEligibleIntake"]');
             const originalText = activeBtn ? activeBtn.textContent : '';
@@ -650,6 +809,13 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             try {
                 const form = new FormData();
                 form.append('complaint_id', complaintId);
+                form.append('enforce_filing_fee', '1');
+                if (currentFeeStatus === 'Unpaid') {
+                    form.append('filing_fee_status', feeChoice);
+                    if (orNumber) form.append('filing_fee_or_number', orNumber);
+                    if (feeAmount) form.append('filing_fee_amount', feeAmount);
+                    if (waiverReason) form.append('filing_fee_waiver_reason', waiverReason);
+                }
                 const response = await fetch('../../../backend/api/complaints/docket.php', { method: 'POST', headers: { 'X-CSRF-Token': window.agapCsrfToken || '' }, body: form });
                 const result = await response.json();
                 if (!response.ok || !result.success) {
@@ -682,7 +848,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             if (count($alerts) === 1):
                                 $a = $alerts[0];
                         ?>
-                            <span><strong>Active Dispute Notice:</strong> <strong><?php echo htmlspecialchars($a['resident_name']); ?></strong> (<?php echo htmlspecialchars($a['current_role']); ?>) is currently an active party in <a href="<?php echo htmlspecialchars($a['view_url']); ?>" style="color: #92400e; font-weight: 700; text-decoration: underline;">Case #<?php echo htmlspecialchars($a['concurrent_display_number']); ?></a> (<?php echo htmlspecialchars($a['concurrent_status']); ?>).</span>
+                            <span><strong>Active Dispute Notice:</strong> <strong><?php echo htmlspecialchars($a['resident_name']); ?></strong> (<?php echo htmlspecialchars($a['current_role']); ?>) is currently an active party in <a href="<?php echo htmlspecialchars($a['view_url']); ?>" style="color: #92400e; font-weight: 700; text-decoration: underline;">Case #<?php echo htmlspecialchars(ltrim((string) $a['concurrent_display_number'], '#')); ?></a> (<?php echo htmlspecialchars($a['concurrent_status']); ?>).</span>
                         <?php else: ?>
                             <?php $pNames = implode(', ', array_unique(array_column($alerts, 'resident_name'))); ?>
                             <?php $pCount = count(array_unique(array_column($alerts, 'resident_name'))); $aCount = count($alerts); ?>
@@ -964,6 +1130,179 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </section>
             <?php endif; ?>
 
+            <?php
+                require_once __DIR__ . '/../../../backend/services/BpsoIntakeService.php';
+                require_once __DIR__ . '/../../../backend/services/IntakeNoticeFormatter.php';
+                require_once __DIR__ . '/../../../backend/services/LisoDutyService.php';
+                $bpsoFormalRejectTemplate = IntakeNoticeFormatter::formatInsufficientInfoNotice()['combined'];
+                $bpsoParties = [];
+                try {
+                    $bpsoParties = (new PaanyayaPreparationService($preparationDb))->parties($complaintId);
+                } catch (Throwable) {
+                    $bpsoParties = [];
+                }
+                $bpsoTumanaHint = false;
+                $bpsoCompVerified = false;
+                foreach ($bpsoParties as $bp) {
+                    if (strcasecmp((string) ($bp['party_type'] ?? ''), 'Respondent') === 0) {
+                        if (BpsoIntakeService::looksLikeTumanaAddress('Tumana', $bp['purok'] ?? null, $bp['address'] ?? null, (int) ($bp['is_tenant'] ?? 0))) {
+                            $bpsoTumanaHint = true;
+                        }
+                    } elseif (strcasecmp((string) ($bp['party_type'] ?? ''), 'Complainant') === 0 && !empty($bp['residency_verified'])) {
+                        $bpsoCompVerified = true;
+                    }
+                }
+                $bpsoActiveLisos = [];
+                if ($canValidateBpsoIntake && !$isBpsoEndorsed && $isUndocketedIntake) {
+                    try {
+                        $bpsoActiveLisos = (new LisoDutyService())->activeMembers();
+                    } catch (Throwable) {
+                        $bpsoActiveLisos = [];
+                    }
+                }
+            ?>
+
+            <?php if ($canValidateBpsoIntake && $isUndocketedIntake && !$isBpsoEndorsed): ?>
+                <section id="bpso-validation" class="liso-compact-card" style="margin-bottom:18px; border:1.5px solid #99f6e4;" aria-labelledby="bpso-validation-title">
+                    <header class="liso-compact-header" style="background:#f0fdfa; border-bottom-color:#ccfbf1;">
+                        <div class="liso-compact-title-wrap">
+                            <h2 id="bpso-validation-title" style="color:#115e59;">Step 1 · BPSO Review and Identity Verification</h2>
+                            <span class="liso-compact-ref-pill"><?= htmlspecialchars($bpsoStatusVal, ENT_QUOTES, 'UTF-8') ?></span>
+                        </div>
+                    </header>
+                    <div class="liso-compact-body">
+                        <div class="liso-compact-meta-bar">
+                            <div class="liso-compact-meta-items">
+                                <span>Channel: <strong><?= (($intakeScreeningMeta['intake_source'] ?? 'Online') === 'Online') ? 'Online Grievance Submission' : 'Walk-in Blotter' ?></strong></span>
+                                <span>&middot;</span>
+                                <span>Complainant Tier: <strong><?= $bpsoCompVerified ? 'Verified Resident' : 'Unverified / Pending Verification' ?></strong></span>
+                                <span>&middot;</span>
+                                <span>Respondent Information: <strong><?= $bpsoTumanaHint ? 'Tumana Address Detected' : 'Verify Address' ?></strong></span>
+                            </div>
+                        </div>
+
+                        <?php if ($bpsoStatusVal === 'Rejected' && !empty($intakeScreeningMeta['bpso_rejection_reason'])): ?>
+                            <div style="padding:10px 12px; border-radius:8px; background:#fff1f2; border:1px solid #fecdd3; color:#9f1239; font-size:0.84rem;">
+                                <strong>Previously Returned by BPSO:</strong> <?= htmlspecialchars((string) $intakeScreeningMeta['bpso_rejection_reason'], ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+                        <?php endif; ?>
+
+                        <div style="display:grid; gap:8px; padding:10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px;">
+                            <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.84rem; color:#0f172a; cursor:pointer; margin:0;">
+                                <input type="checkbox" id="bpsoIdentityVerifiedCheck" <?= ($bpsoCompVerified || !empty($intakeScreeningMeta['bpso_identity_verified'])) ? 'checked' : '' ?> style="margin-top:2px; accent-color:#0f766e;">
+                                <span><strong>Complainant Identity Verified:</strong> Complainant identity/profile or supporting details are valid (no barangay visit required if verified online).</span>
+                            </label>
+                            <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.84rem; color:#0f172a; cursor:pointer; margin:0;">
+                                <input type="checkbox" id="bpsoDetailsVerifiedCheck" checked style="margin-top:2px; accent-color:#0f766e;">
+                                <span><strong>Complaint Details Sufficient:</strong> Incident date, location, narrative, and respondent details are clear enough for LISO review.</span>
+                            </label>
+                            <label style="display:flex; align-items:flex-start; gap:8px; font-size:0.84rem; color:#0f172a; cursor:pointer; margin:0;">
+                                <input type="checkbox" id="bpsoRespondentTumanaCheck" <?= ($bpsoTumanaHint || !empty($intakeScreeningMeta['bpso_respondent_in_tumana'])) ? 'checked' : '' ?> style="margin-top:2px; accent-color:#0f766e;">
+                                <span><strong>Respondent is a Barangay Tumana Resident:</strong> Confirmed respondent lives or is situated in Barangay Tumana.</span>
+                            </label>
+                        </div>
+
+                        <div class="liso-compact-two-col">
+                            <div>
+                                <label for="bpsoBlotterNoInput" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Barangay Blotter Reference No.</label>
+                                <input type="text" id="bpsoBlotterNoInput" class="liso-compact-input" maxlength="64"
+                                       value="<?= htmlspecialchars((string) ($intakeScreeningMeta['bpso_blotter_no'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                       placeholder="Leave blank to auto-generate (BLT-<?= date('Y') ?>-...)">
+                            </div>
+                            <div>
+                                <label for="bpsoAssignLisoId" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Endorse to On-Duty LISO (Optional)</label>
+                                <select id="bpsoAssignLisoId" class="liso-compact-select">
+                                    <option value="">Any Available On-Duty LISO (Queue)</option>
+                                    <?php foreach ($bpsoActiveLisos as $al): ?>
+                                        <option value="<?= (int) $al['user_id'] ?>">
+                                            <?= htmlspecialchars(trim(($al['first_name'] ?? '') . ' ' . ($al['last_name'] ?? '')), ENT_QUOTES, 'UTF-8') ?> (On Duty)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label for="bpsoPrivateNotesInput" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Private BPSO Staff Notes (Internal Only)</label>
+                            <textarea id="bpsoPrivateNotesInput" class="liso-compact-textarea" rows="2" maxlength="2000" placeholder="Internal BPSO remarks (never shown to resident)..."><?= htmlspecialchars((string) ($intakeScreeningMeta['bpso_private_notes'] ?? ''), ENT_QUOTES, 'UTF-8') ?></textarea>
+                        </div>
+
+                        <button type="button" id="btnBpsoEndorseLiso" class="liso-compact-submit-btn" style="background:#0f766e;" onclick="submitBpsoReview(<?php echo $complaintId; ?>, 'endorse')">
+                            <span>&#10003; Record in Blotter and Forward to LISO &rarr;</span>
+                        </button>
+
+                        <details style="margin-top:2px;">
+                            <summary style="font-size:0.78rem; color:#64748b; font-weight:700; cursor:pointer;">Other BPSO Actions (Request Online Clarification / Reject with Walk-in Notice)</summary>
+                            <div style="margin-top:10px; padding:12px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; display:grid; gap:10px;">
+                                <?php if ($hasResidentAccount): ?>
+                                    <div>
+                                        <label for="bpsoClarifyMessage" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Clarification Message to Resident Portal</label>
+                                        <textarea id="bpsoClarifyMessage" class="liso-compact-textarea" rows="2" maxlength="2000" placeholder="Ask the complainant for missing details or ID verification..."></textarea>
+                                        <div style="margin-top:6px; text-align:right;">
+                                            <button type="button" id="btnBpsoRequestInfo" class="cd-btn-soft" onclick="submitBpsoReview(<?php echo $complaintId; ?>, 'request_info')">Request Clarification (Online)</button>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                                <div style="border-top:1px dashed #cbd5e1; padding-top:10px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:5px;">
+                                        <label for="bpsoRejectionReason" class="liso-compact-field-label" style="margin:0;">Rejection Reason (Shown to complainant with walk-in desk guidance)</label>
+                                        <button type="button" class="cd-btn-soft" style="padding:3px 9px; font-size:0.74rem;" onclick='document.getElementById("bpsoRejectionReason").value = <?= json_encode($bpsoFormalRejectTemplate, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>'>Insert Formal Incomplete-Info Notice</button>
+                                    </div>
+                                    <textarea id="bpsoRejectionReason" class="liso-compact-textarea" rows="3" maxlength="2000" placeholder="e.g., Narrative lacks respondent address/identity or respondent resides outside Barangay Tumana..."></textarea>
+                                    <div style="margin-top:6px; text-align:right;">
+                                        <button type="button" id="btnBpsoReject" class="cd-btn-rose" onclick="submitBpsoReview(<?php echo $complaintId; ?>, 'reject')">Reject &amp; Advise Walk-in</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                </section>
+            <?php elseif ($isBpsoEndorsed && (!empty($intakeScreeningMeta['bpso_blotter_no']) || !empty($intakeScreeningMeta['bpso_reviewed_at']) || !empty($intakeScreeningMeta['bpso_private_notes']))): ?>
+                <div class="sophos-card" style="margin-bottom:16px; border:1px solid #99f6e4; background:#f0fdfa; padding:12px 16px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <strong style="font-size:0.88rem; color:#115e59; display:block;">
+                            BPSO Blotter Logged &amp; Endorsed to LISO
+                            <?php if (!empty($intakeScreeningMeta['bpso_blotter_no'])): ?>
+                                &middot; <span style="font-family:monospace;"><?= htmlspecialchars((string) $intakeScreeningMeta['bpso_blotter_no'], ENT_QUOTES, 'UTF-8') ?></span>
+                            <?php endif; ?>
+                        </strong>
+                        <span style="font-size:0.8rem; color:#0f766e;">
+                            Respondent Tumana Residency Confirmed
+                            <?php if (!empty($intakeScreeningMeta['bpso_reviewer_name'])): ?>
+                                &middot; Validated by <?= htmlspecialchars((string) $intakeScreeningMeta['bpso_reviewer_name'], ENT_QUOTES, 'UTF-8') ?>
+                            <?php endif; ?>
+                            <?php if (!empty($intakeScreeningMeta['bpso_reviewed_at'])): ?>
+                                (<?= htmlspecialchars(date('M j, Y g:i A', strtotime((string) $intakeScreeningMeta['bpso_reviewed_at'])), ENT_QUOTES, 'UTF-8') ?>)
+                            <?php endif; ?>
+                        </span>
+                        <?php if (!empty($intakeScreeningMeta['bpso_private_notes'])): ?>
+                            <div style="margin-top:4px; font-size:0.78rem; color:#334155;">
+                                <strong>Private BPSO Notes:</strong> <?= htmlspecialchars((string) $intakeScreeningMeta['bpso_private_notes'], ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <span style="background:#ccfbf1; color:#115e59; border:1px solid #5eead4; border-radius:999px; padding:3px 10px; font-size:0.72rem; font-weight:700;">Step 1 Complete</span>
+                </div>
+            <?php elseif ($roleId === 3 && !$isBpsoEndorsed && $isUndocketedIntake): ?>
+                <div class="sophos-card" style="margin-bottom:16px; border:1px solid #fde68a; background:#fffbeb; padding:12px 16px; color:#92400e; font-size:0.86rem;">
+                    <strong>Pending BPSO Validation:</strong> This complaint is currently in Step 1 (BPSO blotter &amp; Tumana residency validation). LISO screening unlocks once BPSO endorses it.
+                </div>
+            <?php endif; ?>
+
+            <?php if (in_array((string) ($intakeScreeningMeta['filing_fee_status'] ?? ''), ['Paid', 'Exempt / Indigent'], true)): ?>
+                <div class="sophos-card" style="margin-bottom:16px; border:1px solid #bbf7d0; background:#f0fdf4; padding:10px 16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div style="font-size:0.84rem; color:#14532d;">
+                        <strong>Step 5 · Official KP Form No. 7 Filing Fee:</strong>
+                        <?php if (($intakeScreeningMeta['filing_fee_status'] ?? '') === 'Paid'): ?>
+                            Paid (OR #<?= htmlspecialchars((string) ($intakeScreeningMeta['filing_fee_or_number'] ?? ''), ENT_QUOTES, 'UTF-8') ?> &middot; PHP <?= number_format((float) ($intakeScreeningMeta['filing_fee_amount'] ?? 0), 2) ?>)
+                        <?php else: ?>
+                            Exempt / Indigent (<?= htmlspecialchars((string) ($intakeScreeningMeta['filing_fee_waiver_reason'] ?? 'Approved waiver'), ENT_QUOTES, 'UTF-8') ?>)
+                        <?php endif; ?>
+                    </div>
+                    <span style="background:#dcfce7; color:#166534; border:1px solid #86efac; border-radius:999px; padding:3px 10px; font-size:0.72rem; font-weight:700;">Filing Fee Cleared</span>
+                </div>
+            <?php endif; ?>
+
             <?php if ($roleId === 3 && $canScreenSelectedIntake && !$awaitingResidentReply): ?>
                 <?php
                     require_once __DIR__ . '/../../../backend/services/ComplaintClassificationService.php';
@@ -1243,10 +1582,31 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                             <span>&#10003; Aprubahan at Iproseso sa Paanyaya &rarr;</span>
                         </button>
 
-                        <!-- Secondary LISO Actions (Needs Information / Reject) -->
+                        <!-- Secondary LISO Actions (Pre-Filing Counseling & Endorsement / Needs Information / Reject) -->
                         <details style="margin-top:2px;">
-                            <summary style="font-size:0.78rem; color:#64748b; font-weight:700; cursor:pointer;">Iba pang Aksyon sa Screening (Humingi ng Impormasyon / I-reject)</summary>
-                            <div style="margin-top:10px; padding:12px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:10px;">
+                            <summary style="font-size:0.78rem; color:#64748b; font-weight:700; cursor:pointer;">Iba pang Aksyon sa Screening (Endorse to External Agency / Humingi ng Impormasyon / I-reject)</summary>
+                            <div style="margin-top:10px; padding:12px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; display:flex; flex-direction:column; gap:12px;">
+                                <div style="padding:10px 12px; border-radius:8px; background:#eff6ff; border:1px solid #bfdbfe; display:grid; gap:8px;">
+                                    <div style="font-size:0.82rem; font-weight:700; color:#1e3a8a;">Outside KP Jurisdiction &mdash; Pre-Filing Counseling &amp; Agency Endorsement</div>
+                                    <div>
+                                        <label for="lisoEndorsementAgency" class="liso-compact-field-label" style="display:block; margin-bottom:4px;">Endorse to Government Agency</label>
+                                        <select id="lisoEndorsementAgency" class="liso-compact-select">
+                                            <option value="">Select agency...</option>
+                                            <?php foreach (ComplaintRoutingService::EXTERNAL_AGENCIES as $agKey => $agMeta): ?>
+                                                <option value="<?= htmlspecialchars($agKey, ENT_QUOTES, 'UTF-8') ?>">
+                                                    <?= htmlspecialchars($agMeta['label'] . ' — ' . $agMeta['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label for="lisoCounselingNotes" class="liso-compact-field-label" style="display:block; margin-bottom:4px;">Pre-Filing Counseling &amp; Jurisdictional Basis</label>
+                                        <textarea id="lisoCounselingNotes" class="liso-compact-textarea" rows="2" maxlength="2000" placeholder="Explain why this dispute is outside Barangay Tumana KP jurisdiction and summarize the pre-filing counseling provided..."></textarea>
+                                    </div>
+                                    <div style="text-align:right;">
+                                        <button type="button" id="btnLisoReferAgency" class="cd-btn-soft" style="background:#1d4ed8; color:#fff; border-color:#1d4ed8;" onclick="reviewIntake(<?php echo $complaintId; ?>, 'Referred')">Endorse to Agency &amp; Save Counseling</button>
+                                    </div>
+                                </div>
                                 <?php if ($hasResidentAccount): ?>
                                     <div>
                                         <label for="lisoResidentRequest" class="liso-compact-field-label" style="display:block; margin-bottom:5px;">Mensahe sa Residente (kailangan para sa Needs Information)</label>
@@ -1273,6 +1633,20 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                         });
                     </script>
                 </section>
+            <?php elseif (($intakeScreeningMeta['screening_decision'] ?? '') === 'Referred' && !empty($intakeScreeningMeta['liso_endorsement_agency'])): ?>
+                <div class="sophos-card" style="margin-bottom: 18px; border: 1.5px solid #bfdbfe; background: #eff6ff; padding: 14px 18px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <strong style="font-size: 0.92rem; color: #1e3a8a; display: block;">
+                            LISO Pre-Filing Counseling &amp; Endorsed to <?= htmlspecialchars((string) $intakeScreeningMeta['liso_endorsement_agency'], ENT_QUOTES, 'UTF-8') ?>
+                        </strong>
+                        <?php if (!empty($intakeScreeningMeta['liso_counseling_notes'])): ?>
+                            <p style="margin: 4px 0 0; font-size: 0.82rem; color: #1e40af;"><?= nl2br(htmlspecialchars((string) $intakeScreeningMeta['liso_counseling_notes'], ENT_QUOTES, 'UTF-8')) ?></p>
+                        <?php endif; ?>
+                    </div>
+                    <a href="../../../backend/api/complaints/endorsement-slip.php?complaint_id=<?= $complaintId ?>" target="_blank" rel="noopener" class="cd-btn-soft" style="background:#1d4ed8; color:#fff; border-color:#1d4ed8; text-decoration:none; white-space:nowrap;">
+                        🖨️ Print Endorsement Slip
+                    </a>
+                </div>
             <?php elseif ($roleId === 3 && ($intakeScreeningMeta['screening_decision'] ?? '') === 'Eligible'): ?>
                 <div class="sophos-card" style="margin-bottom: 18px; border: 1.5px solid #bbf7d0; background: #f0fdf4; padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -1675,7 +2049,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
                         <!-- Document Canvas Container -->
                         <div style="background: #334155; padding: 16px 12px; height: 680px; overflow: hidden; display: flex; justify-content: center; align-items: stretch; position: relative;">
-                            <iframe id="dualKp16PreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #ffffff; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);" title="KP Form 16 Preview"></iframe>
+                            <iframe id="dualKp16PreviewIframe" loading="lazy" style="width: 100%; height: 100%; border: none; background: #ffffff; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);" title="KP Form 16 Preview"></iframe>
                         </div>
                     </div>
 
@@ -1709,7 +2083,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
 
                         <!-- Document Canvas Container -->
                         <div style="background: #334155; padding: 16px 12px; height: 680px; overflow: hidden; display: flex; justify-content: center; align-items: stretch; position: relative;">
-                            <iframe id="dualTransmittalPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #ffffff; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);" title="Transmittal Letter Preview"></iframe>
+                            <iframe id="dualTransmittalPreviewIframe" loading="lazy" style="width: 100%; height: 100%; border: none; background: #ffffff; border-radius: 4px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);" title="Transmittal Letter Preview"></iframe>
                         </div>
                     </div>
 
@@ -2001,7 +2375,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <button type="button" class="close-btn" onclick="closeKp7DigitalPreviewModal()" aria-label="Close modal">&times;</button>
         </div>
         <div style="flex: 1 1 auto; overflow: hidden; background: #334155; min-height: 0; height: 100%; display: flex;">
-            <iframe id="kp7PreviewIframe" src="" style="width: 100%; height: 100%; border: none; background: #334155;"></iframe>
+            <iframe id="kp7PreviewIframe" loading="lazy" style="width: 100%; height: 100%; border: none; background: #334155;"></iframe>
         </div>
         <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-shrink: 0;">
             <div style="font-size: 0.82rem; color: #64748b;">
@@ -2043,7 +2417,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
         </div>
         <div style="flex: 1 1 auto; overflow: hidden; background: #334155; min-height: 0; height: 100%; display: flex; position: relative;">
-            <iframe id="kpDocPreviewIframe" src="" style="width: 100%; height: 100%; border: none; background: #334155;"></iframe>
+            <iframe id="kpDocPreviewIframe" loading="lazy" style="width: 100%; height: 100%; border: none; background: #334155;"></iframe>
         </div>
         <div class="modal-actions" style="padding: 12px 24px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-shrink: 0;">
             <div id="kpDocModalFooterInfo" style="font-size: 0.82rem; color: #64748b;">
@@ -2130,7 +2504,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             </div>
         </div>
         <div style="flex: 1 1 auto; background: #475569; position: relative;">
-            <iframe id="paanyayaPreviewIframe" src="about:blank" style="width: 100%; height: 100%; border: none; background: #475569;"></iframe>
+            <iframe id="paanyayaPreviewIframe" loading="lazy" style="width: 100%; height: 100%; border: none; background: #475569;"></iframe>
         </div>
         <div class="modal-actions" style="padding: 12px 20px; border-top: 1px solid #e2e8f0; background: #f8fafc; margin-top: 0; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
                 <button type="button" class="btn-secondary" onclick="closePaanyayaPreviewModal()">Close</button>
@@ -3121,7 +3495,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                 </select>
             </div>
             <div class="form-group" style="margin-bottom:14px;">
-                <label for="overrideQueueReason" style="font-weight:700;display:block;margin-bottom:4px;">Override Reason *</label>
+                <label for="overrideQueueReason" style="font-weight:700;display:block;margin-bottom:4px;">Override Reason</label>
                 <textarea id="overrideQueueReason" rows="3" required placeholder="State why this queue assignment is being updated..." style="width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px;"></textarea>
             </div>
             <div class="modal-actions" style="display:flex;justify-content:flex-end;gap:10px;">
@@ -3270,8 +3644,28 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     </label>
                 </div>
 
-                <div style="padding:10px 12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; font-size:0.78rem; color:#065f46; line-height:1.45;">
-                    <strong>Automated Summons Server Dispatch:</strong> Pagkatapos kumpirmahin at i-print, awtomatikong mare-release at mapupunta sa Proof of Service / Summons Server queue ang Paanyaya na ito.
+                <?php
+                    $modalServersList = [];
+                    try {
+                        require_once __DIR__ . '/../../../backend/services/PaanyayaServiceDelivery.php';
+                        $modalServersList = (new PaanyayaServiceDelivery($preparationDb))->servers();
+                    } catch (Throwable $e) {
+                        $modalServersList = [];
+                    }
+                ?>
+                <div id="pnyModalServerWrap" style="padding:10px 12px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; font-size:0.78rem; color:#065f46; line-height:1.45; display:grid; gap:6px;">
+                    <div><strong>Summons Server Dispatch:</strong> Pagkatapos kumpirmahin, awtomatikong mare-release at mapupunta sa Proof of Service queue ang Paanyaya na ito.</div>
+                    <label style="font-weight:700; color:#065f46; display:block;">
+                        Assign Summons Server
+                        <select id="pnyEditAssignedTo" style="width:100%; margin-top:4px; padding:6px 8px; border:1px solid #6ee7b7; border-radius:6px; font-size:0.8rem; background:#ffffff; color:#0f172a;">
+                            <option value="">Auto-assign (Active Summons Server)</option>
+                            <?php foreach ($modalServersList as $srvItem): ?>
+                                <option value="<?= (int) $srvItem['user_id'] ?>">
+                                    <?= htmlspecialchars((string) $srvItem['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
                 </div>
             </div>
 
@@ -3281,7 +3675,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
                     <span>Live Printable A4 Letter Preview (Barangay Tumana Format)</span>
                     <span id="pnyModalPreviewStatus" style="font-size:0.74rem; color:#93c5fd;">Ready</span>
                 </div>
-                <iframe id="paanyayaModalPreviewFrame" title="Editable Paanyaya Letter Preview" style="width:100%; flex:1; border:none; background:#475569;"></iframe>
+                <iframe id="paanyayaModalPreviewFrame" title="Editable Paanyaya Letter Preview" loading="lazy" style="width:100%; flex:1; border:none; background:#475569;"></iframe>
             </div>
         </div>
 
@@ -3290,7 +3684,7 @@ window.AGAP_SETTINGS.conciliation_max_duration_min = <?= (int) $concilMaxDuratio
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <button type="button" class="cd-btn-soft" onclick="printPaanyayaModalFrameOnly()">Print Preview Only</button>
                 <button type="button" id="pnyModalConfirmPrintBtn" class="cd-btn-green" onclick="confirmPrintAndDispatchPaanyaya()">
-                    Confirm, Print &amp; Dispatch to Summons Server
+                    Confirm &amp; Dispatch to Summons Server
                 </button>
             </div>
         </div>

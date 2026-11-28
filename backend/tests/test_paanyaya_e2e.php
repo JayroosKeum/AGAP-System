@@ -157,7 +157,7 @@ register_shutdown_function(static function () use ($db, &$residentUserIds, &$pro
 
 $actors = [];
 $lookup = $db->prepare('SELECT u.user_id, u.role_id, r.role_name FROM users u JOIN roles r ON r.role_id = u.role_id WHERE u.username = ? AND u.status = \'Active\'');
-foreach (['clerk', 'luponmember', 'luponhead', 'summonsserver'] as $username) {
+foreach (['clerk', 'bpso', 'luponmember', 'luponhead', 'summonsserver'] as $username) {
     $lookup->execute([$username]);
     $actors[$username] = $lookup->fetch() ?: throw new RuntimeException("Seed the local $username test account.");
 }
@@ -259,6 +259,15 @@ try {
             check($review['status'] === 422, 'Already-accepted Walk-in does not accept duplicate LISO screening');
         } else {
             check((int) $complaint['submitted_by'] === $residentUserId && $complaint['liso_assigned_duty_session_id'] === null, 'Online intake belongs to the resident account');
+            $bpsoReview = request($base, $actors['bpso'], 'complaints/bpso-review.php', [
+                'complaint_id' => $id,
+                'action' => 'endorse',
+                'respondent_in_tumana' => 1,
+                'identity_verified' => 1,
+                'details_verified' => 1,
+                'notes' => 'Verified complainant identity and Tumana respondent residency.',
+            ]);
+            check($bpsoReview['status'] === 200, 'BPSO validates and endorses online complaint to LISO');
             $details = "/frontend/pages/resident/complaint.php?id=$id";
             $requestData = ['complaint_id' => $id, 'status' => 'Needs Information', 'review_notes' => 'Private screening note for test'];
             check(request($base, $liso, 'complaints/review.php', $requestData)['status'] === 422, 'Online information request needs a resident-facing message');

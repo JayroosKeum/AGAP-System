@@ -65,15 +65,23 @@ if ($method !== 'POST') {
 }
 
 $isRelease = in_array($roleId, [1, 2], true) && ($input['action'] ?? '') === 'release' && $complaintId;
+$isReassign = in_array($roleId, [1, 2], true) && ($input['action'] ?? '') === 'reassign' && $attemptId;
 $isReturn = $roleId === 4 && ($input['action'] ?? '') === 'record' && $attemptId;
-if (!$isRelease && !$isReturn) {
+if (!$isRelease && !$isReassign && !$isReturn) {
     http_response_code(403);
     exit('This service action is unavailable.');
 }
 
 $flash = ['type' => 'success'];
 try {
-    if ($isRelease) {
+    if ($isReassign) {
+        $newServerId = filter_var($input['assigned_to'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+        if ($newServerId <= 0) {
+            throw new DomainException('Select an active Summons Server.');
+        }
+        $serverName = $service->reassign($attemptId, $userId, $newServerId);
+        $flash['message'] = "Paanyaya delivery reassigned to {$serverName}.";
+    } elseif ($isRelease) {
         $rawAssigned = $input['assigned_to'] ?? null;
         $hasExplicitServer = is_string($rawAssigned) || is_int($rawAssigned) ? trim((string) $rawAssigned) !== '' : false;
         if ($hasExplicitServer) {
@@ -99,9 +107,10 @@ try {
     $flash = ['type' => 'error', 'message' => 'Unable to save the service action. Please try again.'];
 }
 
-if ($isRelease) {
-    $_SESSION['paanyaya_preparation_flash'] = $flash + ['complaint_id' => $complaintId, 'invitation_number' => $number ?: 1];
-    header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . $complaintId . '#paanyaya-preparation', true, 303);
+if ($isRelease || $isReassign) {
+    $invNumFlash = filter_var($input['invitation_number'] ?? 1, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 2]]) ?: 1;
+    $_SESSION['paanyaya_preparation_flash'] = $flash + ['complaint_id' => (int) $complaintId, 'invitation_number' => $invNumFlash];
+    header('Location: ../../../frontend/pages/complaints/complaint-details.php?id=' . (int) $complaintId . '#paanyaya-preparation', true, 303);
 } else {
     $_SESSION['paanyaya_service_flash'] = $flash;
     header('Location: ../../../frontend/pages/gps/proof-service.php#paanyaya-service', true, 303);

@@ -64,6 +64,9 @@ class ComplaintController
         }
         $complaint = $this->complaint->getById($id, $includeDeleted);
         if (!$complaint) return false;
+        if (isset($_SESSION['role_name']) && $_SESSION['role_name'] === 'Resident') {
+            unset($complaint['bpso_private_notes'], $complaint['review_notes']);
+        }
         $complaint['parties'] = $this->complaintParty->getByComplaint($id);
         $complaint['attachments'] = $this->attachment->getByComplaint($id);
         $complaint['location'] = $this->location->getByComplaint($id);
@@ -173,7 +176,7 @@ class ComplaintController
         $actorId = (int) ($_SESSION['user_id'] ?? 0);
         $sourcePaanyayaId = null;
         if ($sourcePaanyaya !== '') {
-            if ($actorId < 1 || ($_SESSION['role_name'] ?? '') === 'Resident' || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)) {
+            if ($actorId < 1 || in_array(($_SESSION['role_name'] ?? ''), ['Resident', 'BPSO'], true) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)) {
                 return ['success' => false, 'code' => 'PAANYAYA_HANDOFF_FORBIDDEN', 'message' => 'Only authorized staff may docket a Paanyaya.'];
             }
             $sourcePaanyayaId = filter_var($sourcePaanyaya, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
@@ -220,7 +223,7 @@ class ComplaintController
         $wantsFormalDirect = ($sourcePaanyayaId === null)
             && ($filingTrack === 'formal_mediation' || !empty($data['formal_direct_mediation']));
         if ($wantsFormalDirect) {
-            if ($actorId < 1 || ($_SESSION['role_name'] ?? '') === 'Resident' || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)) {
+            if ($actorId < 1 || in_array(($_SESSION['role_name'] ?? ''), ['Resident', 'BPSO'], true) || !in_array((int) ($_SESSION['role_id'] ?? 0), [1, 2], true)) {
                 return [
                     'success' => false,
                     'code' => 'FORMAL_MEDIATION_FORBIDDEN',
@@ -287,6 +290,14 @@ class ComplaintController
         require_once __DIR__ . '/../models/CaseModel.php';
         require_once __DIR__ . '/../models/CaseStage.php';
         require_once __DIR__ . '/../models/Paanyaya.php';
+        require_once __DIR__ . '/../services/FilingFeeService.php';
+
+        try {
+            $filingFeeService = new FilingFeeService($this->conn);
+            $filingFeeService->assertPayloadSatisfiesPolicy($data);
+        } catch (DomainException $e) {
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
 
         $this->conn->beginTransaction();
         try {
@@ -307,6 +318,8 @@ class ComplaintController
             if ($complaintId <= 0) {
                 throw new RuntimeException('Unable to save the formal complaint.');
             }
+
+            $filingFeeService->ensureReadyForDocketing($complaintId, $data, $actorId);
 
             $typeStmt = $this->conn->prepare('SELECT case_type FROM complaints WHERE complaint_id = ? LIMIT 1');
             $typeStmt->execute([$complaintId]);
@@ -587,6 +600,7 @@ class ComplaintController
             'category_id', 'category_name', 'secondary_category_id', 'secondary_category_name',
             'other_category_specification', 'secondary_other_category_specification',
             'case_type', 'complaint_title', 'compact_view', 'jurisdiction_confirmed',
+            'endorsement_agency', 'counseling_notes',
             'offense_imprisonment_max', 'has_private_offended_party',
             'accused_under_detention', 'habeas_corpus_needed', 'prescription_risk'
         ] as $field) {
@@ -597,9 +611,9 @@ class ComplaintController
         return $this->complaint->review($id, $status, $notes !== '' ? $notes : null, $reviewerId, $isAssignedLisoReview, $requestMessage, $classification);
     }
 
-    public function docket(int $id, int $userId): array
+    public function docket(int $id, int $userId, array $feeData = []): array
     {
-        $result = $this->complaint->docket($id, $userId);
+        $result = $this->complaint->docket($id, $userId, $feeData);
         if ($result['success']) {
             $this->audit->log($userId, 'Formally docketed screened complaint', 'Complaints', $id);
         }

@@ -259,7 +259,7 @@ $modalSeedJson = htmlspecialchars(json_encode($modalSeedPayload, JSON_UNESCAPED_
 
             <?php if ($preparation['prepared_at']): ?>
                 <?php $pdfUrl = $prepEndpoint . '?complaint_id=' . $complaintId . '&invitation_number=' . $invitationNumber . '&version=' . $preparation['document_version']; ?>
-                <details class="paanyaya-prep-preview" <?= !$preparation['ready_at'] ? 'open' : '' ?>>
+                <details class="paanyaya-prep-preview" ontoggle="if(this.open){const f=this.querySelector('iframe[data-src]');if(f&&!f.getAttribute('src')){f.src=f.dataset.src;}}" <?= !$preparation['ready_at'] ? 'open' : '' ?>>
                     <summary>Preview and print invitation (<?= $escapePrep(date('M j, Y, g:i A', strtotime($savedAppointment))) ?>)</summary>
                     <p style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                         <span><a href="<?= $escapePrep($pdfUrl) ?>" target="_blank" rel="noopener">Open saved PDF</a></span>
@@ -274,13 +274,35 @@ $modalSeedJson = htmlspecialchars(json_encode($modalSeedPayload, JSON_UNESCAPED_
                             </button>
                         <?php endif; ?>
                     </p>
-                    <iframe title="Prepared Paanyaya invitation PDF" src="<?= $escapePrep($pdfUrl) ?>" loading="lazy"></iframe>
+                    <iframe title="Prepared Paanyaya invitation PDF" <?= !$preparation['ready_at'] ? ('src="' . $escapePrep($pdfUrl) . '"') : ('data-src="' . $escapePrep($pdfUrl) . '"') ?> loading="lazy"></iframe>
                 </details>
             <?php endif; ?>
 
             <?php if ($paanyayaServiceUnavailable): ?>
                 <p role="status">Paanyaya service is currently unavailable.</p>
             <?php elseif ($preparation['prepared_at']): ?>
+                <?php if ($canManagePaanyayaPrep && $latestService && $serviceOutcome === null && !empty($paanyayaServers)): ?>
+                    <form method="post" action="<?= $serviceEndpoint ?>" style="margin:10px 0 12px; padding:10px 12px; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+                        <input type="hidden" name="csrf_token" value="<?= $prepCsrf ?>">
+                        <input type="hidden" name="complaint_id" value="<?= $complaintId ?>">
+                        <input type="hidden" name="invitation_number" value="<?= $invitationNumber ?>">
+                        <input type="hidden" name="attempt_id" value="<?= (int) $latestService['attempt_id'] ?>">
+                        <input type="hidden" name="action" value="reassign">
+                        <div style="font-size:0.8rem; color:#334155;">
+                            <strong>Assigned Summons Server:</strong> <?= $escapePrep($latestService['server_name'] ?? $serverDisplayText) ?>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <select name="assigned_to" aria-label="Reassign Summons Server" style="padding:5px 8px; border:1px solid #cbd5e1; border-radius:6px; font-size:0.8rem; background:#fff;">
+                                <?php foreach ($paanyayaServers as $srv): ?>
+                                    <option value="<?= (int) $srv['user_id'] ?>" <?= (int) ($latestService['assigned_to'] ?? 0) === (int) $srv['user_id'] ? 'selected' : '' ?>>
+                                        <?= $escapePrep($srv['full_name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <button type="submit" class="cd-btn-soft" style="padding:5px 11px; font-size:0.78rem;">Reassign Server</button>
+                        </div>
+                    </form>
+                <?php endif; ?>
                 <?php if ($paanyayaServiceHistory): ?>
                     <details style="margin: 10px 0;">
                         <summary style="cursor:pointer; font-size:0.82rem; font-weight:700; color:#334155;">Service history (<?= count($paanyayaServiceHistory) ?>)</summary>
