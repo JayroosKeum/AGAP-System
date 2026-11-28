@@ -3512,7 +3512,9 @@
 
 @media (max-width: 720px) {
     .liso-compact-parties-grid,
-    .liso-compact-two-col {
+    .liso-compact-two-col,
+    .cd-overview-top-grid,
+    .cd-overview-parties-grid {
         grid-template-columns: 1fr;
     }
     .liso-compact-party-card {
@@ -3522,4 +3524,131 @@
         max-width: 100%;
         text-align: left;
     }
+}
+
+/* ============================================================================
+   UNIFIED OVERVIEW & WORKFLOW LAYOUT
+   ============================================================================ */
+.cd-btn-blue {
+    background: #2563eb;
+    color: #ffffff !important;
+    border: 1px solid #2563eb;
+    padding: 7px 15px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+.cd-btn-blue:hover {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+}
+
+.cd-overview-top-grid {
+    display: grid;
+    grid-template-columns: 1.55fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.cd-overview-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 16px;
+}
+
+.cd-overview-top-grid .cd-overview-card {
+    margin-bottom: 0;
+}
+
+.cd-overview-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.cd-overview-card-kicker {
+    margin: 0;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.cd-overview-card-tag {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.cd-overview-card-tag.is-blue {
+    color: #2563eb;
+    font-weight: 700;
+}
+
+.cd-overview-narrative {
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #0f172a;
+    white-space: pre-wrap;
+    font-weight: 500;
+}
+
+.cd-overview-relief {
+    margin: 0;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    color: #334155;
+    white-space: pre-wrap;
+}
+
+.cd-overview-relief.is-empty {
+    color: #64748b;
+    font-style: italic;
+}
+
+.cd-overview-parties-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.cd-ov-party-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 13px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cd-ov-party-role {
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+.cd-ov-party-role.complainant { color: #2563eb; }
+.cd-ov-party-role.respondent { color: #dc2626; }
+.cd-ov-party-role.witness { color: #7c3aed; }
+
+.cd-ov-party-name {
+    font-size: 0.94rem;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.cd-ov-party-meta {
+    font-size: 0.78rem;
+    color: #64748b;
+    line-height: 1.45;
 }

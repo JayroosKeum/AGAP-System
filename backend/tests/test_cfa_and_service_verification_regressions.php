@@ -2832,6 +2832,105 @@ assertReg(
     'Execution motion past 6 months returns MTC referral lapse'
 );
 
+// 20: Finalizing Step 2 minutes locks only Step 2 while keeping Step 1 Attendance & Step 3 Outcome unlocked
+[$comp25Id, $case25Id] = $createOrder4Case('Step 2 Only Lock', 'Mediation', 'In Mediation', '20S2');
+$db->prepare("INSERT INTO hearings (case_id, hearing_type, hearing_date, venue, status) VALUES (?, 'Mediation', DATE_SUB(NOW(), INTERVAL 1 HOUR), 'Lupon Hall', 'Scheduled')")->execute([$case25Id]);
+$h25Id = (int) $db->lastInsertId();
+$db->prepare("INSERT INTO summon_deliveries (case_id, hearing_id, resident_id, party_type, form_type, delivery_status, attempt_number) VALUES (?, ?, ?, 'Complainant', 'KP Form 8', 'Served Personal', 1), (?, ?, ?, 'Respondent', 'KP Form 9', 'Served Personal', 1)")
+    ->execute([$case25Id, $h25Id, $resComp, $case25Id, $h25Id, $resResp1]);
+
+$fin25 = regHttpRequest($baseUrl, $clerkSession, 'hearings/minutes.php', [
+    'hearing_id' => $h25Id,
+    'case_id' => $case25Id,
+    'session_type' => 'Mediation',
+    'main_dispute_identified' => 'Locked Dispute Summary',
+    'settlement_discussion_notes' => 'Locked Step 2 Narrative Text',
+    'session_outcome' => 'Continue Mediation',
+    'status' => 'Finalized',
+]);
+
+// Attempting a regular minutes save afterwards must fail and preserve Step 2 narrative
+$overwrite25 = regHttpRequest($baseUrl, $clerkSession, 'hearings/minutes.php', [
+    'hearing_id' => $h25Id,
+    'case_id' => $case25Id,
+    'session_type' => 'Mediation',
+    'main_dispute_identified' => 'Tampered Dispute',
+    'settlement_discussion_notes' => 'Tampered Narrative',
+    'session_outcome' => 'Settled',
+    'status' => 'Finalized',
+]);
+
+// Multipart upload attempt to upload-minutes-evidence.php must be rejected (409) because Step 2 is Finalized
+$boundary25 = '----AgapTestBoundary' . $token;
+$multipart25 = "--{$boundary25}\r\n"
+    . "Content-Disposition: form-data; name=\"hearing_id\"\r\n\r\n{$h25Id}\r\n"
+    . "--{$boundary25}\r\n"
+    . "Content-Disposition: form-data; name=\"case_id\"\r\n\r\n{$case25Id}\r\n"
+    . "--{$boundary25}\r\n"
+    . "Content-Disposition: form-data; name=\"document_type\"\r\n\r\nEvidence\r\n"
+    . "--{$boundary25}\r\n"
+    . "Content-Disposition: form-data; name=\"file\"; filename=\"proof.png\"\r\n"
+    . "Content-Type: image/png\r\n\r\n"
+    . "\x89PNG\r\n\x1a\n\r\n"
+    . "--{$boundary25}--\r\n";
+$upCtx25 = stream_context_create([
+    'http' => [
+        'method' => 'POST',
+        'header' => [
+            'Accept: application/json',
+            'X-Requested-With: XMLHttpRequest',
+            'Cookie: PHPSESSID=' . $clerkSession['id'],
+            'X-CSRF-Token: ' . $clerkSession['csrf_token'],
+            'Content-Type: multipart/form-data; boundary=' . $boundary25,
+            'Content-Length: ' . strlen($multipart25),
+        ],
+        'content' => $multipart25,
+        'ignore_errors' => true,
+        'timeout' => 20,
+    ],
+]);
+$upStream25 = @fopen($baseUrl . '/backend/api/hearings/upload-minutes-evidence.php', 'rb', false, $upCtx25);
+$upMeta25 = $upStream25 ? stream_get_meta_data($upStream25) : [];
+$upBody25 = $upStream25 ? (string) stream_get_contents($upStream25) : '';
+if ($upStream25) {
+    fclose($upStream25);
+}
+$upStatus25 = !empty($upMeta25['wrapper_data'][0]) ? (int) explode(' ', (string) $upMeta25['wrapper_data'][0])[1] : 0;
+
+// Step 1 Attendance update must still succeed while case is active
+$att25 = regHttpRequest($baseUrl, $clerkSession, 'hearings/attendance.php', [
+    'hearing_id' => $h25Id,
+    'parties' => [
+        ['resident_id' => $resComp, 'party_type' => 'Complainant', 'attendance_status' => 'Present'],
+        ['resident_id' => $resResp1, 'party_type' => 'Respondent', 'attendance_status' => 'Present'],
+    ],
+]);
+
+// Step 3 Outcome update via update_outcome must succeed without modifying finalized Step 2 minutes
+$out25 = regHttpRequest($baseUrl, $clerkSession, 'hearings/minutes.php', [
+    'action' => 'update_outcome',
+    'hearing_id' => $h25Id,
+    'case_id' => $case25Id,
+    'session_outcome' => 'Failed',
+    'outcome_remarks' => 'Step 3 updated after Step 2 finalization.',
+    'actual_end_time' => '15:30',
+]);
+$minRow25 = $db->query("SELECT status, main_dispute_identified, settlement_discussion_notes, session_outcome, outcome_remarks, actual_end_time FROM hearing_minutes WHERE hearing_id = {$h25Id}")->fetch(PDO::FETCH_ASSOC);
+
+assertReg($fin25['status'] === 200 && !empty($fin25['json']['success']), 'Test 20a: Finalize Step 2 minutes succeeds (status=' . $fin25['status'] . ', body=' . $fin25['body'] . ')');
+assertReg(empty($overwrite25['json']['success']), 'Test 20b: Re-saving minutes without update_outcome is rejected (status=' . $overwrite25['status'] . ')');
+assertReg($upStatus25 === 409, 'Test 20c: Evidence upload is blocked with 409 after Step 2 finalization (status=' . $upStatus25 . ', body=' . $upBody25 . ')');
+assertReg($att25['status'] === 200 && !empty($att25['json']['success']), 'Test 20d: Step 1 attendance remains editable after Step 2 finalization (status=' . $att25['status'] . ', body=' . $att25['body'] . ')');
+assertReg($out25['status'] === 200 && !empty($out25['json']['success']), 'Test 20e: Step 3 update_outcome succeeds after Step 2 finalization (status=' . $out25['status'] . ', body=' . $out25['body'] . ')');
+assertReg(
+    ($minRow25['status'] ?? '') === 'Finalized'
+    && ($minRow25['main_dispute_identified'] ?? '') === 'Locked Dispute Summary'
+    && ($minRow25['settlement_discussion_notes'] ?? '') === 'Locked Step 2 Narrative Text'
+    && ($minRow25['session_outcome'] ?? '') === 'Failed'
+    && ($minRow25['outcome_remarks'] ?? '') === 'Step 3 updated after Step 2 finalization.',
+    'Finalizing hearing minutes locks only Step 2 (narrative & uploads) while keeping Step 1 Attendance and Step 3 Outcome editable on active cases'
+);
+
 foreach ([$case20Id, $case21Id, $case22Id, $case23Id, $case24Id] as $c4CleanupId) {
     foreach ($db->query("SELECT file_path FROM generated_documents WHERE case_id = {$c4CleanupId}")->fetchAll(PDO::FETCH_COLUMN) as $f4) {
         $createdFiles[] = dirname(__DIR__, 2) . '/' . ltrim((string) $f4, '/');

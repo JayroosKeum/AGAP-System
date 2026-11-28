@@ -15,13 +15,16 @@ $db = (new Database())->connect();
 $userId = (int) $_SESSION['user_id'];
 
 function isConcludedWorkspaceRecord(PDO $db, int $caseId, ?int $hearingId = null): bool {
-    $stmt = $db->prepare('SELECT c.case_status, h.status, h.queue_status FROM cases c LEFT JOIN hearings h ON h.hearing_id = ? AND h.case_id = c.case_id WHERE c.case_id = ? LIMIT 1');
+    $stmt = $db->prepare('SELECT c.case_status, h.status, h.queue_status,
+            EXISTS(SELECT 1 FROM hearing_minutes hm WHERE hm.hearing_id = h.hearing_id AND hm.status = \'Finalized\') AS minutes_finalized
+        FROM cases c LEFT JOIN hearings h ON h.hearing_id = ? AND h.case_id = c.case_id WHERE c.case_id = ? LIMIT 1');
     $stmt->execute([$hearingId, $caseId]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) return true;
     return in_array((string) $row['case_status'], ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'Repudiated'], true)
         || in_array((string) ($row['status'] ?? ''), ['Completed', 'Concluded'], true)
-        || in_array((string) ($row['queue_status'] ?? ''), ['Concluded', 'Completed'], true);
+        || in_array((string) ($row['queue_status'] ?? ''), ['Concluded', 'Completed'], true)
+        || !empty($row['minutes_finalized']);
 }
 
 // GET: Retrieve uploaded documents for a hearing

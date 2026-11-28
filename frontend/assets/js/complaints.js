@@ -1144,11 +1144,13 @@ async function loadComplaintDetails() {
         const reqWrap = document.getElementById('complaintRequestedResolutionWrap');
         const reqEl = document.getElementById('complaintRequestedResolution');
         if (reqWrap && reqEl) {
+            reqWrap.style.display = 'block';
             if (data.requested_resolution && data.requested_resolution.trim()) {
-                reqWrap.style.display = 'block';
+                reqEl.classList.remove('is-empty');
                 reqEl.textContent = data.requested_resolution;
             } else {
-                reqWrap.style.display = 'none';
+                reqEl.classList.add('is-empty');
+                reqEl.textContent = 'Walang partikular na kahilingan na nakatala.';
             }
         }
 
@@ -1440,23 +1442,23 @@ function renderParties(parties) {
 
         const isMinor = Number(party.is_minor) === 1 || (party.age !== undefined && party.age !== null && party.age !== '' && Number(party.age) < 18);
         const guardianInfo = party.guardian_name ? `Guardian: ${escapeHtml(party.guardian_name)}${party.guardian_relationship ? ` (${escapeHtml(party.guardian_relationship)})` : ''}` : '';
-        const prefContact = party.preferred_contact ? `${escapeHtml(party.preferred_contact)}` : '';
-        const ageText = (party.age !== undefined && party.age !== null && party.age !== '') ? `${party.age} yrs` : '';
+        const isVerified = Boolean(party.resident_id || party.verified);
+        const roleLabel = typeClass === 'complainant'
+            ? 'May Sumbong (Complainant)'
+            : (typeClass === 'respondent' ? 'Ipinagsusumbong (Respondent)' : 'Saksi (Witness)');
+        const subMetaParts = [escapeHtml(fullAddress)];
+        subMetaParts.push(isVerified ? 'Verified Resident' : 'Recorded');
+        if (party.address_requires_verification) subMetaParts.push('Needs Verification');
 
         cards += `
-            <div class="party-entry-card">
-                <div class="party-entry-top">
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                        <span class="party-pill-tag ${typeClass}">${escapeHtml((party.party_type || 'Party').toUpperCase())}</span>
-                        ${isPrimary ? '<span class="party-sub-badge">Primary</span>' : ''}
-                        ${isMinor ? '<span style="background:#fee2e2;color:#991b1b;font-size:0.7rem;font-weight:700;padding:2px 6px;border-radius:4px;">Minor</span>' : ''}
-                        ${ageText ? `<span style="font-size:0.75rem;color:#64748b;font-weight:600;">${ageText}</span>` : ''}
-                    </div>
+            <div class="cd-ov-party-card">
+                <span class="cd-ov-party-role ${typeClass}">${roleLabel}</span>
+                <div class="cd-ov-party-name">${escapeHtml(party.resident_name || 'Unnamed Party')}${party.suffix ? ' ' + escapeHtml(party.suffix) : ''}</div>
+                <div class="cd-ov-party-meta">
+                    ${subMetaParts.join(' &middot; ')}
+                    ${isMinor ? ' &middot; <span style="color:#b91c1c;font-weight:700;">Minor</span>' : ''}
                 </div>
-                <div class="party-entry-name">${escapeHtml(party.resident_name || 'Unnamed Party')}${party.suffix ? ' ' + escapeHtml(party.suffix) : ''}</div>
-                <div class="party-entry-meta">Tel: ${party.contact_unknown ? 'Contact: Unknown' : escapeHtml(party.contact_no || 'No contact on file')}${prefContact ? ' &bull; ' + prefContact : ''}</div>
-                <div class="party-entry-meta">${escapeHtml(fullAddress)}${party.address_requires_verification ? ' <span style="color:#b45309;font-weight:600;">(Needs Verification)</span>' : ''}</div>
-                ${guardianInfo ? `<div class="party-entry-meta" style="color:#4338ca;font-weight:600;font-size:0.78rem;">${guardianInfo}</div>` : ''}
+                ${guardianInfo ? `<div class="cd-ov-party-meta" style="color:#4338ca;font-weight:600;">${guardianInfo}</div>` : ''}
             </div>
         `;
     });
@@ -1921,6 +1923,8 @@ function renderCaseWorkspace(workspace, complaint) {
 
     if (tabLabel) {
         tabLabel.innerHTML = `Outcome ${tabPillHtml}`;
+        const outBadgeEl = document.getElementById('cdOutcomesBadge');
+        if (outBadgeEl) outBadgeEl.style.display = 'none';
     }
 
     const arbProgWs = document.getElementById('arbitrationProgressiveWorkspace');
@@ -3345,6 +3349,7 @@ function syncUnifiedComplaintHeader(data, docketNum, displayStage, hasFormalDock
             nextLink.onclick = () => switchCaseTab('tab-conciliation');
             if (primaryBtn && !isReadOnly) {
                 primaryBtn.style.display = '';
+                primaryBtn.className = 'cd-btn-blue';
                 primaryBtn.innerHTML = '<span>+ Schedule Conciliation</span>';
                 primaryBtn.onclick = () => openEmbeddedScheduleModal('Conciliation');
             }
@@ -3353,6 +3358,7 @@ function syncUnifiedComplaintHeader(data, docketNum, displayStage, hasFormalDock
             nextLink.onclick = () => switchCaseTab('tab-mediation');
             if (primaryBtn && !isReadOnly) {
                 primaryBtn.style.display = '';
+                primaryBtn.className = 'cd-btn-blue';
                 primaryBtn.innerHTML = '<span>+ Schedule Mediation</span>';
                 primaryBtn.onclick = () => openEmbeddedScheduleModal('Mediation');
             }

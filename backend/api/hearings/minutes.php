@@ -47,14 +47,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         agapRequireHearingAccess($db, (int) $targetHearingId, 'write', true);
     }
 
-    $result = (($input['action'] ?? '') === 'book_next_hearing')
-        ? $model->bookNextHearing($input, $userId)
-        : $model->save($input, $userId);
+    $actionType = (string) ($input['action'] ?? '');
+    if ($actionType === 'book_next_hearing') {
+        $result = $model->bookNextHearing($input, $userId);
+        $auditAction = 'Booked next hearing from concluded session';
+    } elseif ($actionType === 'update_outcome') {
+        $result = $model->updateOutcome($input, $userId);
+        $auditAction = 'Updated session outcome after finalizing minutes';
+    } else {
+        $result = $model->save($input, $userId);
+        $auditAction = 'Recorded hearing session minutes';
+    }
     if ($result['success']) {
-        $action = (($input['action'] ?? '') === 'book_next_hearing')
-            ? 'Booked next hearing from concluded session'
-            : 'Recorded hearing session minutes';
-        (new AuditService())->log($userId, $action, 'Hearings', (int) ($input['hearing_id'] ?? 0));
+        (new AuditService())->log($userId, $auditAction, 'Hearings', (int) ($input['hearing_id'] ?? 0));
     }
 
     http_response_code($result['success'] ? 200 : 422);

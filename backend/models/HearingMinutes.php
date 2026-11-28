@@ -512,92 +512,10 @@ class HearingMinutes
                 }
             }
 
-            // Direct Next Hearing Booking from Minutes of Meeting (RA 7160 Sec. 410)
-            // When "No Settlement -> Set Another Meeting" is selected and date/time are provided,
-            // immediately schedule the 2nd/3rd mediation session.
-            // Redundant summons (KP Form 9) is suppressed because both parties are personally notified.
-            $nextHearingBooked = false;
-            $nextHearingInfo = null;
-            $nextHearingError = null;
-
-            $shouldBookNext = (
-                (!empty($data['book_next_hearing']) || in_array($outcome, ['Continue Mediation', 'Continue Conciliation'], true)) &&
-                !empty($data['next_hearing_date']) &&
-                !empty($data['next_hearing_time'])
-            );
-
-            if ($shouldBookNext) {
-                $nextDate = trim((string) $data['next_hearing_date']);
-                $nextTime = trim((string) $data['next_hearing_time']);
-                $nextDateTime = $nextDate . ' ' . (strlen($nextTime) === 5 ? ($nextTime . ':00') : $nextTime);
-                $targetType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
-
-                // Verify if a subsequent hearing is already booked for this case & stage
-                $checkNext = $this->conn->prepare("
-                    SELECT hearing_id, hearing_date, venue FROM hearings
-                    WHERE case_id = ? AND hearing_type = ? AND hearing_date > ? AND status NOT IN ('Cancelled', 'Office Cancelled')
-                    ORDER BY hearing_date ASC LIMIT 1
-                ");
-                $checkNext->execute([$caseId, $targetType, $hearing['hearing_date']]);
-                $alreadyScheduled = $checkNext->fetch(PDO::FETCH_ASSOC);
-
-                if (!$alreadyScheduled) {
-                    require_once __DIR__ . '/Hearing.php';
-                    require_once __DIR__ . '/../services/DeadlineService.php';
-
-                    try {
-                        $hearingModel = new Hearing($this->conn);
-                        $venue = trim((string) ($data['next_hearing_venue'] ?? '')) ?: ($hearing['venue'] ?: 'Lupon Court Room');
-                        $presiderId = !empty($data['next_hearing_presider_id']) ? (int) $data['next_hearing_presider_id'] : ($hearing['presiding_officer_id'] ?? null);
-
-                        $schedValues = [
-                            'case_id' => $caseId,
-                            'hearing_type' => $targetType,
-                            'hearing_date' => $nextDateTime,
-                            'venue' => $venue,
-                            'remarks' => sprintf('Directly booked from %s session minutes (parties personally notified; summons KP Form 9 suppressed under RA 7160 Sec. 410).', $sessionType),
-                            'presiding_officer_id' => $presiderId,
-                            'duration_minutes' => 45,
-                            'schedule_reviewed' => '1'
-                        ];
-
-                        $deadline = DeadlineService::deadlineForHearing($targetType, $nextDateTime, $this->conn, $caseId);
-                        $bookResult = $hearingModel->createProgression($schedValues, $deadline, $userId);
-
-                        if (!empty($bookResult['success'])) {
-                            $nextHearingBooked = true;
-                            $nextHearingInfo = [
-                                'hearing_id' => $bookResult['hearing_id'],
-                                'sequence' => $bookResult['sequence'] ?? 2,
-                                'hearing_date' => $nextDateTime,
-                                'hearing_type' => $targetType,
-                                'venue' => $venue,
-                                'summons_suppressed' => true
-                            ];
-                            $ord = $hearingModel->ordinal($bookResult['sequence'] ?? 2);
-                            $this->logCaseHistory(
-                                $caseId,
-                                $hearing['case_status'] ?? 'Mediation',
-                                "Scheduled {$ord} {$targetType} for {$nextDateTime} directly from session minutes. Summons (KP Form 9) suppressed under RA 7160 Sec. 410.",
-                                $userId
-                            );
-                        } else {
-                            $nextHearingError = $bookResult['message'] ?? 'Unable to schedule next hearing session.';
-                        }
-                    } catch (Throwable $schedEx) {
-                        error_log('Error booking next hearing from minutes: ' . $schedEx->getMessage());
-                        $nextHearingError = $schedEx->getMessage();
-                    }
-                } else {
-                    $nextHearingBooked = true;
-                    $nextHearingInfo = [
-                        'hearing_id' => $alreadyScheduled['hearing_id'],
-                        'hearing_date' => $alreadyScheduled['hearing_date'],
-                        'venue' => $alreadyScheduled['venue'],
-                        'already_existed' => true
-                    ];
-                }
-            }
+            $nextBook = $this->maybeBookNextHearingFromMinutes($hearing, $data, $userId, $caseId, $sessionType, $outcome);
+            $nextHearingBooked = $nextBook['booked'];
+            $nextHearingInfo = $nextBook['info'];
+            $nextHearingError = $nextBook['error'];
 
             $response = [
                 'success' => true,
@@ -636,6 +554,277 @@ class HearingMinutes
             }
             error_log('HearingMinutes save error: ' . $e->getMessage());
             return ['success' => false, 'message' => 'Unable to save hearing minutes: ' . $e->getMessage()];
+        }
+    }
+
+    private function maybeBookNextHearingFromMinutes(array $hearing, array $data, int $userId, int $caseId, string $sessionType, string $outcome): array
+    {
+        $nextHearingBooked = false;
+        $nextHearingInfo = null;
+        $nextHearingError = null;
+
+        $shouldBookNext = (
+            (!empty($data['book_next_hearing']) || in_array($outcome, ['Continue Mediation', 'Continue Conciliation'], true)) &&
+            !empty($data['next_hearing_date']) &&
+            !empty($data['next_hearing_time'])
+        );
+
+        if ($shouldBookNext) {
+            $nextDate = trim((string) $data['next_hearing_date']);
+            $nextTime = trim((string) $data['next_hearing_time']);
+            $nextDateTime = $nextDate . ' ' . (strlen($nextTime) === 5 ? ($nextTime . ':00') : $nextTime);
+            $targetType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+
+            $checkNext = $this->conn->prepare("
+                SELECT hearing_id, hearing_date, venue FROM hearings
+                WHERE case_id = ? AND hearing_type = ? AND hearing_date > ? AND status NOT IN ('Cancelled', 'Office Cancelled')
+                ORDER BY hearing_date ASC LIMIT 1
+            ");
+            $checkNext->execute([$caseId, $targetType, $hearing['hearing_date']]);
+            $alreadyScheduled = $checkNext->fetch(PDO::FETCH_ASSOC);
+
+            if (!$alreadyScheduled) {
+                require_once __DIR__ . '/Hearing.php';
+                require_once __DIR__ . '/../services/DeadlineService.php';
+
+                try {
+                    $hearingModel = new Hearing($this->conn);
+                    $venue = trim((string) ($data['next_hearing_venue'] ?? '')) ?: ($hearing['venue'] ?: 'Lupon Court Room');
+                    $presiderId = !empty($data['next_hearing_presider_id']) ? (int) $data['next_hearing_presider_id'] : ($hearing['presiding_officer_id'] ?? null);
+
+                    $schedValues = [
+                        'case_id' => $caseId,
+                        'hearing_type' => $targetType,
+                        'hearing_date' => $nextDateTime,
+                        'venue' => $venue,
+                        'remarks' => sprintf('Directly booked from %s session minutes (parties personally notified; summons KP Form 9 suppressed under RA 7160 Sec. 410).', $sessionType),
+                        'presiding_officer_id' => $presiderId,
+                        'duration_minutes' => 45,
+                        'schedule_reviewed' => '1'
+                    ];
+
+                    $deadline = DeadlineService::deadlineForHearing($targetType, $nextDateTime, $this->conn, $caseId);
+                    $bookResult = $hearingModel->createProgression($schedValues, $deadline, $userId);
+
+                    if (!empty($bookResult['success'])) {
+                        $nextHearingBooked = true;
+                        $nextHearingInfo = [
+                            'hearing_id' => $bookResult['hearing_id'],
+                            'sequence' => $bookResult['sequence'] ?? 2,
+                            'hearing_date' => $nextDateTime,
+                            'hearing_type' => $targetType,
+                            'venue' => $venue,
+                            'summons_suppressed' => true
+                        ];
+                        $ord = $hearingModel->ordinal($bookResult['sequence'] ?? 2);
+                        $this->logCaseHistory(
+                            $caseId,
+                            $hearing['case_status'] ?? 'Mediation',
+                            "Scheduled {$ord} {$targetType} for {$nextDateTime} directly from session minutes. Summons (KP Form 9) suppressed under RA 7160 Sec. 410.",
+                            $userId
+                        );
+                    } else {
+                        $nextHearingError = $bookResult['message'] ?? 'Unable to schedule next hearing session.';
+                    }
+                } catch (Throwable $schedEx) {
+                    error_log('Error booking next hearing from minutes: ' . $schedEx->getMessage());
+                    $nextHearingError = $schedEx->getMessage();
+                }
+            } else {
+                $nextHearingBooked = true;
+                $nextHearingInfo = [
+                    'hearing_id' => $alreadyScheduled['hearing_id'],
+                    'hearing_date' => $alreadyScheduled['hearing_date'],
+                    'venue' => $alreadyScheduled['venue'],
+                    'already_existed' => true
+                ];
+            }
+        }
+
+        return ['booked' => $nextHearingBooked, 'info' => $nextHearingInfo, 'error' => $nextHearingError];
+    }
+
+    public function updateOutcome(array $data, int $userId): array
+    {
+        $hearingId = (int) ($data['hearing_id'] ?? 0);
+        if ($hearingId <= 0) {
+            return ['success' => false, 'message' => 'Valid hearing ID is required.'];
+        }
+
+        $hStmt = $this->conn->prepare("
+            SELECT h.hearing_id, h.case_id, h.hearing_type, h.hearing_date, h.venue, h.presiding_officer_id, h.status, h.queue_status,
+                   c.case_status, c.case_number, c.complaint_id
+            FROM hearings h
+            INNER JOIN cases c ON c.case_id = h.case_id
+            WHERE h.hearing_id = ?
+            LIMIT 1
+        ");
+        $hStmt->execute([$hearingId]);
+        $hearing = $hStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$hearing) {
+            return ['success' => false, 'message' => 'Specified hearing session record was not found.'];
+        }
+
+        $finalCaseStatuses = ['Settled', 'Resolved', 'Completed', 'Dismissed', 'Archived', 'CFA Issued', 'For CFA', 'Repudiated', 'Arbitration', 'Arbitration Award', 'Closed', 'Endorsed to Court', 'Certified'];
+        if (in_array((string) $hearing['case_status'], $finalCaseStatuses, true)) {
+            return ['success' => false, 'message' => 'This concluded case is read-only; outcome cannot be changed.'];
+        }
+
+        $minStmt = $this->conn->prepare("SELECT * FROM hearing_minutes WHERE hearing_id = ? LIMIT 1");
+        $minStmt->execute([$hearingId]);
+        $existing = $minStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$existing || ($existing['status'] ?? '') !== 'Finalized') {
+            return $this->save($data, $userId);
+        }
+
+        $allowedOutcomes = [
+            'Pending', 'Continue Mediation', 'Continue Conciliation', 'Continue Arbitration',
+            'Settled', 'Failed', 'Party Absent', 'Rescheduled',
+            'Elevate to Pangkat', 'Dismissed', 'Pending CFA', 'Arbitration', 'Arbitration Award', 'Repudiated'
+        ];
+        $outcome = trim((string) ($data['session_outcome'] ?? $existing['session_outcome'] ?? 'Pending'));
+        if (!in_array($outcome, $allowedOutcomes, true)) {
+            $outcome = 'Pending';
+        }
+
+        if ($outcome === 'Pending CFA') {
+            $checkConcilStmt = $this->conn->prepare("
+                SELECT hearing_id FROM hearings
+                WHERE case_id = ? AND hearing_type = 'Conciliation' AND status NOT IN ('Cancelled', 'Office Cancelled')
+                LIMIT 1
+            ");
+            $checkConcilStmt->execute([(int) $hearing['case_id']]);
+            if (!$checkConcilStmt->fetchColumn()) {
+                return ['success' => false, 'message' => 'Cannot finalize session with Pending CFA before a Conciliation hearing has been conducted.'];
+            }
+        }
+
+        $remarks = mb_substr(trim(strip_tags((string) ($data['outcome_remarks'] ?? ''))), 0, 5000);
+        $rawEnd = trim((string) ($data['actual_end_time'] ?? ''));
+        $actualEndTime = null;
+        if ($rawEnd !== '') {
+            $datePart = substr((string) ($hearing['hearing_date'] ?? date('Y-m-d')), 0, 10);
+            $actualEndTime = (strlen($rawEnd) <= 5) ? ($datePart . ' ' . $rawEnd . ':00') : date('Y-m-d H:i:s', strtotime($rawEnd));
+        }
+
+        $caseId = (int) $hearing['case_id'];
+        $sessionType = (string) ($existing['session_type'] ?? $hearing['hearing_type'] ?? '1st Mediation');
+
+        try {
+            $this->conn->beginTransaction();
+
+            $this->conn->prepare("
+                UPDATE hearing_minutes
+                SET session_outcome = ?,
+                    outcome_remarks = ?,
+                    actual_end_time = COALESCE(?, actual_end_time),
+                    recorded_by = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE hearing_id = ? AND status = 'Finalized'
+            ")->execute([$outcome, $remarks ?: null, $actualEndTime, $userId, $hearingId]);
+
+            if ($actualEndTime !== null) {
+                $this->conn->prepare("UPDATE hearings SET actual_end_time = ? WHERE hearing_id = ?")
+                    ->execute([$actualEndTime, $hearingId]);
+            }
+
+            if ($outcome === 'Settled') {
+                $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+                    VALUES (?, ?, 'Awaiting Outcome', 'Settled', ?, NULL)
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'Awaiting Outcome',
+                        outcome = 'Settled',
+                        outcome_remarks = VALUES(outcome_remarks),
+                        completed_at = NULL,
+                        updated_at = CURRENT_TIMESTAMP
+                ")->execute([
+                    $caseId,
+                    $stageType,
+                    $remarks ?: 'Agreement reached in hearing outcome; pending signed and attested Amicable Settlement (KP Form 16).'
+                ]);
+            } elseif ($outcome === 'Dismissed') {
+                $this->conn->prepare("UPDATE cases SET case_status = 'Dismissed', updated_at = NOW() WHERE case_id = ?")->execute([$caseId]);
+                $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Dismissed', co.updated_at = NOW() WHERE c.case_id = ?")->execute([$caseId]);
+                $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+                    VALUES (?, ?, 'Completed', 'Dismissed', ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'Completed',
+                        outcome = 'Dismissed',
+                        outcome_remarks = VALUES(outcome_remarks),
+                        completed_at = COALESCE(completed_at, NOW()),
+                        updated_at = CURRENT_TIMESTAMP
+                ")->execute([$caseId, $stageType, $remarks ?: 'Case dismissed during hearing session.']);
+            } elseif ($outcome === 'Arbitration') {
+                $this->conn->prepare("UPDATE cases SET case_status = 'Arbitration', updated_at = NOW() WHERE case_id = ?")->execute([$caseId]);
+                $this->conn->prepare("UPDATE complaints co INNER JOIN cases c ON c.complaint_id = co.complaint_id SET co.status = 'Arbitration', co.updated_at = NOW() WHERE c.case_id = ?")->execute([$caseId]);
+                $stageType = ($hearing['hearing_type'] === 'Conciliation') ? 'Conciliation' : 'Mediation';
+                $this->conn->prepare("
+                    INSERT INTO case_stages (case_id, stage_type, stage_status, outcome, outcome_remarks, completed_at)
+                    VALUES (?, ?, 'Completed', 'Arbitration', ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        stage_status = 'Completed',
+                        outcome = 'Arbitration',
+                        outcome_remarks = VALUES(outcome_remarks),
+                        completed_at = COALESCE(completed_at, NOW()),
+                        updated_at = CURRENT_TIMESTAMP
+                ")->execute([$caseId, $stageType, $remarks ?: 'Parties agreed to submit dispute to Voluntary Arbitration.']);
+            }
+
+            $this->logCaseHistory($caseId, $hearing['case_status'] ?? 'Mediation', "Updated Step 3 outcome for hearing #{$hearingId} ({$sessionType}) to {$outcome} while preserving finalized minutes.", $userId);
+            $this->conn->commit();
+
+            if (in_array($outcome, ['Elevate to Pangkat', 'Failed'], true)
+                && in_array($hearing['hearing_type'], ['Initial Hearing', 'Mediation'], true)) {
+                $this->syncMediationReferralReadiness($caseId, $remarks ?: null);
+            }
+
+            $rescheduledHearingInfo = null;
+            if ($outcome === 'Dismissed') {
+                $this->generateKp21OnDismissed($caseId, $hearingId, $userId);
+            } elseif ($outcome === 'Party Absent') {
+                $this->handlePartyAbsentOutcome($hearing, $data, $userId, $sessionType, $remarks);
+            } elseif ($outcome === 'Rescheduled') {
+                $rescheduledHearingInfo = $this->handleRescheduledSession($hearing, $data, $userId, $remarks);
+            }
+
+            $nextBook = $this->maybeBookNextHearingFromMinutes($hearing, $data, $userId, $caseId, $sessionType, $outcome);
+            $response = [
+                'success' => true,
+                'message' => 'Session outcome updated cleanly. Step 2 minutes remain finalized and locked.',
+                'hearing_id' => $hearingId,
+                'outcome' => $outcome,
+                'status' => 'Finalized',
+                'case_id' => $caseId
+            ];
+            if (!empty($nextBook['booked']) && !empty($nextBook['info'])) {
+                $response['next_hearing_booked'] = true;
+                $response['next_hearing'] = $nextBook['info'];
+                $response['message'] .= !empty($nextBook['info']['already_existed'])
+                    ? ' (Next session is already scheduled).'
+                    : ' Next session was also booked successfully.';
+            } elseif (!empty($nextBook['error'])) {
+                $response['next_hearing_error'] = $nextBook['error'];
+                $response['message'] .= ' (Note: Next hearing could not be scheduled: ' . $nextBook['error'] . ')';
+            }
+            if ($rescheduledHearingInfo) {
+                if (!empty($rescheduledHearingInfo['success'])) {
+                    $response['rescheduled_hearing'] = $rescheduledHearingInfo;
+                } else {
+                    $response['reschedule_error'] = $rescheduledHearingInfo['message'] ?? 'Unable to create rescheduled hearing.';
+                }
+            }
+
+            return $response;
+        } catch (Throwable $e) {
+            if ($this->conn->inTransaction()) {
+                $this->conn->rollBack();
+            }
+            error_log('HearingMinutes updateOutcome error: ' . $e->getMessage());
+            return ['success' => false, 'message' => 'Unable to update session outcome: ' . $e->getMessage()];
         }
     }
 

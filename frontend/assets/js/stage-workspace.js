@@ -112,6 +112,9 @@ async function loadHearingMinutesDocuments(hearingId) {
 
 
 
+        const isMinFinalized = Boolean((stageWorkspaceState.sessions || []).find(s => Number(s.hearing_id) === Number(hearingId))?.minutes_status === 'Finalized');
+        const docsLocked = Boolean(stageWorkspaceState.readOnly || isMinFinalized);
+
         container.innerHTML = `
 
             <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -152,7 +155,7 @@ async function loadHearingMinutesDocuments(hearingId) {
 
                                     </a>
 
-                                    ${!stageWorkspaceState.readOnly ? `
+                                    ${!docsLocked ? `
                                     <button type="button" onclick="deleteHearingMinutesDocument(${d.id}, ${d.hearing_id})" style="padding: 2px 6px; background: #fff; border: 1px solid #fca5a5; border-radius: 4px; color: #dc2626; cursor: pointer; font-size: 0.72rem; font-weight: 700;" title="Alisin ang attachment">
 
                                         &times;
@@ -3559,11 +3562,13 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
     const sessionLabel = getStageSessionOrdinalLabel(mode || stageWorkspaceState.mode || stageWorkspaceState.stageType, sessionIndex);
 
     const isFinalized = (session.minutes_status === 'Finalized');
-    const isDraftMinutes = (session.minutes_status === 'Draft');
-    const isConcludedSession = (!isDraftMinutes && ['Concluded'].includes(String(session.queue_status || session.status || '')))
-        || (isFinalized && ['Settled', 'Resolved', 'Dismissed', 'Pending CFA', 'Arbitration Award', 'Repudiated'].includes(String(session.session_outcome || '')));
-    const readonlyAttr = (stageWorkspaceState.readOnly || isFinalized || isConcludedSession)
-        ? 'disabled aria-disabled="true" title="Read-only concluded session"'
+    const isWorkspaceReadOnly = Boolean(stageWorkspaceState.readOnly);
+    const minutesLocked = (isWorkspaceReadOnly || isFinalized);
+    const minutesLockedAttr = minutesLocked
+        ? 'disabled aria-disabled="true" title="Minutes of the Meeting are finalized and locked"'
+        : '';
+    const outcomeLockedAttr = isWorkspaceReadOnly
+        ? 'disabled aria-disabled="true" title="Read-only concluded case"'
         : '';
 
     let curOutcome = session.session_outcome || 'Pending';
@@ -3826,19 +3831,19 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     </button>
 
-                    <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Print official blank ruled minutes sheet">
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;" title="Print official blank ruled minutes sheet">
 
                         🖨️ Print Blank Minutes Sheet
 
                     </button>
 
-                    <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${hId})" style="font-size: 0.78rem; padding: 4px 10px;">
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openPreviewMinutesModal(${hId})" style="font-size: 0.78rem; padding: 4px 10px;">
 
                         Preview Letterhead
 
                     </button>
 
-                    <button type="button" class="btn-secondary" onclick="printHearingMinutes(${hId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                    <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="printHearingMinutes(${hId})" style="font-size: 0.78rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
 
                         🖨️ Print Minutes
 
@@ -3868,7 +3873,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                 <div id="wsMinutesStepProceedings_${hId}" class="minutes-flow-step" style="background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 18px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);">
 
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; gap: 8px; flex-wrap: wrap;">
 
                         <div style="display: flex; align-items: center; gap: 8px;">
 
@@ -3883,6 +3888,12 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
                             </div>
 
                         </div>
+
+                        ${isFinalized && !isWorkspaceReadOnly ? `
+                            <span style="font-size: 0.72rem; font-weight: 700; padding: 3px 10px; border-radius: 9999px; background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe;" title="Step 1 Attendance &amp; Step 3 Outcome remain editable">
+                                🔒 Minutes Finalized (Step 2 Locked)
+                            </span>
+                        ` : ''}
 
                     </div>
 
@@ -3909,7 +3920,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                         </label>
 
-                        <input type="text" id="minDisputeSummary_${hId}" name="minDisputeSummary" maxlength="1000" placeholder="Halimbawa: Paniningil ng utang, alitan sa boundary o bakod, panggugulo sa oras ng pahinga..." value="${escapeHtml(session.main_dispute_identified || session.carryover?.main_dispute_identified || stageWorkspaceState.stageData?.case?.complaint_title || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                        <input type="text" id="minDisputeSummary_${hId}" name="minDisputeSummary" maxlength="1000" placeholder="Halimbawa: Paniningil ng utang, alitan sa boundary o bakod, panggugulo sa oras ng pahinga..." value="${escapeHtml(session.main_dispute_identified || session.carryover?.main_dispute_identified || stageWorkspaceState.stageData?.case?.complaint_title || '')}" ${minutesLockedAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
 
                     </div>
 
@@ -3929,31 +3940,31 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                                 <label style="font-size: 0.74rem; color: #475569; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;">
 
-                                    <input type="checkbox" id="stageAiConsentCheckbox_${hId}" checked style="accent-color: #2563eb; cursor: pointer;">
+                                    <input type="checkbox" id="stageAiConsentCheckbox_${hId}" checked ${minutesLockedAttr} style="accent-color: #2563eb; cursor: pointer;">
 
                                     <span>Consent to Gemini AI</span>
 
                                 </label>
 
-                                <button type="button" class="btn-secondary" id="btnStageRecordVoice_${hId}" onclick="toggleStageVoiceRecording(${hId})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                                <button type="button" class="btn-secondary" id="btnStageRecordVoice_${hId}" onclick="toggleStageVoiceRecording(${hId})" ${minutesLockedAttr} style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
 
                                     <span id="stageRecordVoiceText_${hId}">🎙️ Record Voice (STT)</span>
 
                                 </button>
 
-                                <button type="button" class="btn-secondary" id="btnStageUploadNotes_${hId}" onclick="triggerStageNotesUpload(${hId})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
+                                <button type="button" class="btn-secondary" id="btnStageUploadNotes_${hId}" onclick="triggerStageNotesUpload(${hId})" ${minutesLockedAttr} style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px;">
 
                                     📷 Upload Notes (OCR)
 
                                 </button>
 
-                                <button type="button" class="btn-secondary" id="btnGenerateAiMinutesDraft_${hId}" onclick="generateAiHearingMinutesDraft(${hId})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #8b5cf6; color: #6d28d9; background: #f5f3ff;" ${readonlyAttr}>
+                                <button type="button" class="btn-secondary" id="btnGenerateAiMinutesDraft_${hId}" onclick="generateAiHearingMinutesDraft(${hId})" style="font-size: 0.76rem; padding: 4px 10px; display: inline-flex; align-items: center; gap: 4px; border-color: #8b5cf6; color: #6d28d9; background: #f5f3ff;" ${minutesLockedAttr}>
 
                                     ✨ Generate Draft Minutes
 
                                 </button>
 
-                                <input type="file" id="stageNotesFileInput_${hId}" accept="image/*,.pdf" style="display: none;" onchange="handleStageNotesFileSelected(this, ${hId})">
+                                <input type="file" id="stageNotesFileInput_${hId}" accept="image/*,.pdf" ${minutesLockedAttr} style="display: none;" onchange="handleStageNotesFileSelected(this, ${hId})">
 
                             </div>
 
@@ -3971,7 +3982,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     <!-- Central Discussion Textarea -->
 
-                    <textarea id="session_minutes_${hId}" name="session_minutes" rows="5" placeholder="Detalyadong buod ng mga naging salaysay, paliwanag ng mga partido, at talakayan sa pagdinig..." ${readonlyAttr} required style="width: 100%; padding: 10px 12px; font-size: 0.86rem; line-height: 1.5; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.settlement_discussion_notes || session.session_minutes || '')}</textarea>
+                    <textarea id="session_minutes_${hId}" name="session_minutes" rows="5" placeholder="Detalyadong buod ng mga naging salaysay, paliwanag ng mga partido, at talakayan sa pagdinig..." ${minutesLockedAttr} required style="width: 100%; padding: 10px 12px; font-size: 0.86rem; line-height: 1.5; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box; resize: vertical;">${escapeHtml(session.settlement_discussion_notes || session.session_minutes || '')}</textarea>
 
 
 
@@ -4005,14 +4016,14 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                                 <span style="display: block; font-size: 0.72rem; color: #64748b; margin-bottom: 8px;">PDF o larawan ng nilagdaang katitikan</span>
 
-                                <input type="file" id="uploadHandwrittenMinutesInput_${hId}" data-hearing-id="${hId}" accept="image/*,.pdf" style="display: none;" onchange="handleMinutesEvidenceUpload(this, 'handwritten_minutes', ${hId})">
+                                <input type="file" id="uploadHandwrittenMinutesInput_${hId}" data-hearing-id="${hId}" accept="image/*,.pdf" ${minutesLockedAttr} style="display: none;" onchange="handleMinutesEvidenceUpload(this, 'handwritten_minutes', ${hId})">
 
                                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                                    <button type="button" class="btn-secondary" onclick="document.getElementById('uploadHandwrittenMinutesInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${readonlyAttr}>
+                                    <button type="button" class="btn-secondary" onclick="document.getElementById('uploadHandwrittenMinutesInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${minutesLockedAttr}>
                                         📄 Upload Only
                                     </button>
-                                    <input type="file" id="oneStepHandwrittenInput_${hId}" accept="image/*,.pdf" style="display:none;" onchange="handleOneStepHandwrittenMinutes(this, ${hId})">
-                                    <button type="button" class="btn-secondary" onclick="document.getElementById('oneStepHandwrittenInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px; border-color:#2563eb; color:#1d4ed8; background:#eff6ff;" ${readonlyAttr}>
+                                    <input type="file" id="oneStepHandwrittenInput_${hId}" accept="image/*,.pdf" ${minutesLockedAttr} style="display:none;" onchange="handleOneStepHandwrittenMinutes(this, ${hId})">
+                                    <button type="button" class="btn-secondary" onclick="document.getElementById('oneStepHandwrittenInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px; border-color:#2563eb; color:#1d4ed8; background:#eff6ff;" ${minutesLockedAttr}>
                                         ⚡ 1-Step Scan (Archive + OCR + Draft)
                                     </button>
                                 </div>
@@ -4027,9 +4038,9 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                                 <span style="display: block; font-size: 0.72rem; color: #64748b; margin-bottom: 8px;">Larawan, resibo, o iba pang kasulatan</span>
 
-                                <input type="file" id="uploadEvidenceAttachmentsInput_${hId}" data-hearing-id="${hId}" accept="image/*,.pdf,.doc,.docx" multiple style="display: none;" onchange="handleMinutesEvidenceUpload(this, 'evidence', ${hId})">
+                                <input type="file" id="uploadEvidenceAttachmentsInput_${hId}" data-hearing-id="${hId}" accept="image/*,.pdf,.doc,.docx" multiple ${minutesLockedAttr} style="display: none;" onchange="handleMinutesEvidenceUpload(this, 'evidence', ${hId})">
 
-                                <button type="button" class="btn-secondary" onclick="document.getElementById('uploadEvidenceAttachmentsInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${readonlyAttr}>
+                                <button type="button" class="btn-secondary" onclick="document.getElementById('uploadEvidenceAttachmentsInput_${hId}').click()" style="font-size: 0.75rem; padding: 5px 10px;" ${minutesLockedAttr}>
 
                                     📎 Attach Evidences / Photos / Receipts
 
@@ -4098,7 +4109,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             </label>
 
-                            <select id="minOutcome_${hId}" name="minOutcome" onchange="handleMinutesOutcomeChange(this.value, true, ${hId})" ${readonlyAttr} required style="width: 100%; padding: 8px 30px 8px 12px; font-size: 0.85rem; border: 1.5px solid #2563eb; border-radius: 6px; background: #fff; font-weight: 600; color: #0f172a;">
+                            <select id="minOutcome_${hId}" name="minOutcome" onchange="handleMinutesOutcomeChange(this.value, true, ${hId})" ${outcomeLockedAttr} required style="width: 100%; padding: 8px 30px 8px 12px; font-size: 0.85rem; border: 1.5px solid #2563eb; border-radius: 6px; background: #fff; font-weight: 600; color: #0f172a;">
 
                                 ${outcomeOptions}
 
@@ -4116,7 +4127,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                                 </label>
 
-                                ${!readonlyAttr ? `
+                                ${!isWorkspaceReadOnly ? `
 
                                     <button type="button" onclick="setNowHearingEndTime(${hId})" style="background: none; border: none; color: #2563eb; font-size: 0.74rem; font-weight: 600; cursor: pointer; padding: 0;">
 
@@ -4128,7 +4139,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             </div>
 
-                            <input type="time" id="minActualEndTime_${hId}" name="minActualEndTime" value="${escapeHtml(formatForTimeInput(session.actual_end_time))}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            <input type="time" id="minActualEndTime_${hId}" name="minActualEndTime" value="${escapeHtml(formatForTimeInput(session.actual_end_time))}" ${outcomeLockedAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
 
                         </div>
 
@@ -4140,7 +4151,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             </label>
 
-                            <input type="text" id="minOutcomeRemarks_${hId}" name="minOutcomeRemarks" placeholder="Mga tagubilin, referral, o kasunduan..." value="${escapeHtml(session.outcome_remarks || '')}" ${readonlyAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
+                            <input type="text" id="minOutcomeRemarks_${hId}" name="minOutcomeRemarks" placeholder="Mga tagubilin, referral, o kasunduan..." value="${escapeHtml(session.outcome_remarks || '')}" ${outcomeLockedAttr} style="width: 100%; padding: 8px 12px; font-size: 0.85rem; border: 1px solid #cbd5e1; border-radius: 6px;">
 
                         </div>
 
@@ -4162,7 +4173,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
 
-                        ${(stageWorkspaceState.readOnly || readonlyAttr) ? '' : `
+                        ${minutesLocked ? '' : `
                             <button type="button" class="btn-secondary" id="btnSaveMinutesDraft_${hId}" onclick="saveHearingMinutes('Draft', ${hId})" style="font-size: 0.84rem; padding: 7px 14px;">
 
                                 Save Draft
@@ -4170,19 +4181,19 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
                             </button>
                         `}
 
-                        <button type="button" class="btn-secondary" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openPrintBlankMinutes(stageWorkspaceState.caseId, stageWorkspaceState.complaintId, ${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
 
                             🖨️ Print Blank Minutes Sheet
 
                         </button>
 
-                        <button type="button" class="btn-secondary" onclick="openPreviewMinutesModal(${hId})" style="font-size: 0.84rem; padding: 7px 14px;">
+                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="openPreviewMinutesModal(${hId})" style="font-size: 0.84rem; padding: 7px 14px;">
 
                             Preview Letterhead
 
                         </button>
 
-                        <button type="button" class="btn-secondary" onclick="printHearingMinutes(${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
+                        <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="printHearingMinutes(${hId})" style="font-size: 0.84rem; padding: 7px 14px; display: inline-flex; align-items: center; gap: 5px;">
 
                             🖨️ Print Minutes
 
@@ -4192,7 +4203,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                     <div style="display: flex; gap: 8px; align-items: center;">
 
-                        ${(stageWorkspaceState.readOnly || readonlyAttr) ? `
+                        ${isWorkspaceReadOnly ? `
                             <button type="button" class="btn-secondary" data-readonly-exempt="true" onclick="setStageWorkflowStep(2)" style="font-size: 0.84rem; padding: 7px 14px;">
 
                                 &larr; Step 2: Hearing Minutes
@@ -4216,7 +4227,7 @@ function renderSingleSessionMinutesCard(session, mode, allSessions) {
 
                             <button type="button" class="btn-create" id="btnSaveMinutesFinalize_${hId}" onclick="saveHearingMinutes('Finalized', ${hId})" style="font-size: 0.84rem; padding: 7px 16px; background: #0284c7; border-color: #0284c7;">
 
-                                Save &amp; Finalize
+                                ${isFinalized ? 'Save Outcome &amp; Next Action' : 'Save &amp; Finalize'}
 
                             </button>
                         `}
@@ -5064,8 +5075,11 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
         .filter(s => !['Cancelled', 'Office Cancelled'].includes(s.status) && !s.rescheduled_to_id)
         .some(s => Number(s.session_index) === nextSessionIndex);
 
-    const isConcludedSession = (session.minutes_status === 'Finalized');
+    const isFinalizedSession = (session.minutes_status === 'Finalized');
     let bookingOnly = false;
+    if (isFinalizedSession) {
+        payload.action = 'update_outcome';
+    }
 
 
 
@@ -5113,13 +5127,6 @@ async function saveHearingMinutes(status = 'Draft', targetHearingId = null, skip
             payload.next_hearing_venue = nextVenue;
 
             payload.next_hearing_presider_id = session.presiding_officer_id || null;
-
-            // A concluded first hearing is read-only. Booking its second
-            // session must not overwrite the recorded minutes with this form.
-            if (isConcludedSession) {
-                payload.action = 'book_next_hearing';
-                bookingOnly = true;
-            }
 
         }
 
